@@ -1,0 +1,215 @@
+/* ==========================================================================
+   BRASFC — Design System (Dev 0.1)
+   Grafite profundo · superfícies grafite · verde-esmeralda · branco gelo · dourado
+   ========================================================================== */
+
+:root {
+	color-scheme: dark;
+
+	/* Cores de identidade */
+	--bg: #101418;
+	--bg-deep: #0a0d10;
+	--surface: #1c252b;
+	--surface-2: #222c33;
+	--surface-3: #2a353d;
+	--surface-sunken: #151b20;
+	--line: rgb(231 237 240 / 0.07);
+	--line-strong: rgb(231 237 240 / 0.13);
+
+	--text: #e7edf0;
+	--text-2: #aab6bd;
+	--text-3: #85929a;
+
+	--emerald: #10b981;
+	--emerald-strong: #34d399;
+	--emerald-deep: #0a7a56;
+	--emerald-soft: rgb(16 185 129 / 0.14);
+	--emerald-line: rgb(16 185 129 / 0.42);
+
+	--gold: #e8b86a;
+	--gold-soft: rgb(232 184 106 / 0.14);
+
+	/* Estados (usados com moderação) */
+	--danger: #f87171;
+	--danger-soft: rgb(248 113 113 / 0.13);
+	--warning: #fbbf24;
+	--warning-soft: rgb(251 191 36 / 0.13);
+	--info: #7cb6f8;
+	--info-soft: rgb(124 182 248 / 0.13);
+
+	/* Tipografia */
+	--font-display: 'Barlow Condensed', 'Arial Narrow', system-ui, sans-serif;
+	--font-ui: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--text-scale: 1;
+	--fs-xs: calc(0.8125rem * var(--text-scale));
+	--fs-sm: calc(0.875rem * var(--text-scale));
+	--fs-md: calc(1rem * var(--text-scale));
+	--fs-lg: calc(1.125rem * var(--text-scale));
+	--fs-xl: calc(1.375rem * var(--text-scale));
+	--fs-2xl: calc(1.75rem * var(--text-scale));
+	--fs-3xl: calc(2.5rem * var(--text-scale));
+	--fs-hero: calc(clamp(2.75rem, 5.2vw, 4.75rem) * var(--text-scale));
+
+	/* Espaçamento (base 4px) */
+	--sp-1: 4px;
+	--sp-2: 8px;
+	--sp-3: 12px;
+	--sp-4: 16px;
+	--sp-5: 20px;
+	--sp-6: 24px;
+	--sp-7: 32px;
+	--sp-8: 48px;
+
+	--radius-s: 8px;
+	--radius-m: 12px;
+	--radius-l: 16px;
+	--radius-xl: 22px;
+	--radius-pill: 999px;
+
+	--shadow-1: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 6px 18px rgb(0 0 0 / 0.22);
+	--shadow-2: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 18px 48px rgb(0 0 0 / 0.42);
+	--focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--emerald-strong);
+
+	--header-h: 68px;
+	--content-max: 1440px;
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html {
+	background: var(--bg);
+	-webkit-text-size-adjust: 100%;
+}
+
+body {
+	margin: 0;
+	min-height: 100vh;
+	background: var(--bg);
+	color: var(--text);
+	font-family: var(--font-ui);
+	font-size: var(--fs-md);
+	line-height: 1.5;
+	font-feature-settings: 'cv11', 'ss01', 'tnum' 0;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	text-rendering: optimizeLegibility;
+	overflow-x: hidden;
+}
+
+h1,
+h2,
+h3,
+h4 {
+	margin: 0;
+	font-family: var(--font-display);
+	font-weight: 700;
+	letter-spacing: 0.01em;
+	line-height: 1.1;
+}
+
+p {
+	margin: 0;
+}
+
+a {
+	color: inherit;
+	text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+	font: inherit;
+	color: inherit;
+}
+
+button {
+	cursor: pointer;
+}
+
+img,
+svg {
+	display: block;
+}
+
+:focus-visible {
+	outline: none;
+	box-shadow: var(--focus);
+	border-radius: var(--radius-s);
+}
+
+::selection {
+	background: var(--emerald-soft);
+	color: var(--text);
+}
+
+/* Barra de rolagem discreta */
+* {
+	scrollbar-width: thin;
+	scrollbar-color: var(--surface-3) transparent;
+}
+
+/* ---------- Utilitários ---------- */
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
+}
+
+.eyebrow {
+	font-family: var(--font-display);
+	font-size: var(--fs-sm);
+	font-weight: 600;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--text-3);
+}
+
+.num {
+	font-variant-numeric: tabular-nums;
+}
+
+.muted {
+	color: var(--text-2);
+}
+
+.subtle {
+	color: var(--text-3);
+}
+
+.display {
+	font-family: var(--font-display);
+	text-transform: uppercase;
+	letter-spacing: 0.02em;
+}
+
+/* Movimento reduzido: só o essencial, sem deslocamentos */
+:root[data-motion='reduced'] *,
+:root[data-motion='reduced'] *::before,
+:root[data-motion='reduced'] *::after {
+	animation-duration: 0.001ms !important;
+	animation-iteration-count: 1 !important;
+	transition-duration: 0.001ms !important;
+	scroll-behavior: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	:root:not([data-motion='full']) *,
+	:root:not([data-motion='full']) *::before,
+	:root:not([data-motion='full']) *::after {
+		animation-duration: 0.001ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.001ms !important;
+	}
+}
