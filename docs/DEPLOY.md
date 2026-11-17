@@ -11,7 +11,17 @@ Tudo está automatizado, mas **ainda não há VPS, domínio nem credenciais conf
 | E-mail para o Let's Encrypt | certificados |
 | Usuário SSH com permissão no Docker e uma **chave de deploy** | GitHub Actions |
 
-## 1. Preparar a VPS (uma vez)
+## Atalho: preparar a VPS com um comando
+
+Na VPS, como root (troque domínio e e-mail):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Andresilvadev-br/BRASFC/dev/deploy/bootstrap-vps.sh -o bootstrap.sh && sudo bash bootstrap.sh brasfc.seudominio.com.br seu-email@exemplo.com
+```
+
+O script instala o Docker, cria o usuário `deploy`, gera senhas fortes nos `.env` (só na VPS), sobe o Caddy com HTTPS, agenda o backup diário e mostra como criar a chave para o GitHub. Ele se recusa a continuar se outro serviço (ex.: Apache/Nginx de um site antigo) estiver usando as portas 80/443.
+
+## 1. Preparar a VPS manualmente (alternativa)
 
 ```bash
 curl -fsSL https://get.docker.com | sh
