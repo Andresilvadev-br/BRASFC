@@ -74,7 +74,10 @@ cd "$DIR"
 docker compose -f deploy/caddy/compose.yml --env-file deploy/.env.caddy up -d
 
 echo "▶ Backup diário às 04:15…"
-( crontab -u deploy -l 2>/dev/null | grep -v backup.sh; echo "15 4 * * * cd $DIR && ENV_NAME=producao deploy/backup.sh >> backups/backup.log 2>&1" ) | crontab -u deploy -
+command -v crontab >/dev/null || { apt-get update -qq && apt-get install -y -qq cron && systemctl enable --now cron; }
+CURRENT="$(crontab -u deploy -l 2>/dev/null || true)"
+{ printf '%s\n' "$CURRENT" | grep -v 'backup.sh' | grep -v '^$' || true
+  echo "15 4 * * * cd $DIR && ENV_NAME=producao deploy/backup.sh >> backups/backup.log 2>&1"; } | crontab -u deploy -
 
 echo "▶ Firewall (se o ufw existir)…"
 if command -v ufw >/dev/null; then ufw allow OpenSSH; ufw allow 80/tcp; ufw allow 443/tcp; ufw allow 443/udp; ufw --force enable; fi
