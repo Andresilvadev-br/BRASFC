@@ -2,7 +2,7 @@ import type { Career } from './career.ts';
 import { CLUBS, requireClub } from './clubs.ts';
 import { clubFixtures, computeStandings, generateLeagueFixtures, nextFixture } from './season.ts';
 import { generateSquad, squadStrength } from './squad.ts';
-import { defaultTactic, type Tactic } from './tactics.ts';
+import { defaultTactic, sanitizeTactic, type Tactic } from './tactics.ts';
 
 /**
  * Visão derivada de uma carreira: tudo o que é determinístico a partir da
@@ -14,7 +14,9 @@ export function careerView(career: Career) {
 	const squad = generateSquad(career.clubId, career.seed);
 	const fixtures = generateLeagueFixtures(career.seed);
 	const mine = clubFixtures(fixtures, career.clubId);
-	const tactic: Tactic = career.data.tactic ?? defaultTactic(squad);
+	// Normaliza táticas antigas (Dev 0.1) para o vocabulário atual; inválidas voltam ao padrão.
+	const persisted = career.data.tactic ? sanitizeTactic(career.data.tactic, squad) : null;
+	const tactic: Tactic = persisted ?? defaultTactic(squad);
 	return {
 		club,
 		squad,
@@ -28,7 +30,7 @@ export function careerView(career: Career) {
 		),
 		strength: squadStrength(squad),
 		tactic,
-		tacticSaved: !!career.data.tactic
+		tacticSaved: !!persisted
 	};
 }
 

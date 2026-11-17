@@ -40,30 +40,60 @@ export const FORMATIONS = {
 		{ position: 'LD', x: 88, y: 66 }, { position: 'ZAG', x: 69, y: 76 }, { position: 'ZAG', x: 50, y: 78 }, { position: 'ZAG', x: 31, y: 76 }, { position: 'LE', x: 12, y: 66 },
 		{ position: 'MC', x: 70, y: 46 }, { position: 'VOL', x: 50, y: 52 }, { position: 'MC', x: 30, y: 46 },
 		{ position: 'ATA', x: 62, y: 18 }, { position: 'ATA', x: 38, y: 18 }
+	],
+	'4-2-2-2': [
+		{ position: 'GOL', x: 50, y: 92 },
+		{ position: 'LD', x: 84, y: 72 }, { position: 'ZAG', x: 62, y: 76 }, { position: 'ZAG', x: 38, y: 76 }, { position: 'LE', x: 16, y: 72 },
+		{ position: 'VOL', x: 62, y: 57 }, { position: 'VOL', x: 38, y: 57 },
+		{ position: 'MEI', x: 74, y: 36 }, { position: 'MEI', x: 26, y: 36 },
+		{ position: 'ATA', x: 60, y: 17 }, { position: 'ATA', x: 40, y: 17 }
+	],
+	'3-4-3': [
+		{ position: 'GOL', x: 50, y: 92 },
+		{ position: 'ZAG', x: 72, y: 75 }, { position: 'ZAG', x: 50, y: 78 }, { position: 'ZAG', x: 28, y: 75 },
+		{ position: 'LD', x: 86, y: 50 }, { position: 'MC', x: 61, y: 52 }, { position: 'MC', x: 39, y: 52 }, { position: 'LE', x: 14, y: 50 },
+		{ position: 'PD', x: 78, y: 22 }, { position: 'ATA', x: 50, y: 16 }, { position: 'PE', x: 22, y: 22 }
 	]
 } as const satisfies Record<string, readonly Slot[]>;
 
 export type FormationId = keyof typeof FORMATIONS;
 export const FORMATION_IDS = Object.keys(FORMATIONS) as FormationId[];
 
-export const MENTALITIES = ['defensiva', 'cautelosa', 'equilibrada', 'ofensiva', 'muito-ofensiva'] as const;
+export const MENTALITIES = ['defensiva', 'equilibrada', 'ofensiva'] as const;
 export type Mentality = (typeof MENTALITIES)[number];
 export const MENTALITY_LABELS: Record<Mentality, string> = {
 	defensiva: 'Defensiva',
-	cautelosa: 'Cautelosa',
 	equilibrada: 'Equilibrada',
-	ofensiva: 'Ofensiva',
-	'muito-ofensiva': 'Muito ofensiva'
+	ofensiva: 'Ofensiva'
 };
 
-export const STYLES = ['posse', 'contra-ataque', 'pressao', 'jogo-direto'] as const;
+export const STYLES = ['posse', 'tiki-taka', 'contra-ataque', 'bola-longa', 'laterais', 'pressao', 'vertical'] as const;
 export type PlayStyle = (typeof STYLES)[number];
 export const STYLE_LABELS: Record<PlayStyle, string> = {
 	posse: 'Posse de bola',
+	'tiki-taka': 'Tiki-taka',
 	'contra-ataque': 'Contra-ataque',
+	'bola-longa': 'Bola longa',
+	laterais: 'Jogo pelas laterais',
 	pressao: 'Pressão alta',
-	'jogo-direto': 'Jogo direto'
+	vertical: 'Construção vertical'
 };
+
+/** Valores da Dev 0.1 que continuam aceitos ao ler carreiras antigas. */
+const LEGACY_MENTALITY: Record<string, Mentality> = { cautelosa: 'defensiva', 'muito-ofensiva': 'ofensiva' };
+const LEGACY_STYLE: Record<string, PlayStyle> = { 'jogo-direto': 'bola-longa' };
+
+export function normalizeMentality(v: unknown): Mentality | null {
+	if (typeof v !== 'string') return null;
+	if ((MENTALITIES as readonly string[]).includes(v)) return v as Mentality;
+	return LEGACY_MENTALITY[v] ?? null;
+}
+
+export function normalizeStyle(v: unknown): PlayStyle | null {
+	if (typeof v !== 'string') return null;
+	if ((STYLES as readonly string[]).includes(v)) return v as PlayStyle;
+	return LEGACY_STYLE[v] ?? null;
+}
 
 export interface Tactic {
 	formation: FormationId;
@@ -171,8 +201,9 @@ export function sanitizeTactic(input: unknown, squad: SquadPlayer[]): Tactic | n
 	if (!input || typeof input !== 'object') return null;
 	const t = input as Record<string, unknown>;
 	if (!isFormation(t.formation)) return null;
-	if (!(MENTALITIES as readonly string[]).includes(t.mentality as string)) return null;
-	if (!(STYLES as readonly string[]).includes(t.style as string)) return null;
+	const mentality = normalizeMentality(t.mentality);
+	const style = normalizeStyle(t.style);
+	if (!mentality || !style) return null;
 	if (!Array.isArray(t.lineup) || t.lineup.length !== FORMATIONS[t.formation].length) return null;
 	const ids = new Set(squad.map((p) => p.id));
 	const seen = new Set<string>();
@@ -183,7 +214,20 @@ export function sanitizeTactic(input: unknown, squad: SquadPlayer[]): Tactic | n
 	return {
 		formation: t.formation,
 		lineup: [...(t.lineup as string[])],
-		mentality: t.mentality as Mentality,
-		style: t.style as PlayStyle
+		mentality,
+		style
 	};
+}
+
+/**
+ * Chave canônica da tática (independe da ordem das propriedades do objeto).
+ * O PostgreSQL (jsonb) reordena as chaves ao gravar; comparar JSON.stringify
+ * do objeto inteiro fazia a tela achar que a tática salva ainda tinha alterações.
+ */
+export function tacticKey(t: Tactic): string {
+	return JSON.stringify([t.formation, [...t.lineup], t.mentality, t.style]);
+}
+
+export function sameTactic(a: Tactic, b: Tactic): boolean {
+	return tacticKey(a) === tacticKey(b);
 }

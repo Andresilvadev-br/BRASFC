@@ -1,3 +1,4 @@
+import { computeOverall, generateAttributes, type Attributes } from '#lib/engine/attributes.ts';
 import { randomAppearance, type Appearance } from './appearance.ts';
 import { requireClub } from './clubs.ts';
 import { POSITION_INFO, type Position } from './positions.ts';
@@ -40,6 +41,10 @@ export interface SquadPlayer {
 	condition: number;
 	morale: Morale;
 	appearance: Appearance;
+	/** atributos de jogo (escala 1–99), usados pelo motor de partidas */
+	attributes: Attributes;
+	/** perfil do atleta (ex.: "Ponta velocista") */
+	archetype: string;
 }
 
 export const MORALE_LABELS: Record<Morale, string> = {
@@ -87,10 +92,20 @@ export function generateSquad(clubId: string, seed: number): SquadPlayer[] {
 				potential: clamp(overall + youthBonus, overall, 95),
 				condition: rng.int(92, 100),
 				morale: rng.pick(['excelente', 'boa', 'boa', 'regular'] as const),
-				appearance: randomAppearance(rng)
+				appearance: randomAppearance(rng),
+				attributes: {} as Attributes,
+				archetype: ''
 			});
 			index++;
 		}
+	}
+	// Atributos com semente própria por atleta: não altera nomes/números já gerados.
+	for (const p of players) {
+		const { attributes, archetype } = generateAttributes(p.position, p.overall, createRng(deriveSeed(seed, 'attr', p.id)));
+		p.attributes = attributes;
+		p.archetype = archetype;
+		p.overall = computeOverall(attributes, p.position);
+		p.potential = Math.max(p.potential, p.overall);
 	}
 	return players;
 }

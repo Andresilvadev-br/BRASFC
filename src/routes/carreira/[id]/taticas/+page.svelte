@@ -11,6 +11,8 @@
 		FORMATIONS,
 		lineupFamiliarity,
 		MENTALITY_LABELS,
+		sameTactic,
+		tacticKey,
 		type FormationId,
 		type Tactic
 	} from '#lib/domain/tactics.ts';
@@ -37,27 +39,30 @@
 
 	// Estado de edição local (salvo explicitamente).
 	let tactic = $state<Tactic>(untrack(() => structuredClone($state.snapshot(data.view.tactic))));
-	let version = $state(untrack(() => data.career.version));
 	let selection = $state<{ kind: 'slot'; index: number } | { kind: 'bench'; id: string } | null>(null);
 	let saving = $state(false);
 	let leaveModal = $state(false);
 	let pendingHref: string | null = null;
 
-	const saved = $derived(JSON.stringify(data.view.tactic));
-	const dirty = $derived(JSON.stringify(tactic) !== saved || !v.tacticSaved);
+	// Três estados distintos:
+	//  • tactic        → o que está sendo editado nesta tela;
+	//  • data.view.tactic → o último estado CONFIRMADO pelo servidor (é o que o motor usa);
+	//  • changed       → há diferença entre os dois (indicador de pendência).
+	const changed = $derived(!sameTactic(tactic, data.view.tactic));
+	const dirty = $derived(changed || !v.tacticSaved);
 	const slots = $derived(FORMATIONS[tactic.formation]);
 	const bench = $derived(v.squad.filter((p) => !tactic.lineup.includes(p.id)).sort((a, b) => b.overall - a.overall));
 	const familiarity = $derived(lineupFamiliarity(tactic.formation, tactic.lineup, v.squad));
 	const report = $derived(assistantReport(tactic, v.squad));
 
 	$effect(() => {
-		if (dirty && JSON.stringify(tactic) !== saved) markDirty(DIRTY_KEY, 'Tática não salva');
+		if (changed) markDirty(DIRTY_KEY, 'Tática não salva');
 		else markClean(DIRTY_KEY);
 		return () => markClean(DIRTY_KEY);
 	});
 
 	beforeNavigate((nav) => {
-		if (JSON.stringify(tactic) === saved || saving || !nav.to || nav.willUnload) return;
+		if (!changed || saving || !nav.to || nav.willUnload) return;
 		nav.cancel();
 		pendingHref = nav.to.url.pathname;
 		leaveModal = true;
@@ -117,18 +122,28 @@
 	}
 
 	async function save() {
+		if (saving) return; // nunca dois salvamentos ao mesmo tempo
 		saving = true;
+		const sent = $state.snapshot(tactic);
 		try {
-			const res = await api<{ career: Career }>(`/api/careers/${data.career.id}`, {
+			await api<{ career: Career }>(`/api/careers/${data.career.id}`, {
 				method: 'PATCH',
-				body: { version, tactic: $state.snapshot(tactic) }
+				// Versão mais recente conhecida: se outra tela/aba salvou depois, o servidor recusa (409).
+				body: { version: data.career.version, tactic: sent }
 			});
-			version = res.career.version;
-			markClean(DIRTY_KEY);
 			await invalidate('app:career');
-			notify({ icon: 'save', tone: 'success', title: 'Tática salva', detail: `${tactic.formation} · ${MENTALITY_LABELS[tactic.mentality]}` });
+			// O indicador some sozinho quando o estado confirmado (servidor) bate com o editado.
+			if (tacticKey(data.view.tactic) !== tacticKey(sent)) throw new Error('O servidor não confirmou a tática enviada.');
+			notify({ icon: 'save', tone: 'success', title: 'Tática salva', detail: `${sent.formation} · ${MENTALITY_LABELS[sent.mentality]}` });
 		} catch (e) {
-			notify({ icon: 'alert', tone: 'error', title: e instanceof Error ? e.message : 'Falha ao salvar' });
+			const conflict = e instanceof Error && 'status' in e && (e as { status: number }).status === 409;
+			notify({
+				icon: 'alert',
+				tone: 'error',
+				title: conflict ? 'A carreira mudou em outra tela' : e instanceof Error ? e.message : 'Falha ao salvar',
+				detail: conflict ? 'Recarregue a página e aplique de novo.' : 'Suas alterações continuam aqui.',
+				duration: 6000
+			});
 		} finally {
 			saving = false;
 		}
@@ -159,8 +174,8 @@
 			<p class="muted">Clique em um jogador e depois em outro para trocar — ou arraste. A tática fica salva; o motor de partidas que a usa chega na Etapa 2.</p>
 		</div>
 		<div class="save">
-			{#if dirty && JSON.stringify(tactic) !== saved}<span class="pending"><Icon name="dot" size={12} /> Alterações não salvas</span>{/if}
-			<Button variant="ghost" onclick={reset} disabled={JSON.stringify(tactic) === saved}>Desfazer</Button>
+			{#if changed}<span class="pending"><Icon name="dot" size={12} /> Alterações não salvas</span>{/if}
+			<Button variant="ghost" onclick={reset} disabled={!changed || saving}>Desfazer</Button>
 			<Button variant="primary" icon="save" loading={saving} disabled={!dirty} onclick={save}>Salvar tática</Button>
 		</div>
 	</div>
