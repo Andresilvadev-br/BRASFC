@@ -410,11 +410,11 @@
 		margin-right: -40px;
 		filter: brightness(0.82);
 	}
-	.figure :global(svg) {
+	.figure :global(svg.pixel) {
 		height: min(50vh, 380px);
 		width: auto;
 	}
-	.duo .coach :global(svg) {
+	.duo .coach :global(svg.pixel) {
 		height: min(42vh, 320px);
 	}
 	.figure {
@@ -424,8 +424,9 @@
 	}
 	.crest-float {
 		position: absolute;
-		top: -30px;
-		left: -70px;
+		top: -24px;
+		left: -64px;
+		z-index: 2;
 	}
 	.floor {
 		position: absolute;

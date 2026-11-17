@@ -18,6 +18,14 @@ O BRASFC agora é uma aplicação web executável, navegável e salva no servido
 | Imagem Docker | **não testada localmente** (Docker não está instalado nesta máquina); é construída no CI |
 | Deploy público | **não realizado** — faltam VPS, domínio e credenciais (ver abaixo) |
 
+## Capturas
+
+| Menu principal | Painel da carreira |
+| --- | --- |
+| ![Menu](docs/capturas/menu.png) | ![Painel](docs/capturas/painel.png) |
+| **Criação do jogador** | **Central tática** |
+| ![Criar jogador](docs/capturas/criar-jogador.png) | ![Táticas](docs/capturas/taticas.png) |
+
 ## O que funciona
 
 **Telas**
