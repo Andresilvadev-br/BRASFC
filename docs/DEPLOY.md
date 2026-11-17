@@ -21,6 +21,18 @@ curl -fsSL https://raw.githubusercontent.com/Andresilvadev-br/BRASFC/dev/deploy/
 
 O script instala o Docker, cria o usuário `deploy`, gera senhas fortes nos `.env` (só na VPS), sobe o Caddy com HTTPS, agenda o backup diário e mostra como criar a chave para o GitHub. Ele se recusa a continuar se outro serviço (ex.: Apache/Nginx de um site antigo) estiver usando as portas 80/443.
 
+## Atualização automática sem chaves (recomendado para começar)
+
+Depois do bootstrap, na VPS, como root:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Andresilvadev-br/BRASFC/dev/deploy/self-update.sh | bash -s -- --install
+```
+
+A VPS passa a verificar a branch `dev` a cada 5 minutos: se houver commit novo, constrói a imagem localmente e publica com backup, verificação de saúde e retorno automático. Não precisa de secrets no GitHub. Log em `/opt/brasfc/backups/self-update.log`.
+
+O deploy via GitHub Actions (abaixo) continua disponível como alternativa.
+
 ## 1. Preparar a VPS manualmente (alternativa)
 
 ```bash

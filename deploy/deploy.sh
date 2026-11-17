@@ -25,8 +25,9 @@ if compose "${PREVIOUS:-$TAG}" ps --status running db 2>/dev/null | grep -q db; 
   ENV_NAME="$ENV_NAME" "$ROOT/deploy/backup.sh" || echo "⚠ backup falhou; seguindo com cautela"
 fi
 
-compose "$TAG" pull app
-compose "$TAG" up -d --remove-orphans
+# Com BRASFC_SKIP_PULL=1 a imagem já foi construída na própria VPS (self-update.sh).
+[ "${BRASFC_SKIP_PULL:-0}" = 1 ] || compose "$TAG" pull app
+compose "$TAG" up -d --remove-orphans --no-build
 
 echo "⏳ aguardando /api/health…"
 for i in $(seq 1 30); do
