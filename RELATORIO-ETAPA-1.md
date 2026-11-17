@@ -16,7 +16,7 @@ O BRASFC agora é uma aplicação web executável, navegável e salva no servido
 | Servidor de produção + `scripts/smoke.mjs` | saúde, sessão, bloqueio CSRF, carreira, sala e presença por WebSocket: ok |
 | Revisão visual (Edge headless, 1440×900 e celular 390×844) | sem rolagem horizontal; telas conferidas |
 | Imagem Docker | **não testada localmente** (Docker não está instalado nesta máquina); é construída no CI |
-| Deploy público | **não realizado** — faltam VPS, domínio e credenciais (ver abaixo) |
+| Deploy público | **no ar** em https://aldetes.vps-kinghost.net (VPS KingHost 4 GB, PostgreSQL real); smoke test público aprovado |
 
 ## Capturas
 
@@ -82,4 +82,4 @@ Abra http://localhost:5173 (não precisa de Docker; os dados ficam em `./data/pg
 
 Siga [docs/DEPLOY.md](docs/DEPLOY.md). Resumo: preparar a VPS com Docker, criar os arquivos `.env` na VPS, subir o Caddy, cadastrar os secrets `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `VPS_KNOWN_HOSTS` e a variável `PUBLIC_URL` no GitHub. Depois disso, cada push em `dev` publica em staging e cada merge em `main` (com aprovação) publica em produção, com backup e retorno automático se a versão nova falhar.
 
-**Dados necessários de você:** domínio(s), IP/host da VPS, usuário SSH, chave de deploy e e-mail para o certificado HTTPS.
+**Situação atual:** a VPS se atualiza sozinha a partir da branch `dev` a cada 5 minutos (`deploy/self-update.sh`), com backup e retorno automático. Para usar um domínio próprio (ex.: brasfc.com.br, livre no momento), registre-o, aponte o registro A para 187.45.255.204 e siga o comando em docs/DEPLOY.md.

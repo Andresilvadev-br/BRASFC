@@ -23,7 +23,7 @@ function gitSha(): string {
 
 const APP_VERSION = pkg.version;
 const GIT_SHA = gitSha();
-const BUILD_TIME = process.env.BUILD_TIME ?? new Date().toISOString();
+const BUILD_TIME = process.env.BUILD_TIME || new Date().toISOString();
 
 /**
  * Em desenvolvimento, o WebSocket de tempo real é anexado ao servidor do Vite.
