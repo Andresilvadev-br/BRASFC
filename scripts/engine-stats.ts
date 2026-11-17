@@ -52,3 +52,24 @@ for (let i = 0; i < n; i++) {
 	if (r.homeGoals > r.awayGoals) sw++; else if (r.homeGoals === r.awayGoals) sd++; else sl++;
 }
 console.log(`forte × fraco: V ${sw} E ${sd} D ${sl}`);
+
+// Equilíbrio tático: cada opção contra a referência (equilibrada/posse), mando alternado.
+if (process.argv.includes('--taticas')) {
+	const [c1, c2] = mid;
+	const vs = (mentality: string, style: string) => {
+		let w = 0, d = 0, l = 0, gf = 0, ga = 0;
+		const m = Math.min(n, 120);
+		for (let i = 0; i < m; i++) {
+			const mine = buildTeamSetup({ id: c1.id, name: c1.name, short: c1.short, colors: c1.colors }, generateSquad(c1.id, 7), { formation: '4-3-3', mentality: mentality as never, style: style as never });
+			const ref = team(c2, 7);
+			const home = i % 2 === 0;
+			const r = simulateMatch({ home: home ? mine : ref, away: home ? ref : mine, seed: 7000 + i });
+			const [f, a] = home ? [r.homeGoals, r.awayGoals] : [r.awayGoals, r.homeGoals];
+			gf += f; ga += a;
+			if (f > a) w++; else if (f === a) d++; else l++;
+		}
+		console.log(`${mentality.padEnd(11)} ${style.padEnd(13)} V${w} E${d} D${l}  gols ${(gf / m).toFixed(2)}–${(ga / m).toFixed(2)}`);
+	};
+	for (const mm of ['defensiva', 'equilibrada', 'ofensiva']) vs(mm, 'posse');
+	for (const st of ['tiki-taka', 'contra-ataque', 'bola-longa', 'laterais', 'pressao', 'vertical']) vs('equilibrada', st);
+}

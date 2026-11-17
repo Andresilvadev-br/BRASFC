@@ -445,7 +445,8 @@ export class Match {
 		} else {
 			let line = clamp(p.defLine + (bx - 52) * 0.28, 11, 52);
 			line = Math.min(line, Math.max(8, bx - 4));
-			const span = p.blockLength;
+			// Bola perto da própria área: o bloco se compacta (meio-campo protege a entrada da área).
+			const span = bx < 40 ? p.blockLength * (0.62 + (bx / 40) * 0.38) / Math.sqrt(p.boxDefense) : p.blockLength;
 			ax = line + ((depth - 0.24) / 0.6) * span;
 			ax = Math.min(ax, Math.max(line + 4, bx + 6));
 			ay = PITCH.width / 2 + (lateral - PITCH.width / 2) * 0.72 + (by - PITCH.width / 2) * 0.32;
@@ -596,9 +597,9 @@ export class Match {
 		const a = this.player(s.id)!.attributes;
 		const base = 3.0 + a.velocidade * 0.042 + a.aceleracao * 0.01;
 		const t = this.teams[s.side];
-		const counter = this.tick < this.counterUntil[s.side] ? 1.1 : t.params.counterBoost && this.tick - t.regainTick < 8 ? 1.12 : 1;
+		const counter = this.tick < this.counterUntil[s.side] ? 1.1 : t.params.counterBoost && this.tick - t.regainTick < 8 ? 1 + 0.12 * t.params.counterBoost : 1;
 		const injured = s.injured ? 0.6 : 1;
-		return base * this.physFactor(s) * counter * injured;
+		return base * this.physFactor(s) * counter * injured * (1 + (this.homeBoost(s.side) - 1) * 0.5);
 	}
 
 	private physFactor(s: PlayerState): number {
@@ -610,7 +611,7 @@ export class Match {
 	}
 
 	private homeBoost(side: Side): number {
-		return this.rules.homeAdvantage && side === 'home' ? 1.05 : 1;
+		return this.rules.homeAdvantage && side === 'home' ? 1.07 : 1;
 	}
 
 	private fatigue() {
@@ -662,7 +663,7 @@ export class Match {
 		const t = this.teams[s.side].params;
 		const pressured = this.nearestOpponentDistance(s) < 4;
 		const tempo = t.tempo * (1.25 - a.decisoes / 220) * (pressured ? 0.6 : 1);
-		const counter = this.tick < this.counterUntil[s.side] ? 0.6 : t.counterBoost && this.tick - this.teams[s.side].regainTick < 6 ? 0.7 : 1;
+		const counter = this.tick < this.counterUntil[s.side] ? 0.6 : t.counterBoost && this.tick - this.teams[s.side].regainTick < 6 ? 1 - 0.3 * t.counterBoost : 1;
 		this.actAt = this.tick + Math.max(1, reactionTicks ?? Math.round(tempo * counter + this.rng.next() * 1.2));
 	}
 
@@ -710,7 +711,7 @@ export class Match {
 		const da = this.player(def.id)!.attributes;
 		const aa = this.player(att.id)!.attributes;
 		const defScore = (da.desarme * 0.55 + da.posicionamento * 0.2 + da.forca * 0.15 + da.antecipacao * 0.1) * this.physFactor(def) * this.homeBoost(def.side);
-		const attScore = (aa.drible * 0.45 + aa.agilidade * 0.2 + aa.forca * 0.15 + aa.dominio * 0.2) * this.techFactor(att) * this.homeBoost(att.side) * (takeOn ? 1.05 : 1.15);
+		const attScore = (aa.drible * 0.45 + aa.agilidade * 0.2 + aa.forca * 0.15 + aa.dominio * 0.2) * this.techFactor(att) * this.homeBoost(att.side) * (takeOn ? 0.88 : 1.15);
 		const pWin = defScore / (defScore + attScore);
 		const r = this.rng.next();
 		// Quem já tem amarelo entra com mais cuidado.
@@ -734,7 +735,7 @@ export class Match {
 		if (takeOn) {
 			this.emit('dribble', { side: att.side, player: att.id, other: def.id, x: att.x, y: att.y });
 			const [ax, ay] = toRel(att.side, att.x, att.y);
-			[att.x, att.y] = toAbs(att.side, Math.min(PITCH.length - 2, ax + 5), ay);
+			[att.x, att.y] = toAbs(att.side, Math.min(PITCH.length - 9, ax + 3.5), ay);
 			[def.x, def.y] = toAbs(att.side, ax - 1.5, ay + (this.rng.next() - 0.5) * 3);
 		}
 		return 'lost';
@@ -765,7 +766,8 @@ export class Match {
 		const [ax, ay] = toRel(side, owner.x, owner.y);
 		const mates = this.onPitch(side).filter((s) => s.id !== owner.id);
 		const opps = this.onPitch(OTHER[side]);
-		const pressure = opps.filter((o) => dist(o.x, o.y, owner.x, owner.y) < 3).length;
+		const oppBox = this.teams[OTHER[side]].params.boxDefense;
+		const pressure = opps.filter((o) => dist(o.x, o.y, owner.x, owner.y) < (ax > 80 ? 3 * oppBox : 3)).length;
 		const diff = this.score[side] - this.score[OTHER[side]];
 		const late = this.half === 2 && this.tick - this.halfEnd > 30 * 60;
 
@@ -774,10 +776,13 @@ export class Match {
 
 		// Finalização
 		const xg = baseXg(ax, ay) * Math.pow(0.72, Math.min(2, pressure));
+		const goalDist = Math.hypot(PITCH.length - ax, PITCH.width / 2 - ay);
 		if (ax > 66) {
 			let threshold = p.shotThreshold * (1.15 - a.compostura / 300);
 			if (late && diff < 0) threshold *= 0.75;
-			const u = xg >= threshold ? 0.3 + xg * 5 : xg >= threshold * 0.6 ? 0.1 + xg * 3 : xg * 1.2;
+			let u = xg >= threshold ? 0.26 + xg * 5 : xg >= threshold * 0.6 ? 0.04 + xg * 2 : xg;
+			// Chute de fora da área: arma de quem finaliza bem e tem espaço.
+			if (goalDist > 16.5 && goalDist < 28 && pressure === 0) u = Math.max(u, 0.04 + a.finalizacao / 330 + a.tecnica / 900 - (goalDist - 16.5) * 0.02);
 			options.push({ u, run: () => this.shoot(owner, false) });
 		}
 
@@ -803,7 +808,7 @@ export class Match {
 				throughFactor = clamp(0.22 + (a.visao + a.passe) / 650 + (mi.attributes.velocidade - defPace) / 110 + (inCounter ? 0.15 : 0), 0.1, 0.7);
 			}
 			// Leitura do passe: quem tem boa visão/decisão quase nunca serve um atleta impedido.
-			if (offside && this.rng.next() > 0.2 - a.decisoes / 1200) continue;
+			if (offside && this.rng.next() > 0.12 - a.decisoes / 1500) continue;
 			const [absX, absY] = toAbs(side, tx, ty);
 			const prob = through ? clamp(throughFactor * (0.8 + a.passe / 500), 0.15, 0.9) : this.passSuccess(owner, absX, absY, opps, d);
 			const progress = tx - ax;
@@ -836,7 +841,8 @@ export class Match {
 			.sort((x, y) => x.rel[0] - y.rel[0])[0];
 		if (ahead) {
 			const skill = (a.drible + a.agilidade + a.aceleracao) / 3;
-			const u = (skill / 100) * 0.7 * (ax > 60 ? 1.2 : 0.8) * (info.position === 'ZAG' || info.position === 'GOL' ? 0.3 : 1);
+			const crowd = opps.filter((o) => dist(o.x, o.y, owner.x, owner.y) < 7).length;
+			const u = (skill / 100) * 0.6 * (ax > 60 ? 1.1 : 0.8) * (info.position === 'ZAG' || info.position === 'GOL' ? 0.3 : 1) * (crowd >= 2 ? 0.65 : 1);
 			options.push({ u, run: () => this.takeOn(owner, this.states.get(ahead.o.id)!) });
 		} else if (ax < PITCH.length - 18) {
 			options.push({ u: 0.45 + (a.drible / 400), run: () => this.carryAction(owner) });
@@ -873,8 +879,8 @@ export class Match {
 	private passSuccess(owner: PlayerState, tx: number, ty: number, opps: PlayerState[], d: number): number {
 		const a = this.player(owner.id)!.attributes;
 		let base = d <= 30 ? 0.975 - d * 0.0045 : 0.84 - (d - 30) * 0.011;
-		base *= 0.74 + a.passe / 360 + a.tecnica / 1100 + a.visao / 2000;
-		base *= this.techFactor(owner) * this.homeBoost(owner.side);
+		base *= 0.79 + a.passe / 360 + a.tecnica / 1100 + a.visao / 2000;
+		base *= this.techFactor(owner) * this.homeBoost(owner.side) * this.teams[owner.side].params.passAccuracy;
 		let threat = 0;
 		for (const o of opps) {
 			const { d: seg, t } = segmentDistance(o.x, o.y, owner.x, owner.y, tx, ty);
@@ -965,7 +971,7 @@ export class Match {
 					for (const d of this.onPitch(OTHER[r.side])) {
 						if (d.id === this.teams[d.side].gkId || dist(d.x, d.y, r.x, r.y) > 3) continue;
 						const da = this.player(d.id)!.attributes;
-						const pWin = clamp(0.3 + (da.posicionamento + da.desarme + da.antecipacao) / 3 / 300 - (ra.dominio + ra.forca + ra.agilidade) / 3 / 380, 0.12, 0.55);
+						const pWin = clamp((0.3 + (da.posicionamento + da.desarme + da.antecipacao) / 3 / 300 - (ra.dominio + ra.forca + ra.agilidade) / 3 / 380) * this.teams[d.side].params.boxDefense, 0.1, 0.6);
 						if (this.rng.next() < pWin) {
 							if (pp) this.emit('pass', { side: pp.side, player: pp.from, other: pp.to });
 							this.emit('interception', { side: d.side, player: d.id, x: r.x, y: r.y, data: { marking: true } });
@@ -1074,7 +1080,7 @@ export class Match {
 		const ty = clampToPitch(0, ay + (this.rng.next() - 0.5) * 40)[1];
 		const [x, y] = toAbs(owner.side, tx, ty);
 		this.emit('clearance', { side: owner.side, player: owner.id, x: owner.x, y: owner.y });
-		if (ax < 18 && this.rng.next() < 0.22) {
+		if (ax < 18 && this.rng.next() < 0.12) {
 			this.lastTouch = { side: owner.side, player: owner.id };
 			return this.outOfPlay('corner', OTHER[owner.side], ...this.cornerSpot(OTHER[owner.side], owner.y));
 		}
@@ -1095,7 +1101,7 @@ export class Match {
 		if (!ok) {
 			this.loss(owner);
 			const roll = this.rng.next();
-			if (roll < 0.3) return this.outOfPlay('corner', side, ...this.cornerSpot(side, owner.y));
+			if (roll < 0.18) return this.outOfPlay('corner', side, ...this.cornerSpot(side, owner.y));
 			if (roll < 0.55) {
 				const [x, y] = toAbs(side, PITCH.length, PITCH.width / 2 + (this.rng.next() - 0.5) * 30);
 				this.ball.flight = { toX: x, toY: y, arrive: this.tick + 2, target: null, outcome: { kind: 'out', restart: 'goal_kick', side: OTHER[side] } };
@@ -1133,7 +1139,7 @@ export class Match {
 		const defenders = near(OTHER[side]);
 		const aerial = (p: PlayerState) => {
 			const at = this.player(p.id)!.attributes;
-			return (at.cabeceio * 0.45 + at.impulsao * 0.3 + at.forca * 0.15 + at.posicionamento * 0.1) * this.physFactor(p) + this.rng.next() * 18;
+			return (at.cabeceio * 0.45 + at.impulsao * 0.3 + at.forca * 0.15 + at.posicionamento * 0.1) * this.physFactor(p) * this.homeBoost(p.side) + this.rng.next() * 18;
 		};
 		const bestAtt = attackers.map((p) => ({ p, s: aerial(p) })).sort((a, b) => b.s - a.s)[0];
 		const bestDef = defenders.map((p) => ({ p, s: aerial(p) + 4 })).sort((a, b) => b.s - a.s)[0];
@@ -1168,18 +1174,19 @@ export class Match {
 		const a = this.player(shooter.id)!.attributes;
 		const [ax, ay] = toRel(side, shooter.x, shooter.y);
 		const opps = this.onPitch(OTHER[side]);
-		const pressure = opps.filter((o) => dist(o.x, o.y, shooter.x, shooter.y) < 3).length;
-		let xg = penalty ? 0.78 : baseXg(ax, ay) * Math.pow(0.72, Math.min(2, pressure)) * (header ? 0.6 : 1);
+		const pressure = opps.filter((o) => dist(o.x, o.y, shooter.x, shooter.y) < 4 * Math.sqrt(this.teams[OTHER[side]].params.boxDefense)).length;
+		let xg = penalty ? 0.78 : baseXg(ax, ay) * Math.pow(0.68, Math.min(3, pressure)) * (header ? 0.6 : 1) / Math.sqrt(this.teams[OTHER[side]].params.boxDefense);
 		xg = Math.min(0.95, xg);
 		const skillAttr = header ? a.cabeceio : a.finalizacao;
 		const skill = (0.6 + skillAttr / 250 + a.compostura / 500 + (header ? 0 : a.tecnica / 2500)) * this.techFactor(shooter) * this.homeBoost(side);
 		const gkState = this.states.get(this.teams[OTHER[side]].gkId);
 		const gk = gkState?.onPitch ? this.player(gkState.id)!.attributes : null;
 		const gkRating = gk ? gk.reflexos * 0.45 + gk.posicionamentoGol * 0.3 + gk.defesa * 0.15 + gk.agilidade * 0.1 : 25;
-		const gkFactor = 1.25 - (gkRating / 100) * 0.36 * (gkState ? this.physFactor(gkState) / 0.98 : 0);
+		const gkFactor = 1.22 - (gkRating / 100) * 0.36 * (gkState ? this.physFactor(gkState) / 0.98 : 0);
 		const pGoal = clamp(xg * skill * gkFactor, 0.005, 0.97);
-		const blockChance = penalty ? 0 : clamp(0.06 + this.defendersInLane(shooter) * 0.11, 0, 0.42);
-		const onTarget = clamp(0.3 + (skillAttr - 60) / 160 + (a.compostura - 60) / 320 - pressure * 0.07 - Math.max(0, PITCH.length - ax - 16) * 0.005, 0.12, 0.8) * this.techFactor(shooter);
+		const boxDef = this.teams[OTHER[side]].params.boxDefense;
+		const blockChance = penalty ? 0 : clamp((0.06 + this.defendersInLane(shooter) * 0.11) * boxDef, 0, 0.45);
+		const onTarget = clamp(0.42 + (skillAttr - 60) / 160 + (a.compostura - 60) / 320 - pressure * 0.07 - Math.max(0, PITCH.length - ax - 16) * 0.005, 0.12, 0.8) * this.techFactor(shooter);
 		const assist = this.lastPass && this.lastPass.to === shooter.id && this.tick - this.lastPass.tick <= 6 && this.lastPass.side === side ? this.lastPass.from : undefined;
 		const data = { xg: Math.round(xg * 1000) / 1000, header, setPiece, penalty, ...(assist ? { keyPassFrom: assist } : {}) };
 		this.emit('shot', { side, player: shooter.id, x: shooter.x, y: shooter.y, data });
@@ -1190,7 +1197,7 @@ export class Match {
 		if (this.rng.next() < blockChance) {
 			const blocker = opps.sort((p, q) => dist(p.x, p.y, shooter.x, shooter.y) - dist(q.x, q.y, shooter.x, shooter.y))[0];
 			this.emit('shot_blocked', { side: OTHER[side], player: blocker?.id, other: shooter.id });
-			if (this.rng.next() < 0.5) return this.outOfPlay('corner', side, ...this.cornerSpot(side, shooter.y));
+			if (this.rng.next() < 0.35) return this.outOfPlay('corner', side, ...this.cornerSpot(side, shooter.y));
 			return this.looseBall(shooter.x, shooter.y, 10);
 		}
 		if (this.rng.next() >= onTarget) {
@@ -1198,7 +1205,7 @@ export class Match {
 			if (penalty) this.emit('penalty_miss', { side, player: shooter.id });
 			return this.outOfPlay('goal_kick', OTHER[side], ...toAbs(side, PITCH.length, PITCH.width / 2));
 		}
-		const pGoalGivenTarget = clamp(pGoal / onTarget, 0.02, 0.96);
+		const pGoalGivenTarget = clamp(pGoal / onTarget / (1 - blockChance), 0.02, 0.96);
 		if (this.rng.next() < pGoalGivenTarget) return this.goal(shooter, assist);
 		// Defesa do goleiro
 		if (gkState) this.emit('shot_saved', { side: OTHER[side], player: gkState.id, other: shooter.id, data: { xg: data.xg } });
@@ -1209,7 +1216,7 @@ export class Match {
 			this.ball.y = gkState.y;
 			return this.giveBall(gkState.id, 4);
 		}
-		if (this.rng.next() < 0.55) return this.outOfPlay('corner', side, ...this.cornerSpot(side, shooter.y));
+		if (this.rng.next() < 0.45) return this.outOfPlay('corner', side, ...this.cornerSpot(side, shooter.y));
 		return this.looseBall(...toAbs(side, PITCH.length - 8, PITCH.width / 2), 10);
 	}
 
