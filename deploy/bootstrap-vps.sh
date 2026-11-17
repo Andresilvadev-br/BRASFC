@@ -18,7 +18,16 @@ RAW="https://raw.githubusercontent.com/Andresilvadev-br/BRASFC/$BRANCH"
 [ "$(id -u)" -eq 0 ] || { echo "rode com sudo" >&2; exit 1; }
 
 echo "▶ Verificando portas 80/443…"
-if ss -ltnp 2>/dev/null | grep -E ':(80|443)\s' | grep -vq docker; then
+if command -v docker >/dev/null; then
+  busy="$(docker ps --format '{{.Names}} {{.Ports}}' | grep -E ':(80|443)->' | grep -v '^brasfc-caddy' || true)"
+  if [ -n "$busy" ]; then
+    echo "⚠ Contêineres Docker do site antigo ainda usam as portas 80/443:"
+    echo "$busy"
+    echo "  Faça o backup e pare-os, ex.: docker stop NOME && docker update --restart=no NOME"
+    exit 1
+  fi
+fi
+if ss -ltnp 2>/dev/null | grep -E ':(80|443)\s' | grep -vq docker-proxy; then
   echo "⚠ Algo já usa a porta 80/443 (Apache/Nginx do site antigo?)."
   echo "  Pare-o antes de continuar, ex.: systemctl disable --now apache2 nginx"
   ss -ltnp | grep -E ':(80|443)\s' || true
