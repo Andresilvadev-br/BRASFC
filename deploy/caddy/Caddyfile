@@ -1,0 +1,31 @@
+{
+	email {$ACME_EMAIL}
+}
+
+(common) {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+	# Arquivos versionados do SvelteKit podem ficar em cache por 1 ano.
+	@immutable path /_app/immutable/*
+	header @immutable Cache-Control "public, max-age=31536000, immutable"
+	log {
+		output stdout
+		format console
+	}
+}
+
+{$BRASFC_DOMAIN} {
+	import common
+	reverse_proxy brasfc-producao-app-1:3000 {
+		health_uri /api/health
+		health_interval 30s
+	}
+}
+
+{$BRASFC_STAGING_DOMAIN} {
+	import common
+	reverse_proxy brasfc-staging-app-1:3000
+}

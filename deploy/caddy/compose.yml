@@ -1,0 +1,36 @@
+# Proxy reverso único da VPS (HTTPS automático via Let's Encrypt).
+# Atende produção e staging pela rede "brasfc-edge".
+# Uso: docker network create brasfc-edge && docker compose -f deploy/caddy/compose.yml --env-file deploy/.env.caddy up -d
+
+name: brasfc-caddy
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    environment:
+      BRASFC_DOMAIN: ${BRASFC_DOMAIN:?defina BRASFC_DOMAIN}
+      BRASFC_STAGING_DOMAIN: ${BRASFC_STAGING_DOMAIN:-staging.localhost}
+      ACME_EMAIL: ${ACME_EMAIL:?defina ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [edge]
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+
+volumes:
+  caddy-data:
+  caddy-config:
+
+networks:
+  edge:
+    name: brasfc-edge
+    external: true

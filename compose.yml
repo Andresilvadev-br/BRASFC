@@ -1,0 +1,78 @@
+# BRASFC — Docker Compose (VPS Linux de 4 GB)
+# Uso: docker compose --env-file deploy/.env.production up -d
+# Limites de memória somam ~1,2 GB, deixando folga para o sistema e um segundo ambiente (staging).
+
+name: brasfc-${BRASFC_ENV:-producao}
+
+services:
+  app:
+    image: ${BRASFC_IMAGE:-ghcr.io/andresilvadev-br/brasfc}:${BRASFC_TAG:-latest}
+    build:
+      context: .
+      args:
+        GIT_SHA: ${GIT_SHA:-local}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://brasfc:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}@db:5432/brasfc
+      ORIGIN: ${ORIGIN:?defina ORIGIN, ex. https://brasfc.exemplo.com.br}
+      PROTOCOL_HEADER: x-forwarded-proto
+      HOST_HEADER: x-forwarded-host
+      ADDRESS_HEADER: x-forwarded-for
+      XFF_DEPTH: '1'
+      PUBLIC_BRASFC_ENV: ${BRASFC_ENV:-producao}
+      DATABASE_POOL_MAX: '5'
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [internal, edge]
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: '1.0'
+    logging:
+      driver: json-file
+      options: { max-size: '10m', max-file: '3' }
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: brasfc
+      POSTGRES_DB: brasfc
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - effective_cache_size=384MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - max_connections=40
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./backups:/backups
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U brasfc -d brasfc']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    networks: [internal]
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    logging:
+      driver: json-file
+      options: { max-size: '10m', max-file: '3' }
+
+volumes:
+  db-data:
+
+networks:
+  internal:
+  edge:
+    name: brasfc-edge
+    external: true

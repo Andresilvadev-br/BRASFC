@@ -1,0 +1,15 @@
+node_modules
+.svelte-kit
+build
+data
+backups
+.git
+.github
+.claude
+.env
+.env.*
+!.env.example
+*.log
+coverage
+docs
+tests
