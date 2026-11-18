@@ -72,7 +72,7 @@ function createWindow() {
 		show: false,
 		backgroundColor: BG,
 		title: 'BRASFC',
-		icon: path.join(__dirname, 'build', 'icon.png'),
+		icon: path.join(__dirname, 'assets', 'icon.png'),
 		autoHideMenuBar: true,
 		titleBarStyle: 'hidden',
 		titleBarOverlay: { color: BG, symbolColor: '#E7EDF0', height: BAR },

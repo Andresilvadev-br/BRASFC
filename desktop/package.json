@@ -23,9 +23,9 @@
     "appId": "br.brasfc.desktop",
     "productName": "BRASFC",
     "artifactName": "BRASFC-Setup.${ext}",
-    "directories": { "output": "dist", "buildResources": "build" },
-    "files": ["main.js", "preload.js", "pages/**", "build/icon.png"],
-    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "icon": "build/icon.png" },
+    "directories": { "output": "dist", "buildResources": "assets" },
+    "files": ["main.js", "preload.js", "pages/**", "assets/icon.png"],
+    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "icon": "assets/icon.png" },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
