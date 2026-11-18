@@ -10,7 +10,7 @@ import { simulateMatch } from '../src/lib/engine/match.ts';
 import { buildTeamSetup } from '../src/lib/engine/teams.ts';
 const n = Number(process.argv[2] ?? 120);
 const mode = process.argv[3] ?? 'ia';
-const career = { seed: 31337 } as Career;
+const career = { seed: 31337, season: 2026, clubId: 'flamengo', data: { world: 'brasil' } } as unknown as Career;
 const ctx = { season: 2026, firstSeason: 2026 };
 const ids = CLUBES_2026.map((c) => c.id);
 const team = (id: string, i: number) => {

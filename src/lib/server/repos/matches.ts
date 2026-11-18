@@ -88,3 +88,15 @@ export async function insertRound(tx: Db, careerId: string, rows: RoundInsert[],
 		);
 	}
 }
+
+/** Gols com autor de todas as partidas com súmula da temporada (usuário + motor completo). */
+export async function listSeasonGoals(db: Db, careerId: string, season: number): Promise<Array<{ competition: string; home: string; away: string; goals: Array<{ side: 'home' | 'away'; player: string }> }>> {
+	const rows = await db.query<{ competition: string; home: string; away: string; summary: { goals?: Array<{ side: 'home' | 'away'; player: string }> } | string | null }>(
+		`SELECT competition, home, away, summary FROM career_matches WHERE career_id = $1 AND season = $2 AND summary IS NOT NULL`,
+		[careerId, season]
+	);
+	return rows.map((r) => {
+		const s = typeof r.summary === 'string' ? JSON.parse(r.summary) : r.summary;
+		return { competition: r.competition, home: r.home, away: r.away, goals: (s?.goals ?? []).map((g: { side: 'home' | 'away'; player: string }) => ({ side: g.side, player: g.player })) };
+	});
+}

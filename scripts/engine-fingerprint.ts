@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import type { Career } from '../src/lib/domain/career.ts';
 import { aiTeam } from '../src/lib/domain/matchday.ts';
 import { simulateMatch } from '../src/lib/engine/match.ts';
-const career = { seed: 4242 } as Career;
+const career = { seed: 4242, season: 2026, clubId: 'flamengo', data: { world: 'brasil' } } as unknown as Career;
 const ctx = { season: 2026, firstSeason: 2026 };
 const clubs = ['flamengo', 'palmeiras', 'bahia', 'santos', 'gremio', 'vasco', 'sport', 'goias'];
 const N = Number(process.argv[2] ?? 16);

@@ -8,13 +8,15 @@ import type { Career } from '../src/lib/domain/career.ts';
 import { aiTeam } from '../src/lib/domain/matchday.ts';
 import { quickMatch, QUICK_MODEL } from '../src/lib/domain/quick.ts';
 import { createRng } from '../src/lib/domain/rng.ts';
-import { baseStrength } from '../src/lib/domain/strength.ts';
+import { strengthFor } from '../src/lib/domain/strength.ts';
+const baseStrength = (_s: number, id: string) => st(id);
 import { simulateMatch } from '../src/lib/engine/match.ts';
 
 const N = Number(process.argv[2] ?? 240);
-const career = { seed: 8080 } as Career;
+const career = { seed: 8080, season: 2026, clubId: 'flamengo', data: { world: 'brasil' } } as unknown as Career;
 const ctx = { season: 2026, firstSeason: 2026 };
 const rng = createRng(31);
+const st = strengthFor(career);
 const bySerie = (s: string) => CLUBES_2026.filter((c) => c.serie === s).map((c) => c.id);
 const pools = [bySerie('A'), bySerie('B'), bySerie('C'), bySerie('D')];
 const rows: Array<{ d: number; hg: number; ag: number }> = [];

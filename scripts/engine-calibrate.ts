@@ -20,7 +20,7 @@ const team = (id: string, round: number) => {
 	const c = requireClub(id);
 	return buildTeamSetup({ id, name: c.name, short: c.short, colors: c.colors }, generateSquad(id, seed), { formation: '4-3-3', mentality: 'equilibrada', style: 'posse' });
 };
-const career = { seed } as Career;
+const career = { seed, season: 2026, clubId: 'flamengo', data: { world: 'brasil' } } as unknown as Career;
 const ctx = { season: 2026, firstSeason: 2026 };
 const ids = TEMPORADA_2026.competicoes.find((c) => c.id === div)!.clubes;
 const fx = generateLeagueFixtures(seed, ids).filter((f) => f.round <= ids.length - 1);

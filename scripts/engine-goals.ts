@@ -6,7 +6,7 @@ import type { Career } from '../src/lib/domain/career.ts';
 import { aiTeam } from '../src/lib/domain/matchday.ts';
 import { generateSquad, squadStrength } from '../src/lib/domain/squad.ts';
 import { simulateMatch } from '../src/lib/engine/match.ts';
-const career = { seed: 5151 } as Career;
+const career = { seed: 5151, season: 2026, clubId: 'flamengo', data: { world: 'brasil' } } as unknown as Career;
 const ctx = { season: 2026, firstSeason: 2026 };
 const N = Number(process.argv[2] ?? 6);
 const byRep = new Map<number, string[]>();

@@ -10,9 +10,10 @@ import { requireClub } from './clubs.ts';
 import { randomAppearance } from './appearance.ts';
 import { createRng, deriveSeed } from './rng.ts';
 import type { Fixture, MatchResult } from './season.ts';
-import { generateSquad, type SquadPlayer } from './squad.ts';
+import { squadStrength, type SquadPlayer } from './squad.ts';
+import { rosterOf } from './market.ts';
+import { rosterContext } from './world.ts';
 import { quickMatch } from './quick.ts';
-import { baseStrength } from './strength.ts';
 import { engineFamiliarity, resolveRoles, type TacticalState } from './tactical.ts';
 import type { FormationId, PlayStyle, Tactic } from './tactics.ts';
 
@@ -30,7 +31,7 @@ export function matchSeed(career: Pick<Career, 'seed'>, season: number, round: n
 
 /** Elenco do clube da carreira; no modo jogador, inclui o atleta do usuário. */
 export function careerSquad(career: Career): SquadPlayer[] {
-	const squad = generateSquad(career.clubId, career.seed);
+	const squad: SquadPlayer[] = rosterOf(rosterContext(career), career.clubId);
 	if (career.mode !== 'player' || !career.data.player || !career.data.position) return squad;
 	const p = career.data.player;
 	const rng = createRng(deriveSeed(career.seed, 'eu-attr'));
@@ -96,7 +97,7 @@ export function userTeam(career: Career, myTactic: Tactic, ctx: MatchdayContext,
 
 /** Time da IA para um jogo (com estudo do adversário quando é o usuário). */
 export function aiTeam(career: Career, clubId: string, ctx: Pick<MatchdayContext, 'season' | 'firstSeason'>, round: number, opponentObserved?: ObservedMatch[]): { setup: TeamSetup; reasons: string[]; coachLabel: string } {
-	const squad = generateSquad(clubId, career.seed);
+	const squad: SquadPlayer[] = rosterOf(rosterContext(career), clubId);
 	const scout = opponentObserved ? scoutFrom(opponentObserved, squad) : undefined;
 	const plan = aiTeamPlan(career.seed, clubId, ctx.season, ctx.firstSeason, squad, scout, round);
 	const setup = buildTeamSetup(identity(clubId), squad, plan.tactic);
@@ -149,7 +150,7 @@ export function simulateOtherFixtures(
 	fixtures: Fixture[],
 	ctx: Pick<MatchdayContext, 'season' | 'firstSeason'>,
 	opts: { full?: (f: Fixture) => boolean; strengthOf?: (clubId: string) => number } = {}
-): Array<MatchResult & { competition: string; seed: number; quick?: boolean }> {
+): Array<MatchResult & { competition: string; seed: number; quick?: boolean; goals?: Array<{ side: 'home' | 'away'; player: string; minute: number }> }> {
 	return fixtures.map((f) => {
 		const seed = matchSeed(career, ctx.season, f.round, f.home, f.competition);
 		const neutral = !!(f as Fixture & { neutral?: boolean }).neutral;
@@ -159,12 +160,13 @@ export function simulateOtherFixtures(
 			return { home: f.home, away: f.away, homeGoals: q.homeGoals, awayGoals: q.awayGoals, competition: f.competition, seed, quick: true };
 		}
 		const r = simulateMatch({ home: aiTeam(career, f.home, ctx, f.round).setup, away: aiTeam(career, f.away, ctx, f.round).setup, seed, ...(neutral ? { rules: { homeAdvantage: false } } : {}) });
-		return { home: f.home, away: f.away, homeGoals: r.homeGoals, awayGoals: r.awayGoals, competition: f.competition, seed };
+		const goals = r.events.filter((e) => e.type === 'goal').map((e) => ({ side: e.side!, player: e.player!, minute: Math.floor(e.tick / 60) }));
+		return { home: f.home, away: f.away, homeGoals: r.homeGoals, awayGoals: r.awayGoals, competition: f.competition, seed, goals };
 	});
 }
 
 function squadStrengthOf(career: Career, clubId: string): number {
-	return baseStrength(career.seed, clubId);
+	return squadStrength(rosterOf(rosterContext(career), clubId));
 }
 
 /** Resumo persistido da partida do usuário (sem o registro completo de eventos). */

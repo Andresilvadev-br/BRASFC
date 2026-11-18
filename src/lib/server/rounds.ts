@@ -2,7 +2,11 @@ import type { Career, CareerData } from '#lib/domain/career.ts';
 import { addDays } from '#lib/domain/dates.ts';
 import { applyTrainingWeek, recoverFitness } from '#lib/domain/drills.ts';
 import { closeSeason, prepareRound, seasonFixtures, seasonStartDate, type SeasonSummary } from '#lib/domain/league.ts';
-import { CUP_ID, cupFixtures, cupView, prepareCup, projectedCup } from '#lib/domain/cup.ts';
+import { CUP_ID, clubCupRun, cupFixtures, cupView, prepareCup, projectedCup } from '#lib/domain/cup.ts';
+import { sanitizeMarket } from '#lib/domain/management.ts';
+import { clubStateOf, rosterContext } from '#lib/domain/world.ts';
+import { seasonEndManagement, weeklyManagement } from './management.ts';
+import { insertLedger, insertMessages, insertTransfers, upsertHistory } from './repos/management.ts';
 import { strengthFor } from '#lib/domain/strength.ts';
 import type { Fixture } from '#lib/domain/season.ts';
 import { careerSquad, fixtureSetup, newFixtureMatch, observedFrom, simulateOtherFixtures, summarize, type MatchdayContext } from '#lib/domain/matchday.ts';
@@ -15,7 +19,7 @@ import { isRoleId } from '#lib/engine/roles.ts';
 import type { Decision } from '#lib/engine/types.ts';
 import type { Db } from './db/index.ts';
 import { saveCareerProgress } from './repos/careers.ts';
-import { insertRound, listResults, listUserMatches, type RoundInsert } from './repos/matches.ts';
+import { insertRound, listResults, listSeasonGoals, listUserMatches, type RoundInsert } from './repos/matches.ts';
 
 export class RoundError extends Error {
 	constructor(
@@ -101,7 +105,7 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 	// Motor completo: a divisão do usuário (rodadas de liga) e todo o mundo fictício; o resto, modelo rápido.
 	const full = view.world === 'brasfc' ? () => true : (f: Fixture) => step.kind === 'league' && f.competition === view.division;
 	for (const r of simulateOtherFixtures(career, others, ctx, { full, strengthOf })) {
-		rows.push({ season: career.season, round, competition: r.competition, home: r.home, away: r.away, homeGoals: r.homeGoals, awayGoals: r.awayGoals, seed: r.seed, isUser: false });
+		rows.push({ season: career.season, round, competition: r.competition, home: r.home, away: r.away, homeGoals: r.homeGoals, awayGoals: r.awayGoals, seed: r.seed, isUser: false, ...(r.goals ? { summary: { goals: r.goals } as never } : {}) });
 	}
 	// Domingo: semana de treinos e recuperação até a próxima rodada. Quarta: só o desgaste do jogo.
 	const plan = view.trainingPlan;
@@ -112,12 +116,37 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 		fitness = recoverFitness(fitness, squad, career.mode === 'coach' ? plan : { sessions: ['descanso', 'formacao', 'posse', 'defesa', 'descanso'], intensity: 'normal' });
 	}
 	const nextDate = addDays(step.date, 1);
-	const data: Partial<CareerData> = { tactical, fitness, league, ...(cup ? { cup } : {}) };
+	// Gestão do clube e mundo vivo: finanças, torcida, diretoria, mercado da IA, propostas e olheiros.
+	const rosterCtx = rosterContext(career, league);
+	const wk = weeklyManagement({
+		career,
+		league,
+		club: clubStateOf(career, league),
+		market: sanitizeMarket(career.data.market),
+		step: { kind: step.kind, round: step.kind === 'league' ? step.round : view.nextRound, ...(step.kind === 'cup' ? { matchday: step.matchday } : {}) },
+		roster: rosterCtx,
+		userRow: career.mode === 'coach' ? (rows.find((r) => r.isUser) ?? null) : null,
+		strengthOf
+	});
+	const data: Partial<CareerData> = { tactical, fitness, league, ...(cup ? { cup } : {}), market: wk.market, ...(career.mode === 'coach' ? { club: wk.club } : {}) };
+	const key = `${career.season}:${step.key}`;
 	const updated = await db.transaction(async (tx) => {
 		await insertRound(tx, career.id, rows, ENGINE_VERSION);
-		return saveCareerProgress(tx, profileId, career.id, { gameDate: nextDate, data }, career.version);
+		const saved = await saveCareerProgress(tx, profileId, career.id, { gameDate: nextDate, data }, career.version);
+		if (career.mode === 'coach') await insertLedger(tx, career.id, career.season, step.date, wk.ledger, key);
+		await insertTransfers(tx, career.id, career.season, step.date, wk.transfers, `${key}:t`);
+		if (career.mode === 'coach') await insertMessages(tx, career.id, nextDate, wk.news);
+		return saved;
 	});
-	return { career: updated, round, step: step.key, match: userMatch, results: rows.filter((r) => !r.isUser).map(({ home, away, homeGoals, awayGoals, competition }) => ({ home, away, homeGoals, awayGoals, competition })) };
+	return {
+		career: updated,
+		round,
+		step: step.key,
+		match: userMatch,
+		finance: career.mode === 'coach' ? { balance: wk.club.balance, ledger: wk.ledger } : null,
+		dismissed: career.mode === 'coach' && wk.club.board.dismissed && !(career.data.club?.board?.dismissed ?? false),
+		results: rows.filter((r) => !r.isUser).map(({ home, away, homeGoals, awayGoals, competition }) => ({ home, away, homeGoals, awayGoals, competition }))
+	};
 }
 
 /** Encerra a temporada: tabela final, acesso/rebaixamento, Copa e início da próxima. */
@@ -154,14 +183,64 @@ export async function finishSeason(db: Db, profileId: string, career: Career, ve
 		view.world === 'brasil'
 			? projectedCup(next, { cChampion: outcome.champions['serie-c'], cRunnerUp: outcome.runnersUp['serie-c'], dChampion: outcome.champions['serie-d'], dRunnerUp: outcome.runnersUp['serie-d'], dRanking: outcome.tables['serie-d']?.map((r) => r.clubId) })
 			: undefined;
-	const updated = await saveCareerProgress(
-		db,
-		profileId,
-		career.id,
-		{ gameDate: seasonStartDate(next.season), season: next.season, data: { league: next, tactical, fitness, seasons: [...view.seasons, summary], ...(nextCup ? { cup: nextCup } : {}) } },
-		career.version
-	);
+	// Gestão: contratos que terminam, empréstimos, premiações, avaliação da diretoria e nova base.
+	const myCup = cupNow ? clubCupRun(cupNow, career.clubId) : null;
+	const end = seasonEndManagement({
+		career,
+		club: clubStateOf(career, view.league),
+		market: sanitizeMarket(career.data.market),
+		roster: rosterContext(career, view.league),
+		league: view.league,
+		next,
+		position: row?.position ?? 0,
+		size: table.length,
+		promoted: move?.reason === 'acesso',
+		relegated: move?.reason === 'rebaixamento',
+		champion: summary.outcome === 'campeao',
+		cupPhase: myCup?.lastPhase ?? 0,
+		cupChampion: !!myCup?.champion,
+		cupRunnerUp: !!cupNow && cupNow.runnerUp === career.clubId,
+		strengthOf,
+		inCupNext: !!nextCup && Object.values(nextCup.entrants).some((l) => l.includes(career.clubId))
+	});
+	const history: Array<[string, string, unknown]> = [];
+	for (const [comp, champ] of Object.entries(outcome.champions)) if (champ) history.push(['campeao', comp, { clubId: champ, runnerUp: outcome.runnersUp[comp as keyof typeof outcome.runnersUp] ?? null }]);
+	if (cupNow?.champion) history.push(['campeao', CUP_ID, { clubId: cupNow.champion, runnerUp: cupNow.runnerUp }]);
+	history.push(['temporada-usuario', view.division, { ...summary, clubId: career.clubId, cupPhase: myCup?.lastPhase ?? 0, cupChampion: !!myCup?.champion }]);
+	history.push(['tabela', view.division, { rows: table.slice(0, 40).map((r) => ({ clubId: r.clubId, points: r.points, won: r.won, drawn: r.drawn, lost: r.lost, goalDiff: r.goalDiff })) }]);
+	const scorers = topScorers(await listSeasonGoals(db, career.id, career.season), view.division);
+	if (scorers.length) history.push(['artilharia', view.division, { players: scorers }]);
+	const nextDate = seasonStartDate(next.season);
+	const updated = await db.transaction(async (tx) => {
+		const saved = await saveCareerProgress(
+			tx,
+			profileId,
+			career.id,
+			{ gameDate: nextDate, season: next.season, data: { league: next, tactical, fitness, seasons: [...view.seasons, summary], ...(nextCup ? { cup: nextCup } : {}), market: end.market, ...(career.mode === 'coach' ? { club: end.club } : {}) } },
+			career.version
+		);
+		if (career.mode === 'coach') await insertLedger(tx, career.id, career.season, addDays(nextDate, -1), end.ledger, `${career.season}:fim`);
+		await insertTransfers(tx, career.id, career.season, addDays(nextDate, -1), end.transfers, `${career.season}:fim:t`);
+		if (career.mode === 'coach') await insertMessages(tx, career.id, nextDate, end.news);
+		for (const [kind, comp, data] of history) await upsertHistory(tx, career.id, career.season, kind, comp, data);
+		return saved;
+	});
 	return { career: updated, summary, moves: outcome.moves, champions: outcome.champions, cupChampion: cupNow?.champion ?? null };
+}
+
+/** Artilharia da divisão do usuário (partidas com súmula: a do usuário e as demais no motor completo). */
+function topScorers(games: Array<{ competition: string; home: string; away: string; goals: Array<{ side: 'home' | 'away'; player: string }> }>, division: string): Array<{ playerId: string; clubId: string; goals: number }> {
+	const count = new Map<string, { clubId: string; goals: number }>();
+	for (const g of games) {
+		if (g.competition !== division) continue;
+		for (const goal of g.goals) {
+			const clubId = goal.side === 'home' ? g.home : g.away;
+			const cur = count.get(goal.player) ?? { clubId, goals: 0 };
+			cur.goals++;
+			count.set(goal.player, cur);
+		}
+	}
+	return [...count.entries()].sort((a, b) => b[1].goals - a[1].goals).slice(0, 10).map(([playerId, v]) => ({ playerId, clubId: v.clubId, goals: v.goals }));
 }
 
 const MAX_DECISIONS = 80;

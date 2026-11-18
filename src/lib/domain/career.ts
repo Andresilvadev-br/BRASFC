@@ -5,6 +5,8 @@ import type { TrainingPlan } from './drills.ts';
 import { DIVISION_LABELS, firstRoundDate, initialLeague, seasonStartDate, type LeagueState, type SeasonSummary, type World } from './league.ts';
 import type { TacticalState } from './tactical.ts';
 import { initialCup, type CupState } from './cup.ts';
+import type { ClubState } from './management.ts';
+import type { MarketState } from './market.ts';
 import { formatLong } from './dates.ts';
 import { isPosition, POSITION_INFO, type Position } from './positions.ts';
 import { createRng, deriveSeed } from './rng.ts';
@@ -55,6 +57,10 @@ dismissedTips?: string[];
 // ── Dev 0.4
 /** Copa do Brasil da temporada em andamento (sorteios e entradas) */
 cup?: CupState;
+/** gestão do clube: finanças, diretoria, patrocínios, estrutura, base e olheiros */
+club?: ClubState;
+/** mercado: transferências, contratos e atletas criados pela carreira */
+market?: MarketState;
 }
 
 export interface Career {

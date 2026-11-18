@@ -13,7 +13,7 @@ import { getClub } from '../src/lib/domain/clubs.ts';
 
 const seasons = Number(process.argv[2] ?? 3);
 const mode = process.argv[3] ?? 'rapido';
-const career = { seed: 20260001 } as Career;
+const career = { seed: 20260001, season: 2026, clubId: 'flamengo', data: { world: 'brasil' } } as unknown as Career;
 const strengthOf = strengthFor(career);
 let league = initialLeague('brasil', 2026);
 let cup: CupState | null = initialCup(2026);
