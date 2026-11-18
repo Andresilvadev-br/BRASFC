@@ -61,3 +61,31 @@ describe('editor tático (interface)', () => {
 		expect(body).toContain('cansado');
 	});
 });
+
+describe('interface 0.4 (componentes reais)', () => {
+	it('medidor mostra o valor e o rótulo; cartão de atleta esconde o nível real quando só há estimativa', async () => {
+		const Gauge = (await import('#lib/ui/v4/Gauge.svelte')).default;
+		const PlayerCard = (await import('#lib/ui/v4/PlayerCard.svelte')).default;
+		expect(render(Gauge, { props: { value: 72.4, label: 'Confiança' } }).body).toMatch(/Confiança[\s\S]*72|72[\s\S]*Confiança/);
+		const card = render(PlayerCard, { props: { name: 'Atleta Teste', position: 'ATA', age: 21, overall: null, overallRange: [64, 72], potential: null, value: 1_500_000 } }).body;
+		expect(card).toContain('64–72');
+		expect(card).toContain('R$ 1,5 mi');
+	});
+
+	it('comportamento tático muda com as instruções (linha mais alta → desenho mais alto)', async () => {
+		const TacticalOverlay = (await import('#lib/ui/tactics/TacticalOverlay.svelte')).default;
+		const base = presetInstructions('equilibrada', 'posse');
+		const low = render(TacticalOverlay, { props: { formation: '4-3-3', mentality: 'equilibrada', style: 'posse', instructions: { ...base, linha: 1 }, roles: resolveRoles('4-3-3') } }).body;
+		const high = render(TacticalOverlay, { props: { formation: '4-3-3', mentality: 'equilibrada', style: 'posse', instructions: { ...base, linha: 5 }, roles: resolveRoles('4-3-3') } }).body;
+		const line = (html: string) => Number(/Linha a (\d+) m/.exec(html)?.[1]);
+		expect(line(high)).toBeGreaterThan(line(low));
+		expect(high).toContain('Pressão:');
+	});
+
+	it('gráfico de finanças desenha uma coluna por mês com rótulo acessível', async () => {
+		const Bars = (await import('#lib/ui/v4/Bars.svelte')).default;
+		const body = render(Bars, { props: { months: [{ label: 'Jan', income: 5e6, expense: -3e6, balance: 2e6 }, { label: 'Fev', income: 4e6, expense: -4.5e6, balance: 1.5e6 }] } }).body;
+		expect(body).toContain('Jan: receitas R$ 5 mi');
+		expect(body).toContain('Fev: receitas R$ 4 mi');
+	});
+});

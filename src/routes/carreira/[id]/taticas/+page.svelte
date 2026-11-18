@@ -37,9 +37,11 @@
 	import InstructionsEditor from '#lib/ui/tactics/InstructionsEditor.svelte';
 	import MasteryPanel from '#lib/ui/tactics/MasteryPanel.svelte';
 	import RolePicker from '#lib/ui/tactics/RolePicker.svelte';
+	import TacticalOverlay from '#lib/ui/tactics/TacticalOverlay.svelte';
 
 	let { data } = $props();
 	const v = $derived(data.view);
+	let behavior = $state(true);
 	const byId = $derived(new Map(v.squad.map((p) => [p.id, p])));
 	const DIRTY_KEY = 'tactic';
 
@@ -255,6 +257,7 @@
 			<div class="pitch-tools">
 				<Segmented label="Formação" value={tactic.formation} onchange={changeFormation} options={FORMATION_IDS.map((f) => ({ value: f, label: f }))} />
 				<div class="fam"><span>Familiaridade</span><Meter value={familiarity} label="Familiaridade tática" /></div>
+				<button class="chip" aria-pressed={behavior} onclick={() => (behavior = !behavior)} title="Mostra linha, bloco, pressão e corridas que o motor vai usar">Comportamento</button>
 			</div>
 			<div class="pitch" role="group" aria-label="Campo com titulares">
 				<svg class="lines" viewBox="0 0 68 105" preserveAspectRatio="none" aria-hidden="true">
@@ -266,7 +269,8 @@
 					<rect x="24.85" y="1" width="18.3" height="5.5" />
 					<rect x="24.85" y="98.5" width="18.3" height="5.5" />
 				</svg>
-				{#each slots as slot, i (i + tactic.formation)}
+				{#if behavior}<TacticalOverlay formation={tactic.formation} mentality={tactic.mentality} style={tactic.style} instructions={tactic.instructions} roles={tactic.roles} />{/if}
+				{#each slots as slot, i (i)}
 					{@const p = byId.get(tactic.lineup[i])}
 					<button
 						class="slot {fitTone(p, i)}"
@@ -434,7 +438,11 @@
 	}
 	.slot {
 		position: absolute;
+		z-index: 2;
 		translate: -50% -50%;
+		transition:
+			left 0.55s cubic-bezier(0.2, 0.8, 0.2, 1),
+			top 0.55s cubic-bezier(0.2, 0.8, 0.2, 1);
 		display: flex;
 		flex-direction: column;
 		align-items: center;
