@@ -1,3 +1,5 @@
+import { presetInstructions, sanitizeInstructions, INSTRUCTION_KEYS, type TacticalInstructions } from '#lib/engine/instructions.ts';
+import { DEFAULT_ROLE, isRoleId, ROLES, type RoleId } from '#lib/engine/roles.ts';
 import { positionFit, type Position } from './positions.ts';
 import type { SquadPlayer } from './squad.ts';
 
@@ -96,11 +98,15 @@ export function normalizeStyle(v: unknown): PlayStyle | null {
 }
 
 export interface Tactic {
-	formation: FormationId;
-	/** ids dos 11 titulares, na ordem dos slots da formação */
-	lineup: string[];
-	mentality: Mentality;
-	style: PlayStyle;
+formation: FormationId;
+/** ids dos 11 titulares, na ordem dos slots da formação */
+lineup: string[];
+mentality: Mentality;
+style: PlayStyle;
+/** instruções avançadas (Dev 0.3); ausente = preset de mentalidade + estilo */
+instructions?: TacticalInstructions;
+/** função de cada slot (Dev 0.3); ausente = função padrão da posição */
+roles?: RoleId[];
 }
 
 export function isFormation(value: unknown): value is FormationId {
@@ -211,12 +217,21 @@ export function sanitizeTactic(input: unknown, squad: SquadPlayer[]): Tactic | n
 		if (typeof id !== 'string' || !ids.has(id) || seen.has(id)) return null;
 		seen.add(id);
 	}
-	return {
-		formation: t.formation,
-		lineup: [...(t.lineup as string[])],
-		mentality,
-		style
+	const out: Tactic = {
+	formation: t.formation,
+	lineup: [...(t.lineup as string[])],
+	mentality,
+	style
 	};
+	if (t.instructions && typeof t.instructions === 'object') out.instructions = sanitizeInstructions(t.instructions, presetInstructions(mentality, style));
+	if (Array.isArray(t.roles) && t.roles.length === FORMATIONS[t.formation].length) {
+	const slots = FORMATIONS[t.formation];
+	out.roles = slots.map((slot, i) => {
+	const r = (t.roles as unknown[])[i];
+	return isRoleId(r) && ROLES[r].positions.includes(slot.position) ? r : DEFAULT_ROLE[slot.position];
+	});
+	}
+	return out;
 }
 
 /**
@@ -225,7 +240,7 @@ export function sanitizeTactic(input: unknown, squad: SquadPlayer[]): Tactic | n
  * do objeto inteiro fazia a tela achar que a tática salva ainda tinha alterações.
  */
 export function tacticKey(t: Tactic): string {
-	return JSON.stringify([t.formation, [...t.lineup], t.mentality, t.style]);
+	return JSON.stringify([t.formation, [...t.lineup], t.mentality, t.style, t.instructions ? INSTRUCTION_KEYS.map((k) => t.instructions![k]) : null, t.roles ?? null]);
 }
 
 export function sameTactic(a: Tactic, b: Tactic): boolean {

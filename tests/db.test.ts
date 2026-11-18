@@ -104,14 +104,13 @@ describe('salas', () => {
 	});
 });
 
-describe('partidas da carreira (Dev 0.2)', () => {
-	it('tática salva sobrevive ao jsonb e a rodada é reproduzida e gravada', async () => {
+describe('partidas da carreira (Dev 0.2/0.3)', () => {
+	it('tática salva sobrevive ao jsonb; servidor reproduz a rodada e ignora adulteração', async () => {
 		const { careerView } = await import('#lib/domain/view.ts');
-		const { fixtureSetup, newFixtureMatch, simulateOtherFixtures, summarize } = await import('#lib/domain/matchday.ts');
+		const { fixtureSetup, newFixtureMatch } = await import('#lib/domain/matchday.ts');
 		const { sameTactic } = await import('#lib/domain/tactics.ts');
-		const { advanceCareerDate } = await import('#lib/server/repos/careers.ts');
-		const { insertRound, listResults, listUserMatches } = await import('#lib/server/repos/matches.ts');
-		const { addDays } = await import('#lib/domain/dates.ts');
+		const { playRound, matchdayContext, RoundError } = await import('#lib/server/rounds.ts');
+		const { listResults, listUserMatches } = await import('#lib/server/repos/matches.ts');
 
 		const { profile } = await createGuestProfile(db);
 		let career = await createCareer(db, profile.id, { mode: 'coach', personName: 'Técnico Partida', clubId: 'aurora' });
@@ -119,43 +118,51 @@ describe('partidas da carreira (Dev 0.2)', () => {
 		const tactic = { ...v0.tactic, mentality: 'ofensiva' as const, style: 'pressao' as const };
 		career = await patchCareerData(db, profile.id, career.id, { tactic }, career.version);
 		const reloaded = (await getCareer(db, profile.id, career.id))!;
-		const view = careerView(reloaded, await listResults(db, career.id));
+		const view = careerView(reloaded, await listResults(db, career.id, reloaded.season));
 		expect(view.tacticSaved).toBe(true);
-		expect(sameTactic(view.tactic, tactic)).toBe(true);
+		expect(sameTactic(view.tactic, { ...tactic, roles: view.tactic.roles })).toBe(true);
 
-		// "Cliente" joga com uma substituição; o "servidor" reproduz só com as decisões.
+		// "Cliente": joga com uma substituição usando o MESMO contexto que o servidor usa.
+		const ctx = await matchdayContext(db, reloaded);
 		const fixture = view.next!;
-		const setup = fixtureSetup(reloaded, fixture, view.tactic);
-		const live = newFixtureMatch(reloaded, fixture, view.tactic);
+		const setup = fixtureSetup(reloaded, fixture, view.tactic, ctx);
+		const live = newFixtureMatch(reloaded, fixture, view.tactic, ctx);
 		for (let i = 0; i < 55 * 60; i++) live.step();
 		const side = setup.control!;
 		live.submit(side, { type: 'sub', outId: live.onPitch(side).find((s) => s.slot === 10)!.id, inId: live.bench(side)[2].id });
 		const played = live.runToEnd();
 		const mine = played.decisions.filter((d) => d.side === side);
-		const server = newFixtureMatch(reloaded, fixture, view.tactic, mine);
-		const authoritative = server.runToEnd();
-		expect([authoritative.homeGoals, authoritative.awayGoals]).toEqual([played.homeGoals, played.awayGoals]);
-		expect(authoritative.events.length).toBe(played.events.length);
 
-		const others = view.fixtures.filter((f) => f.round === fixture.round && f.home !== fixture.home);
-		const otherResults = simulateOtherFixtures(reloaded, others);
-		await db.transaction(async (tx) => {
-			await insertRound(tx, career.id, [
-				{ round: fixture.round, home: fixture.home, away: fixture.away, homeGoals: authoritative.homeGoals, awayGoals: authoritative.awayGoals, seed: setup.seed, isUser: true, decisions: mine, summary: summarize(server, authoritative, setup.mySide) },
-				...otherResults.map((r) => ({ round: fixture.round, ...r, seed: 1, isUser: false }))
-			], '0.2.0');
-			await advanceCareerDate(tx, profile.id, career.id, addDays(fixture.date, 1), reloaded.version);
-		});
+		// Adulteração: decisões do lado da IA e um "placar" no corpo não têm efeito.
+		const forged = [...mine, { tick: 100, side: side === 'home' ? 'away' : 'home', decision: { type: 'mentality', value: 'defensiva' } }];
+		const res = await playRound(db, profile.id, reloaded, { version: reloaded.version, round: fixture.round, decisions: forged as never });
+		expect([res.match!.homeGoals, res.match!.awayGoals]).toEqual([played.homeGoals, played.awayGoals]);
+		await expect(playRound(db, profile.id, res.career, { version: res.career.version - 1, round: fixture.round + 1 })).rejects.toBeInstanceOf(RoundError);
+		await expect(playRound(db, profile.id, res.career, { version: res.career.version, round: fixture.round })).rejects.toBeInstanceOf(RoundError);
 
-		const results = await listResults(db, career.id);
+		const results = await listResults(db, career.id, reloaded.season);
 		expect(results).toHaveLength(10);
-		const after = careerView((await getCareer(db, profile.id, career.id))!, results);
-		expect(after.next!.round).toBe(fixture.round + 1);
+		const after = careerView(res.career, results);
+		expect(after.nextRound).toBe(fixture.round + 1);
 		expect(after.standings.reduce((s, r) => s + r.played, 0)).toBe(20);
+		// aprendizado e condição física persistidos
+		expect(after.tactical.formations[tactic.formation]).toBeGreaterThan(view.tactical.formations[tactic.formation]);
+		expect(Object.keys(res.career.data.fitness ?? {}).length).toBeGreaterThan(15);
 		const [userMatch] = await listUserMatches(db, career.id);
-		expect(userMatch.summary.stats.home.shots).toBe(authoritative.stats.home.shots);
+		expect(userMatch.summary.tactic?.formation).toBe(tactic.formation);
+	});
 
-		// Rodada repetida é recusada (chave primária).
-		await expect(insertRound(db, career.id, [{ round: fixture.round, home: fixture.home, away: fixture.away, homeGoals: 0, awayGoals: 0, seed: 1, isUser: true }], '0.2.0')).rejects.toThrow();
+	it('save da Dev 0.2 (sem mundo/tático) abre e continua na liga fictícia', async () => {
+		const { careerView } = await import('#lib/domain/view.ts');
+		const { profile } = await createGuestProfile(db);
+		const c = await createCareer(db, profile.id, { mode: 'coach', personName: 'Save Antigo', clubId: 'cerrado' });
+		// simula o formato antigo: só tática + foco de treino
+		await db.query(`UPDATE careers SET data = '{"trainingFocus":"tatico","tactic":{"style":"jogo-direto","lineup":[],"formation":"4-4-2","mentality":"cautelosa"}}'::jsonb WHERE id = $1`, [c.id]);
+		const legacy = (await getCareer(db, profile.id, c.id))!;
+		const v = careerView(legacy);
+		expect(v.world).toBe('brasfc');
+		expect(v.division).toBe('liga-brasfc');
+		expect(v.next?.round).toBe(1);
+		expect(v.tactical.formations['4-3-3']).toBeGreaterThan(0);
 	});
 });

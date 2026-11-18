@@ -11,7 +11,7 @@ export const load: LayoutServerLoad = async ({ locals, params, depends }) => {
 	const career = await getCareer(db, locals.profile.id, params.id);
 	if (!career) error(404, 'Carreira não encontrada neste perfil.');
 	const messages = await listMessages(db, locals.profile.id, career.id);
-	const results = await listResults(db, career.id);
+	const results = await listResults(db, career.id, career.season);
 	await touchCareer(db, locals.profile.id, career.id); // "Continuar" abre a última jogada
 	return { career, messages, results };
 };

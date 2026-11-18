@@ -1091,7 +1091,9 @@ export class Match {
 			const reach = 1.3 + this.player(o.id)!.attributes.antecipacao / 80;
 			if (seg < reach && t > 0.12) threat += (1 - seg / reach) * (0.22 + 0.18 * t);
 		}
-		const pressure = this.nearestOpponentDistance(owner) < 2.5 ? 0.92 : 1;
+		// Pressão: quanto mais agressiva a pressão rival, mais ela atrapalha a saída curta.
+		const oppPress = this.teams[OTHER[owner.side]].params.pressDistance;
+		const pressure = this.nearestOpponentDistance(owner) < 2.5 ? 0.92 - Math.max(0, oppPress - 11) * 0.004 * (d < 18 ? 1 : 0.4) : 1;
 		// Área congestionada: cada defensor perto do ponto de recepção dificulta o passe.
 		const [trx, try_] = toRel(owner.side, tx, ty);
 		if (trx > 80) {

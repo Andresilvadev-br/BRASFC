@@ -1,5 +1,9 @@
 import { isAppearance, type Appearance } from './appearance.ts';
-import { getClub, LEAGUE, type Club } from './clubs.ts';
+import { CLUBES_2026, TEMPORADA_2026 } from '#lib/data/brasil.ts';
+import { CLUBS, getClub, LEAGUE, type Club } from './clubs.ts';
+import type { TrainingPlan } from './drills.ts';
+import { DIVISION_LABELS, firstRoundDate, initialLeague, seasonStartDate, type LeagueState, type SeasonSummary, type World } from './league.ts';
+import type { TacticalState } from './tactical.ts';
 import { formatLong } from './dates.ts';
 import { isPosition, POSITION_INFO, type Position } from './positions.ts';
 import { createRng, deriveSeed } from './rng.ts';
@@ -24,12 +28,29 @@ export interface PlayerProfile {
 }
 
 export interface CareerData {
-	appearance?: Appearance;
-	position?: Position;
-	player?: PlayerProfile;
-	tactic?: Tactic;
-	trainingFocus?: TeamFocus;
-	playerFocus?: PlayerFocus;
+appearance?: Appearance;
+position?: Position;
+player?: PlayerProfile;
+tactic?: Tactic;
+trainingFocus?: TeamFocus;
+playerFocus?: PlayerFocus;
+// ── Dev 0.3
+/** mundo da carreira; ausente = liga fictícia (saves da Dev 0.1/0.2) */
+world?: World;
+/** divisões da temporada em andamento */
+league?: LeagueState;
+/** primeira temporada da carreira */
+firstSeason?: number;
+/** domínio tático progressivo do clube */
+tactical?: TacticalState;
+/** plano semanal de treinos */
+trainingPlan?: TrainingPlan;
+/** condição física persistente de cada atleta do clube */
+fitness?: Record<string, number>;
+/** resumo das temporadas encerradas */
+seasons?: SeasonSummary[];
+/** recomendações do auxiliar que o usuário dispensou */
+dismissedTips?: string[];
 }
 
 export interface Career {
@@ -48,11 +69,13 @@ export interface Career {
 }
 
 export interface CreateCareerInput {
-	mode: CareerMode;
-	personName: string;
-	clubId: string;
-	appearance?: Appearance;
-	position?: Position;
+mode: CareerMode;
+personName: string;
+clubId: string;
+appearance?: Appearance;
+position?: Position;
+/** 'brasil' = clubes reais (Séries A/B/C 2026); padrão: liga fictícia */
+world?: World;
 }
 
 export type ValidationResult<T> = { ok: true; value: T } | { ok: false; errors: Record<string, string> };
@@ -75,8 +98,10 @@ export function validateCreateCareer(input: unknown): ValidationResult<CreateCar
 	else if (personName.length > 40) errors.personName = 'Use no máximo 40 caracteres.';
 	else if (!NAME_PATTERN.test(personName)) errors.personName = 'Use apenas letras, espaços, apóstrofo, ponto ou hífen.';
 
+	const world: World = v.world === 'brasil' ? 'brasil' : 'brasfc';
 	const clubId = typeof v.clubId === 'string' ? v.clubId : '';
-	if (!getClub(clubId)) errors.clubId = 'Escolha um clube.';
+	const validClub = world === 'brasil' ? CLUBES_2026.some((c) => c.id === clubId) : CLUBS.some((c) => c.id === clubId);
+	if (!getClub(clubId) || !validClub) errors.clubId = 'Escolha um clube.';
 
 	let appearance: Appearance | undefined;
 	if (v.appearance !== undefined) {
@@ -92,12 +117,14 @@ export function validateCreateCareer(input: unknown): ValidationResult<CreateCar
 	}
 
 	if (Object.keys(errors).length) return { ok: false, errors };
-	return { ok: true, value: { mode: mode as CareerMode, personName, clubId, appearance, position } };
+	return { ok: true, value: { mode: mode as CareerMode, personName, clubId, appearance, position, world } };
 }
 
 /** Dados iniciais persistidos de uma carreira nova. */
 export function initialCareerData(input: CreateCareerInput, seed: number): CareerData {
-	const data: CareerData = { appearance: input.appearance };
+	const world = input.world ?? 'brasfc';
+	const start = careerStart(world);
+	const data: CareerData = { appearance: input.appearance, world, firstSeason: start.season, league: initialLeague(world, start.season) };
 	if (input.mode === 'player' && input.position) {
 		const rng = createRng(deriveSeed(seed, 'player'));
 		const overall = rng.int(54, 60);
@@ -118,10 +145,19 @@ export function initialCareerData(input: CreateCareerInput, seed: number): Caree
 
 export const CAREER_START = { date: SEASON_START, season: LEAGUE.season } as const;
 
-export function boardExpectation(club: Club): string {
+/** Início da carreira por mundo: a liga fictícia começa em 2027; a base real, em 2026. */
+export function careerStart(world: World): { date: string; season: number } {
+return world === 'brasil' ? { date: seasonStartDate(TEMPORADA_2026.temporada), season: TEMPORADA_2026.temporada } : { ...CAREER_START };
+}
+
+export function careerWorld(c: Pick<Career, 'data'>): World {
+return c.data.world === 'brasil' ? 'brasil' : 'brasfc';
+}
+
+export function boardExpectation(club: Club, competition: string = LEAGUE.name): string {
 	return [
 		'',
-		'permanecer na Liga BRASFC',
+		`permanecer na ${competition}`,
 		'terminar longe da zona de rebaixamento',
 		'fazer uma campanha sólida no meio da tabela',
 		'brigar pelas primeiras posições',
@@ -140,39 +176,44 @@ export interface NewMessage {
 /** Mensagens reais da caixa de entrada criadas junto com a carreira. */
 export function welcomeMessages(input: CreateCareerInput): NewMessage[] {
 	const club = getClub(input.clubId)!;
-	const date = SEASON_START;
-	const firstRound = formatLong(FIRST_ROUND);
+	const world = input.world ?? 'brasfc';
+	const start = careerStart(world);
+	const date = start.date;
+	const league = initialLeague(world, start.season);
+	const div = (Object.entries(league.divisions).find(([, ids]) => ids?.includes(club.id))?.[0] ?? LEAGUE.id) as keyof typeof DIVISION_LABELS;
+	const comp = DIVISION_LABELS[div];
+	const firstRound = formatLong(world === 'brasil' ? firstRoundDate(start.season) : FIRST_ROUND);
 	const disclaimer: NewMessage = {
 		kind: 'normal',
 		sender: 'Equipe BRASFC',
-		subject: 'Sobre esta versão (Dev 0.1)',
+		subject: 'Sobre esta versão (Dev 0.3)',
 		body:
-			'Esta é a primeira versão técnica do BRASFC. Clubes, elencos, notícias e classificação são dados demonstrativos e fictícios. ' +
-			'O motor de partidas, as finanças e o avanço do calendário chegam nas próximas etapas. Sua carreira, sua tática e suas mensagens já ficam salvas.',
+			world === 'brasil'
+				? 'Clubes, cidades e estádios das Séries A, B e C de 2026 foram conferidos em fontes públicas. Elencos reais e técnicos ainda não foram importados: os jogadores têm nomes fictícios e a força de cada clube é uma estimativa do BRASFC. Temporadas a partir de 2027 são projeções da sua carreira.'
+				: 'Os clubes e elencos desta liga são fictícios. Partidas, táticas, treinos e resultados são simulados pelo motor do BRASFC e ficam salvos na sua carreira.',
 		gameDate: date
 	};
-
 	if (input.mode === 'coach') {
 		return [
 			{
 				kind: 'important',
 				sender: `Diretoria — ${club.name}`,
 				subject: `Bem-vindo ao ${club.name}`,
-				body: `${input.personName}, é um prazer anunciar você como novo treinador. A expectativa da diretoria para 2027 é ${boardExpectation(club)}. Conte conosco.`,
+				body: `${input.personName}, é um prazer anunciar você como novo treinador. A expectativa da diretoria para ${start.season} é ${boardExpectation(club, comp)}. Conte conosco.`,
 				gameDate: date
 			},
 			{
 				kind: 'important',
-				sender: LEAGUE.name,
-				subject: 'Calendário da temporada 2027 divulgado',
-				body: `A ${LEAGUE.name} 2027 começa no(a) ${firstRound.toLowerCase()}. São 38 rodadas em turno e returno com 20 clubes.`,
+				sender: comp,
+				subject: `Calendário da temporada ${start.season} divulgado`,
+				body: `A ${comp} ${start.season} começa no(a) ${firstRound.toLowerCase()}.`,
 				gameDate: date
 			},
 			{
 				kind: 'normal',
 				sender: 'Auxiliar técnico',
 				subject: 'Primeira semana de pré-temporada',
-				body: 'Preparei uma escalação inicial com base nas posições do elenco. Revise a central tática quando puder — o relatório da escalação fica disponível lá.',
+				body: 'Preparei uma escalação inicial e um plano de treinos. O domínio tático do elenco cresce com jogos e treinos — trocar de esquema toda semana atrapalha. Veja minhas recomendações no painel.',
 				gameDate: date
 			},
 			disclaimer
