@@ -1,4 +1,5 @@
 <script lang="ts">
+	import '#lib/data/brasil.ts'; // registra os clubes reais (escudos/nomes em qualquer tela)
 	import '@fontsource-variable/inter';
 	import '@fontsource/barlow-condensed/600.css';
 	import '@fontsource/barlow-condensed/700.css';

@@ -1,6 +1,6 @@
 import { randomUUID, randomInt } from 'node:crypto';
 import {
-	CAREER_START,
+	careerStart,
 	initialCareerData,
 	welcomeMessages,
 	type Career,
@@ -65,7 +65,7 @@ export async function createCareer(db: Db, profileId: string, input: CreateCaree
 			`INSERT INTO careers (id, profile_id, mode, person_name, club_id, seed, season, game_date, data)
 			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8::date, $9::jsonb)
 			 RETURNING ${COLUMNS.replaceAll('c.', '')}`,
-			[id, profileId, input.mode, input.personName, input.clubId, seed, CAREER_START.season, CAREER_START.date, JSON.stringify(data)]
+			[id, profileId, input.mode, input.personName, input.clubId, seed, careerStart(input.world ?? 'brasfc').season, careerStart(input.world ?? 'brasfc').date, JSON.stringify(data)]
 		);
 		const messages = welcomeMessages(input);
 		for (const [seq, m] of messages.entries()) {

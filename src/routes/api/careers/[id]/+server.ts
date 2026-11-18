@@ -3,6 +3,7 @@ import type { CareerData } from '#lib/domain/career.ts';
 import { generateSquad } from '#lib/domain/squad.ts';
 import { sanitizeTactic } from '#lib/domain/tactics.ts';
 import { isPlayerFocus, isTeamFocus } from '#lib/domain/training.ts';
+import { sanitizePlan } from '#lib/domain/drills.ts';
 import { getDb } from '#lib/server/db/index.ts';
 import { noStore, readJson, requireProfile } from '#lib/server/http.ts';
 import { deleteCareer, getCareer, patchCareerData, touchCareer, VersionConflictError } from '#lib/server/repos/careers.ts';
@@ -41,6 +42,15 @@ export const PATCH: RequestHandler = async (event) => {
 	if (body.trainingFocus !== undefined) {
 		if (career.mode !== 'coach' || !isTeamFocus(body.trainingFocus)) error(400, 'Foco de treino inválido.');
 		patch.trainingFocus = body.trainingFocus;
+	}
+	if (body.trainingPlan !== undefined) {
+		if (career.mode !== 'coach') error(403, 'Somente o treinador define o plano de treinos.');
+		if (!body.trainingPlan || typeof body.trainingPlan !== 'object') error(400, 'Plano de treinos inválido.');
+		patch.trainingPlan = sanitizePlan(body.trainingPlan);
+	}
+	if (body.dismissTip !== undefined) {
+		if (typeof body.dismissTip !== 'string' || body.dismissTip.length > 120) error(400, 'Recomendação inválida.');
+		patch.dismissedTips = [...(career.data.dismissedTips ?? []), body.dismissTip].slice(-60);
 	}
 	if (body.playerFocus !== undefined) {
 		if (career.mode !== 'player' || !isPlayerFocus(body.playerFocus)) error(400, 'Foco individual inválido.');

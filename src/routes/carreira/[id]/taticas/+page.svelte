@@ -5,7 +5,6 @@
 	import { positionFit } from '#lib/domain/positions.ts';
 	import type { SquadPlayer } from '#lib/domain/squad.ts';
 	import {
-		assistantReport,
 		autoLineup,
 		FORMATION_IDS,
 		FORMATIONS,
@@ -30,16 +29,57 @@
 	import Pixel from '#lib/ui/Pixel.svelte';
 	import Segmented from '#lib/ui/Segmented.svelte';
 	import StylePicker from '#lib/ui/StylePicker.svelte';
-	import Unavailable from '#lib/ui/Unavailable.svelte';
+	import { analyze, type Tip } from '#lib/domain/assistant.ts';
+	import { resolveRoles, teamMastery } from '#lib/domain/tactical.ts';
+	import { overridesOf, presetInstructions, type TacticalInstructions } from '#lib/engine/instructions.ts';
+	import { ROLES, type RoleId } from '#lib/engine/roles.ts';
+	import AssistantTips from '#lib/ui/AssistantTips.svelte';
+	import InstructionsEditor from '#lib/ui/tactics/InstructionsEditor.svelte';
+	import MasteryPanel from '#lib/ui/tactics/MasteryPanel.svelte';
+	import RolePicker from '#lib/ui/tactics/RolePicker.svelte';
 
 	let { data } = $props();
 	const v = $derived(data.view);
 	const byId = $derived(new Map(v.squad.map((p) => [p.id, p])));
 	const DIRTY_KEY = 'tactic';
 
-	// Estado de edição local (salvo explicitamente).
-	let tactic = $state<Tactic>(untrack(() => structuredClone($state.snapshot(data.view.tactic))));
+	// Estado de edição local (salvo explicitamente). Sempre com instruções e funções explícitas.
+	type EditTactic = Tactic & { instructions: TacticalInstructions; roles: RoleId[] };
+	function editable(t: Tactic): EditTactic {
+		const c = structuredClone($state.snapshot(t)) as Tactic;
+		return { ...c, instructions: c.instructions ?? presetInstructions(c.mentality, c.style), roles: resolveRoles(c.formation, c.roles) };
+	}
+	let tactic = $state<EditTactic>(untrack(() => editable(data.view.tactic)));
+	let mode = $state<'simples' | 'avancada'>(untrack(() => (data.view.tactic.instructions ? 'avancada' : 'simples')));
+	// Mudar mentalidade/estilo troca o preset, mas mantém os ajustes avançados (nada é apagado em silêncio).
+	let lastPreset = untrack(() => presetInstructions(tactic.mentality, tactic.style));
+	$effect(() => {
+		const next = presetInstructions(tactic.mentality, tactic.style);
+		if (JSON.stringify(next) === JSON.stringify(lastPreset)) return;
+		const custom = overridesOf(untrack(() => tactic.instructions), lastPreset);
+		tactic.instructions = { ...next, ...custom };
+		lastPreset = next;
+	});
+	const preset = $derived(presetInstructions(tactic.mentality, tactic.style));
+	const customCount = $derived(Object.keys(overridesOf(tactic.instructions, preset)).length);
+	const mastery = $derived(teamMastery(v.tactical, tactic.formation, tactic.style, tactic.lineup, tactic.instructions));
+	const tips = $derived(
+		analyze({
+			squad: v.squad,
+			tactic,
+			tactical: v.tactical,
+			fitness: v.fitness,
+			recent: data.recent ?? [],
+			clubId: data.career.clubId,
+			nextOpponent: v.upcoming ? (v.upcoming.home === data.career.clubId ? v.upcoming.away : v.upcoming.home) : null,
+			careerSeed: data.career.seed,
+			season: data.career.season,
+			firstSeason: v.firstSeason,
+			dismissed: data.career.data.dismissedTips
+		})
+	);
 	let selection = $state<{ kind: 'slot'; index: number } | { kind: 'bench'; id: string } | null>(null);
+	const selectedSlot = $derived(selection?.kind === 'slot' ? selection.index : null);
 	let saving = $state(false);
 	let leaveModal = $state(false);
 	let pendingHref: string | null = null;
@@ -48,12 +88,11 @@
 	//  • tactic        → o que está sendo editado nesta tela;
 	//  • data.view.tactic → o último estado CONFIRMADO pelo servidor (é o que o motor usa);
 	//  • changed       → há diferença entre os dois (indicador de pendência).
-	const changed = $derived(!sameTactic(tactic, data.view.tactic));
+	const changed = $derived(!sameTactic(tactic, { ...data.view.tactic, instructions: data.view.tactic.instructions ?? presetInstructions(data.view.tactic.mentality, data.view.tactic.style) }));
 	const dirty = $derived(changed || !v.tacticSaved);
 	const slots = $derived(FORMATIONS[tactic.formation]);
 	const bench = $derived(v.squad.filter((p) => !tactic.lineup.includes(p.id)).sort((a, b) => b.overall - a.overall));
 	const familiarity = $derived(lineupFamiliarity(tactic.formation, tactic.lineup, v.squad));
-	const report = $derived(assistantReport(tactic, v.squad));
 
 	$effect(() => {
 		if (changed) markDirty(DIRTY_KEY, 'Tática não salva');
@@ -72,6 +111,7 @@
 		const current = tactic.lineup.map((id) => byId.get(id)).filter((p): p is SquadPlayer => !!p);
 		tactic.lineup = autoLineup(f, current.length === 11 ? current : v.squad);
 		tactic.formation = f;
+		tactic.roles = resolveRoles(f);
 	}
 
 	function swap(target: { kind: 'slot'; index: number } | { kind: 'bench'; id: string }) {
@@ -124,7 +164,9 @@
 	async function save() {
 		if (saving) return; // nunca dois salvamentos ao mesmo tempo
 		saving = true;
-		const sent = $state.snapshot(tactic);
+		const snap = $state.snapshot(tactic) as EditTactic;
+		// No modo simples sem ajustes, a tática segue o preset (motor usa o preset calibrado).
+		const sent: Tactic = mode === 'simples' && customCount === 0 ? { ...snap, instructions: undefined } : snap;
 		try {
 			await api<{ career: Career }>(`/api/careers/${data.career.id}`, {
 				method: 'PATCH',
@@ -133,7 +175,7 @@
 			});
 			await invalidate('app:career');
 			// O indicador some sozinho quando o estado confirmado (servidor) bate com o editado.
-			if (tacticKey(data.view.tactic) !== tacticKey(sent)) throw new Error('O servidor não confirmou a tática enviada.');
+			if (tacticKey({ ...data.view.tactic, instructions: data.view.tactic.instructions }) !== tacticKey({ ...sent, roles: resolveRoles(sent.formation, sent.roles) })) throw new Error('O servidor não confirmou a tática enviada.');
 			notify({ icon: 'save', tone: 'success', title: 'Tática salva', detail: `${sent.formation} · ${MENTALITY_LABELS[sent.mentality]}` });
 		} catch (e) {
 			const conflict = e instanceof Error && 'status' in e && (e as { status: number }).status === 409;
@@ -150,8 +192,35 @@
 	}
 
 	function reset() {
-		tactic = structuredClone($state.snapshot(data.view.tactic));
-		selection = null;
+	tactic = editable(data.view.tactic);
+	lastPreset = presetInstructions(tactic.mentality, tactic.style);
+	selection = null;
+	}
+	
+	function restorePreset() {
+	tactic.instructions = { ...preset };
+	}
+	
+	function setRole(slot: number, role: RoleId) {
+	const roles = [...tactic.roles];
+	roles[slot] = role;
+	tactic.roles = roles;
+	}
+	
+	function applyTip(t: Tip) {
+	if (!t.action) return;
+	if (t.action.type === 'formation') changeFormation(t.action.formation);
+	else if (t.action.type === 'role') setRole(t.action.slot, t.action.role);
+	else if (t.action.type === 'training') void goto(`/carreira/${data.career.id}/treinos`);
+	}
+	
+	async function dismissTip(t: Tip) {
+	try {
+	await api(`/api/careers/${data.career.id}`, { method: 'PATCH', body: { version: data.career.version, dismissTip: t.id } });
+	await invalidate('app:career');
+	} catch {
+	notify({ icon: 'alert', tone: 'error', title: 'Não foi possível ignorar agora' });
+	}
 	}
 
 	function isSel(kind: 'slot' | 'bench', key: number | string) {
@@ -169,11 +238,12 @@
 {:else}
 	<div class="head" data-umx-enter>
 		<div>
-			<span class="eyebrow">Central tática · demonstrativa</span>
+			<span class="eyebrow">Central tática · {v.club.name}</span>
 			<h1>Táticas</h1>
-			<p class="muted">Clique em um jogador e depois em outro para trocar — ou arraste. A tática fica salva; o motor de partidas que a usa chega na Etapa 2.</p>
+			<p class="muted">Clique em um jogador e depois em outro para trocar — ou arraste. Clique uma vez para escolher a função dele. O time aprende o sistema aos poucos: mantê-lo rende mais do que trocar toda semana.</p>
 		</div>
 		<div class="save">
+		<Segmented label="Nível de detalhe" bind:value={mode} options={[{ value: 'simples', label: 'Simples' }, { value: 'avancada', label: 'Avançada' }]} />
 			{#if changed}<span class="pending"><Icon name="dot" size={12} /> Alterações não salvas</span>{/if}
 			<Button variant="ghost" onclick={reset} disabled={!changed || saving}>Desfazer</Button>
 			<Button variant="primary" icon="save" loading={saving} disabled={!dirty} onclick={save}>Salvar tática</Button>
@@ -214,13 +284,21 @@
 						{#if p}<Pixel appearance={p.appearance} kit={playerKit(data.career.clubId, p.position)} size={40} />{/if}
 						<span class="role">{slot.position}</span>
 						<span class="pname">{p?.shortName ?? '—'}</span>
+						<span class="fn">{ROLES[tactic.roles[i]]?.label ?? ''}</span>
 					</button>
 				{/each}
 			</div>
 		</Panel>
 
 		<div class="side">
-			<Panel title="Reservas" icon="squad" index={1}>
+		{#if selectedSlot !== null && byId.get(tactic.lineup[selectedSlot])}
+			{@const sp = byId.get(tactic.lineup[selectedSlot])!}
+			<Panel title="Função de {sp.shortName}" icon="user" index={1}>
+				<p class="muted small">Funções que fazem sentido como {slots[selectedSlot].position}, da mais compatível para a menos. Ou clique em outro jogador para trocar de lugar.</p>
+				<RolePicker player={sp} position={slots[selectedSlot].position} value={tactic.roles[selectedSlot]} familiarity={v.tactical.roles[sp.id] ?? {}} onpick={(r) => setRole(selectedSlot, r)} />
+			</Panel>
+		{/if}
+		<Panel title="Reservas" icon="squad" index={1}>
 				<ul class="bench">
 					{#each bench as p (p.id)}
 						<li>
@@ -243,20 +321,26 @@
 				</ul>
 			</Panel>
 			<Panel title="Estilo" icon="field" index={2}>
-				<div class="style">
-					<span class="lbl">Mentalidade</span>
-					<MentalityScale bind:value={tactic.mentality} />
-					<span class="lbl">Estilo de jogo</span>
-					<StylePicker bind:value={tactic.style} />
-				</div>
+			<div class="style">
+			<span class="lbl">Mentalidade</span>
+			<MentalityScale bind:value={tactic.mentality} />
+			<span class="lbl">Estilo de jogo</span>
+			<StylePicker bind:value={tactic.style} />
+			{#if customCount}
+			<p class="custom"><Icon name="info" size={14} /> {customCount} ajuste(s) avançado(s) mantido(s) sobre o padrão do estilo. <button class="link" onclick={restorePreset}>Restaurar padrão</button></p>
+			{/if}
+			</div>
 			</Panel>
-			<Panel title="Relatório do auxiliar" icon="whistle" index={3}>
-				<ul class="report">
-					{#each report as n (n.text)}
-						<li data-tone={n.tone}><Icon name={n.tone === 'alerta' ? 'alert' : n.tone === 'positivo' ? 'check' : 'info'} size={16} /> {n.text}</li>
-					{/each}
-				</ul>
-				<Unavailable title="Auxiliar humano ou IA" detail="Conversas e sugestões personalizadas" icon="user" />
+			{#if mode === 'avancada'}
+			<Panel title="Instruções" icon="tactics" index={3}>
+			<InstructionsEditor bind:value={tactic.instructions} {preset} />
+			</Panel>
+			{/if}
+			<Panel title="Domínio tático" icon="chart" index={4}>
+			<MasteryPanel state={v.tactical} {mastery} formation={tactic.formation} style={tactic.style} onformation={changeFormation} />
+			</Panel>
+			<Panel title="Auxiliar técnico" icon="whistle" index={5}>
+			<AssistantTips {tips} onapply={applyTip} ondismiss={dismissTip} />
 			</Panel>
 		</div>
 	</div>
@@ -392,6 +476,35 @@
 		background: var(--danger-soft);
 		color: var(--danger);
 	}
+	.fn {
+		font-size: 9.5px;
+		color: var(--gold);
+		max-width: 100%;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.small {
+		font-size: var(--fs-xs);
+		margin: 0 0 8px;
+	}
+	.custom {
+		display: flex;
+		gap: 6px;
+		align-items: center;
+		flex-wrap: wrap;
+		margin: 0;
+		font-size: var(--fs-xs);
+		color: var(--gold);
+	}
+	.link {
+		border: 0;
+		background: none;
+		color: var(--emerald-strong);
+		font: inherit;
+		text-decoration: underline;
+		cursor: pointer;
+	}
 	.pname {
 		font-size: var(--fs-xs);
 		font-weight: 600;
@@ -457,29 +570,6 @@
 		font-size: var(--fs-sm);
 		font-weight: 600;
 		color: var(--text-2);
-	}
-	.report {
-		list-style: none;
-		margin: 0 0 var(--sp-3);
-		padding: 0;
-		display: grid;
-		gap: var(--sp-2);
-	}
-	.report li {
-		display: flex;
-		gap: var(--sp-2);
-		align-items: flex-start;
-		font-size: var(--fs-sm);
-		color: var(--text-2);
-	}
-	.report li[data-tone='alerta'] :global(.icon) {
-		color: var(--warning);
-	}
-	.report li[data-tone='positivo'] :global(.icon) {
-		color: var(--emerald-strong);
-	}
-	.report li[data-tone='info'] :global(.icon) {
-		color: var(--info);
 	}
 	@media (max-width: 1100px) {
 		.layout {

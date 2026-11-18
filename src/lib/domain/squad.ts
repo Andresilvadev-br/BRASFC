@@ -1,3 +1,4 @@
+import '#lib/data/brasil.ts'; // registra os clubes reais (generateSquad aceita qualquer clube)
 import { computeOverall, generateAttributes, type Attributes } from '#lib/engine/attributes.ts';
 import { randomAppearance, type Appearance } from './appearance.ts';
 import { requireClub } from './clubs.ts';

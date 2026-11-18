@@ -16,6 +16,11 @@
 	import Pixel from '#lib/ui/Pixel.svelte';
 	import Stars from '#lib/ui/Stars.svelte';
 	import Unavailable from '#lib/ui/Unavailable.svelte';
+	import { goto, invalidate } from '$app/navigation';
+	import { api } from '#lib/api.ts';
+	import { analyze, type Tip } from '#lib/domain/assistant.ts';
+	import { MASTERY_LABEL } from '#lib/domain/tactical.ts';
+	import AssistantTips from '#lib/ui/AssistantTips.svelte';
 
 	let { data } = $props();
 
@@ -27,14 +32,43 @@
 	const week = $derived(weekPlan(c.gameDate, c.data.trainingFocus ?? 'equilibrado', v.clubFixtures));
 	const familiarity = $derived(lineupFamiliarity(v.tactic.formation, v.tactic.lineup, v.squad));
 	const appearance = $derived(c.data.appearance ?? { skin: 2, hairColor: 1, hairStyle: 'curto' as const });
-	const opponent = $derived(v.next ? getClub(v.next.home === c.clubId ? v.next.away : v.next.home) : undefined);
+	const opponent = $derived(v.upcoming ? getClub(v.upcoming.home === c.clubId ? v.upcoming.away : v.upcoming.home) : undefined);
+	const myRow = $derived(v.standings.find((r) => r.clubId === c.clubId));
+	const tips = $derived(
+		isCoach
+			? analyze({
+					squad: v.squad,
+					tactic: v.tactic,
+					tactical: v.tactical,
+					fitness: v.fitness,
+					recent: data.recent ?? [],
+					clubId: c.clubId,
+					nextOpponent: v.upcoming ? (v.upcoming.home === c.clubId ? v.upcoming.away : v.upcoming.home) : null,
+					careerSeed: c.seed,
+					season: c.season,
+					firstSeason: v.firstSeason,
+					dismissed: c.data.dismissedTips
+				})
+			: []
+	);
+	async function dismissTip(t: Tip) {
+		try {
+			await api(`/api/careers/${c.id}`, { method: 'PATCH', body: { version: c.version, dismissTip: t.id } });
+			await invalidate('app:career');
+		} catch {
+			/* a lista apenas não muda */
+		}
+	}
+	function applyTip(t: Tip) {
+		void goto(t.action?.type === 'training' ? `${base}/treinos` : `${base}/taticas`);
+	}
 
 	const news = $derived([
-		{ tag: LEAGUE.name, title: `Temporada ${c.season} começa em ${v.next ? formatDayMonth(v.clubFixtures[0].date) : 'breve'}`, text: '20 clubes, 38 rodadas em turno e returno.' },
+		{ tag: v.divisionLabel, title: v.results.length ? `${v.divisionLabel} ${c.season}: rodada ${v.nextRound - 1} disputada` : `Temporada ${c.season} começa em ${v.clubFixtures[0] ? formatDayMonth(v.clubFixtures[0].date) : 'breve'}`, text: v.world === 'brasil' ? 'Séries A, B e C com acesso e rebaixamento.' : '20 clubes, 38 rodadas em turno e returno.' },
 		{
 			tag: v.club.name,
 			title: isCoach ? `${c.personName} é o novo treinador do ${v.club.short}` : `${c.personName} sobe ao elenco principal`,
-			text: isCoach ? `Diretoria espera ${boardExpectation(v.club)}.` : `Jovem de 18 anos chega como ${POSITION_INFO[c.data.position ?? 'ATA'].label.toLowerCase()}.`
+			text: isCoach ? `Diretoria espera ${boardExpectation(v.club, v.divisionLabel)}.` : `Jovem de 18 anos chega como ${POSITION_INFO[c.data.position ?? 'ATA'].label.toLowerCase()}.`
 		},
 		{ tag: 'Mercado', title: 'Janela de transferências ainda fechada', text: 'O mercado abre em uma próxima etapa do BRASFC.' }
 	]);
@@ -49,10 +83,14 @@
 
 <div class="grid">
 	<Panel title="Próximo compromisso" icon="whistle" tone="highlight" class="span-7" index={0}>
-		{#if v.next}
-			<FixtureCard fixture={v.next} clubId={c.clubId} today={c.gameDate} />
+		{#if v.seasonOver}
+		<p class="muted">Todas as rodadas de {c.season} foram disputadas.</p>
+		<div class="row-actions"><Button variant="primary" icon="trophy" href="{base}/partida">Encerrar temporada</Button></div>
+		{:else if v.upcoming}
+		<FixtureCard fixture={v.upcoming} clubId={c.clubId} today={c.gameDate} />
+		{#if !v.next}<p class="muted">Rodada {v.nextRound}: seu time folga — avance a semana para chegar ao próximo jogo.</p>{/if}
 			<div class="row-actions">
-				<Button variant="primary" icon="whistle" href="{base}/partida">{isCoach ? 'Comandar a partida' : 'Ir para o jogo'}</Button>
+				<Button variant="primary" icon="whistle" href="{base}/partida">{!v.next ? 'Avançar a semana' : isCoach ? 'Comandar a partida' : 'Ir para o jogo'}</Button>
 				{#if isCoach}
 					<Button icon="tactics" href="{base}/taticas">Preparar a equipe</Button>
 				{:else}
@@ -68,11 +106,12 @@
 	{#if isCoach}
 		<Panel title="Situação do clube" icon="chart" class="span-5" index={1}>
 			<dl class="stats">
-				<div><dt>Meta da diretoria</dt><dd class="goal">{boardExpectation(v.club)}</dd></div>
+				<div><dt>Meta da diretoria</dt><dd class="goal">{boardExpectation(v.club, v.divisionLabel)}</dd></div>
+				<div><dt>Domínio tático</dt><dd><Meter value={v.mastery.execution} label="Domínio tático" /> <small class="muted">{MASTERY_LABEL(v.mastery.execution)}</small></dd></div>
 				<div><dt>Reputação</dt><dd><Stars value={v.club.reputation} size={16} /></dd></div>
 				<div><dt>Força do elenco</dt><dd class="big num">{v.strength}</dd></div>
 				<div><dt>Familiaridade tática</dt><dd><Meter value={familiarity} label="Familiaridade tática" /></dd></div>
-				<div><dt>Posição na liga</dt>{#if v.results.length}<dd class="big num">{v.standings.find((r) => r.clubId === c.clubId)?.position}º</dd>{:else}<dd class="muted">Temporada não iniciada</dd>{/if}</div>
+				<div><dt>Posição · {v.divisionLabel}</dt>{#if myRow?.played}<dd class="big num">{myRow.position}º</dd>{:else}<dd class="muted">Temporada não iniciada</dd>{/if}</div>
 			</dl>
 			<Unavailable title="Finanças e orçamento" detail="Receitas, salários e patrocínios" icon="briefcase" stage="Etapa futura" />
 		</Panel>
@@ -109,7 +148,12 @@
 		</ul>
 	</Panel>
 
-	<Panel title="Classificação" icon="trophy" href="{base}/competicoes" class="span-4" index={3} demo>
+	{#if isCoach}
+	<Panel title="Auxiliar técnico" icon="whistle" href="{base}/taticas" linkLabel="Táticas" class="span-12" index={3}>
+	<AssistantTips {tips} limit={3} onapply={applyTip} ondismiss={dismissTip} />
+	</Panel>
+	{/if}
+	<Panel title={v.divisionLabel} icon="trophy" href="{base}/competicoes" class="span-4" index={3} demo={v.world === 'brasfc'}>
 		<StandingsTable rows={v.standings} highlight={c.clubId} compact limit={6} />
 	</Panel>
 
@@ -154,7 +198,7 @@
 				<a href="{base}/treinos" data-umx-hover><Icon name="training" /> Treino individual <small>foco da semana</small></a>
 				<a href="{base}/elenco" data-umx-hover><Icon name="squad" /> Companheiros <small>{v.squad.length} atletas</small></a>
 			{/if}
-			<a href="{base}/competicoes" data-umx-hover><Icon name="trophy" /> {LEAGUE.name} <small>tabela e rodadas</small></a>
+			<a href="{base}/competicoes" data-umx-hover><Icon name="trophy" /> {v.divisionLabel} <small>tabela e rodadas</small></a>
 			{#if opponent}<a href="{base}/calendario" data-umx-hover><Icon name="calendar" /> Calendário <small>estreia vs {opponent.short}</small></a>{/if}
 		</div>
 	</Panel>
@@ -188,6 +232,9 @@
 	}
 	.grid > :global(.span-8) {
 		grid-column: span 8;
+	}
+	.grid > :global(.span-12) {
+		grid-column: 1 / -1;
 	}
 	.row-actions {
 		display: flex;

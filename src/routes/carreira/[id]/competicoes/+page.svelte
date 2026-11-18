@@ -1,58 +1,102 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { getClub, LEAGUE } from '#lib/domain/clubs.ts';
+	import { getClub } from '#lib/domain/clubs.ts';
 	import { formatShort } from '#lib/domain/dates.ts';
+	import { DIVISION_LABELS, divisionStandings, groupStandings, rulesFor, type BrasilDivision, type DivisionId } from '#lib/domain/league.ts';
 	import StandingsTable from '#lib/ui/career/StandingsTable.svelte';
 	import Button from '#lib/ui/Button.svelte';
 	import Crest from '#lib/ui/Crest.svelte';
+	import Icon from '#lib/ui/Icon.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
+	import Segmented from '#lib/ui/Segmented.svelte';
 	import Unavailable from '#lib/ui/Unavailable.svelte';
 
 	let { data } = $props();
 	const c = $derived(data.career);
 	const v = $derived(data.view);
-	const TOTAL = 38;
 
-	let round = $state(untrack(() => data.view.next?.round ?? 1));
-	const games = $derived(v.fixtures.filter((f) => f.round === round));
+	let div = $state<DivisionId>(untrack(() => data.view.division));
+	const divisions = $derived(Object.keys(v.league.divisions) as DivisionId[]);
+	const rows = $derived(divisionStandings(v.league, div, v.results));
+	const groups = $derived(div === 'serie-c' ? groupStandings(v.league, v.results) : []);
+	const divFixtures = $derived(v.fixtures.filter((f) => f.competition === div));
+	const maxRound = $derived(Math.max(1, ...divFixtures.map((f) => f.round)));
+	let round = $state(untrack(() => Math.max(1, Math.min(data.view.nextRound, 38))));
+	const shownRound = $derived(Math.min(round, maxRound));
+	const games = $derived(divFixtures.filter((f) => f.round === shownRound));
+	const resultOf = (home: string) => v.results.find((r) => r.round === shownRound && r.home === home && (r.competition ?? div) === div);
+	const zones = $derived.by(() => {
+		if (div === 'liga-brasfc') return { up: 4, down: 4, text: 'Os 4 primeiros em verde e os 4 últimos em vermelho (liga fictícia, sem acesso).' };
+		const r = rulesFor(div as BrasilDivision);
+		if (div === 'serie-a') return { up: 0, down: r.rebaixados ?? 4, text: `Os ${r.rebaixados ?? 4} últimos caem para a Série B. Regra: ${r.status}.` };
+		if (div === 'serie-b') return { up: r.promovidos ?? 4, down: r.rebaixados ?? 4, text: `Os ${r.promovidos ?? 4} primeiros sobem; os ${r.rebaixados ?? 4} últimos caem para a Série C. Regra: ${r.status}.` };
+		return { up: r.classificados ?? 8, down: 0, text: `1ª fase em turno único: os ${r.classificados ?? 8} primeiros vão a dois grupos de 4; os 2 primeiros de cada grupo sobem. ${r.status}.` };
+	});
+	const OUTCOME: Record<string, string> = { campeao: 'Campeão', acesso: 'Acesso', rebaixado: 'Rebaixado', permanece: 'Permanência' };
 </script>
 
 <svelte:head><title>Competições · {v.club.name} · BRASFC</title></svelte:head>
 
 <div class="head" data-umx-enter>
-	<span class="eyebrow">Temporada {c.season}</span>
-	<h1>{LEAGUE.name}</h1>
-	<p class="muted">20 clubes · turno e returno · os 4 primeiros em destaque verde, os 4 últimos em vermelho. {data.view.results.length ? `Calculada a partir de ${new Set(data.view.results.map((r) => r.round)).size} rodada(s) disputada(s).` : 'A tabela começa zerada: nenhuma rodada foi disputada.'}</p>
+	<span class="eyebrow">Temporada {c.season}{v.world === 'brasil' && c.season > 2026 ? ' · projeção do BRASFC a partir da base 2026' : ''}</span>
+	<h1>{DIVISION_LABELS[div]}</h1>
+	<p class="muted">{zones.text} {v.results.length ? `Tabela calculada a partir das rodadas disputadas na sua carreira.` : 'Nenhuma rodada disputada ainda.'}</p>
+	{#if divisions.length > 1}
+		<Segmented label="Divisão" bind:value={div} options={divisions.map((d) => ({ value: d, label: DIVISION_LABELS[d] }))} />
+	{/if}
 </div>
 
 <div class="layout">
-	<Panel title="Classificação" icon="trophy" demo index={0}>
-		<StandingsTable rows={v.standings} highlight={c.clubId} />
-	</Panel>
+	<div class="main">
+		<Panel title="Classificação{div === 'serie-c' ? ' · 1ª fase' : ''}" icon="trophy" demo={v.world === 'brasfc'} index={0}>
+			<StandingsTable {rows} highlight={c.clubId} up={zones.up} down={zones.down} />
+		</Panel>
+		{#if groups.length}
+			<div class="groups">
+				{#each groups as g, i (i)}
+					<Panel title="Grupo {i + 1} · 2ª fase" icon="trophy" index={1}>
+						<StandingsTable rows={g} highlight={c.clubId} up={2} down={0} />
+					</Panel>
+				{/each}
+			</div>
+		{/if}
+	</div>
 
 	<div class="side">
 		<Panel title="Rodadas" icon="calendar" index={1}>
 			<div class="stepper">
-				<Button variant="secondary" size="sm" icon="chevronLeft" disabled={round <= 1} onclick={() => round--} aria-label="Rodada anterior" />
+				<Button variant="secondary" size="sm" icon="chevronLeft" disabled={shownRound <= 1} onclick={() => (round = shownRound - 1)} aria-label="Rodada anterior" />
 				<div class="rlabel">
-					<strong>Rodada {round}</strong>
-					<small class="muted">{formatShort(games[0].date)}</small>
+					<strong>Rodada {shownRound}</strong>
+					<small class="muted">{games[0] ? formatShort(games[0].date) : ''}</small>
 				</div>
-				<Button variant="secondary" size="sm" icon="chevronRight" disabled={round >= TOTAL} onclick={() => round++} aria-label="Próxima rodada" />
+				<Button variant="secondary" size="sm" icon="chevronRight" disabled={shownRound >= maxRound} onclick={() => (round = shownRound + 1)} aria-label="Próxima rodada" />
 			</div>
-			<div class="progress" aria-hidden="true"><span style="width:{(round / TOTAL) * 100}%"></span></div>
+			<div class="progress" aria-hidden="true"><span style="width:{(shownRound / maxRound) * 100}%"></span></div>
 			<ul class="games">
 				{#each games as g (g.home)}
+					{@const r = resultOf(g.home)}
 					<li class:mine={g.home === c.clubId || g.away === c.clubId}>
 						<span class="t h">{getClub(g.home)?.short}<Crest clubId={g.home} size={26} /></span>
-						<span class="x">{g.time}</span>
+						<span class="x" class:score={!!r}>{r ? `${r.homeGoals} × ${r.awayGoals}` : g.time}</span>
 						<span class="t a"><Crest clubId={g.away} size={26} />{getClub(g.away)?.short}</span>
 					</li>
+				{:else}
+					<li class="none">Sem jogos desta divisão nesta rodada.</li>
 				{/each}
 			</ul>
 		</Panel>
-		<Unavailable title="Copa BRASFC" detail="Mata-mata com clubes de todas as divisões" icon="trophy" />
-		<Unavailable title="Artilharia e estatísticas" detail="Disponíveis quando as partidas forem simuladas" icon="chart" />
+		{#if v.seasons.length}
+			<Panel title="Suas temporadas" icon="star" index={2}>
+				<ul class="seasons">
+					{#each [...v.seasons].reverse() as s (s.season)}
+						<li data-o={s.outcome}><b>{s.season}</b><span>{DIVISION_LABELS[s.division]}</span><span>{s.position}º · {s.points} pts</span><span class="o">{OUTCOME[s.outcome]}</span></li>
+					{/each}
+				</ul>
+			</Panel>
+		{/if}
+		<a class="statslink" href="/carreira/{c.id}/estatisticas"><Icon name="chart" /> Estatísticas e artilharia do seu time</a>
+		<Unavailable title="Copa do Brasil" detail="Mata-mata ainda não implementado" icon="trophy" />
 	</div>
 </div>
 
@@ -124,6 +168,54 @@
 		background: var(--surface-sunken);
 		font-weight: 700;
 		font-size: var(--fs-sm);
+	}
+	.games li.none {
+		display: block;
+		color: var(--text-3);
+		font-weight: 500;
+	}
+	.x.score {
+		color: var(--text);
+		font-size: var(--fs-sm);
+		font-weight: 800;
+	}
+	.groups {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: var(--sp-3);
+		margin-top: var(--sp-3);
+	}
+	.seasons {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		gap: 4px;
+		font-size: var(--fs-sm);
+	}
+	.seasons li {
+		display: grid;
+		grid-template-columns: 48px 1fr auto auto;
+		gap: 8px;
+	}
+	.seasons li[data-o='campeao'] .o,
+	.seasons li[data-o='acesso'] .o {
+		color: var(--emerald-strong);
+	}
+	.seasons li[data-o='rebaixado'] .o {
+		color: var(--danger);
+	}
+	.statslink {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 10px 12px;
+		border-radius: 10px;
+		background: var(--surface);
+		box-shadow: inset 0 0 0 1px var(--line);
+		color: var(--text);
+		text-decoration: none;
+		font-weight: 600;
 	}
 	.games li.mine {
 		background: var(--emerald-soft);

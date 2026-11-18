@@ -21,6 +21,7 @@
 					{ href: `${base}/treinos`, label: 'Treinos', icon: 'training' },
 					{ href: `${base}/calendario`, label: 'Calendário', icon: 'calendar' },
 					{ href: `${base}/competicoes`, label: 'Competições', icon: 'trophy' },
+					{ href: `${base}/estatisticas`, label: 'Estatísticas', icon: 'chart' },
 					{ href: `${base}/mensagens`, label: 'Mensagens', icon: 'mail', badge: unread }
 				]
 			: [
@@ -29,6 +30,7 @@
 					{ href: `${base}/elenco`, label: 'Elenco', icon: 'squad' },
 					{ href: `${base}/calendario`, label: 'Calendário', icon: 'calendar' },
 					{ href: `${base}/competicoes`, label: 'Competições', icon: 'trophy' },
+					{ href: `${base}/estatisticas`, label: 'Estatísticas', icon: 'chart' },
 					{ href: `${base}/mensagens`, label: 'Mensagens', icon: 'mail', badge: unread }
 				]
 	);
