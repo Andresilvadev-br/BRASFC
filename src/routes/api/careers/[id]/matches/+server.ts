@@ -27,10 +27,11 @@ export const POST: RequestHandler = async (event) => {
 	if (!career) error(404, 'Carreira não encontrada.');
 	const body = await readJson(event.request, 65_536);
 	const version = Number(body.version);
-	const round = Number(body.round);
-	if (!Number.isInteger(version) || !Number.isInteger(round)) error(400, 'Versão e rodada são obrigatórias.');
+	const round = body.round === undefined ? undefined : Number(body.round);
+	const step = typeof body.step === 'string' && /^(league|cup):\d{1,2}$/.test(body.step) ? body.step : undefined;
+	if (!Number.isInteger(version) || (step === undefined && !Number.isInteger(round))) error(400, 'Versão e passo do calendário são obrigatórios.');
 	try {
-		return noStore(await playRound(db, profile.id, career, { version, round, decisions: body.decisions as AppliedDecision[] | undefined }));
+		return noStore(await playRound(db, profile.id, career, { version, ...(step ? { step } : { round }), decisions: body.decisions as AppliedDecision[] | undefined }));
 	} catch (e) {
 		if (e instanceof RoundError) error(e.status, e.message);
 		if (e instanceof VersionConflictError) error(409, e.message);

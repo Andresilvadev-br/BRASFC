@@ -16,7 +16,7 @@
 	const v = $derived(data.view);
 	const cup = $derived(v.cup);
 	const view = $derived(cup ? cupView(cup, v.results, c.seed, strengthMemo(data.manage.ctx)) : null);
-	let phase = $state(untrack(() => (view ? Math.max(0, view.current) : 0)));
+	let phase = $state(untrack(() => (view ? Math.max(0, view.phases.findLastIndex((p) => p.ties.length > 0)) : 0)));
 	let stage = $state<HTMLElement | null>(null);
 	const mine = (t: [string, string]) => t.includes(c.clubId);
 	const name = (id: string) => getClub(id)?.short ?? id;

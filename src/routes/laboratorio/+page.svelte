@@ -81,7 +81,7 @@
 	{#if stage === 'setup'}
 		<p class="note">
 			<Icon name="info" />
-			<span>Clubes reais das Séries A, B e C de 2026, conferidos em fontes públicas. Os <strong>elencos reais ainda não foram importados</strong>:
+			<span>Clubes reais das Séries A, B, C e D de 2026, conferidos em fontes públicas. Os <strong>elencos reais ainda não foram importados</strong>:
 			os jogadores têm <strong>nomes fictícios</strong> e força estimada pelo BRASFC — não são os atletas reais dos clubes.</span>
 		</p>
 
@@ -107,7 +107,8 @@
 					options={[
 						{ value: 'A', label: 'Série A' },
 						{ value: 'B', label: 'Série B' },
-						{ value: 'C', label: 'Série C' }
+						{ value: 'C', label: 'Série C' },
+						{ value: 'D', label: 'Série D' }
 					]}
 					bind:value={serie}
 				/>

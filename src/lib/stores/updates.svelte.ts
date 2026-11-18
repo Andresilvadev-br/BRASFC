@@ -177,8 +177,12 @@ export async function installApp(): Promise<boolean> {
 }
 
 /** Liga a central: confirmação pós-atualização, abas, instalação e verificação periódica. */
-export function initUpdates(): () => void {
+export function initUpdates(opts: { registerWorker: boolean }): () => void {
 	confirmLoaded();
+	// Service worker só na versão publicada (no desenvolvimento ele atrapalharia o recarregamento).
+	if (opts.registerWorker && 'serviceWorker' in navigator) {
+		navigator.serviceWorker.register('/service-worker.js', { scope: '/' }).catch((e) => console.warn('[pwa] service worker indisponível', e));
+	}
 	updates.installed = window.matchMedia?.('(display-mode: standalone)').matches ?? false;
 	try {
 		channel = new BroadcastChannel('brasfc-updates');

@@ -55,7 +55,7 @@
 	);
 	// Mundo: clubes reais (base 2026, Séries A/B/C) ou a liga fictícia da Dev 0.1/0.2.
 	let world = $state<'brasil' | 'brasfc'>('brasil');
-	let serie = $state<'A' | 'B' | 'C'>('A');
+	let serie = $state<'A' | 'B' | 'C' | 'D'>('A');
 	const realClubs = CLUBES_2026.map((c) => ({ real: c, game: toGameClub(c) }));
 	const sortedClubs = $derived(
 		world === 'brasil'
@@ -257,13 +257,13 @@
 					<h1>Escolha seu clube</h1>
 					<p class="muted">
 						{world === 'brasil'
-							? 'Clubes reais das Séries A, B e C de 2026, com acesso e rebaixamento. Elencos reais ainda não foram importados: os jogadores têm nomes fictícios.'
+							? 'Clubes reais das Séries A, B, C e D de 2026 (fontes públicas), com Copa do Brasil, acesso, rebaixamento e expansão da Série C. Elencos reais ainda não foram importados: os jogadores têm nomes fictícios.'
 							: 'Clubes fictícios da Liga BRASFC. A reputação define a expectativa da diretoria.'}
 					</p>
 					<div class="worldpick">
 						<Segmented label="Mundo" bind:value={world} onchange={() => (clubId = null)} options={[{ value: 'brasil', label: 'Brasil 2026' }, { value: 'brasfc', label: 'Liga fictícia' }]} />
 						{#if world === 'brasil'}
-							<Segmented label="Série" bind:value={serie} options={[{ value: 'A', label: 'Série A' }, { value: 'B', label: 'Série B' }, { value: 'C', label: 'Série C' }]} />
+							<Segmented label="Série" bind:value={serie} options={[{ value: 'A', label: 'Série A' }, { value: 'B', label: 'Série B' }, { value: 'C', label: 'Série C' }, { value: 'D', label: 'Série D' }]} />
 						{/if}
 					</div>
 				</div>

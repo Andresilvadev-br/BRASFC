@@ -39,7 +39,7 @@
 	function known(p: RosterPlayer): { ovr: number | null; range: [number, number] | null; pot: [number, number] | null } {
 		const r = reports.get(p.id);
 		if (r) return { ovr: null, range: r.overall, pot: r.potential };
-		return { ovr: null, range: estimateRange(p.overall, scoutMargin(obs, 6) + 2, `${c.id}:${p.id}`), pot: null };
+		return { ovr: null, range: estimateRange(p.overall, scoutMargin(obs, 10), `${c.id}:${p.id}`), pot: null };
 	}
 
 	const pool = $derived.by(() => {
@@ -50,7 +50,12 @@
 	});
 	const filtered = $derived.by(() => {
 		let list = pool.filter((p) => (!pos || p.position === pos) && p.age <= maxAge && (!maxValue || p.value <= maxValue * 1_000_000) && !p.loan);
-		list = [...list].sort((a, b) => (sort === 'valor' ? b.value - a.value : sort === 'idade' ? a.age - b.age : b.overall - a.overall));
+		// Ordena pelo que o clube enxerga (estimativa), nunca pelo nível real escondido.
+		const est = (p: RosterPlayer) => {
+			const k = known(p);
+			return k.range ? (k.range[0] + k.range[1]) / 2 : 0;
+		};
+		list = [...list].sort((a, b) => (sort === 'valor' ? b.value - a.value : sort === 'idade' ? a.age - b.age : est(b) - est(a)));
 		return list;
 	});
 	const free = $derived(m.freeAgents());

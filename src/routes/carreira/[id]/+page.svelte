@@ -1,40 +1,66 @@
 <script lang="ts">
-	import { boardExpectation } from '#lib/domain/career.ts';
-	import { getClub, LEAGUE } from '#lib/domain/clubs.ts';
-	import { formatDayMonth, formatLong, weekdayShort, weekday } from '#lib/domain/dates.ts';
-	import { POSITION_INFO } from '#lib/domain/positions.ts';
-	import { lineupFamiliarity } from '#lib/domain/tactics.ts';
-	import { SESSION_LABELS, weekPlan } from '#lib/domain/training.ts';
-	import { clubKit, coachKit, playerKit } from '#lib/pixel/kits.ts';
-	import Badge from '#lib/ui/Badge.svelte';
-	import Button from '#lib/ui/Button.svelte';
-	import FixtureCard from '#lib/ui/career/FixtureCard.svelte';
-	import StandingsTable from '#lib/ui/career/StandingsTable.svelte';
-	import Icon from '#lib/ui/Icon.svelte';
-	import Meter from '#lib/ui/Meter.svelte';
-	import Panel from '#lib/ui/Panel.svelte';
-	import Pixel from '#lib/ui/Pixel.svelte';
-	import Stars from '#lib/ui/Stars.svelte';
-	import Unavailable from '#lib/ui/Unavailable.svelte';
 	import { goto, invalidate } from '$app/navigation';
 	import { api } from '#lib/api.ts';
 	import { analyze, type Tip } from '#lib/domain/assistant.ts';
+	import { getClub } from '#lib/domain/clubs.ts';
+	import { CUP_ID } from '#lib/domain/cup.ts';
+	import { formatDayMonth, formatLong, weekday, weekdayShort } from '#lib/domain/dates.ts';
+	import { formatMoney } from '#lib/domain/market.ts';
+	import { POSITION_INFO } from '#lib/domain/positions.ts';
 	import { MASTERY_LABEL } from '#lib/domain/tactical.ts';
-	import { DRILL_DEFS } from '#lib/domain/drills.ts';
+	import { count, reveal } from '#lib/motion/actions.ts';
+	import { playerKit } from '#lib/pixel/kits.ts';
 	import AssistantTips from '#lib/ui/AssistantTips.svelte';
+	import Button from '#lib/ui/Button.svelte';
+	import StandingsTable from '#lib/ui/career/StandingsTable.svelte';
+	import Crest from '#lib/ui/Crest.svelte';
+	import Icon from '#lib/ui/Icon.svelte';
+	import Pixel from '#lib/ui/Pixel.svelte';
+	import Gauge from '#lib/ui/v4/Gauge.svelte';
 
 	let { data } = $props();
-
 	const c = $derived(data.career);
 	const v = $derived(data.view);
+	const m = $derived(data.manage);
 	const base = $derived(`/carreira/${c.id}`);
 	const isCoach = $derived(c.mode === 'coach');
-	const inbox = $derived([...data.messages].sort((a, b) => Number(a.read) - Number(b.read)).slice(0, 4));
-	const week = $derived(weekPlan(c.gameDate, c.data.trainingFocus ?? 'equilibrado', v.clubFixtures));
-	const familiarity = $derived(lineupFamiliarity(v.tactic.formation, v.tactic.lineup, v.squad));
-	const appearance = $derived(c.data.appearance ?? { skin: 2, hairColor: 1, hairStyle: 'curto' as const });
-	const opponent = $derived(v.upcoming ? getClub(v.upcoming.home === c.clubId ? v.upcoming.away : v.upcoming.home) : undefined);
+	const inbox = $derived([...data.messages].sort((a, b) => Number(a.read) - Number(b.read) || b.gameDate.localeCompare(a.gameDate)).slice(0, 4));
+	const next = $derived(v.upcoming);
+	const oppId = $derived(next ? (next.home === c.clubId ? next.away : next.home) : null);
+	const isCup = $derived(next?.competition === CUP_ID);
 	const myRow = $derived(v.standings.find((r) => r.clubId === c.clubId));
+
+	/** Forma (últimos 5 jogos de liga e Copa) a partir dos resultados gravados. */
+	function form(clubId: string) {
+		const games = v.results.filter((r) => r.home === clubId || r.away === clubId);
+		const dated = games.map((r) => ({ r, date: v.clubFixtures.find((f) => f.round === r.round && f.home === r.home && f.competition === (r.competition ?? 'liga-brasfc'))?.date ?? `${r.competition === CUP_ID ? 'z' : ''}${String(r.round).padStart(2, '0')}` }));
+		return dated
+			.sort((a, b) => a.date.localeCompare(b.date))
+			.slice(-5)
+			.map(({ r }) => {
+				const gf = r.home === clubId ? r.homeGoals : r.awayGoals;
+				const ga = r.home === clubId ? r.awayGoals : r.homeGoals;
+				return gf > ga ? 'V' : gf === ga ? 'E' : 'D';
+			});
+	}
+	const myForm = $derived(form(c.clubId));
+	const oppForm = $derived(oppId ? form(oppId) : []);
+	const avgFitness = $derived(Math.round(v.squad.reduce((s, p) => s + p.condition, 0) / Math.max(1, v.squad.length)));
+	const expiring = $derived(m.roster.filter((p) => p.contract.until <= c.season && !p.loan && p.id !== 'eu'));
+	const alerts = $derived(
+		[
+			...(isCoach && m.club.board.dismissed ? [{ tone: 'bad', icon: 'alert' as const, text: 'Você foi demitido: veja as propostas de outros clubes.', href: `${base}/clube` }] : []),
+			...(isCoach && !m.club.board.dismissed && m.club.board.confidence < 35 ? [{ tone: 'bad', icon: 'alert' as const, text: `Confiança da diretoria em ${Math.round(m.club.board.confidence)}%.`, href: `${base}/clube` }] : []),
+			...(isCoach && m.club.incoming.length ? [{ tone: 'gold', icon: 'briefcase' as const, text: `${m.club.incoming.length} proposta(s) por atletas do elenco.`, href: `${base}/mercado` }] : []),
+			...(isCoach && expiring.length ? [{ tone: 'gold', icon: 'clock' as const, text: `${expiring.length} contrato(s) terminam nesta temporada.`, href: `${base}/elenco` }] : []),
+			...(isCoach && m.window ? [{ tone: 'ok', icon: 'briefcase' as const, text: `Janela de transferências aberta (${m.window === 'pre-temporada' ? 'pré-temporada' : 'meio do ano'}).`, href: `${base}/mercado` }] : []),
+			...(isCoach && !m.club.sponsors.length && m.club.sponsorOffers.length ? [{ tone: 'gold', icon: 'star' as const, text: 'Nenhum patrocínio assinado: há propostas na mesa.', href: `${base}/financas` }] : []),
+			...(isCoach && m.club.balance < 0 ? [{ tone: 'bad', icon: 'chart' as const, text: `Caixa negativo: ${formatMoney(m.club.balance)}.`, href: `${base}/financas` }] : []),
+			...(!isCoach && c.data.playerCareer?.offers?.length ? [{ tone: 'gold', icon: 'briefcase' as const, text: 'Seu empresário trouxe propostas.', href: `${base}/clube` }] : []),
+			...(avgFitness < 75 ? [{ tone: 'gold', icon: 'training' as const, text: `Condição média do elenco em ${avgFitness}%: considere poupar titulares.`, href: `${base}/treinos` }] : [])
+		] as Array<{ tone: string; icon: 'alert' | 'briefcase' | 'clock' | 'star' | 'chart' | 'training'; text: string; href: string }>
+	);
+	const upcoming = $derived(v.clubFixtures.filter((f) => !v.results.some((r) => r.round === f.round && r.home === f.home && (r.competition ?? 'liga-brasfc') === f.competition)).slice(0, 6));
 	const tips = $derived(
 		isCoach
 			? analyze({
@@ -44,7 +70,7 @@
 					fitness: v.fitness,
 					recent: data.recent ?? [],
 					clubId: c.clubId,
-					nextOpponent: v.upcoming ? (v.upcoming.home === c.clubId ? v.upcoming.away : v.upcoming.home) : null,
+					nextOpponent: oppId,
 					careerSeed: c.seed,
 					season: c.season,
 					firstSeason: v.firstSeason,
@@ -63,418 +89,494 @@
 	function applyTip(t: Tip) {
 		void goto(t.action?.type === 'training' ? `${base}/treinos` : `${base}/taticas`);
 	}
-
-	const news = $derived([
-		{ tag: v.divisionLabel, title: v.results.length ? `${v.divisionLabel} ${c.season}: rodada ${v.nextRound - 1} disputada` : `Temporada ${c.season} começa em ${v.clubFixtures[0] ? formatDayMonth(v.clubFixtures[0].date) : 'breve'}`, text: v.world === 'brasil' ? 'Séries A, B e C com acesso e rebaixamento.' : '20 clubes, 38 rodadas em turno e returno.' },
-		{
-			tag: v.club.name,
-			title: isCoach ? `${c.personName} é o novo treinador do ${v.club.short}` : `${c.personName} sobe ao elenco principal`,
-			text: isCoach ? `Diretoria espera ${boardExpectation(v.club, v.divisionLabel)}.` : `Jovem de 18 anos chega como ${POSITION_INFO[c.data.position ?? 'ATA'].label.toLowerCase()}.`
-		},
-		{ tag: 'Mercado', title: 'Janela de transferências ainda fechada', text: 'O mercado abre em uma próxima etapa do BRASFC.' }
-	]);
+	const appearance = $derived(c.data.appearance ?? { skin: 2, hairColor: 1, hairStyle: 'curto' as const });
+	const compLabel = (comp: string) => (comp === CUP_ID ? 'Copa do Brasil' : v.divisionLabel);
 </script>
 
 <svelte:head><title>Painel · {v.club.name} · BRASFC</title></svelte:head>
 
-<div class="greet" data-umx-enter>
-	<span class="eyebrow">{formatLong(c.gameDate)} · {v.results.length ? `rodada ${Math.max(...v.results.map((r) => r.round))} disputada` : 'pré-temporada'}</span>
-	<h1>Olá, {c.personName.split(' ')[0]}</h1>
+<div class="greet" use:reveal>
+	<span class="eyebrow">{formatLong(c.gameDate)}</span>
+	<h1 class="display">Olá, {c.personName.split(' ')[0]}</h1>
 </div>
 
-<div class="grid">
-	<Panel title="Próximo compromisso" icon="whistle" tone="highlight" class="span-7" index={0}>
+<div class="dash">
+	<!-- Próximo jogo: o destaque da tela -->
+	<section class="match glass" class:cup={isCup} data-umx-surface use:reveal>
 		{#if v.seasonOver}
-		<p class="muted">Todas as rodadas de {c.season} foram disputadas.</p>
-		<div class="row-actions"><Button variant="primary" icon="trophy" href="{base}/partida">Encerrar temporada</Button></div>
-		{:else if v.upcoming}
-		<FixtureCard fixture={v.upcoming} clubId={c.clubId} today={c.gameDate} />
-		{#if !v.next}<p class="muted">Rodada {v.nextRound}: seu time folga — avance a semana para chegar ao próximo jogo.</p>{/if}
-			<div class="row-actions">
-				<Button variant="primary" icon="whistle" href="{base}/partida">{!v.next ? 'Avançar a semana' : isCoach ? 'Comandar a partida' : 'Ir para o jogo'}</Button>
-				{#if isCoach}
-					<Button icon="tactics" href="{base}/taticas">Preparar a equipe</Button>
-				{:else}
-					<Button icon="training" href="{base}/treinos">Treinar</Button>
-				{/if}
-				<Button variant="ghost" href="{base}/calendario" iconRight="chevronRight">Calendário</Button>
+			<div class="end">
+				<Icon name="trophy" size={36} />
+				<h2 class="display">Temporada {c.season} encerrada</h2>
+				<p class="muted">Feche a temporada para ver acessos, rebaixamentos, premiações e começar {c.season + 1}.</p>
+				<Button variant="primary" size="lg" icon="trophy" href="{base}/partida">Encerrar temporada</Button>
+			</div>
+		{:else if next && oppId}
+			<div class="label"><span class="chip" class:gold={isCup}>{next.phase ?? compLabel(next.competition)}</span><span class="muted">{formatLong(next.date)} · {next.time}</span></div>
+			<div class="vs">
+				<div class="team home">
+					<Crest clubId={next.home} size={92} />
+					<strong>{getClub(next.home)?.name}</strong>
+					<div class="form">{#each form(next.home) as f, i (i)}<i data-f={f}>{f}</i>{/each}</div>
+				</div>
+				<div class="mid">
+					<span class="x display">×</span>
+					<span class="where">{next.home === c.clubId ? 'Em casa' : 'Fora'}{(next as { neutral?: boolean }).neutral ? ' · campo neutro' : ''}</span>
+				</div>
+				<div class="team away">
+					<Crest clubId={next.away} size={92} />
+					<strong>{getClub(next.away)?.name}</strong>
+					<div class="form">{#each form(next.away) as f, i (i)}<i data-f={f}>{f}</i>{/each}</div>
+				</div>
+			</div>
+			{#if !v.next}<p class="muted center">Próximo passo do calendário sem jogo do seu time: avance a semana.</p>{/if}
+			<div class="actions">
+				<Button variant="primary" size="lg" icon="whistle" href="{base}/partida">{!v.next ? 'Avançar a semana' : isCoach ? 'Comandar a partida' : 'Ir para o jogo'}</Button>
+				{#if isCoach}<Button icon="tactics" href="{base}/taticas">Preparar a equipe</Button>{/if}
 			</div>
 		{:else}
 			<p class="muted">Nenhum jogo agendado.</p>
 		{/if}
-	</Panel>
+	</section>
+
+	<!-- Situação -->
+	<section class="sit glass" use:reveal={{ index: 1 }}>
+		<div class="pos">
+			<span class="k">{v.divisionLabel}</span>
+			<strong class="num-xl">{myRow?.played ? `${myRow.position}º` : '—'}</strong>
+			<span class="muted">{myRow?.played ? `${myRow.points} pts em ${myRow.played} jogos` : 'Temporada não iniciada'}</span>
+		</div>
+		<div class="formrow"><span class="k">Forma</span><div class="form big">{#each myForm as f, i (i)}<i data-f={f}>{f}</i>{:else}<span class="muted">sem jogos</span>{/each}</div></div>
+		<div class="bars">
+			<div><span>Domínio tático</span><b>{Math.round(v.mastery.execution)}</b><i style="--w:{v.mastery.execution}%"></i><small class="muted">{MASTERY_LABEL(v.mastery.execution)}</small></div>
+			<div><span>Condição do elenco</span><b>{avgFitness}%</b><i style="--w:{avgFitness}%" class:warn={avgFitness < 75}></i></div>
+			<div><span>Força do elenco</span><b>{v.strength}</b><i style="--w:{Math.max(0, (v.strength - 50) * 2.5)}%"></i></div>
+		</div>
+	</section>
 
 	{#if isCoach}
-		<Panel title="Situação do clube" icon="chart" class="span-5" index={1}>
-			<dl class="stats">
-				<div><dt>Meta da diretoria</dt><dd class="goal">{boardExpectation(v.club, v.divisionLabel)}</dd></div>
-				<div><dt>Domínio tático</dt><dd><Meter value={Math.round(v.mastery.execution)} label="Domínio tático" /> <small class="muted">{MASTERY_LABEL(v.mastery.execution)}</small></dd></div>
-				<div><dt>Reputação</dt><dd><Stars value={v.club.reputation} size={16} /></dd></div>
-				<div><dt>Força do elenco</dt><dd class="big num">{v.strength}</dd></div>
-				<div><dt>Familiaridade tática</dt><dd><Meter value={familiarity} label="Familiaridade tática" /></dd></div>
-				<div><dt>Posição · {v.divisionLabel}</dt>{#if myRow?.played}<dd class="big num">{myRow.position}º</dd>{:else}<dd class="muted">Temporada não iniciada</dd>{/if}</div>
-			</dl>
-			<Unavailable title="Finanças e orçamento" detail="Receitas, salários e patrocínios" icon="briefcase" stage="Etapa futura" />
-		</Panel>
-	{:else}
-		<Panel title="Seu jogador" icon="user" class="span-5" index={1}>
-			<div class="me">
-				<div class="me-art"><Pixel variant="full" {appearance} kit={playerKit(c.clubId, c.data.position ?? 'ATA')} size={190} /></div>
-				<div class="me-info">
-					<span class="eyebrow">#{c.data.player?.number} · {POSITION_INFO[c.data.position ?? 'ATA'].label}</span>
-					<strong class="me-name">{c.personName}</strong>
-					<dl class="mini">
-						<div><dt>Geral</dt><dd class="num">{c.data.player?.overall}</dd></div>
-						<div><dt>Potencial</dt><dd class="num">{c.data.player?.potential}</dd></div>
-						<div><dt>Idade</dt><dd class="num">{c.data.player?.age}</dd></div>
-					</dl>
-					<Badge tone="warning" icon="info">Status: aguardando avaliação do treinador</Badge>
-				</div>
+		<section class="board glass" use:reveal={{ index: 2 }}>
+			<Gauge value={m.club.board.confidence} label="Diretoria" size={124} />
+			<div class="money">
+				<span class="k">Caixa</span>
+				<strong class:neg={m.club.balance < 0} use:count={{ value: m.club.balance, format: formatMoney }}>{formatMoney(m.club.balance)}</strong>
+				<span class="muted small">Orçamento {formatMoney(m.club.transferBudget)} · folha {formatMoney(m.payroll)}/mês</span>
+				<a class="link" href="{base}/financas">Finanças →</a>
 			</div>
-		</Panel>
+		</section>
+	{:else}
+		<section class="board glass me" use:reveal={{ index: 2 }}>
+			<Pixel variant="full" {appearance} kit={playerKit(c.clubId, c.data.position ?? 'ATA')} size={130} />
+			<div class="money">
+				<span class="k">#{c.data.player?.number} · {POSITION_INFO[c.data.position ?? 'ATA'].label}</span>
+				<strong>{c.data.player?.overall} <small class="muted">/ {c.data.player?.potential}</small></strong>
+				<span class="muted small">{c.data.player?.age} anos · reputação {c.data.playerCareer?.reputation ?? c.data.player?.reputation}</span>
+				<a class="link" href="{base}/clube">Minha carreira →</a>
+			</div>
+		</section>
 	{/if}
 
-	<Panel title="Mensagens" icon="mail" href="{base}/mensagens" class="span-5" index={2}>
-		<ul class="inbox">
-			{#each inbox as m (m.id)}
-				<li class:unread={!m.read} class:important={m.kind === 'important'}>
-					<a href="{base}/mensagens?m={m.id}">
-						<span class="flag" aria-hidden="true"></span>
-						<span class="from">{m.sender}</span>
-						<span class="subject">{m.subject}</span>
-						{#if !m.read}<span class="sr-only">não lida</span>{/if}
-					</a>
-				</li>
+	{#if alerts.length}
+		<section class="alerts" use:reveal={{ index: 3 }}>
+			{#each alerts as a (a.text)}
+				<a class="alert glass" data-tone={a.tone} href={a.href} data-umx-press><Icon name={a.icon} size={18} /><span>{a.text}</span><Icon name="chevronRight" size={16} /></a>
 			{/each}
-		</ul>
-	</Panel>
+		</section>
+	{/if}
+
+	<section class="cal glass" use:reveal={{ index: 4 }}>
+		<div class="spread"><h2 class="display">Próximos jogos</h2><a class="link" href="{base}/calendario">Calendário →</a></div>
+		<div class="strip">
+			{#each upcoming as f (f.competition + f.round + f.home)}
+				{@const opp = f.home === c.clubId ? f.away : f.home}
+				<div class="day" class:cup={f.competition === CUP_ID}>
+					<span class="wd">{weekdayShort(weekday(f.date))} {formatDayMonth(f.date)}</span>
+					<Crest clubId={opp} size={34} />
+					<strong>{getClub(opp)?.short}</strong>
+					<small>{f.home === c.clubId ? 'casa' : 'fora'} · {f.competition === CUP_ID ? 'Copa' : `R${f.round}`}</small>
+				</div>
+			{:else}
+				<p class="muted">Sem jogos marcados.</p>
+			{/each}
+		</div>
+	</section>
+
+	<section class="table glass" use:reveal={{ index: 5 }}>
+		<div class="spread"><h2 class="display">{v.divisionLabel}</h2><a class="link" href="{base}/competicoes">Tabela →</a></div>
+		<StandingsTable rows={v.standings} highlight={c.clubId} compact limit={6} />
+	</section>
 
 	{#if isCoach}
-	<Panel title="Auxiliar técnico" icon="whistle" href="{base}/taticas" linkLabel="Táticas" class="span-12" index={3}>
-	<AssistantTips {tips} limit={3} onapply={applyTip} ondismiss={dismissTip} />
-	</Panel>
+		<section class="tips glass" use:reveal={{ index: 6 }}>
+			<div class="spread"><h2 class="display">Auxiliar técnico</h2><a class="link" href="{base}/taticas">Táticas →</a></div>
+			<AssistantTips {tips} limit={3} onapply={applyTip} ondismiss={dismissTip} />
+		</section>
 	{/if}
-	<Panel title={v.divisionLabel} icon="trophy" href="{base}/competicoes" class="span-4" index={3} demo={v.world === 'brasfc'}>
-		<StandingsTable rows={v.standings} highlight={c.clubId} compact limit={6} />
-	</Panel>
 
-	<Panel title="Esta semana" icon="calendar" href="{base}/treinos" class="span-3" index={4}>
-		<ul class="week">
-			{#each week as d (d.date)}
-				<li class:today={d.date === c.gameDate} class:match={!!d.fixture}>
-					<span class="wd">{weekdayShort(weekday(d.date))}<small class="num">{formatDayMonth(d.date)}</small></span>
-					<span class="sess">
-						{#if d.fixture}
-							vs {getClub(d.fixture.home === c.clubId ? d.fixture.away : d.fixture.home)?.short}
-						{:else}
-							{isCoach && weekday(d.date) >= 1 && weekday(d.date) <= 5 ? DRILL_DEFS[v.trainingPlan.sessions[weekday(d.date) - 1]].short : d.sessions.map((s) => SESSION_LABELS[s]).join(' · ')}
-						{/if}
-					</span>
+	<section class="inbox glass" use:reveal={{ index: 7 }}>
+		<div class="spread"><h2 class="display">Mensagens</h2><a class="link" href="{base}/mensagens">Todas →</a></div>
+		<ul>
+			{#each inbox as msg (msg.id)}
+				<li class:unread={!msg.read} class:important={msg.kind === 'important'}>
+					<a href="{base}/mensagens?m={msg.id}"><span class="flag"></span><span class="from">{msg.sender}</span><span class="subject">{msg.subject}</span></a>
 				</li>
 			{/each}
 		</ul>
-	</Panel>
-
-	<Panel title="Notícias" icon="news" class="span-8" index={5} demo>
-		<div class="news">
-			{#each news as n, i (n.title)}
-				<article class:lead={i === 0}>
-					{#if i === 1}
-						<div class="art"><Pixel variant="bust" {appearance} kit={isCoach ? coachKit(c.clubId) : clubKit(c.clubId)} size={64} /></div>
-					{/if}
-					<span class="tag">{n.tag}</span>
-					<h3>{n.title}</h3>
-					<p class="muted">{n.text}</p>
-				</article>
-			{/each}
-		</div>
-	</Panel>
-
-	<Panel title="Atalhos" icon="sparkle" class="span-4" index={6}>
-		<div class="shortcuts">
-			{#if isCoach}
-				<a href="{base}/elenco" data-umx-hover><Icon name="squad" /> Ver elenco <small>{v.squad.length} atletas</small></a>
-				<a href="{base}/taticas" data-umx-hover><Icon name="tactics" /> Central tática <small>{v.tactic.formation}</small></a>
-			{:else}
-				<a href="{base}/treinos" data-umx-hover><Icon name="training" /> Treino individual <small>foco da semana</small></a>
-				<a href="{base}/elenco" data-umx-hover><Icon name="squad" /> Companheiros <small>{v.squad.length} atletas</small></a>
-			{/if}
-			<a href="{base}/competicoes" data-umx-hover><Icon name="trophy" /> {v.divisionLabel} <small>tabela e rodadas</small></a>
-			{#if opponent}<a href="{base}/calendario" data-umx-hover><Icon name="calendar" /> Calendário <small>estreia vs {opponent.short}</small></a>{/if}
-		</div>
-	</Panel>
+	</section>
 </div>
 
 <style>
 	.greet {
-		margin-bottom: var(--sp-5);
+		margin-bottom: var(--sp-4);
 	}
 	.greet h1 {
 		font-size: var(--fs-3xl);
-		text-transform: uppercase;
-		font-weight: 800;
+		margin: 4px 0 0;
 	}
-	.grid {
+	.dash {
 		display: grid;
 		grid-template-columns: repeat(12, minmax(0, 1fr));
 		gap: var(--sp-4);
 	}
-	.grid > :global(.span-7) {
-		grid-column: span 7;
+	.k {
+		font-size: 11px;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--text-3);
+		font-weight: 800;
 	}
-	.grid > :global(.span-5) {
-		grid-column: span 5;
+	.small {
+		font-size: var(--fs-xs);
 	}
-	.grid > :global(.span-4) {
-		grid-column: span 4;
+	.link {
+		color: var(--emerald-strong);
+		font-weight: 600;
+		font-size: var(--fs-sm);
 	}
-	.grid > :global(.span-3) {
-		grid-column: span 3;
+	h2 {
+		margin: 0;
+		font-size: var(--fs-xl);
 	}
-	.grid > :global(.span-8) {
+	.match {
 		grid-column: span 8;
-	}
-	.grid > :global(.span-12) {
-		grid-column: 1 / -1;
-	}
-	.row-actions {
-		display: flex;
-		gap: var(--sp-2);
-		justify-content: center;
-		margin-top: var(--sp-5);
-	}
-	.stats {
+		padding: var(--sp-5) var(--sp-6);
 		display: grid;
-		gap: var(--sp-3);
-		margin: 0 0 var(--sp-4);
+		gap: var(--sp-4);
+		background:
+			radial-gradient(50% 90% at 50% 0%, color-mix(in srgb, var(--club) 26%, transparent), transparent 70%),
+			radial-gradient(80% 60% at 50% 120%, rgb(16 185 129 / 0.14), transparent 70%),
+			var(--glass);
+		overflow: hidden;
 	}
-	.stats div {
+	.match.cup {
+		background:
+			radial-gradient(50% 90% at 50% 0%, rgb(232 184 106 / 0.24), transparent 70%),
+			var(--glass);
+	}
+	.label {
 		display: flex;
 		justify-content: space-between;
+		gap: var(--sp-3);
+		flex-wrap: wrap;
+		font-size: var(--fs-sm);
+	}
+	.chip.gold {
+		color: var(--gold);
+		border-color: rgb(232 184 106 / 0.4);
+		background: var(--gold-soft);
+	}
+	.vs {
+		display: grid;
+		grid-template-columns: 1fr auto 1fr;
 		align-items: center;
 		gap: var(--sp-4);
-		padding-bottom: var(--sp-3);
-		border-bottom: 1px solid var(--line);
 	}
-	dt {
-		color: var(--text-2);
-		font-size: var(--fs-sm);
+	.team {
+		display: grid;
+		justify-items: center;
+		gap: 8px;
+		text-align: center;
 	}
-	dd {
-		margin: 0;
-		text-align: right;
-		font-weight: 600;
-	}
-	.goal {
-		max-width: 60%;
-		font-size: var(--fs-sm);
-	}
-	.big {
+	.team strong {
 		font-family: var(--font-display);
-		font-size: var(--fs-2xl);
-		line-height: 1;
-	}
-	.me {
-		display: flex;
-		gap: var(--sp-4);
-		align-items: flex-end;
-	}
-	.me-art :global(svg) {
-		height: 190px;
-		width: auto;
-	}
-	.me-info {
-		display: flex;
-		flex-direction: column;
-		gap: var(--sp-2);
-		padding-bottom: var(--sp-2);
-	}
-	.me-name {
-		font-family: var(--font-display);
-		font-size: var(--fs-2xl);
+		font-size: var(--fs-xl);
 		text-transform: uppercase;
 		line-height: 1;
 	}
-	.mini {
-		display: flex;
-		gap: var(--sp-5);
-		margin: var(--sp-2) 0;
+	.mid {
+		display: grid;
+		justify-items: center;
+		gap: 4px;
 	}
-	.mini div {
-		display: flex;
-		flex-direction: column;
+	.x {
+		font-size: 3.5rem;
+		color: var(--text-3);
+		line-height: 1;
 	}
-	.mini dd {
-		text-align: left;
+	.where {
+		font-size: var(--fs-xs);
+		color: var(--text-2);
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+		font-weight: 700;
+	}
+	.form {
+		display: flex;
+		gap: 4px;
+	}
+	.form i {
+		width: 20px;
+		height: 20px;
+		border-radius: 6px;
+		display: grid;
+		place-items: center;
+		font-size: 10px;
+		font-weight: 800;
+		font-style: normal;
+		background: rgb(231 237 240 / 0.08);
+		color: var(--text-2);
+	}
+	.form.big i {
+		width: 28px;
+		height: 28px;
+		font-size: 12px;
+	}
+	.form i[data-f='V'] {
+		background: var(--emerald);
+		color: #04140e;
+	}
+	.form i[data-f='D'] {
+		background: var(--danger);
+		color: #1a0606;
+	}
+	.actions {
+		display: flex;
+		gap: var(--sp-2);
+		justify-content: center;
+		flex-wrap: wrap;
+	}
+	.center {
+		text-align: center;
+		margin: 0;
+	}
+	.end {
+		display: grid;
+		justify-items: center;
+		gap: var(--sp-3);
+		text-align: center;
+		color: var(--gold);
+		padding: var(--sp-4);
+	}
+	.end p {
+		color: var(--text-2);
+		margin: 0;
+	}
+	.sit {
+		grid-column: span 4;
+		padding: var(--sp-5);
+		display: grid;
+		gap: var(--sp-4);
+		align-content: start;
+	}
+	.pos {
+		display: grid;
+	}
+	.formrow {
+		display: grid;
+		gap: 6px;
+	}
+	.bars {
+		display: grid;
+		gap: 10px;
+	}
+	.bars div {
+		display: grid;
+		grid-template-columns: 1fr auto;
+		gap: 4px 8px;
+		font-size: var(--fs-sm);
+		color: var(--text-2);
+	}
+	.bars i {
+		grid-column: 1 / -1;
+		height: 6px;
+		border-radius: 6px;
+		background: linear-gradient(90deg, var(--emerald) var(--w), rgb(231 237 240 / 0.08) var(--w));
+	}
+	.bars i.warn {
+		background: linear-gradient(90deg, var(--gold) var(--w), rgb(231 237 240 / 0.08) var(--w));
+	}
+	.bars small {
+		grid-column: 1 / -1;
+	}
+	.board {
+		grid-column: span 4;
+		padding: var(--sp-5);
+		display: grid;
+		grid-template-columns: auto 1fr;
+		gap: var(--sp-4);
+		align-items: center;
+	}
+	.money {
+		display: grid;
+		gap: 4px;
+	}
+	.money strong {
 		font-family: var(--font-display);
 		font-size: var(--fs-2xl);
 	}
+	.money strong.neg {
+		color: var(--danger);
+	}
+	.alerts {
+		grid-column: span 8;
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+		gap: var(--sp-2);
+		align-content: start;
+	}
+	.alert {
+		display: grid;
+		grid-template-columns: auto 1fr auto;
+		gap: 10px;
+		align-items: center;
+		padding: 12px 14px;
+		font-size: var(--fs-sm);
+		color: var(--text);
+	}
+	.alert[data-tone='bad'] :global(.icon:first-child) {
+		color: var(--danger);
+	}
+	.alert[data-tone='gold'] :global(.icon:first-child) {
+		color: var(--gold);
+	}
+	.alert[data-tone='ok'] :global(.icon:first-child) {
+		color: var(--emerald-strong);
+	}
+	.cal {
+		grid-column: span 7;
+		padding: var(--sp-5);
+		display: grid;
+		gap: var(--sp-3);
+	}
+	.strip {
+		display: grid;
+		grid-template-columns: repeat(6, minmax(0, 1fr));
+		gap: 8px;
+	}
+	.day {
+		display: grid;
+		justify-items: center;
+		gap: 4px;
+		padding: 10px 6px;
+		border-radius: var(--radius-m);
+		background: rgb(10 13 16 / 0.4);
+		text-align: center;
+	}
+	.day.cup {
+		box-shadow: inset 0 0 0 1px rgb(232 184 106 / 0.45);
+	}
+	.wd {
+		font-size: 11px;
+		color: var(--text-3);
+		font-weight: 700;
+		text-transform: uppercase;
+	}
+	.day small {
+		font-size: 10px;
+		color: var(--text-3);
+	}
+	.table {
+		grid-column: span 5;
+		padding: var(--sp-5);
+		display: grid;
+		gap: var(--sp-3);
+		align-content: start;
+	}
+	.tips {
+		grid-column: span 7;
+		padding: var(--sp-5);
+		display: grid;
+		gap: var(--sp-3);
+	}
 	.inbox {
+		grid-column: span 5;
+		padding: var(--sp-5);
+		display: grid;
+		gap: var(--sp-3);
+		align-content: start;
+	}
+	.inbox ul {
 		list-style: none;
 		margin: 0;
 		padding: 0;
+		display: grid;
+		gap: 4px;
 	}
 	.inbox a {
 		display: grid;
-		grid-template-columns: 10px 1fr;
-		column-gap: var(--sp-3);
-		padding: var(--sp-3) var(--sp-2);
+		grid-template-columns: 8px auto 1fr;
+		gap: 10px;
+		align-items: center;
+		padding: 8px 10px;
 		border-radius: var(--radius-s);
-		border-top: 1px solid var(--line);
-	}
-	.inbox li:first-child a {
-		border-top: 0;
+		font-size: var(--fs-sm);
 	}
 	.inbox a:hover {
-		background: var(--surface-2);
+		background: rgb(231 237 240 / 0.04);
 	}
 	.flag {
-		grid-row: 1 / 3;
-		align-self: center;
 		width: 8px;
 		height: 8px;
 		border-radius: 50%;
+		background: transparent;
 	}
 	.unread .flag {
 		background: var(--emerald);
 	}
 	.important.unread .flag {
 		background: var(--gold);
-		box-shadow: 0 0 0 3px var(--gold-soft);
 	}
 	.from {
-		font-size: var(--fs-xs);
 		color: var(--text-3);
+		white-space: nowrap;
+		font-size: var(--fs-xs);
 	}
 	.subject {
-		font-size: var(--fs-sm);
-		color: var(--text-2);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.unread .subject {
-		color: var(--text);
-		font-weight: 600;
-	}
-	.week {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-	.week li {
-		display: grid;
-		grid-template-columns: 54px 1fr;
-		align-items: center;
-		gap: var(--sp-2);
-		padding: 6px var(--sp-2);
-		border-radius: var(--radius-s);
-		font-size: var(--fs-xs);
-	}
-	.wd {
-		display: flex;
-		flex-direction: column;
 		font-weight: 700;
-		line-height: 1.15;
-	}
-	.wd small {
-		font-weight: 500;
-		color: var(--text-3);
-	}
-	.sess {
-		color: var(--text-2);
-	}
-	.week .today {
-		background: var(--emerald-soft);
-	}
-	.week .match {
-		background: var(--gold-soft);
-	}
-	.week .match .sess {
-		color: var(--gold);
-		font-weight: 700;
-	}
-	.news {
-		display: grid;
-		grid-template-columns: 1.3fr 1fr 1fr;
-		gap: var(--sp-4);
-	}
-	.news article {
-		display: flex;
-		flex-direction: column;
-		gap: var(--sp-2);
-		padding: var(--sp-4);
-		border-radius: var(--radius-m);
-		background: var(--surface-sunken);
-		border: 1px solid var(--line);
-	}
-	.news .lead {
-		background:
-			radial-gradient(100% 120% at 100% 0%, rgb(232 184 106 / 0.14), transparent 60%),
-			var(--surface-sunken);
-	}
-	.art {
-		align-self: flex-start;
-		padding: 4px;
-		border-radius: var(--radius-s);
-		background: linear-gradient(180deg, var(--surface-3), var(--surface-2));
-	}
-	.tag {
-		font-size: 11px;
-		font-weight: 700;
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
-		color: var(--emerald-strong);
-	}
-	.news h3 {
-		font-size: var(--fs-xl);
-		line-height: 1.1;
-	}
-	.news p {
-		font-size: var(--fs-sm);
-	}
-	.shortcuts {
-		display: grid;
-		gap: var(--sp-2);
-	}
-	.shortcuts a {
-		display: flex;
-		align-items: center;
-		gap: var(--sp-3);
-		padding: var(--sp-3);
-		border-radius: var(--radius-m);
-		background: var(--surface-2);
-		font-weight: 600;
-		font-size: var(--fs-sm);
-	}
-	.shortcuts a:hover {
-		background: var(--surface-3);
-	}
-	.shortcuts :global(.icon) {
-		color: var(--emerald-strong);
-	}
-	.shortcuts small {
-		margin-left: auto;
-		color: var(--text-3);
-		font-weight: 500;
 	}
 	@media (max-width: 1200px) {
-		.grid > :global(.span-7),
-		.grid > :global(.span-5),
-		.grid > :global(.span-8),
-		.grid > :global(.span-4) {
+		.match,
+		.alerts,
+		.cal,
+		.tips {
+			grid-column: span 12;
+		}
+		.sit,
+		.board {
 			grid-column: span 6;
 		}
-		.grid > :global(.span-3) {
+		.table,
+		.inbox {
 			grid-column: span 6;
-		}
-		.news {
-			grid-template-columns: 1fr;
 		}
 	}
 	@media (max-width: 760px) {
-		.grid > :global(*) {
-			grid-column: 1 / -1 !important;
+		.sit,
+		.board,
+		.table,
+		.inbox {
+			grid-column: span 12;
+		}
+		.strip {
+			grid-template-columns: repeat(3, minmax(0, 1fr));
+		}
+		.vs :global(svg) {
+			width: 60px;
+			height: 60px;
 		}
 	}
 </style>

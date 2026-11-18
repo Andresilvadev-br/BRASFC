@@ -113,7 +113,7 @@ export function validateCreateCareer(input: unknown): ValidationResult<CreateCar
 
 	const world: World = v.world === 'brasil' ? 'brasil' : 'brasfc';
 	const clubId = typeof v.clubId === 'string' ? v.clubId : '';
-	const validClub = world === 'brasil' ? CLUBES_2026.some((c) => c.id === clubId) : CLUBS.some((c) => c.id === clubId);
+	const validClub = world === 'brasil' ? CLUBES_2026.some((c) => c.id === clubId && c.serie !== 'E') : CLUBS.some((c) => c.id === clubId);
 	if (!getClub(clubId) || !validClub) errors.clubId = 'Escolha um clube.';
 
 	let appearance: Appearance | undefined;
@@ -199,10 +199,10 @@ export function welcomeMessages(input: CreateCareerInput): NewMessage[] {
 	const disclaimer: NewMessage = {
 		kind: 'normal',
 		sender: 'Equipe BRASFC',
-		subject: 'Sobre esta versão (Dev 0.3)',
+		subject: 'Sobre esta versão (Dev 0.4)',
 		body:
 			world === 'brasil'
-				? 'Clubes, cidades e estádios das Séries A, B e C de 2026 foram conferidos em fontes públicas. Elencos reais e técnicos ainda não foram importados: os jogadores têm nomes fictícios e a força de cada clube é uma estimativa do BRASFC. Temporadas a partir de 2027 são projeções da sua carreira.'
+				? 'Clubes e cidades das Séries A, B, C e D de 2026 e os participantes da Copa do Brasil 2026 foram conferidos em fontes públicas. Elencos reais e técnicos ainda não foram importados: os jogadores têm nomes fictícios e a força de cada clube é uma estimativa do BRASFC. Temporadas a partir de 2027 seguem as regras anunciadas pela CBF (Série C com 24 e 28 clubes) e projeções do BRASFC quando não há regulamento.'
 				: 'Os clubes e elencos desta liga são fictícios. Partidas, táticas, treinos e resultados são simulados pelo motor do BRASFC e ficam salvos na sua carreira.',
 		gameDate: date
 	};

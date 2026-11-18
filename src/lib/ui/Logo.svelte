@@ -19,7 +19,7 @@
 	{#if wordmark}
 		<span class="text">
 			<span class="word">BRAS<em>FC</em></span>
-			{#if tagline}<span class="tag">Futebol brasileiro · Dev 0.1</span>{/if}
+			{#if tagline}<span class="tag">Futebol brasileiro</span>{/if}
 		</span>
 	{/if}
 </span>

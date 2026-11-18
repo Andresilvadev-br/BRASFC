@@ -356,7 +356,7 @@ export function clubResponse(offer: NegotiationOffer, player: RosterPlayer, squa
 }
 
 /** Salário que o atleta exige para assinar (prestígio, participação, idade, tempo de contrato). */
-export function wageDemand(player: Pick<SquadPlayer, 'overall' | 'age'> & { contract?: Contract }, buyerTier: Tier, buyerReputation: number, role: ContractRole, years: number): number {
+export function wageDemand(player: Pick<SquadPlayer, 'overall' | 'age'> & { contract?: Contract | null }, buyerTier: Tier, buyerReputation: number, role: ContractRole, years: number): number {
 	let d = expectedWage(player.overall, buyerTier, player.age);
 	if (player.contract) d = Math.max(d, player.contract.wage * 1.05);
 	d *= 1 + (3 - buyerReputation) * 0.06; // clube menor precisa pagar mais para convencer

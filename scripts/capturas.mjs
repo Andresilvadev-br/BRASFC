@@ -26,11 +26,14 @@ const s = await fetch(`${base}/api/session`, { method: 'POST', headers: { 'conte
 const cookie = (s.headers.get('set-cookie') ?? '').split(';')[0];
 const sid = cookie.split('=')[1];
 const api = (path, body) => fetch(`${base}${path}`, { method: body ? 'POST' : 'GET', headers: { 'content-type': 'application/json', cookie, origin: base }, body: body ? JSON.stringify(body) : undefined }).then((r) => r.json());
-const { career } = await api('/api/careers', { mode: 'coach', personName: 'Técnico Relatório', clubId: 'fortaleza', world: 'brasil' });
-for (let round = 1; round <= Number(process.env.RODADAS ?? 3); round++) {
+const { career } = await api('/api/careers', { mode: 'coach', personName: 'Técnico Relatório', clubId: process.env.CLUBE ?? 'fortaleza', world: 'brasil' });
+// Avança passos do calendário (liga e Copa) pela API: o servidor simula e grava.
+for (let i = 0; i < Number(process.env.PASSOS ?? 4); i++) {
 	const c = (await api(`/api/careers/${career.id}`)).career;
-	const r = await api(`/api/careers/${career.id}/matches`, { version: c.version, round, decisions: [] });
-	console.log('rodada', round, r.match ? `${r.match.homeGoals}x${r.match.awayGoals}` : r.message ?? 'sem jogo');
+	const steps = await api(`/api/careers/${career.id}/proximo`);
+	const body = { version: c.version, decisions: [], step: steps.step };
+	const r = await api(`/api/careers/${career.id}/matches`, body);
+	console.log('passo', r.step ?? i + 1, r.match ? `${r.match.homeGoals}x${r.match.awayGoals}` : r.message ?? 'sem jogo');
 }
 
 // 2) navegador sem interface
@@ -75,19 +78,24 @@ async function shot(path, file, opts = {}) {
 
 const c = `/carreira/${career.id}`;
 const click = (text) => `[...document.querySelectorAll('button,[role=radio],[role=tab]')].find(b => b.textContent.trim().startsWith(${JSON.stringify(text)}))?.click()`;
-await shot(c, '03-painel.jpg');
-await shot(`${c}/taticas`, '03-taticas.jpg', { js: `${click('Avançada')}; document.querySelector('[data-slot="9"]')?.click()` });
-await shot(`${c}/taticas`, '03-instrucoes.jpg', { js: `${click('Avançada')}; window.scrollTo(0, document.body.scrollHeight * 0.45)` });
-await shot(`${c}/taticas`, '03-dominio.jpg', { js: `window.scrollTo(0, document.body.scrollHeight)` });
-await shot(`${c}/treinos`, '03-treinos.jpg');
-await shot(`${c}/competicoes`, '03-competicoes.jpg');
-await shot(`${c}/estatisticas`, '03-estatisticas.jpg');
-await shot(`${c}/partida`, '03-dia-de-jogo.jpg');
-await shot(`${c}/partida`, '03-pixel.jpg', {
-	js: `(async () => { ${click('Entrar em campo')}; await new Promise(r => setTimeout(r, 800)); ${click('Pixel')}; ${click('8×')}; ${click('Iniciar')}; })()`,
-	after: 9000
-});
-await shot('/nova-carreira?modo=coach', '03-nova-carreira.jpg');
+const prefix = process.env.PREFIXO ?? '04';
+const only = process.env.SO ? new Set(process.env.SO.split(',')) : null;
+const want = (n) => !only || only.has(n);
+if (want('menu')) await shot('/menu', `${prefix}-menu.jpg`);
+if (want('painel')) await shot(c, `${prefix}-painel.jpg`, { full: true });
+if (want('mercado')) await shot(`${c}/mercado`, `${prefix}-mercado.jpg`);
+if (want('negociacao')) await shot(`${c}/mercado`, `${prefix}-negociacao.jpg`, { js: `document.querySelector('.card .hit')?.click()`, after: 1500 });
+if (want('financas')) await shot(`${c}/financas`, `${prefix}-financas.jpg`, { full: true });
+if (want('clube')) await shot(`${c}/clube`, `${prefix}-clube.jpg`, { full: true });
+if (want('base')) await shot(`${c}/base`, `${prefix}-base.jpg`);
+if (want('copa')) await shot(`${c}/copa`, `${prefix}-copa.jpg`);
+if (want('copa-final')) await shot(`${c}/copa`, `${prefix}-copa-final.jpg`, { js: `${click('Final')}`, after: 1500 });
+if (want('historia')) await shot(`${c}/historia`, `${prefix}-historia.jpg`);
+if (want('competicoes')) await shot(`${c}/competicoes`, `${prefix}-competicoes.jpg`);
+if (want('elenco')) await shot(`${c}/elenco`, `${prefix}-elenco.jpg`);
+if (want('taticas')) await shot(`${c}/taticas`, `${prefix}-taticas.jpg`);
+if (want('partida')) await shot(`${c}/partida`, `${prefix}-dia-de-jogo.jpg`);
+if (want('novidades')) await shot('/novidades', `${prefix}-atualizacoes.jpg`);
 ws.close();
 proc.kill();
 console.log('ok', career.id);

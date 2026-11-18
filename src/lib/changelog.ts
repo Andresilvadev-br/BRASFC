@@ -1,10 +1,20 @@
 /** Novidades exibidas no jogo (mantenha em sincronia com CHANGELOG.md). */
+import type { IconName } from '#lib/ui/icons.ts';
+
 export interface Release {
 	version: string;
 	date: string;
 	title: string;
 	added: string[];
 	next: string[];
+	/** Dev 0.4: destaques ilustrados ("O que há de novo") */
+	highlights?: Array<{ title: string; text: string; icon?: IconName }>;
+	/** melhorias e correções separadas (Central de Atualizações) */
+	improved?: string[];
+	fixed?: string[];
+	/** compatibilidade: migração de banco exigida e versão mínima de saves */
+	compat?: { database: string; saves: string; notes?: string };
+	channel?: 'estavel' | 'desenvolvimento';
 }
 
 export const RELEASES: Release[] = [

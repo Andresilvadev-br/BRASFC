@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { SPONSOR_SLOTS, TICKET_REF } from '#lib/domain/club.ts';
 	import { LEDGER_LABELS } from '#lib/domain/management.ts';
 	import { formatMoney } from '#lib/domain/market.ts';
@@ -20,10 +20,7 @@
 	let ledger = $state<Array<{ season: number; gameDate: string; category: string; amount: number; description: string }>>([]);
 	let busy = $state(false);
 	let msg = $state('');
-	let price = $state(0);
-	$effect.pre(() => {
-		if (!price) price = club.ticketPrice;
-	});
+	let price = $state(untrack(() => data.manage.club.ticketPrice));
 
 	onMount(() => {
 		clubHistory(c.id).then((h) => (ledger = h.ledger)).catch(() => (msg = 'Não foi possível carregar o extrato agora.'));
@@ -147,17 +144,22 @@
 		{/each}
 		{#if club.sponsorOffers.length}
 			<h3>Propostas na mesa</h3>
-			<div class="grid-auto" style="--min:200px;--gap:10px">
-				{#each club.sponsorOffers as o (o.id)}
-					<article class="offer glass" data-umx-surface>
-						<span class="chip">{SPONSOR_SLOTS[o.slot].label}</span>
-						<strong>{o.brand}</strong>
-						<span class="big">{formatMoney(o.monthly)}<small>/mês</small></span>
-						<span class="muted">{o.seasons} temporada{o.seasons > 1 ? 's' : ''}</span>
-						{#if o.bonus}<small>Bônus: {o.bonus.label} → {formatMoney(o.bonus.amount)}</small>{/if}
-						{#if o.requirement}<small class="warn">Exige: {o.requirement.label}</small>{/if}
-						<Button size="sm" variant="secondary" loading={busy} onclick={() => act({ action: 'patrocinio', offerId: o.id }, `Contrato com ${o.brand} assinado.`)}>Assinar</Button>
-					</article>
+			<div class="slots">
+				{#each Object.entries(SPONSOR_SLOTS) as [slot, info] (slot)}
+					{@const offers = club.sponsorOffers.filter((o) => o.slot === slot)}
+					{#if offers.length}
+						<div class="slot">
+							<span class="chip">{info.label}</span>
+							{#each offers as o (o.id)}
+								<article class="offer" data-umx-surface>
+									<div class="spread"><strong>{o.brand}</strong><span class="big">{formatMoney(o.monthly)}<small>/mês</small></span></div>
+									<small class="muted">{o.seasons} temporada{o.seasons > 1 ? 's' : ''}{o.bonus ? ` · bônus ${o.bonus.label}: ${formatMoney(o.bonus.amount)}` : ''}</small>
+									{#if o.requirement}<small class="warn">Exige: {o.requirement.label}</small>{/if}
+									<Button size="sm" variant="secondary" loading={busy} onclick={() => act({ action: 'patrocinio', offerId: o.id }, `Contrato com ${o.brand} assinado.`)}>Assinar</Button>
+								</article>
+							{/each}
+						</div>
+					{/if}
 				{/each}
 			</div>
 			<p class="muted small">Marcas fictícias do universo BRASFC.</p>
@@ -292,9 +294,10 @@
 	}
 	.lower {
 		display: grid;
-		grid-template-columns: 1fr 1.4fr;
+		grid-template-columns: 1fr 2fr;
 		gap: var(--sp-4);
 		margin-top: var(--sp-5);
+		align-items: start;
 	}
 	.price {
 		display: grid;
@@ -313,16 +316,29 @@
 		background: rgb(10 13 16 / 0.4);
 		margin: var(--sp-2) 0;
 	}
+	.slots {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+		gap: var(--sp-3);
+	}
+	.slot {
+		display: grid;
+		gap: 8px;
+		align-content: start;
+	}
 	.offer {
-		padding: var(--sp-4);
+		position: relative;
+		padding: 10px 12px;
 		display: grid;
 		gap: 4px;
-		align-content: start;
+		border-radius: var(--radius-m);
+		background: rgb(10 13 16 / 0.45);
+		border: 1px solid var(--line);
 	}
 	.big {
 		font-family: var(--font-display);
 		font-weight: 800;
-		font-size: var(--fs-xl);
+		font-size: var(--fs-lg);
 	}
 	.big small {
 		font-size: 0.55em;

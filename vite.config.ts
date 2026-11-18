@@ -56,6 +56,8 @@ export default defineConfig({
 		realtimeDevPlugin(),
 		sveltekit({
 			adapter: adapter({ out: 'build', precompress: true }),
+			// O service worker é registrado pelo app (só na versão publicada) — ver src/lib/stores/updates.svelte.ts.
+			serviceWorker: { register: false },
 			version: {
 				name: `${APP_VERSION}+${GIT_SHA}`,
 				pollInterval: 60_000

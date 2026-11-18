@@ -67,7 +67,7 @@
 		stage = 'saving';
 		try {
 			const res = await api<RoundResponse>(`/api/careers/${c.id}/matches`, {
-				body: { version: c.version, round: v.nextRound, decisions: local && setup ? local.decisions.filter((d) => d.side === setup!.control) : [] }
+				body: { version: c.version, step: v.step?.key, decisions: local && setup ? local.decisions.filter((d) => d.side === setup!.control) : [] }
 			});
 			saved = res;
 			stage = 'saved';
@@ -147,10 +147,10 @@
 {:else if stage === 'pre' && !fixture}
 	<section class="card empty" data-umx-enter>
 		<Icon name="calendar" />
-		<h1>Rodada {v.nextRound}: seu time não joga</h1>
+		<h1>{v.step?.kind === 'cup' ? 'Quarta de Copa do Brasil' : `Rodada ${v.nextRound}`}: seu time não joga</h1>
 		<p>
 			As outras partidas acontecem normalmente. Use a semana para treinar
-			{#if v.upcoming}— o próximo jogo é na rodada {v.upcoming.round}{/if}.
+			{#if v.upcoming}— o próximo jogo é em {formatLong(v.upcoming.date).toLowerCase()}{v.upcoming.competition === 'copa-do-brasil' ? ' (Copa do Brasil)' : ''}{/if}.
 		</p>
 		<div class="actions">
 			<Button variant="primary" icon="arrowRight" loading={busy} onclick={skipWeek}>Avançar a semana</Button>
@@ -159,7 +159,7 @@
 	</section>
 {:else if stage === 'pre' && fixture && preview}
 	<section class="card pre" data-umx-enter>
-		<span class="eyebrow">{DIVISION_LABELS[fixture.competition as DivisionId] ?? fixture.competition} · Rodada {fixture.round} · {formatLong(fixture.date)} · {fixture.time}</span>
+		<span class="eyebrow">{fixture.competition === 'copa-do-brasil' ? `Copa do Brasil · ${fixture.phase ?? ''}` : `${DIVISION_LABELS[fixture.competition as DivisionId] ?? fixture.competition} · Rodada ${fixture.round}`} · {formatLong(fixture.date)} · {fixture.time}</span>
 		<div class="vs">
 			<div class="side"><Crest clubId={fixture.home} size={88} /><strong>{getClub(fixture.home)?.name}</strong></div>
 			<span class="x">×</span>
