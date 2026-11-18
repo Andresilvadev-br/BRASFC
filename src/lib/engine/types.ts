@@ -1,12 +1,15 @@
 import type { Position } from '#lib/domain/positions.ts';
 import type { FormationId, Mentality, PlayStyle } from '#lib/domain/tactics.ts';
 import type { Attributes } from './attributes.ts';
+import type { TacticalInstructions } from './instructions.ts';
+import type { RoleId } from './roles.ts';
+import type { CoachProfile } from './ai-coach.ts';
 
 /** Campo em metros: x ao longo do comprimento (0–105), y na largura (0–68). */
 export const PITCH = { length: 105, width: 68, goalWidth: 7.32, boxDepth: 16.5, boxWidth: 40.3 } as const;
 
 /** Versão do motor gravada com cada resultado (mudanças de regra mudam a versão). */
-export const ENGINE_VERSION = '0.2.0';
+export const ENGINE_VERSION = '0.3.0';
 
 export type Side = 'home' | 'away';
 
@@ -31,6 +34,23 @@ export interface TeamTactic {
 	bench: string[];
 	mentality: Mentality;
 	style: PlayStyle;
+	/** instruções avançadas (Dev 0.3); ausentes = preset de mentalidade + estilo */
+	instructions?: TacticalInstructions;
+	/** função de cada slot (mesma ordem de `lineup`); ausente = função padrão da posição */
+	roles?: RoleId[];
+}
+
+/**
+ * Domínio tático da equipe (0–100). Representa QUALIDADE DE EXECUÇÃO (posicionamento,
+ * sincronização, leitura das instruções) e não bônus de gols. 60 = execução de referência.
+ */
+export interface TeamFamiliarity {
+	/** execução coletiva (formação + estilo + instruções + entrosamento) */
+	execution: number;
+	/** domínio de cada atleta na função que exerce (playerId → 0–100) */
+	roles?: Record<string, number>;
+	/** treino de bolas paradas (0–100): melhora o ataque a escanteios e faltas laterais */
+	setPieces?: number;
 }
 
 export interface TeamSetup {
@@ -40,6 +60,9 @@ export interface TeamSetup {
 	colors: { primary: string; secondary: string; gk?: string };
 	players: EnginePlayer[];
 	tactic: TeamTactic;
+	familiarity?: TeamFamiliarity;
+	/** perfil do treinador automático (IA); ausente = perfil equilibrado */
+	coach?: CoachProfile;
 }
 
 export interface MatchRules {
@@ -58,7 +81,8 @@ export type Decision =
 	| { type: 'sub'; outId: string; inId: string }
 	| { type: 'mentality'; value: Mentality }
 	| { type: 'style'; value: PlayStyle }
-	| { type: 'formation'; value: FormationId; lineup: string[] };
+	| { type: 'formation'; value: FormationId; lineup: string[]; roles?: RoleId[] }
+	| { type: 'instructions'; value: TacticalInstructions };
 
 export interface AppliedDecision {
 	tick: number;

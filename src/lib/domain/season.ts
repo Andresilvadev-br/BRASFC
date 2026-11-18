@@ -13,7 +13,10 @@ export interface Fixture {
 	time: string;
 	home: string;
 	away: string;
-	competition: typeof LEAGUE.id;
+	/** id da competição: 'liga-brasfc' (fictícia) ou 'serie-a' | 'serie-b' | 'serie-c' */
+	competition: string;
+	/** grupo (2ª fase da Série C) */
+	group?: number;
 }
 
 export interface MatchResult {

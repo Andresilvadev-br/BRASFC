@@ -4,7 +4,9 @@ import { FORMATIONS, type FormationId } from '#lib/domain/tactics.ts';
 import type { Attributes } from './attributes.ts';
 import { baseXg, clampToPitch, dist, inBox, segmentDistance, toAbs, toRel } from './geometry.ts';
 import { computeResult } from './stats.ts';
-import { tacticalParams, type TacticalParams } from './tactics.ts';
+import { paramsFromInstructions, presetInstructions, overridesOf, type AdvancedParams, type TacticalInstructions } from './instructions.ts';
+import { DEFAULT_ROLE, ROLES, roleCompatibility, type RoleDef, type RoleId } from './roles.ts';
+import { COACH_PROFILES, inMatchAdjustment, type CoachProfile, type MatchView } from './ai-coach.ts';
 import {
 	DEFAULT_RULES,
 	PITCH,
@@ -43,7 +45,16 @@ const HALF_LENGTH = PITCH.length / 2;
 interface TeamRuntime {
 	setup: TeamSetup;
 	tactic: TeamTactic;
-	params: TacticalParams;
+	params: AdvancedParams;
+	/** instruções em vigor (preset + ajustes) */
+	instructions: TacticalInstructions;
+	/** função de cada slot */
+	roles: RoleId[];
+	coach: CoachProfile;
+	/** ajustes de jogo já feitos pela IA (evita repetir) */
+	aiDone: Set<string>;
+	/** até que tick o time faz pressão pós-perda */
+	counterPressUntil: number;
 	byId: Map<string, EnginePlayer>;
 	subsUsed: number;
 	windows: number[];
@@ -112,7 +123,7 @@ export class Match {
 		this.seed = opts.seed >>> 0;
 		this.rng = createRng(this.seed);
 		const formRng = createRng((this.seed ^ 0x9e3779b9) >>> 0);
-		this.form = { home: 0.93 + formRng.next() * 0.14, away: 0.93 + formRng.next() * 0.14 };
+		this.form = { home: 0.9 + formRng.next() * 0.2, away: 0.9 + formRng.next() * 0.2 };
 		this.teams = {
 			home: this.makeTeam(opts.home, opts.ai?.home ?? true),
 			away: this.makeTeam(opts.away, opts.ai?.away ?? true)
@@ -149,10 +160,21 @@ export class Match {
 		}
 		if (!FORMATIONS[tactic.formation]) throw new Error(`Formação desconhecida: ${tactic.formation}`);
 		tactic.bench = tactic.bench.filter((id) => byId.has(id) && !tactic.lineup.includes(id)).slice(0, 12);
+		const instructions = tactic.instructions ?? presetInstructions(tactic.mentality, tactic.style);
+		const shape = FORMATIONS[tactic.formation];
+		const roles = shape.map((slot, i) => {
+			const r = tactic.roles?.[i];
+			return r && ROLES[r] ? r : DEFAULT_ROLE[slot.position];
+		});
 		return {
 			setup,
 			tactic,
-			params: tacticalParams(tactic.mentality, tactic.style),
+			params: paramsFromInstructions(tactic.mentality, tactic.style, instructions),
+			instructions,
+			roles,
+			coach: setup.coach ?? COACH_PROFILES.equilibrado,
+			aiDone: new Set(),
+			counterPressUntil: -1,
 			byId,
 			subsUsed: 0,
 			windows: [],
@@ -336,13 +358,24 @@ export class Match {
 
 	private applyDecision(side: Side, d: Decision, fromReplay: boolean) {
 		const t = this.teams[side];
+		this.fitCache.clear();
 		const record = (rejected?: string) => this.applied.push({ tick: this.tick, side, decision: d, ...(rejected ? { rejected } : {}) });
 		if (d.type === 'mentality' || d.type === 'style') {
+			// Mudar mentalidade/estilo troca o preset, mas mantém os ajustes avançados do treinador.
+			const custom = overridesOf(t.instructions, presetInstructions(t.tactic.mentality, t.tactic.style));
 			if (d.type === 'mentality') t.tactic.mentality = d.value;
 			else t.tactic.style = d.value;
-			t.params = tacticalParams(t.tactic.mentality, t.tactic.style);
+			t.instructions = { ...presetInstructions(t.tactic.mentality, t.tactic.style), ...custom };
+			t.params = paramsFromInstructions(t.tactic.mentality, t.tactic.style, t.instructions);
 			record();
 			this.emit('tactic', { side, data: { kind: d.type, value: d.value } });
+			return;
+		}
+		if (d.type === 'instructions') {
+			t.instructions = { ...d.value };
+			t.params = paramsFromInstructions(t.tactic.mentality, t.tactic.style, t.instructions);
+			record();
+			this.emit('tactic', { side, data: { kind: 'instructions' } });
 			return;
 		}
 		if (d.type === 'formation') {
@@ -357,6 +390,10 @@ export class Match {
 				if (st) st.slot = slot;
 			});
 			t.tactic.lineup = [...d.lineup];
+			t.roles = FORMATIONS[d.value].map((slot, i) => {
+				const r = d.roles?.[i];
+				return r && ROLES[r] ? r : DEFAULT_ROLE[slot.position];
+			});
 			record();
 			this.emit('tactic', { side, data: { kind: 'formation', value: d.value } });
 			return;
@@ -392,7 +429,43 @@ export class Match {
 		this.emit('sub', { side, player: d.inId, other: d.outId });
 	}
 
-	/** Treinador automático: substitui lesionados e cansados, ajusta a mentalidade conforme o placar. */
+	/** O que o banco de um time consegue observar agora (sem dados ocultos do rival). */
+	matchView(side: Side): MatchView {
+		const opp = OTHER[side];
+		let shotsFor = 0;
+		let shotsAgainst = 0;
+		let onTargetAgainst = 0;
+		for (const e of this.events) {
+			if (e.type === 'shot') e.side === side ? shotsFor++ : shotsAgainst++;
+			else if ((e.type === 'shot_saved' && e.side === side) || (e.type === 'goal' && e.side === opp)) onTargetAgainst++;
+		}
+		const mine = this.onPitch(side);
+		const theirs = this.onPitch(opp);
+		const oppDef = theirs
+			.filter((s) => s.id !== this.teams[opp].gkId)
+			.map((s) => toRel(opp, s.x, s.y)[0])
+			.sort((a, b) => a - b)
+			.slice(0, 4);
+		const fwd = mine.filter((s) => ['ATA', 'PD', 'PE'].includes(this.player(s.id)!.position));
+		const total = this.possession.home + this.possession.away || 1;
+		return {
+			minute: this.minute,
+			half: this.half,
+			goalDiff: this.score[side] - this.score[opp],
+			shotsFor,
+			shotsAgainst,
+			onTargetAgainst,
+			possession: (this.possession[side] / total) * 100,
+			avgCondition: mine.reduce((acc, s) => acc + s.condition, 0) / Math.max(1, mine.length),
+			playersOnPitch: mine.length,
+			oppPlayersOnPitch: theirs.length,
+			// A altura da linha rival só é lida quando o rival está defendendo (nós com a bola).
+		oppDefLine: this.ball.owner && this.states.get(this.ball.owner)?.side === side ? oppDef.reduce((a, b) => a + b, 0) / Math.max(1, oppDef.length) : 0,
+			fastForwards: fwd.length > 0 && fwd.reduce((acc, s) => acc + this.player(s.id)!.attributes.velocidade, 0) / fwd.length >= 70
+		};
+	}
+	
+	/** Treinador automático: substitui lesionados e cansados e ajusta instruções conforme o jogo. */
 	private aiManager(side: Side) {
 		const t = this.teams[side];
 		if (this.queue[side].length) return;
@@ -415,12 +488,16 @@ export class Match {
 				}
 			}
 		}
-		// Ajuste de mentalidade no fim do jogo (no máximo uma vez por fase do placar).
-		if (this.half === 2 && this.tick % 60 === 0) {
-			const diff = this.score[side] - this.score[OTHER[side]];
-			const minute = this.minute;
-			if (minute >= 70 && diff < 0 && diff >= -2 && t.tactic.mentality !== 'ofensiva') this.queue[side].push({ type: 'mentality', value: 'ofensiva' });
-			else if (minute >= 80 && diff > 0 && t.tactic.mentality === 'ofensiva') this.queue[side].push({ type: 'mentality', value: 'equilibrada' });
+		// Leitura do jogo a cada 5 minutos: o treinador ajusta instruções com o que dá para ver.
+		if (this.tick % 300 === 0 && this.tick >= 15 * 60 && this.phase !== 'half_time') {
+			const adj = inMatchAdjustment(t.coach, t.instructions, t.tactic.mentality, this.matchView(side), t.aiDone, hashNoise(this.tick, side === 'home' ? 7 : 11, 3) * 0.5 + 0.5);
+			if (adj) {
+				t.aiDone.add(adj.key);
+				if (adj.mentality && adj.mentality !== t.tactic.mentality) this.queue[side].push({ type: 'mentality', value: adj.mentality });
+				const custom = overridesOf(t.instructions, presetInstructions(t.tactic.mentality, t.tactic.style));
+				const nextPreset = presetInstructions(adj.mentality ?? t.tactic.mentality, t.tactic.style);
+				this.queue[side].push({ type: 'instructions', value: { ...nextPreset, ...custom, ...adj.change } });
+			}
 		}
 	}
 
@@ -438,16 +515,24 @@ export class Match {
 		let ax: number;
 		let ay: number;
 		if (s.position === 'GOL') {
-			ax = Math.max(3, Math.min(16, 4 + (bx - 30) * 0.12));
+			const libero = t.roles[slot] === 'gk-libero' ? (inPossession ? 1 : 0.6) : 0;
+			ax = Math.max(3, Math.min(16 + libero * 8, 4 + (bx - 30) * (0.12 + libero * 0.08)));
 			ay = PITCH.width / 2 + (by - PITCH.width / 2) * 0.15;
 			return toAbs(side, ax, ay);
 		}
+		const chosen = ROLES[t.roles[slot] ?? DEFAULT_ROLE[s.position]];
+		const std = ROLES[DEFAULT_ROLE[s.position]];
+		const role = { space: { attack: chosen.space.attack - std.space.attack, defend: chosen.space.defend - std.space.defend, narrow: chosen.space.narrow - std.space.narrow } };
 		if (inPossession) {
 			const line = clamp(p.defLine + 10 + (bx - 52) * 0.4, 20, 64);
-			const span = Math.min(p.blockLength + 14, 98 - line);
+			const span = Math.min(p.blockLength + 14 + p.spacing, 98 - line);
 			ax = line + ((depth - 0.24) / 0.6) * span;
 			if ((s.position === 'LD' || s.position === 'LE') && bx > 45) ax += 8 * p.support + 4;
+			// Função: avança/recua e aproxima do centro; presença na área empurra meias no último terço.
+			ax += role.space.attack * (bx > 40 ? 1 : 0.5);
+			if (bx > 70 && (s.position === 'MC' || s.position === 'MEI')) ax += p.boxRunners * 3;
 			ay = PITCH.width / 2 + (lateral - PITCH.width / 2) * p.width;
+			ay += (PITCH.width / 2 - ay) * Math.min(0.8, Math.max(-0.3, role.space.narrow / 20));
 			ay += (by - PITCH.width / 2) * 0.12;
 		} else {
 			let line = clamp(p.defLine + (bx - 52) * 0.28, 11, 52);
@@ -456,10 +541,34 @@ export class Match {
 			const span = bx < 40 ? p.blockLength * (0.62 + (bx / 40) * 0.38) / Math.sqrt(p.boxDefense) : p.blockLength;
 			ax = line + ((depth - 0.24) / 0.6) * span;
 			ax = Math.min(ax, Math.max(line + 4, bx + 6));
+			ax += role.space.defend;
 			ay = PITCH.width / 2 + (lateral - PITCH.width / 2) * 0.72 + (by - PITCH.width / 2) * 0.32;
+		}
+		// Domínio tático: times que ainda não dominam o sistema se posicionam com mais imprecisão.
+		const jitter = Math.max(0, 0.6 - this.execution(side)) * 5;
+		if (jitter > 0.05) {
+			ax += hashNoise(this.tick >> 3, slot, side === 'home' ? 1 : 2) * jitter;
+			ay += hashNoise(this.tick >> 3, slot + 17, side === 'home' ? 3 : 4) * jitter;
 		}
 		[ax, ay] = clampToPitch(ax, ay);
 		return toAbs(side, ax, ay);
+	}
+
+	/**
+	 * Linha prevista para o próximo segundo: a defesa que está subindo continua subindo.
+	 * Atacantes que leem o jogo usam esta previsão para não ficarem impedidos na linha-burra.
+	 */
+	private predictedOffsideLine(attacking: Side): number {
+		const defenders = this.onPitch(OTHER[attacking])
+			.map((s) => {
+				const [x] = toRel(attacking, s.x, s.y);
+				const [px] = toRel(attacking, s.px, s.py);
+				return x + Math.min(0, x - px) * 1.2;
+			})
+			.sort((a, b) => b - a);
+		const second = defenders[1] ?? HALF_LENGTH;
+		const [bx] = toRel(attacking, this.ball.x, this.ball.y);
+		return Math.max(second, bx, HALF_LENGTH);
 	}
 
 	/** Linha de impedimento (relativa ao lado que ataca): penúltimo defensor ou a bola. */
@@ -474,13 +583,19 @@ export class Match {
 
 	private movePlayers() {
 		const ownerState = this.ball.owner ? this.states.get(this.ball.owner)! : null;
-		const posSide: Side | null = ownerState?.side ?? (this.ball.flight ? (this.lastTouch?.side ?? null) : null);
+		const posSide: Side | null = ownerState?.side ?? (this.ball.flight ? (this.lastTouch?.side ?? null) : (this.restart?.side ?? null));
 		const focusX = this.ball.flight ? this.ball.flight.toX : this.ball.x;
 		const focusY = this.ball.flight ? this.ball.flight.toY : this.ball.y;
 		const pressers = new Set<string>();
 		if (ownerState && this.restart === null) {
 			const def = OTHER[ownerState.side];
-			const p = this.teams[def].params;
+			const dt = this.teams[def];
+			const p = dt.params;
+			// Pressão pós-perda: por alguns segundos o time ataca a bola com mais gente.
+			const gegen = this.tick < dt.counterPressUntil;
+			// Time que ainda não domina o sistema coordena pior a pressão (um a menos).
+			const pressersN = Math.max(1, (gegen ? Math.max(p.pressers, 3) : p.pressers) - (this.execution(def) < 0.35 ? 1 : 0));
+			const pressDist = gegen ? Math.max(p.pressDistance, 20) : p.pressDistance;
 			const near = this.onPitch(def)
 				.filter((s) => s.id !== this.teams[def].gkId)
 				.map((s) => ({ s, d: dist(s.x, s.y, ownerState.x, ownerState.y) }))
@@ -489,12 +604,13 @@ export class Match {
 			const [cax] = toRel(ownerState.side, ownerState.x, ownerState.y);
 			const danger = cax > 68 ? 2 : 0;
 			near.forEach((n, i) => {
-				if (i === 0 && n.d < Math.max(p.pressDistance, 12)) pressers.add(n.s.id);
-				else if (i < p.pressers && n.d < p.pressDistance) pressers.add(n.s.id);
+				if (i === 0 && n.d < Math.max(pressDist, 12)) pressers.add(n.s.id);
+				else if (i < pressersN && n.d < pressDist) pressers.add(n.s.id);
 				else if (i < 1 + danger && n.d < 14) pressers.add(n.s.id);
 			});
 		}
 		const lines: Record<Side, number> = { home: this.offsideLine('home'), away: this.offsideLine('away') };
+		const predicted: Record<Side, number> = { home: this.predictedOffsideLine('home'), away: this.predictedOffsideLine('away') };
 		const marks = posSide && this.restart === null ? this.assignMarking(OTHER[posSide], pressers, focusX, focusY) : new Map<string, [number, number]>();
 		for (const s of this.states.values()) {
 			if (!s.onPitch || s.id === this.ball.owner) continue;
@@ -504,14 +620,21 @@ export class Match {
 			if (pressers.has(s.id) && ownerState) {
 				const [ox, oy] = toRel(s.side, ownerState.x, ownerState.y);
 				[tx, ty] = toAbs(s.side, ox - 1.2, oy);
-			} else if (mine && this.restart === null && s.id !== this.teams[s.side].gkId) {
+			} else if (mine && s.id !== this.teams[s.side].gkId) {
 				// Em posse, ninguém fica parado em impedimento; atacantes rápidos esticam até a linha.
 				const [rx, ry] = toRel(s.side, tx, ty);
-				const line = lines[s.side];
+				// Antecipação: quanto melhor, mais o atacante considera a linha que vai subir.
+				const read = Math.min(1, info.attributes.antecipacao / 85);
+				const line = lines[s.side] + (Math.min(lines[s.side], predicted[s.side]) - lines[s.side]) * read;
 				const attacker = info.position === 'ATA' || info.position === 'PD' || info.position === 'PE' || info.position === 'MEI';
-				const depthDrive = attacker && (info.attributes.velocidade + info.attributes.antecipacao) / 2 > 68 ? 6 : 0;
-				const risk = Math.max(0.01, 0.1 - info.attributes.antecipacao * 0.0009 - info.attributes.decisoes * 0.0004);
-				const overshoot = attacker && this.rng.next() < risk ? 1 : -1.2;
+				const depthDrive = attacker && (info.attributes.velocidade + info.attributes.antecipacao) / 2 > 68 ? 6 * (0.5 + this.teams[s.side].params.runDepth) * Math.min(1.3, this.relativeBias(s).run) : 0;
+				// Desmarcação temporizada: o atacante segura a linha e só estica quando o passe está para sair.
+				// Quem lê mal o jogo (antecipação/decisões baixas) sai antes da hora e fica impedido.
+				const at = info.attributes;
+				const margin = -(0.8 + (100 - at.antecipacao) / 60);
+				const passImminent = ownerState?.side === s.side && this.actAt - this.tick <= 1;
+				const risk = passImminent ? Math.max(0.004, 0.05 - at.antecipacao * 0.0004 - at.decisoes * 0.0001) : 0;
+				const overshoot = attacker && risk > 0 && this.rng.next() < risk ? 0.8 : margin;
 				[tx, ty] = toAbs(s.side, Math.min(rx + depthDrive, line + overshoot), ry);
 			} else if (marks.has(s.id)) {
 				[tx, ty] = marks.get(s.id)!;
@@ -554,12 +677,14 @@ export class Match {
 		const defenders = this.onPitch(defSide)
 			.filter((d) => d.id !== this.teams[defSide].gkId && !pressers.has(d.id))
 			.map((d) => ({ d, home: this.slotTarget(defSide, d.slot, false, ballX, ballY) }));
+		const homeOf = new Map(defenders.map((x) => [x.d.id, x.home]));
 		const pairs: Array<{ d: PlayerState; a: PlayerState; dist: number }> = [];
 		for (const { d, home } of defenders) {
 			for (const a of attackers) {
 				const dd = dist(home[0], home[1], a.x, a.y);
 				const [arx] = toRel(attSide, a.x, a.y);
-				if (dd < 11 && arx > 45) pairs.push({ d, a, dist: dd });
+				// Marcação individual acompanha de mais longe (e é arrastada para fora da zona).
+				if (dd < (this.teams[defSide].params.manMarking ? 16 : 11) && arx > 45) pairs.push({ d, a, dist: dd });
 			}
 		}
 		pairs.sort((x, y) => x.dist - y.dist);
@@ -569,13 +694,13 @@ export class Match {
 			used.add(d.id);
 			taken.add(a.id);
 			const at = this.player(d.id)!.attributes;
-			const tight = 0.5 + (at.posicionamento + at.antecipacao) / 400; // 0.8–0.95
+			const tight = this.teams[defSide].params.manMarking ? 0.97 : 0.5 + (at.posicionamento + at.antecipacao) / 400; // zona: 0.8–0.95
 			const [ax, ay] = toRel(defSide, a.x, a.y);
 			const [gx, gy] = [0, PITCH.width / 2];
 			const k = 1.6 / Math.max(1.6, Math.hypot(ax - gx, ay - gy));
 			const mx = ax + (gx - ax) * k;
 			const my = ay + (gy - ay) * k;
-			const [hx, hy] = toRel(defSide, ...this.slotTarget(defSide, d.slot, false, ballX, ballY));
+			const [hx, hy] = toRel(defSide, ...homeOf.get(d.id)!);
 			out.set(d.id, toAbs(defSide, hx + (mx - hx) * tight, hy + (my - hy) * tight));
 		}
 		return out;
@@ -604,9 +729,12 @@ export class Match {
 		const a = this.player(s.id)!.attributes;
 		const base = 3.0 + a.velocidade * 0.042 + a.aceleracao * 0.01;
 		const t = this.teams[s.side];
-		const counter = this.tick < this.counterUntil[s.side] ? 1.1 : t.params.counterBoost && this.tick - t.regainTick < 8 ? 1 + 0.12 * t.params.counterBoost : 1;
+		const counter = this.tick < this.counterUntil[s.side] ? 1.1 : t.params.counterBoost && this.tick - t.regainTick < 8 ? 1 + 0.08 * t.params.counterBoost : 1;
+		// Recomposição: logo após perder a bola, quem recompõe volta mais rápido.
+		const other = this.teams[OTHER[s.side]];
+		const recover = this.tick - other.regainTick < 6 ? 1 + 0.08 * (t.params.retreat - 0.5) : 1;
 		const injured = s.injured ? 0.6 : 1;
-		return base * this.physFactor(s) * counter * injured * (1 + (this.homeBoost(s.side) - 1) * 0.5);
+		return base * this.physFactor(s) * counter * recover * injured * (1 + (this.homeBoost(s.side) - 1) * 0.5);
 	}
 
 	private physFactor(s: PlayerState): number {
@@ -617,8 +745,55 @@ export class Match {
 		return 0.86 + 0.14 * (s.condition / 100);
 	}
 
+	/** Execução coletiva 0–1 (domínio tático da equipe); 0,6 = referência da calibração. */
+	execution(side: Side): number {
+		return clamp((this.teams[side].setup.familiarity?.execution ?? 60) / 100, 0, 1);
+	}
+
+	private roleOf(s: PlayerState): RoleDef {
+		const t = this.teams[s.side];
+		const pos = FORMATIONS[t.tactic.formation][s.slot]?.position ?? this.player(s.id)!.position;
+		return ROLES[t.roles[s.slot] ?? DEFAULT_ROLE[pos]];
+	}
+
+	/** Inclinações da função escolhida divididas pelas da função padrão da posição. */
+	private relativeBias(s: PlayerState): RoleDef['bias'] {
+		const t = this.teams[s.side];
+		const pos = FORMATIONS[t.tactic.formation][s.slot]?.position ?? this.player(s.id)!.position;
+		const role = this.roleOf(s).bias;
+		const std = ROLES[DEFAULT_ROLE[pos]].bias;
+		return {
+			shoot: role.shoot / std.shoot,
+			dribble: role.dribble / std.dribble,
+			cross: role.cross / std.cross,
+			progress: role.progress / std.progress,
+			safe: role.safe / std.safe,
+			run: role.run / std.run
+		};
+	}
+	
+	private fitCache = new Map<string, number>();
+	/**
+	 * Qualidade de leitura do atleta na função (0–100): compatibilidade dos atributos
+	 * com a função e domínio adquirido nela. Afeta a QUALIDADE das escolhas.
+	 */
+	private roleFit(s: PlayerState): number {
+		const role = this.roleOf(s);
+		const key = `${s.id}:${role.id}:${s.slot}`;
+		let v = this.fitCache.get(key);
+		if (v === undefined) {
+			const t = this.teams[s.side];
+			const pos = FORMATIONS[t.tactic.formation][s.slot]?.position;
+			const compat = roleCompatibility(this.player(s.id)!.attributes, role.id, pos);
+			const fam = t.setup.familiarity?.roles?.[s.id] ?? 60;
+			v = compat * 0.6 + fam * 0.4;
+			this.fitCache.set(key, v);
+		}
+		return v;
+	}
+
 	private homeBoost(side: Side): number {
-		return (this.rules.homeAdvantage && side === 'home' ? 1.07 : 1) * this.form[side];
+		return (this.rules.homeAdvantage && side === 'home' ? 1.09 : 1) * this.form[side];
 	}
 
 	private fatigue() {
@@ -664,6 +839,9 @@ export class Match {
 			const [bx] = toRel(s.side, s.x, s.y);
 			const committed = this.onPitch(OTHER[s.side]).filter((o) => toRel(s.side, o.x, o.y)[0] < bx - 3).length;
 			if (committed >= 5 && bx < 75) this.counterUntil[s.side] = this.tick + 9;
+			// Quem perdeu a bola e treina pressão pós-perda reage na hora.
+			const loser = this.teams[OTHER[s.side]];
+			if (loser.params.counterPress > 0) loser.counterPressUntil = this.tick + loser.params.counterPress;
 		}
 		this.lastTouch = { side: s.side, player: id };
 		const a = this.player(id)!.attributes;
@@ -706,7 +884,7 @@ export class Match {
 		for (const d of this.onPitch(OTHER[owner.side])) {
 			if (d.id === t.gkId) continue;
 			if (dist(d.x, d.y, owner.x, owner.y) > 1.9) continue;
-			const intent = 0.16 + t.params.pressers * 0.04;
+			const intent = (0.16 + t.params.pressers * 0.04) * t.params.aggression;
 			if (this.rng.next() > intent) continue;
 			this.tackleContest(d, owner, false);
 			return;
@@ -717,7 +895,8 @@ export class Match {
 	private tackleContest(def: PlayerState, att: PlayerState, takeOn: boolean): 'won' | 'lost' | 'foul' {
 		const da = this.player(def.id)!.attributes;
 		const aa = this.player(att.id)!.attributes;
-		const defScore = (da.desarme * 0.55 + da.posicionamento * 0.2 + da.forca * 0.15 + da.antecipacao * 0.1) * this.physFactor(def) * this.homeBoost(def.side);
+		const aggr = this.teams[def.side].params.aggression;
+		const defScore = (da.desarme * 0.55 + da.posicionamento * 0.2 + da.forca * 0.15 + da.antecipacao * 0.1) * this.physFactor(def) * this.homeBoost(def.side) * Math.sqrt(aggr);
 		const attScore = (aa.drible * 0.45 + aa.agilidade * 0.2 + aa.forca * 0.15 + aa.dominio * 0.2) * this.techFactor(att) * this.homeBoost(att.side) * (takeOn ? 0.88 : 1.15);
 		const pWin = defScore / (defScore + attScore);
 		const r = this.rng.next();
@@ -725,7 +904,7 @@ export class Match {
 		// Dentro da própria área o defensor evita o contato (risco de pênalti).
 		const inOwnBox = inBox(...toRel(att.side, att.x, att.y));
 		const caution = (def.yellow > 0 ? 0.55 : 1) * (inOwnBox ? 0.22 : 1);
-		const foulChance = (0.04 + Math.max(0, 62 - da.desarme) / 600 + (1 - def.condition / 100) * 0.06 + (takeOn ? 0.03 : 0)) * caution;
+		const foulChance = (0.075 + Math.max(0, 62 - da.desarme) / 500 + (1 - def.condition / 100) * 0.06 + (takeOn ? 0.03 : 0)) * caution * Math.pow(aggr, 1.6);
 		if (r < foulChance) {
 			this.foul(def, att);
 			return 'foul';
@@ -777,7 +956,17 @@ export class Match {
 		const pressure = opps.filter((o) => dist(o.x, o.y, owner.x, owner.y) < (ax > 80 ? 3 * oppBox : 3)).length;
 		const diff = this.score[side] - this.score[OTHER[side]];
 		const late = this.half === 2 && this.tick - this.halfEnd > 30 * 60;
-
+		// Função do atleta: inclina as escolhas em relação à função padrão da posição
+		// (o time padrão continua exatamente como calibrado; efeito pela metade).
+		const bias = this.relativeBias(owner);
+		const rb = (v: number) => 1 + (v - 1) * 0.5;
+		// Recém-recuperou a bola e o plano é manter a posse: joga mais seguro.
+		const justWon = this.tick - this.teams[side].regainTick < 8;
+		const safety = p.safetyWeight * rb(bias.safe) * (justWon ? 1 + 0.3 * (p.retain - 0.5) : 1);
+		const ownHalf = ax < 35;
+		const shortB = p.shortBias - (ownHalf ? p.buildDirect * 0.3 : 0);
+		const longB = p.longBias + (ownHalf ? p.buildDirect * 0.5 : 0);
+		
 		type Option = { u: number; run: () => void };
 		const options: Option[] = [];
 
@@ -790,7 +979,7 @@ export class Match {
 			let u = xg >= threshold ? 0.26 + xg * 5 : xg >= threshold * 0.6 ? 0.04 + xg * 2 : xg;
 			// Chute de fora da área: arma de quem finaliza bem e tem espaço.
 			if (goalDist > 16.5 && goalDist < 28 && pressure === 0) u = Math.max(u, 0.04 + a.finalizacao / 330 + a.tecnica / 900 - (goalDist - 16.5) * 0.02);
-			options.push({ u, run: () => this.shoot(owner, false) });
+			options.push({ u: u * rb(bias.shoot), run: () => this.shoot(owner, false) });
 		}
 
 		// Passes
@@ -804,27 +993,32 @@ export class Match {
 			// Impedimento: posição do recebedor NO MOMENTO do passe.
 			const offside = tx > line + 0.3 && tx > HALF_LENGTH;
 			// Passe em profundidade: explora o espaço atrás de uma linha defensiva alta.
-			const runner = (mi.position === 'ATA' || mi.position === 'PD' || mi.position === 'PE' || mi.position === 'MEI') && !offside;
+			const mateRun = this.relativeBias(m).run * (['ATA', 'PD', 'PE', 'MEI'].includes(mi.position) ? 1 : 0.85);
+			const runner = (mi.position === 'ATA' || mi.position === 'PD' || mi.position === 'PE' || mi.position === 'MEI' || mateRun >= 1.3) && mateRun > 0.6 && !offside;
 			const spaceBehind = PITCH.length - 6 - line;
 			const inCounter = this.tick < this.counterUntil[side];
-			const through = runner && tx > line - 7 && spaceBehind > (inCounter ? 8 : 16) && a.visao > 50;
+			// Movimentos em profundidade: instrução do time × perfil de quem corre.
+			const depthNeed = ((inCounter ? 8 : 16) * (1.5 - p.runDepth)) / Math.max(0.6, rb(mateRun));
+			const through = runner && tx > line - 7 && spaceBehind > depthNeed && a.visao > 50;
 			let throughFactor = 1;
 			if (through) {
 				const defPace = this.onPitch(OTHER[side]).reduce((acc, o) => acc + this.player(o.id)!.attributes.velocidade, 0) / 11;
 				tx = Math.min(PITCH.length - 9, line + Math.min(20, spaceBehind * 0.55));
-				throughFactor = clamp(0.22 + (a.visao + a.passe) / 650 + (mi.attributes.velocidade - defPace) / 110 + (inCounter ? 0.15 : 0), 0.1, 0.7);
+				throughFactor = clamp((0.22 + (a.visao + a.passe) / 650 + (mi.attributes.velocidade - defPace) / 110 + (inCounter ? 0.15 : 0)) * (0.85 + 0.3 * p.runDepth), 0.1, 0.72);
 			}
 			// Leitura do passe: quem tem boa visão/decisão quase nunca serve um atleta impedido.
-			if (offside && this.rng.next() > 0.12 - a.decisoes / 1500) continue;
+			// Leitura do impedimento: impedimentos claros quase nunca são servidos; os milimétricos
+			// enganam mais quem tem pouca visão/decisão.
+			if (offside && this.rng.next() > ((1 - (a.visao + a.decisoes) / 200) * 0.22) / (1 + (tx - line) * 0.8)) continue;
 			const [absX, absY] = toAbs(side, tx, ty);
 			const prob = through ? clamp(throughFactor * (0.8 + a.passe / 500), 0.15, 0.9) : this.passSuccess(owner, absX, absY, opps, d);
 			const progress = tx - ax;
 			const recvXg = baseXg(tx, ty);
 			const space = Math.min(8, this.nearestOpponentDistanceTo(OTHER[side], absX, absY));
-			const pw = p.progressWeight * (this.tick < this.counterUntil[side] ? 1.4 : 1);
-			let u = Math.pow(prob, 1.2 * p.safetyWeight) * (0.4 + Math.max(0, progress) * 0.032 * pw + recvXg * 5 + space * 0.025);
-			if (d < 18) u += 0.12 * p.shortBias;
-			if (d > 30) u += 0.12 * p.longBias;
+			const pw = p.progressWeight * rb(bias.progress) * (this.tick < this.counterUntil[side] ? 1.4 : 1) * (justWon ? 1 - 0.2 * (p.retain - 0.5) : 1);
+			let u = Math.pow(prob, 1.2 * safety) * (0.4 + Math.max(0, progress) * 0.032 * pw + recvXg * 5 + space * 0.025);
+			if (d < 18) u += 0.12 * shortB;
+			if (d > 30) u += 0.12 * longB;
 			if (Math.abs(ty - PITCH.width / 2) > 22) u += 0.1 * p.wideBias;
 			if (progress < -6) u -= 0.08 * p.progressWeight;
 			if (late && diff > 0 && progress < 0) u += 0.05;
@@ -837,7 +1031,7 @@ export class Match {
 		// Cruzamento
 		if (ax > 76 && Math.abs(ay - PITCH.width / 2) > 15) {
 			const targets = mates.filter((m) => inBox(...toRel(side, m.x, m.y))).length;
-			const u = (a.cruzamento / 100) * (targets ? 0.55 + targets * 0.08 : 0.1) * (1 + p.wideBias * 0.5);
+			const u = (a.cruzamento / 100) * (targets ? 0.55 + targets * 0.08 : 0.1) * (1 + p.wideBias * 0.5) * rb(bias.cross);
 			options.push({ u, run: () => this.cross(owner) });
 		}
 
@@ -849,7 +1043,7 @@ export class Match {
 		if (ahead) {
 			const skill = (a.drible + a.agilidade + a.aceleracao) / 3;
 			const crowd = opps.filter((o) => dist(o.x, o.y, owner.x, owner.y) < 7).length;
-			const u = (skill / 100) * 0.6 * (ax > 60 ? 1.1 : 0.8) * (info.position === 'ZAG' || info.position === 'GOL' ? 0.3 : 1) * (crowd >= 2 ? 0.65 : 1);
+			const u = (skill / 100) * 0.6 * (ax > 60 ? 1.1 : 0.8) * (info.position === 'ZAG' || info.position === 'GOL' ? 0.3 : 1) * (crowd >= 2 ? 0.65 : 1) * rb(bias.dribble);
 			options.push({ u, run: () => this.takeOn(owner, this.states.get(ahead.o.id)!) });
 		} else if (ax < PITCH.length - 18) {
 			options.push({ u: 0.45 + (a.drible / 400), run: () => this.carryAction(owner) });
@@ -865,7 +1059,10 @@ export class Match {
 			return;
 		}
 		// Escolha com ruído controlado pelas "decisões": melhores jogadores escolhem melhor.
-		const temp = Math.max(0.05, 0.22 - a.decisoes / 650);
+		// Atleta adaptado à função e time que domina o sistema também escolhem melhor.
+		const fitMult = 1 + ((56 - this.roleFit(owner)) / 100) * 0.8;
+		const execMult = 1 - (this.execution(side) - 0.6) * 0.5;
+		const temp = Math.max(0.05, 0.22 - a.decisoes / 650) * fitMult * execMult;
 		const max = Math.max(...options.map((o) => o.u));
 		const weights = options.map((o) => Math.exp((o.u - max) / temp));
 		const total = weights.reduce((s, w) => s + w, 0);
@@ -887,7 +1084,7 @@ export class Match {
 		const a = this.player(owner.id)!.attributes;
 		let base = d <= 30 ? 0.975 - d * 0.0045 : 0.84 - (d - 30) * 0.011;
 		base *= 0.79 + a.passe / 360 + a.tecnica / 1100 + a.visao / 2000;
-		base *= this.techFactor(owner) * this.homeBoost(owner.side) * this.teams[owner.side].params.passAccuracy;
+		base *= this.techFactor(owner) * this.homeBoost(owner.side) * this.teams[owner.side].params.passAccuracy * (1 + (this.execution(owner.side) - 0.6) * 0.05);
 		let threat = 0;
 		for (const o of opps) {
 			const { d: seg, t } = segmentDistance(o.x, o.y, owner.x, owner.y, tx, ty);
@@ -1148,7 +1345,9 @@ export class Match {
 			const at = this.player(p.id)!.attributes;
 			return (at.cabeceio * 0.45 + at.impulsao * 0.3 + at.forca * 0.15 + at.posicionamento * 0.1) * this.physFactor(p) * this.homeBoost(p.side) + this.rng.next() * 18;
 		};
-		const bestAtt = attackers.map((p) => ({ p, s: aerial(p) })).sort((a, b) => b.s - a.s)[0];
+		// Bola parada ensaiada: movimentações treinadas ganham alguns duelos a mais.
+		const drilled = setPiece ? ((this.teams[side].setup.familiarity?.setPieces ?? 50) - 50) / 8 : 0;
+		const bestAtt = attackers.map((p) => ({ p, s: aerial(p) + drilled })).sort((a, b) => b.s - a.s)[0];
 		const bestDef = defenders.map((p) => ({ p, s: aerial(p) + 4 })).sort((a, b) => b.s - a.s)[0];
 		if (bestAtt && (!bestDef || bestAtt.s > bestDef.s)) {
 			bestAtt.p.x = tx;
@@ -1189,7 +1388,7 @@ export class Match {
 		const gkState = this.states.get(this.teams[OTHER[side]].gkId);
 		const gk = gkState?.onPitch ? this.player(gkState.id)!.attributes : null;
 		const gkRating = gk ? gk.reflexos * 0.45 + gk.posicionamentoGol * 0.3 + gk.defesa * 0.15 + gk.agilidade * 0.1 : 25;
-		const gkFactor = 1.22 - (gkRating / 100) * 0.36 * (gkState ? this.physFactor(gkState) / 0.98 : 0);
+		const gkFactor = 1.33 - (gkRating / 100) * 0.36 * (gkState ? this.physFactor(gkState) / 0.98 : 0);
 		const pGoal = clamp(xg * skill * gkFactor, 0.005, 0.97);
 		const boxDef = this.teams[OTHER[side]].params.boxDefense;
 		const blockChance = penalty ? 0 : clamp((0.06 + this.defendersInLane(shooter) * 0.11) * boxDef, 0, 0.45);
@@ -1267,9 +1466,9 @@ export class Match {
 		this.ball.owner = null;
 		this.ball.flight = null;
 		const da = this.player(offender.id)!.attributes;
-		const severity = 0.085 + (counter ? 0.25 : 0) + (inBox(vx, vy) ? 0.05 : 0) + (60 - da.desarme) / 500 + (60 - da.concentracao) / 700;
+		const severity = 0.15 + (counter ? 0.25 : 0) + (inBox(vx, vy) ? 0.05 : 0) + (60 - da.desarme) / 500 + (60 - da.concentracao) / 700;
 		const r = this.rng.next();
-		if (r < 0.0015 + (counter ? 0.003 : 0)) this.card(offender, 'red');
+		if (r < 0.001 + (counter ? 0.002 : 0)) this.card(offender, 'red');
 		else if (r < severity) this.card(offender, 'yellow');
 		this.stoppageSeconds += 15;
 		if (inBox(vx, vy)) {
@@ -1396,7 +1595,7 @@ export class Match {
 		if (r.type === 'goal_kick') {
 			const a = this.player(taker.id)!.attributes;
 			const p = t.params;
-			const long = this.rng.next() < clamp(0.5 + p.longBias * 0.3 - p.shortBias * 0.3 - (a.reposicao - 60) / 150, 0.1, 0.9);
+			const long = this.rng.next() < clamp(0.5 + p.longBias * 0.3 - p.shortBias * 0.3 + (p.buildDirect - 0.5) * 0.4 - (a.reposicao - 60) / 150, 0.1, 0.92);
 			if (long) {
 				const [tx, ty] = toAbs(r.side, 55 + this.rng.next() * 15, PITCH.width / 2 + (this.rng.next() - 0.5) * 30);
 				this.ball.flight = { toX: tx, toY: ty, arrive: this.tick + 3, target: null, outcome: { kind: 'loose' } };
@@ -1427,6 +1626,13 @@ export class Match {
 }
 
 export const HALF_LENGTH_TICKS = 45 * 60;
+
+/** Ruído determinístico em [-1, 1] (não consome o RNG da partida). */
+function hashNoise(a: number, b: number, c: number): number {
+	let h = (a * 374761393 + b * 668265263 + c * 2147483647) >>> 0;
+	h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
+	return ((h ^ (h >>> 16)) >>> 0) / 2147483647.5 - 1;
+}
 
 function clamp(v: number, lo: number, hi: number) {
 	return Math.max(lo, Math.min(hi, v));

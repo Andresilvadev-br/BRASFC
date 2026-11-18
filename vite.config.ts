@@ -89,7 +89,8 @@ export default defineConfig({
 	test: {
 		include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
 		environment: 'node',
-		testTimeout: 20_000,
+		// Testes estatísticos simulam centenas de partidas.
+		testTimeout: 180_000,
 		hookTimeout: 30_000
 	}
 });
