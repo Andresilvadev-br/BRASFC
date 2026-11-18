@@ -1,4 +1,4 @@
-# BRASFC Football Engine (Dev 0.2)
+# BRASFC Football Engine (versão 0.3.0)
 
 Motor próprio, em TypeScript puro (`src/lib/engine`), sem dependência da Ultra Motion X (que continua responsável só por animação de interface). Roda igual no navegador e no servidor.
 
@@ -81,3 +81,110 @@ Partem de 6,0; somam e subtraem pelo que o atleta fez, com pesos por função (d
 - `narration.ts` — frases de narração geradas dos eventos.
 - `teams.ts` — conversão de elencos em `TeamSetup`.
 - `scripts/engine-stats.ts`, `scripts/engine-diag.ts` — calibração.
+
+
+---
+
+# Dev 0.3 — Inteligência tática
+
+## Instruções avançadas (`instructions.ts`)
+
+18 instruções em três grupos (com a bola, sem a bola, transições). Toda tática tem um **preset** derivado de mentalidade + estilo (modo simples). O motor parte dos parâmetros calibrados do preset e aplica apenas a **diferença** de cada instrução — por isso o modo simples continua exatamente como calibrado.
+
+| Instrução | Efeito no motor | Contrapartida |
+|---|---|---|
+| Saída de bola | chance de reposição/primeira fase longa | bola longa devolve mais posses |
+| Ritmo | tempo de decisão | mais rápido erra mais passes |
+| Distância | espaçamento em posse, passes curtos | espaçado alonga os passes |
+| Amplitude | largura em posse | menos gente por dentro |
+| Corredor | preferência por jogo pelos lados | — |
+| Laterais | apoio dos laterais | espaço nas costas |
+| Tipo de passe | curtos × longos | longos erram mais |
+| Abordagem | avanço × segurança | perde mais a bola |
+| Profundidade | corridas às costas e passes em profundidade | impedimentos, inútil contra linha baixa |
+| Presença na área | meias que atacam a área | exposição na perda |
+| Linha / Bloco | altura da defesa | espaço às costas |
+| Pressão | distância e número de pressionadores | cansaço |
+| Compactação | comprimento do bloco, densidade na área | lados livres |
+| Marcação individual | acompanha mais de perto e mais longe | é arrastada, abre espaços |
+| Agressividade | vence mais disputas | mais faltas e cartões |
+| Ao recuperar | contra-ataque × reter | — |
+| Ao perder | pressão pós-perda (6 s) × recompor | cansaço × cede terreno |
+
+Trocar mentalidade/estilo troca o preset e **mantém** os ajustes avançados (`overridesOf`).
+
+## Funções individuais (`roles.ts`)
+
+20 funções (goleiro tradicional/líbero, zagueiro tradicional/construtor, lateral defensivo/ofensivo, ala, volante marcador, organizador recuado, construtor, área a área, meia infiltrador, armador avançado, meia-atacante infiltrador, ponta clássico/invertido, atacante interior, centroavante de referência, atacante móvel, falso 9). Cada função tem: atributos exigidos, deslocamento espacial (com e sem bola, aproximação do centro), inclinações de decisão (chutar, driblar, cruzar, progredir, jogar seguro, atacar o espaço) e um texto de risco.
+
+- O efeito é **relativo à função padrão da posição**: o time padrão continua calibrado.
+- `roleCompatibility` (0–100) compara os atributos-chave com o nível geral do atleta; fora das posições previstas perde 25 pontos.
+- A qualidade de escolha do atleta (temperatura da decisão) piora quando a função não combina com ele ou ele ainda não a domina.
+
+## Domínio tático (`domain/tactical.ts`)
+
+Cinco dimensões de 0 a 100, persistidas em `careers.data.tactical`: formação, estilo, compreensão das instruções, entrosamento de cada atleta e domínio de cada atleta em cada função.
+
+- Ganho por partida com retorno decrescente (`k · (1 − v/100)^1,3`), ponderado pela capacidade de aprendizagem (decisões, posicionamento, trabalho em equipe, concentração, antecipação) e pelos minutos.
+- Formações e estilos parecidos aprendem juntos (4-3-3 → 4-2-3-1); os demais esquecem devagar (−0,25/jogo acima de 30).
+- Mudar instruções derruba 4 pontos por instrução alterada (máx. 30) e volta com o tempo.
+- Novos atletas começam com entrosamento 15; quem sai deixa de contar.
+- **Execução coletiva** = 35% formação + 25% estilo + 15% instruções + 25% entrosamento dos titulares. No motor: sem a bola, times abaixo de 60 deixam linhas desalinhadas; com a bola, decidem e passam um pouco melhor ou pior. **Não há bônus de gol.**
+
+Medição (`node scripts/engine-mastery.ts 160`, mesmo time contra rival com 60):
+
+| Execução | V | E | D | Gols | Passes certos |
+|---|---|---|---|---|---|
+| 35 | 44 | 47 | 69 | 1,39–1,68 | 77,8% |
+| 60 | 48 | 62 | 50 | 1,45–1,48 | 78,8% |
+| 85 | 58 | 56 | 46 | 1,57–1,51 | 79,6% |
+
+## Treinador da IA (`ai-coach.ts`, `domain/coaches.ts`)
+
+- 7 perfis (pragmático, ofensivo, reativo, posse, pressão alta, retranqueiro, equilibrado) com formações preferidas, adaptabilidade e disposição a arriscar. Cada clube recebe um perfil determinístico; há 30% de chance de troca de comando por temporada (domínio do novo técnico começa menor).
+- **Plano pré-jogo** contra o usuário a partir do que foi *observado* nos últimos 3 jogos dele (formação, instruções, funções e posse): pressão alta → saída direta; bloco baixo → amplitude e paciência; laterais ofensivos → transição pelos lados; linha alta + atacantes rápidos → profundidade; jogo central → fechar o meio.
+- **Durante o jogo**, a cada 5 minutos, com dados visíveis (placar, minuto, finalizações, posse, cansaço médio, expulsões, altura da linha rival quando ela defende): compactar com um a menos, buscar o empate, segurar a vitória, proteger a área, poupar energia, atacar as costas, abrir o campo. Treinadores pouco adaptáveis às vezes mantêm o plano.
+- Todas as decisões viram `Decision` reproduzíveis — o servidor as recalcula ao validar a partida.
+
+## Correções e calibração da Dev 0.2
+
+- **Impedimentos** (6,8 → ~2,9/jogo) corrigidos pela lógica: desmarcação temporizada (o atacante só estica quando o passe vai sair), leitura da linha que está subindo (antecipação), posicionamento legal também durante as bolas paradas e leitura do impedimento pelo passador (visão/decisões; impedimentos claros quase nunca são servidos).
+- **Formações** além do 4-3-3: meias abertos sobem em posse, alas formam linha de 5 sem a bola, zagueiros guardam o corredor central, o segundo atacante é móvel por padrão, sem troca infinita de passes entre os atacantes, e o finalizador marcado arrisca o chute dentro da área.
+- **Notas** recalibradas (média ~6,5; 90% abaixo de 7,6).
+- **Desempenho**: `Math.hypot` substituído no laço quente e marcação sem cálculo duplicado.
+
+## Calibração final (200 partidas, times iguais, IA ligada)
+
+| Métrica | Dev 0.2 | Dev 0.3 | Referência |
+|---|---|---|---|
+| Gols por jogo | 2,26 | 2,52 | 2,49 (Brasileirão 2025, Centauro) |
+| Finalizações por time | 12,5 | 12,6 | 11–14 |
+| Precisão de passe | 78,1% | 78,8% | 78–84% |
+| Faltas por jogo | 17,7 | 24,4 | 24,6 (CIES via Soccerway) |
+| Amarelos por jogo | 2,3 | 4,7 | ~5–6 (Brasileirão 2024, netvasco) |
+| Escanteios | 10,7 | 11,7 | 9,8 (estudo UFU) |
+| Impedimentos | 6,84 | 2,85 | ~3 (sem fonte nacional encontrada) |
+| Empates (times iguais) | 32,5% | 30,5% | ~27% (liga, com times desiguais) |
+| Vitórias do mandante | 44,4% | 46,5% | 45–50% |
+
+Fontes consultadas em 17/11/2026: Centauro (resumo do Brasileirão 2025), Soccerway (ranking CIES de faltas), netvasco (cartões 2024), repositório UFU (escanteios). Vitórias do mandante e empates: referência geral, sem fonte nacional verificada.
+
+## Limitações conhecidas (medidas)
+
+- Formações contra o 4-3-3 (`node scripts/engine-formations.ts 40`): o 4-3-3 — base da calibração — ainda leva vantagem (1,45 ponto/jogo contra 0,90–1,18 das demais). Esquemas com dupla de ataque finalizam um pouco menos (~9 chutes) e os de três zagueiros cedem mais finalizações (~17). A diferença caiu bastante (antes: 0,38–0,55 ponto/jogo para 3-5-2/5-3-2 e ~5 chutes para quem jogava com dois atacantes), mas não foi eliminada.
+
+## Equilíbrio de estilos (`node scripts/engine-balance.ts 30`, pontos por jogo contra todos)
+
+| Estilo | Dev 0.2 | Dev 0.3 |
+|---|---|---|
+| Posse de bola | 1,13 | 1,44 |
+| Pressão alta | 1,33 | 1,39 |
+| Bola longa | 1,49 | 1,34 |
+| Jogo pelos laterais | 1,33 | 1,34 |
+| Construção vertical | 1,53 | 1,33 |
+| Contra-ataque | 1,84 | 1,32 |
+| Tiki-taka | 1,51 | 1,26 |
+
+Amplitude: 0,71 → 0,18. Todo estilo tem pelo menos um confronto desfavorável (ex.: pressão alta perde para construção vertical; tiki-taka sofre contra pressão alta; contra-ataque sofre contra pressão alta e vertical).
+- Uma rodada da carreira simula 30 partidas (três séries): ~3,8 s em Node (medido em `scripts/season-sim.ts`), ~10 s no servidor de desenvolvimento.
+- Jogos IA × IA entre clubes reais têm média de ~3 gols (as diferenças de força entre os clubes aumentam o placar).

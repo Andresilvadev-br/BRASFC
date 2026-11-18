@@ -50,7 +50,7 @@ const MENTALITY: Record<Mentality, Partial<TacticalParams>> = {
 
 const STYLE: Record<PlayStyle, Partial<TacticalParams>> = {
 	posse: { shortBias: 0.6, longBias: -0.4, tempo: 2.3, safetyWeight: 1.08, progressWeight: 0.12, width: 1.0, passAccuracy: 1.05, boxDefense: 1.1 },
-	'tiki-taka': { shortBias: 1.0, longBias: -0.8, tempo: 1.8, safetyWeight: 1.15, width: 0.9, pressDistance: 14, pressers: 2, fatigueCost: 0.04, passAccuracy: 1.0 },
+	'tiki-taka': { shortBias: 1.0, longBias: -0.8, tempo: 1.8, safetyWeight: 1.15, width: 0.9, pressDistance: 14, pressers: 2, fatigueCost: 0.055, passAccuracy: 0.98, boxDefense: 0.95 },
 	'contra-ataque': { counterBoost: 1, longBias: 0.3, tempo: 2.1, width: 0.95, defLine: -1, passAccuracy: 0.98 },
 	'bola-longa': { longBias: 1.0, shortBias: -0.5, tempo: 1.8, progressWeight: 0.3, passAccuracy: 0.96 },
 	laterais: { wideBias: 0.8, width: 1.15, tempo: 2.2, boxDefense: 0.95 },
