@@ -36,22 +36,26 @@ export interface TacticalParams {
 	support: number;
 	/** bônus de velocidade nas transições logo após recuperar a bola */
 	counterBoost: number;
+	/** multiplicador da precisão de passe (passes arriscados erram mais) */
+	passAccuracy: number;
+	/** densidade defensiva na própria área: bloqueios, marcação na recepção e pressão no chute */
+	boxDefense: number;
 }
 
 const MENTALITY: Record<Mentality, Partial<TacticalParams>> = {
-	defensiva: { defLine: 27, blockLength: 37, progressWeight: 0.9, safetyWeight: 1.15, shotThreshold: 0.1, support: 0.3 },
+	defensiva: { defLine: 30, blockLength: 32, progressWeight: 0.9, safetyWeight: 1.15, shotThreshold: 0.1, support: 0.3, boxDefense: 1.45, counterBoost: 0.5 },
 	equilibrada: { defLine: 31, blockLength: 40, progressWeight: 1, safetyWeight: 1, shotThreshold: 0.09, support: 0.5 },
-	ofensiva: { defLine: 35, blockLength: 42, progressWeight: 1.1, safetyWeight: 0.9, shotThreshold: 0.08, support: 0.75 }
+	ofensiva: { defLine: 35, blockLength: 42, progressWeight: 1.08, safetyWeight: 0.92, shotThreshold: 0.085, support: 0.7, boxDefense: 0.82, fatigueCost: 0.02 }
 };
 
 const STYLE: Record<PlayStyle, Partial<TacticalParams>> = {
-	posse: { shortBias: 0.6, longBias: -0.4, tempo: 2.6, safetyWeight: 1.25, width: 1.0 },
-	'tiki-taka': { shortBias: 1.0, longBias: -0.8, tempo: 1.8, safetyWeight: 1.15, width: 0.9, pressDistance: 14, pressers: 2, fatigueCost: 0.03 },
+	posse: { shortBias: 0.6, longBias: -0.4, tempo: 2.6, safetyWeight: 1.1, width: 1.0, passAccuracy: 1.04 },
+	'tiki-taka': { shortBias: 1.0, longBias: -0.8, tempo: 1.8, safetyWeight: 1.15, width: 0.9, pressDistance: 14, pressers: 2, fatigueCost: 0.04, passAccuracy: 1.0 },
 	'contra-ataque': { counterBoost: 1, longBias: 0.3, tempo: 2.0, width: 0.95, defLine: -6 },
-	'bola-longa': { longBias: 1.0, shortBias: -0.5, tempo: 1.8, progressWeight: 0.3 },
+	'bola-longa': { longBias: 1.0, shortBias: -0.5, tempo: 1.8, progressWeight: 0.2, passAccuracy: 0.94 },
 	laterais: { wideBias: 1.0, width: 1.15, tempo: 2.2 },
-	pressao: { pressDistance: 22, pressers: 3, fatigueCost: 0.06, defLine: 7 },
-	vertical: { progressWeight: 0.5, tempo: 1.7, shortBias: -0.1, longBias: 0.2 }
+	pressao: { pressDistance: 22, pressers: 3, fatigueCost: 0.07, defLine: 7, boxDefense: 0.9 },
+	vertical: { progressWeight: 0.25, tempo: 1.8, shortBias: -0.1, longBias: 0.2, passAccuracy: 0.95 }
 };
 
 const BASE: TacticalParams = {
@@ -69,7 +73,9 @@ const BASE: TacticalParams = {
 	tempo: 2.6,
 	shotThreshold: 0.09,
 	support: 0.5,
-	counterBoost: 0
+	counterBoost: 0,
+	passAccuracy: 1,
+	boxDefense: 1
 };
 
 /** Combina mentalidade e estilo. Modificadores aditivos para linhas/pesos, substitutivos para o resto. */
@@ -81,6 +87,7 @@ export function tacticalParams(mentality: Mentality, style: PlayStyle): Tactical
 		if (k === 'defLine') p.defLine += v;
 		else if (k === 'progressWeight') p.progressWeight += v;
 		else if (k === 'safetyWeight') p.safetyWeight = (p.safetyWeight + v) / 2;
+		else if (k === 'boxDefense' || k === 'passAccuracy') p[k] *= v;
 		else p[k] = v;
 	}
 	return p;
