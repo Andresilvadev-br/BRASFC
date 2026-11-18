@@ -47,3 +47,12 @@ A fonte precisa existir em `fontes.json`. O campo sai automaticamente das pendê
 ## Transferências (preparação)
 
 Os elencos reais entrarão como `elencos/<clube>.json` com id estável por atleta; transferências serão registradas como eventos datados (atleta, origem, destino, data, fonte), nunca sobrescrevendo o histórico.
+
+
+## Dev 0.4 — Série D, Copa do Brasil e regras por edição
+
+- `src/lib/data/brasil/2026/serie-d.json`: 96 clubes em 16 grupos (Wikipédia, consultada em 11/2026). Grupos A1–A10 conferidos no texto; parte de A11 e A12–A16 vieram do resumo da página e estão marcados com a pendência `grupo-confirmar`. Campeão (Uberlândia), vice (ASA) e os seis acessos (ABC, ASA, Gama, Goiatuba, Nacional-AM, Uberlândia) conferidos também na CBF.
+- `copa-do-brasil.json`: 126 participantes com a fase de entrada (28 + 74 + 4 + 20). Fontes: Wikipédia (pt/en) e anúncio da CBF. 14 clubes que só disputam a Copa foram cadastrados como "estaduais" (série E), com cidade pendente.
+- Regras por edição em `src/lib/domain/rules.ts`: Série C com 20 (2026), 24 (2027, CBF/DOL) e 28 em dois grupos com três quedas por grupo (2028, CBF/CNN). A 2ª fase de 2028 ainda não foi publicada: o BRASFC projeta dois quadrangulares (marcado como projeção).
+- Clubes sem cores conferidas recebem **cores provisórias geradas** (marcadas como tal), nunca apresentadas como oficiais.
+- Premiação da Copa: tabela da Wikipédia em inglês, não conferida no regulamento (aviso na tela).

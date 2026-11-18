@@ -10,11 +10,12 @@
  *  - API e WebSocket nunca passam pelo cache: partidas e ações oficiais exigem o servidor.
  *  - Sem conexão: páginas já visitadas abrem do cache; as demais mostram um aviso de offline.
  */
-import { build, files, version } from '$service-worker';
+import { assets, immutable } from '$app/manifest';
+import { version } from '$app/env';
 
 const sw = self as unknown as ServiceWorkerGlobalScope;
 const CACHE = `brasfc-${version}`;
-const ASSETS = new Set([...build, ...files]);
+const ASSETS = new Set([...immutable, ...assets].map((a) => (String(a.path).startsWith('/') ? String(a.path) : `/${a.path}`)));
 
 sw.addEventListener('install', (event) => {
 	event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll([...ASSETS])));

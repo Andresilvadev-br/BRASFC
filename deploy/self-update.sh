@@ -54,8 +54,27 @@ CURRENT_TAG="$(cat "$DIR/deploy/.current-tag.$ENV_NAME" 2>/dev/null || true)"
 if [ "$CURRENT_TAG" = "$TAG" ] && docker ps --format '{{.Names}}' | grep -q "^brasfc-$ENV_NAME-app-1$"; then
 	exit 0 # já está na versão mais nova
 fi
+# Versão que já falhou na verificação de saúde: não tenta de novo a cada minuto (espera um commit novo).
+if [ "$(cat "$DIR/deploy/.failed-tag.$ENV_NAME" 2>/dev/null || true)" = "$TAG" ]; then
+	exit 0
+fi
+
+# Estado da implantação (lido pela equipe e, se configurado, enviado a um webhook — sem segredos no repositório).
+status() {
+	local state="$1" msg="$2"
+	printf '{"state":"%s","tag":"%s","previous":"%s","at":"%s","message":"%s"}
+' "$state" "$TAG" "${CURRENT_TAG:-}" "$(stamp)" "$msg" > "$DIR/backups/deploy-status.json"
+	# Aviso opcional: crie /opt/brasfc/deploy/.env.notify com DEPLOY_WEBHOOK_URL=... (Discord, Slack, ntfy etc.).
+	if [ -f "$DIR/deploy/.env.notify" ]; then
+		# shellcheck disable=SC1091
+		. "$DIR/deploy/.env.notify"
+		[ -n "${DEPLOY_WEBHOOK_URL:-}" ] && curl -fsS -m 10 -H 'content-type: application/json' -d "{\"content\":\"BRASFC $ENV_NAME: $state $TAG — $msg\"}" "$DEPLOY_WEBHOOK_URL" >/dev/null 2>&1 || true
+	fi
+}
+trap 'status "falhou" "implantação interrompida (ver self-update.log)"; echo "$TAG" > "$DIR/deploy/.failed-tag.$ENV_NAME"' ERR
 
 echo "[$(stamp)] nova versão $TAG (atual: ${CURRENT_TAG:-nenhuma})"
+status "implantando" "nova versão encontrada"
 git checkout --quiet --force "$REMOTE"
 
 # Atualiza os arquivos de implantação a partir do repositório.
@@ -70,7 +89,8 @@ chmod +x "$DIR"/deploy/*.sh
 # Caminho rápido: o GitHub Actions já publica a imagem pronta (pública) em ~3 min após o push.
 # Baixar leva segundos; construir na VPS leva vários minutos. Só constrói aqui se o GitHub não publicou.
 if docker pull --quiet "$GHCR:$TAG" >/dev/null 2>&1; then
-	echo "[$(stamp)] imagem pronta baixada do GitHub ($GHCR:$TAG)"
+	# Integridade: o pull por tag é verificado pelo digest do registro; registramos o digest no log.
+	echo "[$(stamp)] imagem pronta baixada do GitHub ($(docker image inspect --format '{{index .RepoDigests 0}}' "$GHCR:$TAG" 2>/dev/null || echo "$GHCR:$TAG"))"
 	docker tag "$GHCR:$TAG" "brasfc-local:$TAG"
 elif [ $(( $(date +%s) - $(git log -1 --format=%ct "$REMOTE") )) -lt 900 ]; then
 	echo "[$(stamp)] aguardando o GitHub publicar a imagem de $TAG"
@@ -89,3 +109,5 @@ docker exec brasfc-caddy-caddy-1 caddy reload --config /etc/caddy/Caddyfile >/de
 # Mantém só as 3 imagens locais mais recentes.
 docker images brasfc-local --format '{{.Tag}}' | tail -n +4 | xargs -r -I{} docker rmi "brasfc-local:{}" >/dev/null 2>&1 || true
 echo "[$(stamp)] publicado $TAG"
+rm -f "$DIR/deploy/.failed-tag.$ENV_NAME"
+status "publicado" "versão no ar e saudável"

@@ -20,18 +20,18 @@ Arquivo de retomada. Atualizado a cada checkpoint (commit na branch `dev`).
 
 | Item | Situação |
 |---|---|
-| Motor: otimização sem mudar resultados (impressão digital idêntica) | Feito — 170 → 132 ms/partida |
-| Motor: excesso de gols (causa: calibração só com times médios em 4-3-3; nível absoluto; estilos ofensivos) | Feito — nível relativo, goleiros, ofensiva/pressão/vertical |
-| Base: Série D 2026 + Copa 2026 + estaduais | Feito (dados) |
-| Regras por edição | Feito (módulo); integração pendente |
-| Calendário com D + Copa | Em andamento |
-| Equilíbrio de formações | Pendente |
-| Copa do Brasil (motor + UI) | Pendente |
-| Mercado, contratos, finanças, diretoria, patrocínios | Pendente |
-| Olheiros, base, infraestrutura, história | Pendente |
-| Redesign + Ultra Motion X | Pendente |
-| PWA + Central de Atualizações | Pendente |
-| Relatórios 0.3.1 e 0.4 | Pendente |
+| Motor: otimização (170 → 132 ms, resultados idênticos) | Feito |
+| Motor: gols em excesso (nível relativo, goleiros, estilos) | Feito |
+| Formações (alas como pontas, meia de chegada) | Feito; 5-3-2 ainda abaixo em confronto neutro |
+| Série D 2026, Série C por edição, Copa do Brasil 2026 | Feito |
+| Calendário por passos + modelo rápido calibrado | Feito |
+| Mercado, contratos, finanças, diretoria, patrocínios, estrutura, torcida | Feito |
+| Base, olheiros, carreira de jogador, propostas de emprego, história | Feito |
+| Redesign das telas + Ultra Motion X + qualidade Automático/Completo/Leve | Feito |
+| PWA + Central de Atualizações + pipeline (estado, aviso, versão que falhou) | Feito |
+| Testes: 108 automáticos + 44 verificações no navegador | Feito |
+| Relatórios 0.3.1 e 0.4 (MD + PDF), changelog, docs, versão 0.4.0 | Feito |
+| Elencos e técnicos reais | Bloqueado (sem fonte verificável) |
 
 ## Medições (antes → depois)
 

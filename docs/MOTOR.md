@@ -188,3 +188,24 @@ Fontes consultadas em 17/11/2026: Centauro (resumo do Brasileirão 2025), Soccer
 Amplitude: 0,71 → 0,18. Todo estilo tem pelo menos um confronto desfavorável (ex.: pressão alta perde para construção vertical; tiki-taka sofre contra pressão alta; contra-ataque sofre contra pressão alta e vertical).
 - Uma rodada da carreira simula 30 partidas (três séries): ~3,8 s em Node (medido em `scripts/season-sim.ts`), ~10 s no servidor de desenvolvimento.
 - Jogos IA × IA entre clubes reais têm média de ~3 gols (as diferenças de força entre os clubes aumentam o placar).
+
+
+## Dev 0.3.1 — recalibração e desempenho
+
+**Causa do excesso de gols:** a calibração da 0.2 usava só times médios em 4-3-3, sem técnicos da IA. Na carreira jogam clubes reais de forças diferentes, com perfis ofensivos e ajustes ao vivo. Medido com `scripts/engine-calibrate.ts` (um turno real, técnicos da IA):
+
+| | Antes | Depois |
+|---|---|---|
+| Série A gols/jogo | 3,66 | 2,71 |
+| Série A jogos com 5+ gols | 31% | 15% |
+| Série A chutes por time | 15,9 | 14,6 |
+| Série B gols/jogo | — | 2,32 |
+| Conversão dos chutes no alvo | 41% | 25–30% |
+
+Mudanças (lógica, nunca multiplicador no placar): **nível relativo da partida** (atributos valem em relação à média dos 22 titulares, preservando a diferença entre os times), goleiros mais eficientes, precisão dos chutes separada da qualidade da chance, mentalidade ofensiva menos exposta, pressão alta com linha menos adiantada e jogo vertical menos precipitado. A sensibilidade à força foi medida (`engine-gap.ts`): +4 nos atributos ≈ 61% de aproveitamento; +8 ≈ 67%.
+
+**Desempenho:** cache de quem está em campo, posições-alvo calculadas uma vez por segundo de jogo e laço de marcação otimizado: 170 → 132 ms por partida, com impressão digital idêntica (`engine-fingerprint.ts`).
+
+**Modelo rápido:** jogos fora da competição do usuário usam Poisson calibrado pelo próprio motor (`quick-calibrate.ts`, 280 jogos: mandante 1,37, visitante 0,98, β 0,088 por ponto de força). A divisão do usuário e o jogo dele continuam no motor completo.
+
+**Formações:** alas sobem como pontas em esquemas com três zagueiros e um meia chega à área quando não há pontas. Contra o 4-3-3 (mesma força, 60 jogos): 4-2-3-1 1,62 · 3-4-3 1,30 · 4-4-2 1,28 · 3-5-2 1,22 · 4-2-2-2 1,03 · 5-3-2 0,95 (espelho 4-3-3: 1,55 — mostra o ruído da amostra).

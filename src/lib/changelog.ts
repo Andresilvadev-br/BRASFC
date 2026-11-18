@@ -19,6 +19,36 @@ export interface Release {
 
 export const RELEASES: Release[] = [
 	{
+		version: '0.4.0',
+		date: '2026-11-18',
+		title: 'Evolution Update',
+		channel: 'desenvolvimento',
+		highlights: [
+			{ title: 'Copa do Brasil', text: '126 clubes reais, nove fases, chaveamento interativo e final em campo neutro.', icon: 'trophy' },
+			{ title: 'Mercado de transferências', text: 'Compre, venda, empreste e renove. Clube e atleta respondem de verdade.', icon: 'briefcase' },
+			{ title: 'Finanças e diretoria', text: 'Caixa, patrocínios, obras, torcida e uma diretoria com personalidade.', icon: 'chart' },
+			{ title: 'Base e olheiros', text: 'Jovens que evoluem semana a semana e relatórios por região.', icon: 'sparkle' },
+			{ title: 'Séries A a D', text: 'Série D real e Série C crescendo para 24 e 28 clubes.', icon: 'globe' },
+			{ title: 'Visual novo', text: 'Navegação lateral, painéis vivos, comportamento tático no campo e atualizações dentro do jogo.', icon: 'star' }
+		],
+		added: [
+			'Copa do Brasil 2026 com os 126 participantes reais, jogo único nas fases 1–4, ida e volta até a semifinal e final única',
+			'Série D 2026 real (96 clubes) e Série C por edição (20, 24 e 28 clubes)',
+			'Mercado: compra, venda, empréstimo, livres, renovação, rescisão e propostas recebidas',
+			'Contratos, valor de mercado, evolução e aposentadoria dos atletas',
+			'Finanças, patrocínios, obras, torcida e diretoria com 6 perfis e demissão',
+			'Categorias de base e olheiros',
+			'Carreira de jogador com empresário, propostas, objetivos e prêmios',
+			'História: campeões, artilharia, transferências e sala de troféus',
+			'Redesign completo das telas da carreira e menu em deck',
+			'App instalável (PWA) e Central de Atualizações'
+		],
+		improved: ['Motor 22% mais rápido com resultados idênticos', 'Jogos fora da sua competição em modelo rápido calibrado pelo motor', 'Gravação de rodadas em lote'],
+		fixed: ['Gols em excesso entre times da IA', 'Esquemas com dois atacantes e três zagueiros criavam pouco', 'Site parado na 0.1.0 (dados ignorados pelo Git)'],
+		compat: { database: 'migração 0004 (reversível)', saves: 'saves 0.1–0.3 continuam; Série D e Copa entram na temporada seguinte' },
+		next: ['Elencos reais com fontes verificadas', 'Técnicos reais com data de referência', 'Equilíbrio fino do 5-3-2']
+	},
+	{
 		version: '0.3.0',
 		date: '2026-11-18',
 		title: 'Inteligência tática avançada',

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Walkout from '#lib/ui/v4/Walkout.svelte';
 	import { beforeNavigate, invalidate } from '$app/navigation';
 	import { ApiError, api } from '#lib/api.ts';
 	import type { Career } from '#lib/domain/career.ts';
@@ -50,7 +51,13 @@
 		return i >= 0 ? 'titular' : myTeam.tactic.bench.includes(CAREER_PLAYER_ID) ? 'reserva' : 'fora';
 	});
 
+	let walkout = $state(false);
 	function kickOff() {
+		if (!fixture) return;
+		walkout = true;
+	}
+	function startMatch() {
+		walkout = false;
 		if (!fixture) return;
 		setup = fixtureSetup(c, fixture, v.tactic, ctx);
 		playedFixture = fixture;
@@ -119,6 +126,8 @@
 	const myResults = $derived(saved ? saved.results.filter((r) => r.competition === v.division) : []);
 	const otherCount = $derived(saved ? saved.results.length - myResults.length : 0);
 </script>
+
+{#if walkout && fixture}<Walkout home={fixture.home} away={fixture.away} label={fixture.competition === 'copa-do-brasil' ? `Copa do Brasil · ${fixture.phase ?? ''}` : `${DIVISION_LABELS[fixture.competition as DivisionId] ?? ''} · Rodada ${fixture.round}`} ondone={startMatch} />{/if}
 
 <svelte:head><title>Dia de jogo · {v.club.name} · BRASFC</title></svelte:head>
 

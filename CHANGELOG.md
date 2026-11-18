@@ -1,5 +1,33 @@
 # Novidades
 
+## 0.4.0 — 2026-11-18 · Evolution Update
+
+### Novo
+- Copa do Brasil 2026 com os 126 participantes reais, nove fases, jogo único (fases 1–4), ida e volta (5ª à semifinal), final única em campo neutro, pênaltis, premiação e chaveamento interativo.
+- Série D 2026 real (96 clubes, 16 grupos, mata-mata, playoffs de acesso) e Série C por edição: 20 (2026), 24 (2027) e 28 em dois grupos (2028+), com contas de acesso/rebaixamento conferidas até 2040.
+- Mercado de transferências: compra, venda, empréstimo, jogadores livres, renovação, rescisão, propostas recebidas, lista de venda, observados; clube e atleta respondem separadamente; IA compra por carência de elenco e orçamento.
+- Contratos persistentes, valor de mercado, salários por nível, evolução e aposentadoria dos atletas, jovens que repõem elencos da IA.
+- Finanças: caixa, TV/comercial, patrocínio, bilheteria, premiações, salários, estrutura, base e olheiros; orçamento e teto salarial da diretoria; extrato idempotente.
+- Diretoria com 6 personalidades, objetivos, confiança e demissão; propostas de emprego; patrocínios fictícios com bônus e exigências; obras com custo e prazo; torcida e público.
+- Categorias de base (turmas limitadas, evolução semanal, promoção) e olheiros com relatórios imprecisos por região e posição.
+- Carreira de jogador com contrato, empresário, propostas, objetivos, prêmios e evolução por minutos.
+- História: campeões de todas as competições, artilharia, transferências marcantes e sala de troféus.
+- Redesign: navegação lateral, painel, mercado, finanças, clube, base, Copa, história, elenco (campo/cartões/lista), competições, comportamento tático desenhado no campo, entrada em campo cinematográfica, menu em deck.
+- Ultra Motion X: material com luz e inclinação, atração magnética, números animados, entrada sob demanda; qualidade Automático/Completo/Leve.
+- PWA instalável e Central de Atualizações (verificar, ver novidades, atualizar com proteção de alterações não salvas, confirmação da versão carregada, aviso entre abas, "O que há de novo").
+
+### Pendente
+- Elencos reais e técnicos (sem fonte verificável); 2ª fase da Série C 2028 sem regulamento publicado (projeção).
+- Esquemas 5-3-2 ainda abaixo da média em confronto neutro.
+
+## 0.3.1 — 2026-11-18 · Refinamento do motor
+
+### Corrigido
+- Excesso de gols entre IAs (Série A 3,66 → 2,7 por jogo): calibração pela população real de clubes e técnicos da IA, nível relativo da partida, goleiros, mentalidade ofensiva, pressão e jogo vertical.
+- Motor 22% mais rápido sem mudar nenhum resultado (impressão digital idêntica).
+- Formações: alas como pontas com três zagueiros, meia que chega à área sem pontas (4-2-2-2: 0,75 → 1,03 ponto por jogo contra o 4-3-3).
+- Implantação: a pasta de dados era ignorada pelo Git, o que quebrava o CI e a VPS; a VPS agora baixa a imagem pronta e avisa falhas.
+
 ## 0.3.0 — 2026-11-18 · Inteligência tática avançada
 
 ### Corrigido da Dev 0.2
