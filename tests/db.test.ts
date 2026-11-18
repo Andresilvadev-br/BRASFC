@@ -183,6 +183,42 @@ describe('partidas da carreira (Dev 0.2/0.3)', () => {
 		expect(v.step!.key).toBe('league:7');
 	}, 120_000);
 
+	it('temporada inteira pelo servidor: saldo bate com os lançamentos, títulos e artilharia gravados, próxima temporada com Série C de 24', async () => {
+		const { careerView } = await import('#lib/domain/view.ts');
+		const { playRound, finishSeason } = await import('#lib/server/rounds.ts');
+		const { listResults } = await import('#lib/server/repos/matches.ts');
+		const { listLedger, listHistory } = await import('#lib/server/repos/management.ts');
+		const { clubStateOf } = await import('#lib/domain/world.ts');
+		const { profile } = await createGuestProfile(db);
+		let career = await createCareer(db, profile.id, { mode: 'coach', personName: 'Técnico Temporada', clubId: 'mirassol', world: 'brasil' });
+		const start = clubStateOf(career).balance;
+		let steps = 0;
+		for (;;) {
+			const v = careerView(career, await listResults(db, career.id, career.season));
+			if (!v.step) break;
+			career = (await playRound(db, profile.id, career, { version: career.version, step: v.step.key })).career;
+			steps++;
+		}
+		expect(steps).toBe(38 + 13);
+		const ledger = await listLedger(db, career.id, 2026);
+		const end = clubStateOf(career).balance;
+		expect(end).toBe(start + ledger.reduce((s, l) => s + l.amount, 0));
+		expect(ledger.some((l) => l.category === 'salarios')).toBe(true);
+		expect(ledger.some((l) => l.category === 'bilheteria')).toBe(true);
+		const res = await finishSeason(db, profile.id, career, career.version);
+		expect(res.career.season).toBe(2027);
+		expect(res.career.data.league!.divisions['serie-c']).toHaveLength(24);
+		expect(res.career.data.cup?.season).toBe(2027);
+		const history = await listHistory(db, career.id);
+		expect(history.filter((h) => h.kind === 'campeao').map((h) => h.competition).sort()).toEqual(['copa-do-brasil', 'serie-a', 'serie-b', 'serie-c', 'serie-d']);
+		expect(history.some((h) => h.kind === 'artilharia')).toBe(true);
+		const after = clubStateOf(res.career);
+		expect(after.board.objectives.length).toBeGreaterThan(0);
+		// Saldo após o fechamento = saldo anterior + lançamentos do fechamento.
+		const all = await listLedger(db, career.id, 2026);
+		expect(after.balance).toBe(start + all.reduce((s, l) => s + l.amount, 0));
+	}, 400_000);
+
 	it('save da Dev 0.3 (Brasil sem Série D e sem Copa) continua e ganha a Série D na troca de temporada', async () => {
 		const { careerView } = await import('#lib/domain/view.ts');
 		const { closeSeason } = await import('#lib/domain/league.ts');

@@ -79,11 +79,8 @@ export interface NegotiationLog {
 	done: boolean;
 }
 
-export interface JobOffer {
-	clubId: string;
-	division: string;
-	reason: string;
-}
+export type { JobOfferDetail as JobOffer } from './careerlife.ts';
+import type { JobOfferDetail as JobOffer } from './careerlife.ts';
 
 export interface MonthSummary {
 	season: number;

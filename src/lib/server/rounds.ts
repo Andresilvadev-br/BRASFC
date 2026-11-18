@@ -6,6 +6,11 @@ import { CUP_ID, clubCupRun, cupFixtures, cupView, prepareCup, projectedCup } fr
 import { sanitizeMarket } from '#lib/domain/management.ts';
 import { clubStateOf, rosterContext } from '#lib/domain/world.ts';
 import { seasonEndManagement, weeklyManagement } from './management.ts';
+import { closePlayerSeason, playerOffers, sanitizePlayerCareer } from '#lib/domain/careerlife.ts';
+import { divisionOf } from '#lib/domain/league.ts';
+import { expectedWage, formatMoney, tierOfDivision, transferWindow } from '#lib/domain/market.ts';
+import { getClub } from '#lib/domain/clubs.ts';
+import { playerTotals } from '#lib/domain/playerstats.ts';
 import { insertLedger, insertMessages, insertTransfers, upsertHistory } from './repos/management.ts';
 import { strengthFor } from '#lib/domain/strength.ts';
 import type { Fixture } from '#lib/domain/season.ts';
@@ -128,14 +133,25 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 		userRow: career.mode === 'coach' ? (rows.find((r) => r.isUser) ?? null) : null,
 		strengthOf
 	});
-	const data: Partial<CareerData> = { tactical, fitness, league, ...(cup ? { cup } : {}), market: wk.market, ...(career.mode === 'coach' ? { club: wk.club } : {}) };
+	// Carreira de jogador: o empresário traz propostas na janela, conforme desempenho recente.
+	let playerCareer = career.mode === 'player' ? sanitizePlayerCareer(career.data.playerCareer, career.seed, career.data.player, view.division, career.season) : null;
+	if (playerCareer && career.data.player && step.kind === 'league' && transferWindow(step.round)) {
+		const recent = (await listUserMatches(db, career.id, career.season)).slice(-5).map((m) => m.summary.me?.rating).filter((r): r is number => typeof r === 'number');
+		const cur = userMatch?.summary.me?.rating;
+		const ratings = cur ? [...recent, cur] : recent;
+		const avg = ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 6.3;
+		const offers = playerOffers(career.seed, career.season, step.round, playerCareer, career.data.player, avg, career.clubId, league.divisions as Record<string, string[]>, (id) => divisionOf(league, id));
+		playerCareer = { ...playerCareer, offers: [...playerCareer.offers.filter((o) => o.expiresRound >= step.round && o.season === career.season), ...offers].slice(-3) };
+		for (const o of offers) wk.news.push({ sender: `Empresário — ${playerCareer.agent.name}`, subject: `Proposta do ${getClub(o.clubId)?.name ?? o.clubId}`, body: `Salário de ${formatMoney(o.wage)} por mês, ${o.years} temporadas, como ${o.role === 'titular' ? 'titular' : 'opção de rotação'}. Responda até a rodada ${o.expiresRound}.`, important: true });
+	}
+	const data: Partial<CareerData> = { tactical, fitness, league, ...(cup ? { cup } : {}), market: wk.market, ...(career.mode === 'coach' ? { club: wk.club } : {}), ...(playerCareer ? { playerCareer } : {}) };
 	const key = `${career.season}:${step.key}`;
 	const updated = await db.transaction(async (tx) => {
 		await insertRound(tx, career.id, rows, ENGINE_VERSION);
 		const saved = await saveCareerProgress(tx, profileId, career.id, { gameDate: nextDate, data }, career.version);
 		if (career.mode === 'coach') await insertLedger(tx, career.id, career.season, step.date, wk.ledger, key);
 		await insertTransfers(tx, career.id, career.season, step.date, wk.transfers, `${key}:t`);
-		if (career.mode === 'coach') await insertMessages(tx, career.id, nextDate, wk.news);
+		await insertMessages(tx, career.id, nextDate, career.mode === 'coach' ? wk.news : wk.news.filter((n) => n.sender?.startsWith('Empresário')));
 		return saved;
 	});
 	return {
@@ -185,7 +201,7 @@ export async function finishSeason(db: Db, profileId: string, career: Career, ve
 			: undefined;
 	// Gestão: contratos que terminam, empréstimos, premiações, avaliação da diretoria e nova base.
 	const myCup = cupNow ? clubCupRun(cupNow, career.clubId) : null;
-	const end = seasonEndManagement({
+	const end = career.mode !== 'coach' ? { club: clubStateOf(career, view.league), market: sanitizeMarket(career.data.market), ledger: [], transfers: [], news: [] as Array<{ subject: string; body: string; important?: boolean; sender?: string }> } : seasonEndManagement({
 		career,
 		club: clubStateOf(career, view.league),
 		market: sanitizeMarket(career.data.market),
@@ -211,17 +227,38 @@ export async function finishSeason(db: Db, profileId: string, career: Career, ve
 	const scorers = topScorers(await listSeasonGoals(db, career.id, career.season), view.division);
 	if (scorers.length) history.push(['artilharia', view.division, { players: scorers }]);
 	const nextDate = seasonStartDate(next.season);
+	// Carreira de jogador: evolução por minutos, objetivos, prêmios; contrato renovado pelo clube.
+	let playerData: Partial<CareerData> = {};
+	if (career.mode === 'player' && career.data.player) {
+		const pc = sanitizePlayerCareer(career.data.playerCareer, career.seed, career.data.player, view.division, career.season)!;
+		const matches = await listUserMatches(db, career.id, career.season);
+		const totals = playerTotals(matches);
+		const me = totals.eu ?? null;
+		const ranked = Object.entries(totals).filter(([, t]) => t.games >= 10);
+		const bestRating = ranked.sort((a, b) => b[1].rating - a[1].rating)[0]?.[0] === 'eu';
+		const bestScorer = Object.entries(totals).sort((a, b) => b[1].goals - a[1].goals)[0]?.[0] === 'eu';
+		const closed = closePlayerSeason(pc, career.data.player, { games: me?.games ?? 0, starts: me?.starts ?? 0, goals: me?.goals ?? 0, assists: me?.assists ?? 0, rating: me?.rating ?? 0, minutes: me?.minutes ?? 0 }, { rating: bestRating, scorer: bestScorer }, career.season, career.seed);
+		let state = closed.state;
+		if (state.contract.until <= career.season) {
+			const wage = Math.max(state.contract.wage, expectedWage(closed.profile.overall, tierOfDivision(divisionOf(next, career.clubId)), closed.profile.age));
+			state = { ...state, contract: { ...state.contract, wage, until: career.season + 2, role: closed.profile.overall >= 65 ? 'titular' : 'rotacao' } };
+			closed.news.push({ subject: 'Contrato renovado', body: `O clube renovou seu contrato até ${career.season + 2} (${formatMoney(wage)} por mês).` });
+		}
+		playerData = { player: closed.profile, playerCareer: state };
+		end.news.push(...closed.news);
+		for (const a of state.awards.filter((x) => x.season === career.season)) history.push(['premio', a.label, { player: career.personName, clubId: career.clubId }]);
+	}
 	const updated = await db.transaction(async (tx) => {
 		const saved = await saveCareerProgress(
 			tx,
 			profileId,
 			career.id,
-			{ gameDate: nextDate, season: next.season, data: { league: next, tactical, fitness, seasons: [...view.seasons, summary], ...(nextCup ? { cup: nextCup } : {}), market: end.market, ...(career.mode === 'coach' ? { club: end.club } : {}) } },
+			{ gameDate: nextDate, season: next.season, data: { league: next, tactical, fitness, seasons: [...view.seasons, summary], ...(nextCup ? { cup: nextCup } : {}), market: end.market, ...(career.mode === 'coach' ? { club: end.club } : {}), ...playerData } },
 			career.version
 		);
 		if (career.mode === 'coach') await insertLedger(tx, career.id, career.season, addDays(nextDate, -1), end.ledger, `${career.season}:fim`);
 		await insertTransfers(tx, career.id, career.season, addDays(nextDate, -1), end.transfers, `${career.season}:fim:t`);
-		if (career.mode === 'coach') await insertMessages(tx, career.id, nextDate, end.news);
+		await insertMessages(tx, career.id, nextDate, end.news);
 		for (const [kind, comp, data] of history) await upsertHistory(tx, career.id, career.season, kind, comp, data);
 		return saved;
 	});

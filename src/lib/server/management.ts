@@ -30,6 +30,7 @@ import {
 } from '#lib/domain/management.ts';
 import { aiTransfers, formatMoney, rosterOf, squadNeeds, tierOfDivision, transferWindow, type MarketState, type RosterContext } from '#lib/domain/market.ts';
 import { seasonObjectives } from '#lib/domain/club.ts';
+import { jobOffers } from '#lib/domain/careerlife.ts';
 import { squadStrength } from '#lib/domain/squad.ts';
 import type { RoundInsert } from './repos/matches.ts';
 import type { TransferRow } from './repos/management.ts';
@@ -99,9 +100,11 @@ export function weeklyManagement(o: {
 			if (ph.matchdays[0] === step.matchday && ph.prize) cupPrize = ph.prize;
 		}
 	}
+	const wasDismissed = club.board.dismissed;
 	const week = processWeek(club, { seed: career.seed, clubId: career.clubId, season: career.season, round: step.round, tier, division, roster, match, fullWeek: step.kind === 'league', firstSeasonOfCareer: career.season === (career.data.firstSeason ?? career.season), cupPrize });
 	club = week.state;
 	news.push(...week.news);
+	if (!wasDismissed && club.board.dismissed) club = { ...club, jobOffers: jobOffers(career.seed, career.season, step.round, club.coachReputation, career.clubId, league.divisions as Record<string, string[]>, true) };
 	const ledger = [...week.ledger];
 
 	if (step.kind === 'league') {
@@ -222,7 +225,16 @@ export function seasonEndManagement(o: {
 	if (o.cupRunnerUp) ledger.push({ category: 'premiacao', amount: CUP_FINAL_PRIZE.runnerUp, description: 'Vice-campeão da Copa do Brasil' });
 	const extra = (o.cupChampion ? CUP_FINAL_PRIZE.champion : 0) + (o.cupRunnerUp ? CUP_FINAL_PRIZE.runnerUp : 0);
 	news.push(...out.news);
-	return { club: { ...out.state, balance: out.state.balance + extra }, market, ledger, transfers, news };
+	let st = { ...out.state, balance: out.state.balance + extra };
+	// Treinador em destaque recebe sondagens de clubes maiores (decide na pré-temporada).
+	if (!st.board.dismissed && st.coachReputation >= 55) {
+		const offers = jobOffers(career.seed, career.season, 99, st.coachReputation, career.clubId, o.next.divisions as Record<string, string[]>, false).slice(0, 2).map((x) => ({ ...x, expiresSeason: career.season + 1 }));
+		if (offers.length) {
+			st = { ...st, jobOffers: offers };
+			news.push({ sender: 'Empresário', subject: 'Sondagens de outros clubes', body: `${offers.map((x) => getClub(x.clubId)?.name ?? x.clubId).join(' e ')} querem conversar. Veja em Clube → Carreira.` });
+		}
+	}
+	return { club: st, market, ledger, transfers, news };
 }
 
 // ─────────────────────────────────────────────────────────────── ações

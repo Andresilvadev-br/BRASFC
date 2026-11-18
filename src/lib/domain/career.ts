@@ -7,6 +7,7 @@ import type { TacticalState } from './tactical.ts';
 import { initialCup, type CupState } from './cup.ts';
 import type { ClubState } from './management.ts';
 import type { MarketState } from './market.ts';
+import type { PlayerCareerState } from './careerlife.ts';
 import { formatLong } from './dates.ts';
 import { isPosition, POSITION_INFO, type Position } from './positions.ts';
 import { createRng, deriveSeed } from './rng.ts';
@@ -61,6 +62,8 @@ cup?: CupState;
 club?: ClubState;
 /** mercado: transferências, contratos e atletas criados pela carreira */
 market?: MarketState;
+/** carreira de jogador: contrato, empresário, propostas, objetivos e prêmios */
+playerCareer?: PlayerCareerState;
 }
 
 export interface Career {

@@ -10,7 +10,7 @@ import { squadStrength } from './squad.ts';
  * Contexto de elencos da carreira: base determinística + evolução por temporada + mercado persistido.
  * Usado igual no servidor e no navegador (as partidas são reproduzidas dos dois lados).
  */
-export function rosterContext(career: Pick<Career, 'seed' | 'season' | 'clubId' | 'data'>, league?: LeagueState): RosterContext {
+export function rosterContext(career: Pick<Career, 'seed' | 'season' | 'clubId' | 'data'> & { mode?: Career['mode'] }, league?: LeagueState): RosterContext {
 	const lg = league ?? sanitizeLeague(career.data.league, careerWorld(career as Career), career.season);
 	const ct = (career.data.club as { infra?: { ct?: { level?: number } } } | undefined)?.infra?.ct?.level ?? 2;
 	return {
@@ -19,7 +19,8 @@ export function rosterContext(career: Pick<Career, 'seed' | 'season' | 'clubId' 
 		season: career.season,
 		market: sanitizeMarket(career.data.market),
 		divisionOf: (id) => divisionOf(lg, id),
-		userClub: career.clubId,
+		// No modo jogador o clube é gerido pela IA (renova contratos e repõe aposentados).
+		userClub: career.mode === 'player' ? undefined : career.clubId,
 		userDevBoost: Math.round(ctDevelopment(ct) * 100) / 100
 	};
 }
