@@ -9,6 +9,28 @@ export interface Release {
 
 export const RELEASES: Release[] = [
 	{
+		version: '0.3.0',
+		date: '2026-11-18',
+		title: 'Inteligência tática avançada',
+		added: [
+			'Carreira com os 60 clubes reais das Séries A, B e C de 2026, acesso, rebaixamento e várias temporadas',
+			'Tática simples ou avançada: 18 instruções com efeito real no motor e contrapartidas',
+			'Funções individuais (20) com compatibilidade, recomendação e domínio próprio',
+			'Domínio tático progressivo: formação, estilo, instruções, entrosamento e funções, salvo na carreira',
+			'Centro de treinamento: semana com 5 sessões, intensidade, carga física e recuperação',
+			'Auxiliar técnico com recomendações explicáveis (aceitar ou ignorar)',
+			'Técnicos da IA com perfis próprios, plano contra o seu time e ajustes durante o jogo',
+			'Modo Pixel completo, com bonecos animados, defesas do goleiro, cartões e gols',
+			'Estatísticas acumuladas por temporada e jogo a jogo (time e jogador)',
+			'Motor recalibrado: impedimentos, faltas, cartões, formações e notas'
+		],
+		next: [
+			'Elencos reais verificados e técnicos com data de referência',
+			'Copa do Brasil e mercado de transferências',
+			'Equilíbrio fino dos esquemas com três zagueiros'
+		]
+	},
+	{
 		version: '0.2.0',
 		date: '2026-11-17',
 		title: 'Motor de futebol e partidas em 2D',

@@ -18,12 +18,17 @@ Arquivos em `src/lib/data/brasil/2026/`, carregados e validados por `src/lib/dat
 4. Sem *scraping*: os participantes foram conferidos manualmente em reportagens públicas (ver `fontes.json`).
 5. IDs são estáveis (`kebab-case`) e nunca reaproveitados.
 
-## Situação atual
+## Situação atual (versão de dados 2026.1, 18/11/2026)
 
 - Participantes das Séries A, B e C de 2026: conferidos (MKT Esportivo, 90min, TNH1, Itatiaia).
-- Cidade/UF: preenchidas quando de conhecimento público; **pendentes** para Barra, Caxias, Floresta, Maranhão e Ypiranga.
-- Estádio, técnico, nome oficial e elenco: **pendentes** para todos.
-- Cores: aproximação visual a confirmar; 23 clubes ainda com cores pendentes (usam cores neutras).
+- **Cidade, UF e estádio**: conferidos nas tabelas "Participantes" das páginas da Wikipédia das três séries (editadas em 17/11/2026), inclusive Barra-SC (Balneário Camboriú), Caxias (Caxias do Sul), Floresta (Fortaleza), Maranhão (São Luís) e Ypiranga (Erechim).
+- **Pendentes** (com motivo):
+  - Estádios de Sport e Vila Nova (linha da tabela não lida literalmente na fonte).
+  - Técnicos: as fontes trazem trocas ao longo da temporada sem um "técnico no início da temporada" confiável; nenhum técnico foi cadastrado. A IA usa *perfis de jogo* sem nome de pessoa.
+  - Nomes oficiais completos dos clubes.
+  - Cores de 23 clubes (sem fonte por clube; usam cores neutras).
+  - Elencos reais: não importados (exigiriam conferência atleta a atleta). O jogo usa nomes fictícios sinalizados.
+- **Regras 2026**: Série C conferida (1ª fase em turno único, 8 classificados para 2 grupos de 4, 4 acessos, 2 rebaixados). Séries A e B: 4 rebaixados e 4 acessos/rebaixados — **a confirmar** em fonte oficial da CBF. A Série D não é simulada: quem cairia da C permanece nela.
 
 ## Validador
 

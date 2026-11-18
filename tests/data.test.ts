@@ -28,4 +28,15 @@ describe('base Brasil 2026', () => {
 		const squad = generateSquadFor(club, 1, { pending: true });
 		expect(squad.every((p) => p.pending === true && p.name.length > 3)).toBe(true);
 	});
+
+	it('cidades antes pendentes foram conferidas e têm fonte', () => {
+		for (const id of ['barra', 'caxias', 'floresta', 'maranhao', 'ypiranga']) {
+			const c = CLUBES_2026.find((x) => x.id === id)!;
+			expect(c.cidade).toBeTruthy();
+			expect(c.pendencias).not.toContain('cidade');
+			expect(c.fontes).toContain('wiki-serie-c-2026');
+		}
+		// técnicos continuam pendentes (não inventados)
+		expect(CLUBES_2026.every((c) => c.tecnico === null && c.pendencias.includes('tecnico'))).toBe(true);
+	});
 });

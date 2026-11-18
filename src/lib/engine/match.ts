@@ -555,8 +555,9 @@ export class Match {
 			const narrowCB = threeBack && s.position === 'ZAG' ? 0.42 : 0.72;
 			ay = PITCH.width / 2 + (lateral - PITCH.width / 2) * narrowCB + (by - PITCH.width / 2) * 0.32;
 		}
-		// Domínio tático: times que ainda não dominam o sistema se posicionam com mais imprecisão.
-		const jitter = Math.max(0, 0.6 - this.execution(side)) * 5;
+		// Domínio tático: sem a bola, times que ainda não dominam o sistema deixam buracos
+		// (linhas desalinhadas); com a bola, o efeito aparece nas decisões e nos passes.
+		const jitter = inPossession ? 0 : Math.max(0, 0.6 - this.execution(side)) * 6;
 		if (jitter > 0.05) {
 			ax += hashNoise(this.tick >> 3, slot, side === 'home' ? 1 : 2) * jitter;
 			ay += hashNoise(this.tick >> 3, slot + 17, side === 'home' ? 3 : 4) * jitter;
@@ -1080,7 +1081,7 @@ export class Match {
 		// Escolha com ruído controlado pelas "decisões": melhores jogadores escolhem melhor.
 		// Atleta adaptado à função e time que domina o sistema também escolhem melhor.
 		const fitMult = 1 + ((56 - this.roleFit(owner)) / 100) * 0.8;
-		const execMult = 1 - (this.execution(side) - 0.6) * 0.5;
+		const execMult = 1 - (this.execution(side) - 0.6) * 0.7;
 		const temp = Math.max(0.05, 0.22 - a.decisoes / 650) * fitMult * execMult;
 		const max = Math.max(...options.map((o) => o.u));
 		const weights = options.map((o) => Math.exp((o.u - max) / temp));
@@ -1103,7 +1104,7 @@ export class Match {
 		const a = this.player(owner.id)!.attributes;
 		let base = d <= 30 ? 0.975 - d * 0.0045 : 0.84 - (d - 30) * 0.011;
 		base *= 0.79 + a.passe / 360 + a.tecnica / 1100 + a.visao / 2000;
-		base *= this.techFactor(owner) * this.homeBoost(owner.side) * this.teams[owner.side].params.passAccuracy * (1 + (this.execution(owner.side) - 0.6) * 0.05);
+		base *= this.techFactor(owner) * this.homeBoost(owner.side) * this.teams[owner.side].params.passAccuracy * (1 + (this.execution(owner.side) - 0.6) * 0.06);
 		let threat = 0;
 		for (const o of opps) {
 			const { d: seg, t } = segmentDistance(o.x, o.y, owner.x, owner.y, tx, ty);
