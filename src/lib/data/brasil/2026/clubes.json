@@ -1220,5 +1220,2031 @@
    "itatiaia-2025-11-serie-c",
    "wiki-serie-c-2026"
   ]
+ },
+ {
+  "id": "manauara",
+  "nome": "Manauara",
+  "sigla": "MAN",
+  "serie": "D",
+  "cidade": "Manaus",
+  "uf": "AM",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "nacional-am",
+  "nome": "Nacional-AM",
+  "sigla": "NAC",
+  "serie": "D",
+  "cidade": "Manaus",
+  "uf": "AM",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "sao-raimundo-rr",
+  "nome": "São Raimundo-RR",
+  "sigla": "SAR",
+  "serie": "D",
+  "cidade": "Boa Vista",
+  "uf": "RR",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "monte-roraima",
+  "nome": "Monte Roraima",
+  "sigla": "MOR",
+  "serie": "D",
+  "cidade": "Boa Vista",
+  "uf": "RR",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "manaus",
+  "nome": "Manaus",
+  "sigla": "MA0",
+  "serie": "D",
+  "cidade": "Manaus",
+  "uf": "AM",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "gas",
+  "nome": "GAS",
+  "sigla": "GAS",
+  "serie": "D",
+  "cidade": "Boa Vista",
+  "uf": "RR",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "guapore",
+  "nome": "Guaporé",
+  "sigla": "GU0",
+  "serie": "D",
+  "cidade": "Rolim de Moura",
+  "uf": "RO",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "gazin-porto-velho",
+  "nome": "Gazin Porto Velho",
+  "sigla": "GPV",
+  "serie": "D",
+  "cidade": "Porto Velho",
+  "uf": "RO",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "araguaina",
+  "nome": "Araguaína",
+  "sigla": "ARA",
+  "serie": "D",
+  "cidade": "Araguaína",
+  "uf": "TO",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "independencia",
+  "nome": "Independência",
+  "sigla": "IND",
+  "serie": "D",
+  "cidade": "Rio Branco",
+  "uf": "AC",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "galvez",
+  "nome": "Galvez",
+  "sigla": "GAL",
+  "serie": "D",
+  "cidade": "Rio Branco",
+  "uf": "AC",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "humaita",
+  "nome": "Humaitá",
+  "sigla": "HUM",
+  "serie": "D",
+  "cidade": "Porto Acre",
+  "uf": "AC",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "gama",
+  "nome": "Gama",
+  "sigla": "GAM",
+  "serie": "D",
+  "cidade": "Gama",
+  "uf": "DF",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "luverdense",
+  "nome": "Luverdense",
+  "sigla": "LUV",
+  "serie": "D",
+  "cidade": "Lucas do Rio Verde",
+  "uf": "MT",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "brasiliense",
+  "nome": "Brasiliense",
+  "sigla": "BRA",
+  "serie": "D",
+  "cidade": "Taguatinga",
+  "uf": "DF",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "aparecidense",
+  "nome": "Aparecidense",
+  "sigla": "APA",
+  "serie": "D",
+  "cidade": "Aparecida de Goiânia",
+  "uf": "GO",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "primavera-mt",
+  "nome": "Primavera-MT",
+  "sigla": "PRI",
+  "serie": "D",
+  "cidade": "Primavera do Leste",
+  "uf": "MT",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "inhumas",
+  "nome": "Inhumas",
+  "sigla": "INH",
+  "serie": "D",
+  "cidade": "Inhumas",
+  "uf": "GO",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "capital-df",
+  "nome": "Capital-DF",
+  "sigla": "CA0",
+  "serie": "D",
+  "cidade": "Paranoá",
+  "uf": "DF",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "goiatuba",
+  "nome": "Goiatuba",
+  "sigla": "GO0",
+  "serie": "D",
+  "cidade": "Goiatuba",
+  "uf": "GO",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "ceilandia",
+  "nome": "Ceilândia",
+  "sigla": "CEI",
+  "serie": "D",
+  "cidade": "Ceilândia",
+  "uf": "DF",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "mixto",
+  "nome": "Mixto",
+  "sigla": "MIX",
+  "serie": "D",
+  "cidade": "Cuiabá",
+  "uf": "MT",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "uniao-rondonopolis",
+  "nome": "União Rondonópolis",
+  "sigla": "UNR",
+  "serie": "D",
+  "cidade": "Rondonópolis",
+  "uf": "MT",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "operario-vg",
+  "nome": "Operário VG",
+  "sigla": "OPV",
+  "serie": "D",
+  "cidade": "Várzea Grande",
+  "uf": "MT",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "trem",
+  "nome": "Trem",
+  "sigla": "TRE",
+  "serie": "D",
+  "cidade": "Macapá",
+  "uf": "AP",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "aguia-de-maraba",
+  "nome": "Águia de Marabá",
+  "sigla": "ADM",
+  "serie": "D",
+  "cidade": "Marabá",
+  "uf": "PA",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "imperatriz",
+  "nome": "Imperatriz",
+  "sigla": "IMP",
+  "serie": "D",
+  "cidade": "Imperatriz",
+  "uf": "MA",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "tuna-luso",
+  "nome": "Tuna Luso",
+  "sigla": "TUL",
+  "serie": "D",
+  "cidade": "Belém",
+  "uf": "PA",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "tocantinopolis",
+  "nome": "Tocantinópolis",
+  "sigla": "TOC",
+  "serie": "D",
+  "cidade": "Tocantinópolis",
+  "uf": "TO",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "oratorio",
+  "nome": "Oratório",
+  "sigla": "ORA",
+  "serie": "D",
+  "cidade": "Macapá",
+  "uf": "AP",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "iguatu",
+  "nome": "Iguatu",
+  "sigla": "IGU",
+  "serie": "D",
+  "cidade": "Iguatu",
+  "uf": "CE",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "maracana-ce",
+  "nome": "Maracanã-CE",
+  "sigla": "MA1",
+  "serie": "D",
+  "cidade": "Maracanaú",
+  "uf": "CE",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "parnahyba",
+  "nome": "Parnahyba",
+  "sigla": "PAR",
+  "serie": "D",
+  "cidade": "Parnaíba",
+  "uf": "PI",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "sampaio-correa",
+  "nome": "Sampaio Corrêa",
+  "sigla": "SAC",
+  "serie": "D",
+  "cidade": "São Luís",
+  "uf": "MA",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "moto-club",
+  "nome": "Moto Club",
+  "sigla": "MOC",
+  "serie": "D",
+  "cidade": "São Luís",
+  "uf": "MA",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "iape",
+  "nome": "IAPE",
+  "sigla": "IAP",
+  "serie": "D",
+  "cidade": "São Luís",
+  "uf": "MA",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "ferroviario",
+  "nome": "Ferroviário",
+  "sigla": "FE0",
+  "serie": "D",
+  "cidade": "Fortaleza",
+  "uf": "CE",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "piaui",
+  "nome": "Piauí",
+  "sigla": "PIA",
+  "serie": "D",
+  "cidade": "Teresina",
+  "uf": "PI",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "fluminense-pi",
+  "nome": "Fluminense-PI",
+  "sigla": "FL0",
+  "serie": "D",
+  "cidade": "Teresina",
+  "uf": "PI",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "altos",
+  "nome": "Altos",
+  "sigla": "ALT",
+  "serie": "D",
+  "cidade": "Altos",
+  "uf": "PI",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "tirol",
+  "nome": "Tirol",
+  "sigla": "TIR",
+  "serie": "D",
+  "cidade": "Fortaleza",
+  "uf": "CE",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "atletico-cearense",
+  "nome": "Atlético Cearense",
+  "sigla": "ATC",
+  "serie": "D",
+  "cidade": "Fortaleza",
+  "uf": "CE",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "abc",
+  "nome": "ABC",
+  "sigla": "ABC",
+  "serie": "D",
+  "cidade": "Natal",
+  "uf": "RN",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "america-de-natal",
+  "nome": "América de Natal",
+  "sigla": "ADN",
+  "serie": "D",
+  "cidade": "Natal",
+  "uf": "RN",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "maguary",
+  "nome": "Maguary",
+  "sigla": "MAG",
+  "serie": "D",
+  "cidade": "Bonito",
+  "uf": "PE",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "central",
+  "nome": "Central",
+  "sigla": "CEN",
+  "serie": "D",
+  "cidade": "Caruaru",
+  "uf": "PE",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "sousa",
+  "nome": "Sousa",
+  "sigla": "SOU",
+  "serie": "D",
+  "cidade": "Sousa",
+  "uf": "PB",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "laguna",
+  "nome": "Laguna",
+  "sigla": "LAG",
+  "serie": "D",
+  "cidade": "Tibau do Sul",
+  "uf": "RN",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "treze",
+  "nome": "Treze",
+  "sigla": "TR0",
+  "serie": "D",
+  "cidade": "Campina Grande",
+  "uf": "PB",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "sergipe",
+  "nome": "Sergipe",
+  "sigla": "SER",
+  "serie": "D",
+  "cidade": "Aracaju",
+  "uf": "SE",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "serra-branca",
+  "nome": "Serra Branca",
+  "sigla": "SEB",
+  "serie": "D",
+  "cidade": "Campina Grande",
+  "uf": "PB",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "lagarto",
+  "nome": "Lagarto",
+  "sigla": "LA0",
+  "serie": "D",
+  "cidade": "Lagarto",
+  "uf": "SE",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "retro",
+  "nome": "Retrô",
+  "sigla": "RET",
+  "serie": "D",
+  "cidade": "Camaragibe",
+  "uf": "PE",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "decisao-goiana",
+  "nome": "Decisão Goiana",
+  "sigla": "DEG",
+  "serie": "D",
+  "cidade": "Goiana",
+  "uf": "PE",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "csa",
+  "nome": "CSA",
+  "sigla": "CSA",
+  "serie": "D",
+  "cidade": "Maceió",
+  "uf": "AL",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "juazeirense",
+  "nome": "Juazeirense",
+  "sigla": "JUA",
+  "serie": "D",
+  "cidade": "Juazeiro",
+  "uf": "BA",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "asa",
+  "nome": "ASA",
+  "sigla": "ASA",
+  "serie": "D",
+  "cidade": "Arapiraca",
+  "uf": "AL",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "jacuipense",
+  "nome": "Jacuipense",
+  "sigla": "JAC",
+  "serie": "D",
+  "cidade": "Riachão do Jacuípe",
+  "uf": "BA",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "cse",
+  "nome": "CSE",
+  "sigla": "CSE",
+  "serie": "D",
+  "cidade": "Palmeira dos Índios",
+  "uf": "AL",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "atletico-de-alagoinhas",
+  "nome": "Atlético de Alagoinhas",
+  "sigla": "ADA",
+  "serie": "D",
+  "cidade": "Alagoinhas",
+  "uf": "BA",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "uberlandia",
+  "nome": "Uberlândia",
+  "sigla": "UBE",
+  "serie": "D",
+  "cidade": "Uberlândia",
+  "uf": "MG",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "betim-futebol",
+  "nome": "Betim Futebol",
+  "sigla": "BEF",
+  "serie": "D",
+  "cidade": "Betim",
+  "uf": "MG",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "crac",
+  "nome": "CRAC",
+  "sigla": "CRA",
+  "serie": "D",
+  "cidade": "Catalão",
+  "uf": "GO",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "ivinhema",
+  "nome": "Ivinhema",
+  "sigla": "IVI",
+  "serie": "D",
+  "cidade": "Ivinhema",
+  "uf": "MS",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "abecat",
+  "nome": "ABECAT",
+  "sigla": "ABE",
+  "serie": "D",
+  "cidade": "Ouvidor",
+  "uf": "GO",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "operario-ms",
+  "nome": "Operário-MS",
+  "sigla": "OP0",
+  "serie": "D",
+  "cidade": "Campo Grande",
+  "uf": "MS",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "democrata-gv",
+  "nome": "Democrata GV",
+  "sigla": "DGV",
+  "serie": "D",
+  "cidade": "Governador Valadares",
+  "uf": "MG",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "tombense",
+  "nome": "Tombense",
+  "sigla": "TOM",
+  "serie": "D",
+  "cidade": "Tombos",
+  "uf": "MG",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "vitoria-es",
+  "nome": "Vitória-ES",
+  "sigla": "VI0",
+  "serie": "D",
+  "cidade": "Vitória",
+  "uf": "ES",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "rio-branco-es",
+  "nome": "Rio Branco-ES",
+  "sigla": "RIB",
+  "serie": "D",
+  "cidade": "Vitória",
+  "uf": "ES",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "porto-ba",
+  "nome": "Porto-BA",
+  "sigla": "POR",
+  "serie": "D",
+  "cidade": "Porto Seguro",
+  "uf": "BA",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "real-noroeste",
+  "nome": "Real Noroeste",
+  "sigla": "REN",
+  "serie": "D",
+  "cidade": "Águia Branca",
+  "uf": "ES",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "portuguesa",
+  "nome": "Portuguesa",
+  "sigla": "PO0",
+  "serie": "D",
+  "cidade": "São Paulo",
+  "uf": "SP",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "agua-santa",
+  "nome": "Água Santa",
+  "sigla": "AGS",
+  "serie": "D",
+  "cidade": "Diadema",
+  "uf": "SP",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "portuguesa-rj",
+  "nome": "Portuguesa-RJ",
+  "sigla": "PO1",
+  "serie": "D",
+  "cidade": "Rio de Janeiro",
+  "uf": "RJ",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "america-rj",
+  "nome": "America",
+  "sigla": "AM0",
+  "serie": "D",
+  "cidade": "Rio de Janeiro",
+  "uf": "RJ",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "madureira",
+  "nome": "Madureira",
+  "sigla": "MAD",
+  "serie": "D",
+  "cidade": "Rio de Janeiro",
+  "uf": "RJ",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "pouso-alegre",
+  "nome": "Pouso Alegre",
+  "sigla": "POA",
+  "serie": "D",
+  "cidade": "Pouso Alegre",
+  "uf": "MG",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "xv-de-piracicaba",
+  "nome": "XV de Piracicaba",
+  "sigla": "XDP",
+  "serie": "D",
+  "cidade": "Piracicaba",
+  "uf": "SP",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "noroeste",
+  "nome": "Noroeste",
+  "sigla": "NOR",
+  "serie": "D",
+  "cidade": "Bauru",
+  "uf": "SP",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "velo-clube",
+  "nome": "Velo Clube",
+  "sigla": "VEC",
+  "serie": "D",
+  "cidade": "Rio Claro",
+  "uf": "SP",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "sampaio-correa-rj",
+  "nome": "Sampaio Corrêa-RJ",
+  "sigla": "SCO",
+  "serie": "D",
+  "cidade": "Saquarema",
+  "uf": "RJ",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "nova-iguacu",
+  "nome": "Nova Iguaçu",
+  "sigla": "NOI",
+  "serie": "D",
+  "cidade": "Nova Iguaçu",
+  "uf": "RJ",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "marica",
+  "nome": "Maricá",
+  "sigla": "MA2",
+  "serie": "D",
+  "cidade": "Maricá",
+  "uf": "RJ",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "santa-catarina",
+  "nome": "Santa Catarina",
+  "sigla": "SCA",
+  "serie": "D",
+  "cidade": "Rio do Sul",
+  "uf": "SC",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "cianorte",
+  "nome": "Cianorte",
+  "sigla": "CIA",
+  "serie": "D",
+  "cidade": "Cianorte",
+  "uf": "PR",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "fc-cascavel",
+  "nome": "FC Cascavel",
+  "sigla": "FCC",
+  "serie": "D",
+  "cidade": "Cascavel",
+  "uf": "PR",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "sao-luiz",
+  "nome": "São Luiz",
+  "sigla": "SAL",
+  "serie": "D",
+  "cidade": "Ijuí",
+  "uf": "RS",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "joinville",
+  "nome": "Joinville",
+  "sigla": "JOI",
+  "serie": "D",
+  "cidade": "Joinville",
+  "uf": "SC",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "guarany-de-bage",
+  "nome": "Guarany de Bagé",
+  "sigla": "GDB",
+  "serie": "D",
+  "cidade": "Bagé",
+  "uf": "RS",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "blumenau",
+  "nome": "Blumenau",
+  "sigla": "BLU",
+  "serie": "D",
+  "cidade": "Blumenau",
+  "uf": "SC",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "marcilio-dias",
+  "nome": "Marcílio Dias",
+  "sigla": "MDI",
+  "serie": "D",
+  "cidade": "Itajaí",
+  "uf": "SC",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "sao-joseense",
+  "nome": "São Joseense",
+  "sigla": "SAJ",
+  "serie": "D",
+  "cidade": "São José dos Pinhais",
+  "uf": "PR",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "sao-jose-rs",
+  "nome": "São José-RS",
+  "sigla": "SJO",
+  "serie": "D",
+  "cidade": "Porto Alegre",
+  "uf": "RS",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "brasil-de-pelotas",
+  "nome": "Brasil de Pelotas",
+  "sigla": "BDP",
+  "serie": "D",
+  "cidade": "Pelotas",
+  "uf": "RS",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "azuriz",
+  "nome": "Azuriz",
+  "sigla": "AZU",
+  "serie": "D",
+  "cidade": "Pato Branco",
+  "uf": "PR",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "estadio",
+   "tecnico",
+   "grupo-confirmar"
+  ],
+  "fontes": [
+   "wiki-serie-d-2026"
+  ]
+ },
+ {
+  "id": "ji-parana",
+  "nome": "Ji-Paraná",
+  "sigla": "JIP",
+  "serie": "E",
+  "cidade": null,
+  "uf": "RO",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "cidade",
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-copa-do-brasil-2026"
+  ]
+ },
+ {
+  "id": "independente",
+  "nome": "Independente",
+  "sigla": "IN0",
+  "serie": "E",
+  "cidade": null,
+  "uf": "AP",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "cidade",
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-copa-do-brasil-2026"
+  ]
+ },
+ {
+  "id": "primavera-sp",
+  "nome": "Primavera-SP",
+  "sigla": "PR0",
+  "serie": "E",
+  "cidade": null,
+  "uf": "SP",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "cidade",
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-copa-do-brasil-2026"
+  ]
+ },
+ {
+  "id": "bragantino-pa",
+  "nome": "Bragantino-PA",
+  "sigla": "BR0",
+  "serie": "E",
+  "cidade": null,
+  "uf": "PA",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "cidade",
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-copa-do-brasil-2026"
+  ]
+ },
+ {
+  "id": "america-de-propria",
+  "nome": "América de Propriá",
+  "sigla": "ADP",
+  "serie": "E",
+  "cidade": null,
+  "uf": "SE",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "cidade",
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-copa-do-brasil-2026"
+  ]
+ },
+ {
+  "id": "desportiva-ferroviaria",
+  "nome": "Desportiva Ferroviária",
+  "sigla": "DEF",
+  "serie": "E",
+  "cidade": null,
+  "uf": "ES",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "cidade",
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-copa-do-brasil-2026"
+  ]
+ },
+ {
+  "id": "vasco-da-gama-ac",
+  "nome": "Vasco da Gama-AC",
+  "sigla": "VDG",
+  "serie": "E",
+  "cidade": null,
+  "uf": "AC",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "cidade",
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-copa-do-brasil-2026"
+  ]
+ },
+ {
+  "id": "bare",
+  "nome": "Baré",
+  "sigla": "BA0",
+  "serie": "E",
+  "cidade": null,
+  "uf": "RR",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "cidade",
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-copa-do-brasil-2026"
+  ]
+ },
+ {
+  "id": "fc-pantanal",
+  "nome": "FC Pantanal",
+  "sigla": "FCP",
+  "serie": "E",
+  "cidade": null,
+  "uf": "MS",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "cidade",
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-copa-do-brasil-2026"
+  ]
+ },
+ {
+  "id": "boavista",
+  "nome": "Boavista",
+  "sigla": "BOA",
+  "serie": "E",
+  "cidade": null,
+  "uf": "RJ",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "cidade",
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-copa-do-brasil-2026"
+  ]
+ },
+ {
+  "id": "capital-to",
+  "nome": "Capital-TO",
+  "sigla": "CA1",
+  "serie": "E",
+  "cidade": null,
+  "uf": "TO",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "cidade",
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-copa-do-brasil-2026"
+  ]
+ },
+ {
+  "id": "penedense",
+  "nome": "Penedense",
+  "sigla": "PEN",
+  "serie": "E",
+  "cidade": null,
+  "uf": "AL",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "cidade",
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-copa-do-brasil-2026"
+  ]
+ },
+ {
+  "id": "porto-vitoria",
+  "nome": "Porto Vitória",
+  "sigla": "POV",
+  "serie": "E",
+  "cidade": null,
+  "uf": "ES",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "cidade",
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-copa-do-brasil-2026"
+  ]
+ },
+ {
+  "id": "castanhal",
+  "nome": "Castanhal",
+  "sigla": "CAS",
+  "serie": "E",
+  "cidade": null,
+  "uf": "PA",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "cidade",
+   "estadio",
+   "tecnico"
+  ],
+  "fontes": [
+   "wiki-copa-do-brasil-2026"
+  ]
  }
 ]

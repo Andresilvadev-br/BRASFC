@@ -4,13 +4,17 @@ import correcoesRaw from './brasil/2026/correcoes.json' with { type: 'json' };
 import fontesRaw from './brasil/2026/fontes.json' with { type: 'json' };
 import identidadeRaw from './brasil/2026/identidade.json' with { type: 'json' };
 import temporadaRaw from './brasil/2026/temporada.json' with { type: 'json' };
+import serieDRaw from './brasil/2026/serie-d.json' with { type: 'json' };
+import copaRaw from './brasil/2026/copa-do-brasil.json' with { type: 'json' };
+import { divisionRule } from '#lib/domain/rules.ts';
 
 /**
  * Base de clubes brasileiros — temporada 2026.
  * Regras: só dados verificáveis; o que não foi conferido fica `null` e listado em `pendencias`.
  * Dados esportivos (aqui) ficam separados da identidade visual (identidade.json), que não traz escudos.
  */
-export type Serie = 'A' | 'B' | 'C';
+/** A–D: divisões nacionais 2026; E: clube de competição estadual (fora das séries nacionais em 2026). */
+export type Serie = 'A' | 'B' | 'C' | 'D' | 'E';
 
 export interface RealClub {
 	id: string;
@@ -98,7 +102,7 @@ export function validateDataset(clubes: RealClub[], fontes: Fonte[], identidade:
 		if (siglas.has(c.sigla)) err(`Sigla duplicada ${c.sigla}`, c.id);
 		siglas.add(c.sigla);
 		if (!c.nome?.trim()) err('Nome vazio', c.id);
-		if (!['A', 'B', 'C'].includes(c.serie)) err(`Série inválida ${c.serie}`, c.id);
+		if (!['A', 'B', 'C', 'D', 'E'].includes(c.serie)) err(`Série inválida ${c.serie}`, c.id);
 		if (c.uf !== null && !UFS.has(c.uf)) err(`UF inválida ${c.uf}`, c.id);
 		if (!Number.isInteger(c.forcaEstimada) || c.forcaEstimada < 1 || c.forcaEstimada > 5) err('forcaEstimada fora de 1–5', c.id);
 		if (!c.fontes.length) err('Clube sem fonte', c.id);
@@ -112,11 +116,17 @@ export function validateDataset(clubes: RealClub[], fontes: Fonte[], identidade:
 		else if (!id.cores) warn('Cores pendentes (usará cores neutras)', c.id);
 	}
 	for (const comp of temporada.competicoes) {
-		if (comp.clubes.length !== 20) err(`${comp.nome} com ${comp.clubes.length} clubes (esperado 20)`);
+		const esperado = divisionRule(comp.id as 'serie-a', temporada.temporada).size;
+		if (comp.clubes.length !== esperado) err(`${comp.nome} com ${comp.clubes.length} clubes (esperado ${esperado})`);
 		for (const id of comp.clubes) if (!ids.has(id)) err(`${comp.nome} cita clube inexistente ${id}`);
 	}
 	const all = temporada.competicoes.flatMap((c) => c.clubes);
 	if (new Set(all).size !== all.length) err('Clube em mais de uma competição');
+	const bySerie = new Map(clubes.map((c) => [c.id, c.serie]));
+	for (const comp of temporada.competicoes) {
+		const serie = comp.id.replace('serie-', '').toUpperCase();
+		for (const id of comp.clubes) if (bySerie.get(id) !== serie) err(`${comp.nome} cita clube da Série ${bySerie.get(id)}`, id);
+	}
 	for (const k of correcoes) {
 		if (!ids.has(k.clube)) err(`Correção para clube inexistente ${k.clube}`);
 		if (!fonteIds.has(k.fonte)) err(`Correção sem fonte registrada (${k.fonte})`, k.clube);
@@ -138,19 +148,62 @@ export function applyCorrections(clubes: RealClub[], correcoes: Correcao[]): Rea
 	return out;
 }
 
+export interface SerieD {
+	temporada: number;
+	fonte: string;
+	grupos: string[][];
+	verificacao: string;
+	campeao: string;
+	vice: string;
+	acessos: string[];
+}
+
+export interface CopaDoBrasilBase {
+	temporada: number;
+	fontes: string[];
+	participantes: Array<{ fase: 1 | 2 | 3 | 5; clube: string }>;
+}
+
 export const FONTES = fontesRaw as Fonte[];
 export const IDENTIDADE = identidadeRaw as Record<string, Identidade>;
-export const TEMPORADA_2026 = temporadaRaw as Temporada;
+export const SERIE_D_2026 = serieDRaw as SerieD;
+export const COPA_2026 = copaRaw as CopaDoBrasilBase;
+const temporadaBase = temporadaRaw as Temporada;
+/** Temporada 2026 com a Série D (96 clubes, grupos da fonte) junto das Séries A, B e C. */
+export const TEMPORADA_2026: Temporada = {
+	...temporadaBase,
+	competicoes: [...temporadaBase.competicoes, { id: 'serie-d', nome: 'Série D', clubes: SERIE_D_2026.grupos.flat() }]
+};
 export const CORRECOES = correcoesRaw as Correcao[];
 export const CLUBES_2026: RealClub[] = applyCorrections(clubesRaw as RealClub[], CORRECOES);
 export const DATASET_ISSUES = validateDataset(CLUBES_2026, FONTES, IDENTIDADE, TEMPORADA_2026, CORRECOES);
 
-const NEUTRAL = { primaria: '#5B6770', secundaria: '#E7EDF0' };
+/** Cores PROVISÓRIAS (geradas pelo BRASFC) para clubes sem cores conferidas: nunca apresentadas como oficiais. */
+export function provisionalColors(id: string): { primaria: string; secundaria: string } {
+	let h = 0;
+	for (const ch of id) h = (h * 131 + ch.charCodeAt(0)) >>> 0;
+	const hue = h % 360;
+	const light = 34 + ((h >> 9) % 18);
+	const hsl = (hh: number, ss: number, ll: number) => {
+		const a = (ss / 100) * Math.min(ll / 100, 1 - ll / 100);
+		const f = (n: number) => {
+			const k = (n + hh / 30) % 12;
+			const c = ll / 100 - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+			return Math.round(c * 255).toString(16).padStart(2, '0');
+		};
+		return `#${f(0)}${f(8)}${f(4)}`.toUpperCase();
+	};
+	return { primaria: hsl(hue, 58, light), secundaria: (h >> 5) % 3 === 0 ? '#111111' : '#F2F2F2' };
+}
+
+/** Desconto de força do elenco gerado por nível (D e estaduais abaixo da Série C). */
+const TIER: Record<Serie, number> = { A: 0, B: 0, C: 0, D: -3, E: -5 };
 const SHAPES: CrestShape[] = ['escudo', 'circulo', 'flamula', 'diamante'];
 
 /** Converte para o formato usado pelo jogo. Escudo: genérico (nenhuma marca protegida). */
 export function toGameClub(c: RealClub): Club {
-	const cores = IDENTIDADE[c.id]?.cores ?? NEUTRAL;
+	const conferidas = IDENTIDADE[c.id]?.cores ?? null;
+	const cores = conferidas ?? provisionalColors(c.id);
 	let h = 0;
 	for (const ch of c.id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
 	return {
@@ -161,7 +214,9 @@ export function toGameClub(c: RealClub): Club {
 		reputation: c.forcaEstimada,
 		colors: { primary: cores.primaria, secondary: cores.secundaria, shorts: cores.secundaria, socks: cores.primaria },
 		crest: { shape: SHAPES[h % SHAPES.length], pattern: 'liso' },
-		stadium: c.estadio ?? 'Estádio pendente'
+		stadium: c.estadio ?? 'Estádio pendente',
+		...(TIER[c.serie] ? { tier: TIER[c.serie] } : {}),
+		...(conferidas ? {} : { colorsProvisional: true })
 	};
 }
 

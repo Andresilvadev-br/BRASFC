@@ -15,6 +15,10 @@ export interface Club {
 	colors: { primary: string; secondary: string; shorts: string; socks: string };
 	crest: { shape: CrestShape; pattern: CrestPattern };
 	stadium: string;
+	/** ajuste de força do elenco gerado por nível (Série D/estaduais); ausente = 0 */
+	tier?: number;
+	/** cores geradas pelo BRASFC (não conferidas em fonte) */
+	colorsProvisional?: boolean;
 }
 
 export const CLUBS: readonly Club[] = [

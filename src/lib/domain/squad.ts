@@ -74,10 +74,10 @@ export function generateSquad(clubId: string, seed: number): SquadPlayer[] {
  * FICTÍCIOS (combinações aleatórias, marcados como `pending`) e a interface avisa
  * que não são jogadores reais do clube.
  */
-export function generateSquadFor(club: { id: string; reputation: number }, seed: number, opts: { pending?: boolean } = {}): SquadPlayer[] {
+export function generateSquadFor(club: { id: string; reputation: number; tier?: number }, seed: number, opts: { pending?: boolean } = {}): SquadPlayer[] {
 	const clubId = club.id;
 	const rng = createRng(deriveSeed(seed, 'squad', clubId));
-	const base = 57 + club.reputation * 3; // 60 (modesto) a 72 (gigante)
+	const base = 57 + club.reputation * 3 + (club.tier ?? 0); // 60 (modesto) a 72 (gigante); Série D/estaduais abaixo
 	const players: SquadPlayer[] = [];
 	const perPosition = new Map<Position, number>();
 	const usedNumbers = new Set<number>();

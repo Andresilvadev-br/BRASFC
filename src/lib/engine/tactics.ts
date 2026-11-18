@@ -45,7 +45,7 @@ export interface TacticalParams {
 const MENTALITY: Record<Mentality, Partial<TacticalParams>> = {
 	defensiva: { defLine: 30, blockLength: 32, progressWeight: 0.9, safetyWeight: 1.15, shotThreshold: 0.122, support: 0.3, boxDefense: 1.45, counterBoost: 0.5 },
 	equilibrada: { defLine: 31, blockLength: 40, progressWeight: 1, safetyWeight: 1, shotThreshold: 0.112, support: 0.5 },
-	ofensiva: { defLine: 35, blockLength: 42, progressWeight: 1.08, safetyWeight: 0.92, shotThreshold: 0.107, support: 0.7, boxDefense: 0.82, fatigueCost: 0.02 }
+	ofensiva: { defLine: 33, blockLength: 42, progressWeight: 1.08, safetyWeight: 0.92, shotThreshold: 0.107, support: 0.62, boxDefense: 0.92, fatigueCost: 0.02 }
 };
 
 const STYLE: Record<PlayStyle, Partial<TacticalParams>> = {
@@ -54,8 +54,8 @@ const STYLE: Record<PlayStyle, Partial<TacticalParams>> = {
 	'contra-ataque': { counterBoost: 1, longBias: 0.3, tempo: 2.1, width: 0.95, defLine: -1, passAccuracy: 0.98 },
 	'bola-longa': { longBias: 1.0, shortBias: -0.5, tempo: 1.8, progressWeight: 0.3, passAccuracy: 0.96 },
 	laterais: { wideBias: 0.8, width: 1.15, tempo: 2.2, boxDefense: 0.95 },
-	pressao: { pressDistance: 22, pressers: 3, fatigueCost: 0.055, defLine: 7 },
-	vertical: { progressWeight: 0.25, tempo: 1.8, shortBias: -0.1, longBias: 0.2, passAccuracy: 0.95 }
+	pressao: { pressDistance: 20, pressers: 3, fatigueCost: 0.055, defLine: 2 },
+	vertical: { progressWeight: 0.15, tempo: 1.9, shortBias: -0.1, longBias: 0.2, passAccuracy: 0.98, boxDefense: 1.05 }
 };
 
 const BASE: TacticalParams = {

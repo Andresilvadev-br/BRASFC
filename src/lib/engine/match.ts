@@ -83,6 +83,50 @@ export interface MatchOptions {
 	replay?: AppliedDecision[];
 }
 
+/** Nível médio de atributos (titulares de linha) da população de calibração (scripts/engine-level.ts). */
+export const LEVEL_REFERENCE = 56;
+
+/** Deslocamento de atributos para a partida (0 = nível da calibração). */
+export function matchLevelShift(home: TeamSetup, away: TeamSetup): number {
+	let sum = 0;
+	let n = 0;
+	for (const setup of [home, away]) {
+		const byId = new Map(setup.players.map((p) => [p.id, p]));
+		for (const id of setup.tactic.lineup) {
+			const p = byId.get(id);
+			if (!p || p.position === 'GOL') continue;
+			for (const v of Object.values(p.attributes) as number[]) {
+				sum += v;
+				n++;
+			}
+		}
+	}
+	if (!n) return 0;
+	return Math.round((sum / n - LEVEL_REFERENCE) * 10) / 10;
+}
+
+function shiftSetup(setup: TeamSetup, shift: number): TeamSetup {
+	if (!shift) return setup;
+	return {
+		...setup,
+		players: setup.players.map((p) => {
+			const attributes = { ...p.attributes };
+			for (const k of Object.keys(attributes) as Array<keyof typeof attributes>) attributes[k] = Math.max(1, Math.min(99, Math.round((attributes[k] - shift) * 10) / 10));
+			return { ...p, attributes };
+		})
+	};
+}
+
+const THREE_BACK = new Map<string, boolean>();
+function threeBackOf(formation: keyof typeof FORMATIONS): boolean {
+	let v = THREE_BACK.get(formation);
+	if (v === undefined) {
+		v = FORMATIONS[formation].filter((x) => x.position === 'ZAG').length === 3;
+		THREE_BACK.set(formation, v);
+	}
+	return v;
+}
+
 export class Match {
 	readonly rules: MatchRules;
 	readonly seed: number;
@@ -117,6 +161,8 @@ export class Match {
 	private counterUntil: Record<Side, number> = { home: -1, away: -1 };
 	/** "dia" de cada equipe (0,93–1,07): o mais forte nem sempre vence */
 	readonly form: Record<Side, number>;
+	/** deslocamento aplicado aos atributos (nível da partida − referência da calibração) */
+	readonly levelShift: number;
 
 	constructor(opts: MatchOptions) {
 		this.rules = { ...DEFAULT_RULES, ...(opts.rules ?? {}) };
@@ -124,9 +170,13 @@ export class Match {
 		this.rng = createRng(this.seed);
 		const formRng = createRng((this.seed ^ 0x9e3779b9) >>> 0);
 		this.form = { home: 0.9 + formRng.next() * 0.2, away: 0.9 + formRng.next() * 0.2 };
+		// Nível relativo: os atributos valem em relação ao nível médio dos 22 titulares.
+		// Dois times fortes não criam mais chances só por serem fortes (no futebol real a média
+		// de gols é parecida entre divisões); a DIFERENÇA entre os times é preservada.
+		this.levelShift = matchLevelShift(opts.home, opts.away);
 		this.teams = {
-			home: this.makeTeam(opts.home, opts.ai?.home ?? true),
-			away: this.makeTeam(opts.away, opts.ai?.away ?? true)
+			home: this.makeTeam(shiftSetup(opts.home, this.levelShift), opts.ai?.home ?? true),
+			away: this.makeTeam(shiftSetup(opts.away, this.levelShift), opts.ai?.away ?? true)
 		};
 		if (opts.replay) {
 			this.replay = new Map();
@@ -220,9 +270,22 @@ export class Match {
 		return this.teams.home.byId.get(id) ?? this.teams.away.byId.get(id);
 	}
 
+	/** Cache de quem está em campo (invalidado em substituições e expulsões). Não ordenar o retorno no lugar. */
+	private pitchCache: Record<Side, PlayerState[] | null> = { home: null, away: null };
+	private targetCache: Array<[number, number]> = new Array(64);
+	private targetStamps = new Int32Array(64);
+	private targetStamp = 0;
+	private dirtyPitch() {
+		this.pitchCache.home = null;
+		this.pitchCache.away = null;
+	}
+
 	onPitch(side: Side): PlayerState[] {
-		const out: PlayerState[] = [];
+		let out = this.pitchCache[side];
+		if (out) return out;
+		out = [];
 		for (const s of this.states.values()) if (s.side === side && s.onPitch) out.push(s);
+		this.pitchCache[side] = out;
 		return out;
 	}
 
@@ -417,11 +480,13 @@ export class Match {
 		t.usedBench.add(d.inId);
 		out!.onPitch = false;
 		out!.minuteOut = this.tick;
+		this.dirtyPitch();
 		const slot = out!.slot;
 		this.states.set(d.inId, {
 			id: d.inId, side, slot, x: out!.x, y: out!.y, px: out!.x, py: out!.y, condition: incoming!.condition, onPitch: true,
 			sentOff: false, injured: false, yellow: 0, minutesIn: this.tick, minuteOut: null
 		});
+		this.dirtyPitch();
 		t.tactic.lineup[slot] = d.inId;
 		if (t.gkId === d.outId) t.gkId = d.inId;
 		if (this.ball.owner === d.outId) this.ball.owner = d.inId;
@@ -543,7 +608,7 @@ export class Match {
 		} else {
 			let line = clamp(p.defLine + (bx - 52) * 0.28, 11, 52);
 			// Esquemas com 3 zagueiros: os alas recompõem e formam a linha de 5 sem a bola.
-			const threeBack = formation.filter((x) => x.position === 'ZAG').length === 3;
+			const threeBack = threeBackOf(t.tactic.formation);
 			const effDepth = threeBack && (s.position === 'LD' || s.position === 'LE') ? 0.3 : depth;
 			line = Math.min(line, Math.max(8, bx - 4));
 			// Bola perto da própria área: o bloco se compacta (meio-campo protege a entrada da área).
@@ -623,11 +688,22 @@ export class Match {
 		}
 		const lines: Record<Side, number> = { home: this.offsideLine('home'), away: this.offsideLine('away') };
 		const predicted: Record<Side, number> = { home: this.predictedOffsideLine('home'), away: this.predictedOffsideLine('away') };
-		const marks = posSide && this.restart === null ? this.assignMarking(OTHER[posSide], pressers, focusX, focusY) : new Map<string, [number, number]>();
+		// Posições-alvo não dependem das posições atuais: calcula uma vez por atleta neste segundo.
+		const targets = this.targetCache;
+		const stamp = ++this.targetStamp;
+		const target = (side: Side, slot: number, inPos: boolean): [number, number] => {
+			const key = (side === 'home' ? 0 : 32) + (inPos ? 16 : 0) + slot;
+			if (this.targetStamps[key] !== stamp) {
+				targets[key] = this.slotTarget(side, slot, inPos, focusX, focusY);
+				this.targetStamps[key] = stamp;
+			}
+			return targets[key];
+		};
+		const marks = posSide && this.restart === null ? this.assignMarking(OTHER[posSide], pressers, focusX, focusY, target) : new Map<string, [number, number]>();
 		for (const s of this.states.values()) {
 			if (!s.onPitch || s.id === this.ball.owner) continue;
 			const mine = posSide === s.side;
-			let [tx, ty] = this.slotTarget(s.side, s.slot, mine, focusX, focusY);
+			let [tx, ty] = target(s.side, s.slot, mine);
 			const info = this.player(s.id)!;
 			if (pressers.has(s.id) && ownerState) {
 				const [ox, oy] = toRel(s.side, ownerState.x, ownerState.y);
@@ -681,25 +757,30 @@ export class Match {
 	 * Marcação: cada defensor (sem a bola) acompanha o adversário mais próximo da sua zona,
 	 * posicionado entre ele e o gol. Quem tem bom posicionamento/antecipação marca mais justo.
 	 */
-	private assignMarking(defSide: Side, pressers: Set<string>, ballX: number, ballY: number): Map<string, [number, number]> {
+	private assignMarking(defSide: Side, pressers: Set<string>, ballX: number, ballY: number, target?: (side: Side, slot: number, inPos: boolean) => [number, number]): Map<string, [number, number]> {
 		const out = new Map<string, [number, number]>();
 		const attSide = OTHER[defSide];
 		const attackers = this.onPitch(attSide).filter((a) => a.id !== this.ball.owner && a.id !== this.teams[attSide].gkId);
 		const taken = new Set<string>();
 		const defenders = this.onPitch(defSide)
 			.filter((d) => d.id !== this.teams[defSide].gkId && !pressers.has(d.id))
-			.map((d) => ({ d, home: this.slotTarget(defSide, d.slot, false, ballX, ballY) }));
+			.map((d) => ({ d, home: target ? target(defSide, d.slot, false) : this.slotTarget(defSide, d.slot, false, ballX, ballY) }));
 		const homeOf = new Map(defenders.map((x) => [x.d.id, x.home]));
 		const pairs: Array<{ d: PlayerState; a: PlayerState; dist: number }> = [];
+		const manMarking = this.teams[defSide].params.manMarking;
+		const formationSlots = FORMATIONS[this.teams[defSide].tactic.formation];
+		const reachMark = manMarking ? 16 : 11;
+		const attRel = attackers.map((a) => toRel(attSide, a.x, a.y));
 		for (const { d, home } of defenders) {
-			for (const a of attackers) {
+			// Zagueiros guardam o corredor central (na zona); pontas abertos ficam com laterais/alas.
+			const isCB = formationSlots[d.slot]?.position === 'ZAG';
+			for (let i = 0; i < attackers.length; i++) {
+				const a = attackers[i];
+				const [arx, ary] = attRel[i];
+				if (isCB && !manMarking && Math.abs(ary - PITCH.width / 2) > 15) continue;
 				const dd = dist(home[0], home[1], a.x, a.y);
-				const [arx, ary] = toRel(attSide, a.x, a.y);
-				// Zagueiros guardam o corredor central (na zona); pontas abertos ficam com laterais/alas.
-				const isCB = FORMATIONS[this.teams[defSide].tactic.formation][d.slot]?.position === 'ZAG';
-				if (isCB && !this.teams[defSide].params.manMarking && Math.abs(ary - PITCH.width / 2) > 15) continue;
 				// Marcação individual acompanha de mais longe (e é arrastada para fora da zona).
-				if (dd < (this.teams[defSide].params.manMarking ? 16 : 11) && arx > 45) pairs.push({ d, a, dist: dd });
+				if (dd < reachMark && arx > 45) pairs.push({ d, a, dist: dd });
 			}
 		}
 		pairs.sort((x, y) => x.dist - y.dist);
@@ -1410,11 +1491,11 @@ export class Match {
 		const gkState = this.states.get(this.teams[OTHER[side]].gkId);
 		const gk = gkState?.onPitch ? this.player(gkState.id)!.attributes : null;
 		const gkRating = gk ? gk.reflexos * 0.45 + gk.posicionamentoGol * 0.3 + gk.defesa * 0.15 + gk.agilidade * 0.1 : 25;
-		const gkFactor = 1.27 - (gkRating / 100) * 0.36 * (gkState ? this.physFactor(gkState) / 0.98 : 0);
+		const gkFactor = 1.07 - (gkRating / 100) * 0.36 * (gkState ? this.physFactor(gkState) / 0.98 : 0);
 		const pGoal = clamp(xg * skill * gkFactor, 0.005, 0.97);
 		const boxDef = this.teams[OTHER[side]].params.boxDefense;
 		const blockChance = penalty ? 0 : clamp((0.06 + this.defendersInLane(shooter) * 0.11) * boxDef, 0, 0.45);
-		const onTarget = clamp(0.42 + (skillAttr - 60) / 160 + (a.compostura - 60) / 320 - pressure * 0.07 - Math.max(0, PITCH.length - ax - 16) * 0.005, 0.12, 0.8) * this.techFactor(shooter);
+		const onTarget = clamp(0.5 + (skillAttr - 60) / 160 + (a.compostura - 60) / 320 - pressure * 0.07 - Math.max(0, PITCH.length - ax - 16) * 0.005, 0.16, 0.86) * this.techFactor(shooter);
 		const assist = this.lastPass && this.lastPass.to === shooter.id && this.tick - this.lastPass.tick <= 6 && this.lastPass.side === side ? this.lastPass.from : undefined;
 		const data = { xg: Math.round(xg * 1000) / 1000, header, setPiece, penalty, ...(assist ? { keyPassFrom: assist } : {}) };
 		this.emit('shot', { side, player: shooter.id, x: shooter.x, y: shooter.y, data });
@@ -1423,7 +1504,7 @@ export class Match {
 		this.lastPass = null;
 
 		if (this.rng.next() < blockChance) {
-			const blocker = opps.sort((p, q) => dist(p.x, p.y, shooter.x, shooter.y) - dist(q.x, q.y, shooter.x, shooter.y))[0];
+			const blocker = [...opps].sort((p, q) => dist(p.x, p.y, shooter.x, shooter.y) - dist(q.x, q.y, shooter.x, shooter.y))[0];
 			this.emit('shot_blocked', { side: OTHER[side], player: blocker?.id, other: shooter.id });
 			if (this.rng.next() < 0.35) return this.outOfPlay('corner', side, ...this.cornerSpot(side, shooter.y));
 			return this.looseBall(shooter.x, shooter.y, 10);
@@ -1510,12 +1591,13 @@ export class Match {
 		}
 		s.sentOff = true;
 		s.onPitch = false;
+		this.dirtyPitch();
 		s.minuteOut = this.tick;
 		if (this.ball.owner === s.id) this.ball.owner = null;
 		const t = this.teams[s.side];
 		if (t.gkId === s.id) {
 			// Sem goleiro: o atleta com melhor perfil de gol assume a meta.
-			const stand = this.onPitch(s.side).sort((a, b) => {
+			const stand = [...this.onPitch(s.side)].sort((a, b) => {
 				const aa = this.player(a.id)!.attributes;
 				const bb = this.player(b.id)!.attributes;
 				return bb.reflexos + bb.jogoAereo - (aa.reflexos + aa.jogoAereo);

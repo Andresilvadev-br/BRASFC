@@ -1,0 +1,513 @@
+{
+ "temporada": 2026,
+ "fontes": [
+  "wiki-copa-do-brasil-2026",
+  "cbf-copa-do-brasil-2026"
+ ],
+ "participantes": [
+  {
+   "fase": 1,
+   "clube": "ji-parana"
+  },
+  {
+   "fase": 1,
+   "clube": "independente"
+  },
+  {
+   "fase": 1,
+   "clube": "madureira"
+  },
+  {
+   "fase": 1,
+   "clube": "gama"
+  },
+  {
+   "fase": 1,
+   "clube": "galvez"
+  },
+  {
+   "fase": 1,
+   "clube": "velo-clube"
+  },
+  {
+   "fase": 1,
+   "clube": "primavera-sp"
+  },
+  {
+   "fase": 1,
+   "clube": "sampaio-correa-rj"
+  },
+  {
+   "fase": 1,
+   "clube": "betim-futebol"
+  },
+  {
+   "fase": 1,
+   "clube": "tirol"
+  },
+  {
+   "fase": 1,
+   "clube": "santa-catarina"
+  },
+  {
+   "fase": 1,
+   "clube": "porto-ba"
+  },
+  {
+   "fase": 1,
+   "clube": "maguary"
+  },
+  {
+   "fase": 1,
+   "clube": "bragantino-pa"
+  },
+  {
+   "fase": 1,
+   "clube": "primavera-mt"
+  },
+  {
+   "fase": 1,
+   "clube": "laguna"
+  },
+  {
+   "fase": 1,
+   "clube": "serra-branca"
+  },
+  {
+   "fase": 1,
+   "clube": "iape"
+  },
+  {
+   "fase": 1,
+   "clube": "america-de-propria"
+  },
+  {
+   "fase": 1,
+   "clube": "piaui"
+  },
+  {
+   "fase": 1,
+   "clube": "desportiva-ferroviaria"
+  },
+  {
+   "fase": 1,
+   "clube": "araguaina"
+  },
+  {
+   "fase": 1,
+   "clube": "vasco-da-gama-ac"
+  },
+  {
+   "fase": 1,
+   "clube": "guapore"
+  },
+  {
+   "fase": 1,
+   "clube": "monte-roraima"
+  },
+  {
+   "fase": 1,
+   "clube": "bare"
+  },
+  {
+   "fase": 1,
+   "clube": "ivinhema"
+  },
+  {
+   "fase": 1,
+   "clube": "fc-pantanal"
+  },
+  {
+   "fase": 2,
+   "clube": "fortaleza"
+  },
+  {
+   "fase": 2,
+   "clube": "juventude"
+  },
+  {
+   "fase": 2,
+   "clube": "atletico-go"
+  },
+  {
+   "fase": 2,
+   "clube": "america-mg"
+  },
+  {
+   "fase": 2,
+   "clube": "ceara"
+  },
+  {
+   "fase": 2,
+   "clube": "cuiaba"
+  },
+  {
+   "fase": 2,
+   "clube": "goias"
+  },
+  {
+   "fase": 2,
+   "clube": "sport"
+  },
+  {
+   "fase": 2,
+   "clube": "crb"
+  },
+  {
+   "fase": 2,
+   "clube": "vila-nova"
+  },
+  {
+   "fase": 2,
+   "clube": "operario-pr"
+  },
+  {
+   "fase": 2,
+   "clube": "avai"
+  },
+  {
+   "fase": 2,
+   "clube": "novorizontino"
+  },
+  {
+   "fase": 2,
+   "clube": "csa"
+  },
+  {
+   "fase": 2,
+   "clube": "amazonas"
+  },
+  {
+   "fase": 2,
+   "clube": "tombense"
+  },
+  {
+   "fase": 2,
+   "clube": "volta-redonda"
+  },
+  {
+   "fase": 2,
+   "clube": "guarani"
+  },
+  {
+   "fase": 2,
+   "clube": "abc"
+  },
+  {
+   "fase": 2,
+   "clube": "londrina"
+  },
+  {
+   "fase": 2,
+   "clube": "retro"
+  },
+  {
+   "fase": 2,
+   "clube": "ypiranga"
+  },
+  {
+   "fase": 2,
+   "clube": "athletic-mg"
+  },
+  {
+   "fase": 2,
+   "clube": "botafogo-pb"
+  },
+  {
+   "fase": 2,
+   "clube": "maringa"
+  },
+  {
+   "fase": 2,
+   "clube": "sao-bernardo"
+  },
+  {
+   "fase": 2,
+   "clube": "caxias"
+  },
+  {
+   "fase": 2,
+   "clube": "figueirense"
+  },
+  {
+   "fase": 2,
+   "clube": "america-de-natal"
+  },
+  {
+   "fase": 2,
+   "clube": "manaus"
+  },
+  {
+   "fase": 2,
+   "clube": "altos"
+  },
+  {
+   "fase": 2,
+   "clube": "nova-iguacu"
+  },
+  {
+   "fase": 2,
+   "clube": "aguia-de-maraba"
+  },
+  {
+   "fase": 2,
+   "clube": "anapolis"
+  },
+  {
+   "fase": 2,
+   "clube": "sousa"
+  },
+  {
+   "fase": 2,
+   "clube": "tocantinopolis"
+  },
+  {
+   "fase": 2,
+   "clube": "asa"
+  },
+  {
+   "fase": 2,
+   "clube": "gazin-porto-velho"
+  },
+  {
+   "fase": 2,
+   "clube": "ceilandia"
+  },
+  {
+   "fase": 2,
+   "clube": "portuguesa-rj"
+  },
+  {
+   "fase": 2,
+   "clube": "trem"
+  },
+  {
+   "fase": 2,
+   "clube": "juazeirense"
+  },
+  {
+   "fase": 2,
+   "clube": "itabaiana"
+  },
+  {
+   "fase": 2,
+   "clube": "maranhao"
+  },
+  {
+   "fase": 2,
+   "clube": "santa-cruz"
+  },
+  {
+   "fase": 2,
+   "clube": "tuna-luso"
+  },
+  {
+   "fase": 2,
+   "clube": "maracana-ce"
+  },
+  {
+   "fase": 2,
+   "clube": "cianorte"
+  },
+  {
+   "fase": 2,
+   "clube": "operario-ms"
+  },
+  {
+   "fase": 2,
+   "clube": "jacuipense"
+  },
+  {
+   "fase": 2,
+   "clube": "capital-df"
+  },
+  {
+   "fase": 2,
+   "clube": "fluminense-pi"
+  },
+  {
+   "fase": 2,
+   "clube": "sao-luiz"
+  },
+  {
+   "fase": 2,
+   "clube": "operario-vg"
+  },
+  {
+   "fase": 2,
+   "clube": "manauara"
+  },
+  {
+   "fase": 2,
+   "clube": "azuriz"
+  },
+  {
+   "fase": 2,
+   "clube": "rio-branco-es"
+  },
+  {
+   "fase": 2,
+   "clube": "boavista"
+  },
+  {
+   "fase": 2,
+   "clube": "gas"
+  },
+  {
+   "fase": 2,
+   "clube": "guarany-de-bage"
+  },
+  {
+   "fase": 2,
+   "clube": "mixto"
+  },
+  {
+   "fase": 2,
+   "clube": "portuguesa"
+  },
+  {
+   "fase": 2,
+   "clube": "atletico-de-alagoinhas"
+  },
+  {
+   "fase": 2,
+   "clube": "lagarto"
+  },
+  {
+   "fase": 2,
+   "clube": "capital-to"
+  },
+  {
+   "fase": 2,
+   "clube": "independencia"
+  },
+  {
+   "fase": 2,
+   "clube": "joinville"
+  },
+  {
+   "fase": 2,
+   "clube": "uberlandia"
+  },
+  {
+   "fase": 2,
+   "clube": "imperatriz"
+  },
+  {
+   "fase": 2,
+   "clube": "penedense"
+  },
+  {
+   "fase": 2,
+   "clube": "porto-vitoria"
+  },
+  {
+   "fase": 2,
+   "clube": "castanhal"
+  },
+  {
+   "fase": 2,
+   "clube": "nacional-am"
+  },
+  {
+   "fase": 2,
+   "clube": "oratorio"
+  },
+  {
+   "fase": 3,
+   "clube": "paysandu"
+  },
+  {
+   "fase": 3,
+   "clube": "barra"
+  },
+  {
+   "fase": 3,
+   "clube": "ponte-preta"
+  },
+  {
+   "fase": 3,
+   "clube": "confianca"
+  },
+  {
+   "fase": 5,
+   "clube": "bahia"
+  },
+  {
+   "fase": 5,
+   "clube": "vitoria"
+  },
+  {
+   "fase": 5,
+   "clube": "atletico-mg"
+  },
+  {
+   "fase": 5,
+   "clube": "cruzeiro"
+  },
+  {
+   "fase": 5,
+   "clube": "remo"
+  },
+  {
+   "fase": 5,
+   "clube": "athletico-pr"
+  },
+  {
+   "fase": 5,
+   "clube": "coritiba"
+  },
+  {
+   "fase": 5,
+   "clube": "botafogo"
+  },
+  {
+   "fase": 5,
+   "clube": "flamengo"
+  },
+  {
+   "fase": 5,
+   "clube": "fluminense"
+  },
+  {
+   "fase": 5,
+   "clube": "vasco"
+  },
+  {
+   "fase": 5,
+   "clube": "gremio"
+  },
+  {
+   "fase": 5,
+   "clube": "internacional"
+  },
+  {
+   "fase": 5,
+   "clube": "chapecoense"
+  },
+  {
+   "fase": 5,
+   "clube": "corinthians"
+  },
+  {
+   "fase": 5,
+   "clube": "mirassol"
+  },
+  {
+   "fase": 5,
+   "clube": "palmeiras"
+  },
+  {
+   "fase": 5,
+   "clube": "rb-bragantino"
+  },
+  {
+   "fase": 5,
+   "clube": "santos"
+  },
+  {
+   "fase": 5,
+   "clube": "sao-paulo"
+  }
+ ]
+}
