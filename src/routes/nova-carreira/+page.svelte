@@ -326,7 +326,7 @@
 	}
 	.screen {
 		position: relative;
-		min-height: 100vh;
+		min-height: var(--app-h, 100vh);
 		display: flex;
 		flex-direction: column;
 	}

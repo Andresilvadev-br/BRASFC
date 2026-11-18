@@ -1,0 +1,53 @@
+name: App Windows
+
+# Gera o instalador do BRASFC para Windows e publica no GitHub Releases
+# (só quando a versão do app em desktop/package.json ainda não foi publicada).
+on:
+  push:
+    branches: [dev, main]
+    paths: ['desktop/**', '.github/workflows/desktop.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    name: Instalador Windows
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Autoteste da janela (centralização e tela cheia)
+        shell: bash
+        run: npx electron . --selftest
+      - name: Versão já publicada?
+        id: ver
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          V=$(node -p "require('./package.json').version")
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          if gh release view "v$V" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then echo "exists=true" >> "$GITHUB_OUTPUT"; else echo "exists=false" >> "$GITHUB_OUTPUT"; fi
+      - name: Gerar e publicar instalador
+        if: steps.ver.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --win --x64 --publish always
+      - name: Instalador já publicado
+        if: steps.ver.outputs.exists == 'true'
+        run: echo "::notice::v${{ steps.ver.outputs.version }} já publicada; aumente a versão em desktop/package.json para gerar outra."

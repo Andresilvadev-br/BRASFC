@@ -10,6 +10,7 @@
 	import type { IconName } from '#lib/ui/icons.ts';
 	import Panel from '#lib/ui/Panel.svelte';
 	import ScreenHeader from '#lib/ui/ScreenHeader.svelte';
+	import DesktopDownload from '#lib/ui/desktop/DesktopDownload.svelte';
 
 	let { data } = $props();
 	let name = $state(untrack(() => data.profile?.displayName ?? ''));
@@ -113,7 +114,12 @@
 			</div>
 		</Panel>
 
-		<Panel title="Perfil" icon="user" index={4} class="wide">
+		<Panel title="Janela e aplicativo" icon="windows" index={4} class="wide">
+			<DesktopDownload />
+			<p class="muted small">No aplicativo do Windows: a janela abre sempre centralizada na tela; <kbd>F11</kbd> ou <kbd>Alt</kbd>+<kbd>Enter</kbd> alternam a tela cheia.</p>
+		</Panel>
+
+		<Panel title="Perfil" icon="user" index={5} class="wide">
 			<form onsubmit={saveName}>
 				<label>
 					<span>Nome exibido no multiplayer</span>

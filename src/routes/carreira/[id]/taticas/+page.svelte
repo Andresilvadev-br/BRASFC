@@ -421,7 +421,7 @@
 		position: relative;
 		margin: var(--sp-4);
 		aspect-ratio: 68 / 96;
-		height: clamp(560px, calc(100vh - 230px), 820px);
+		height: clamp(560px, calc(var(--app-h, 100vh) - 230px), 820px);
 		border-radius: var(--radius-l);
 		background: repeating-linear-gradient(180deg, #123e2d 0 9%, #10372a 9% 18%);
 		overflow: hidden;

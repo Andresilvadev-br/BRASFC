@@ -124,7 +124,7 @@
 
 <style>
 	.shell {
-		min-height: 100vh;
+		min-height: var(--app-h, 100vh);
 		display: grid;
 		grid-template-columns: 248px 1fr;
 		grid-template-rows: auto 1fr;
@@ -136,8 +136,8 @@
 	.rail {
 		grid-row: 1 / -1;
 		position: sticky;
-		top: 0;
-		height: 100vh;
+		top: var(--desk-bar, 0px);
+		height: var(--app-h, 100vh);
 		display: flex;
 		flex-direction: column;
 		gap: var(--sp-3);
@@ -283,7 +283,7 @@
 	}
 	.top {
 		position: sticky;
-		top: 0;
+		top: var(--desk-bar, 0px);
 		z-index: 30;
 		display: flex;
 		align-items: center;
@@ -348,7 +348,7 @@
 		}
 		.rail {
 			position: sticky;
-			top: 0;
+			top: var(--desk-bar, 0px);
 			z-index: 31;
 			height: auto;
 			flex-direction: row;

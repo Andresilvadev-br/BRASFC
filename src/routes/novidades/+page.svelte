@@ -7,6 +7,7 @@
 	import Button from '#lib/ui/Button.svelte';
 	import Icon from '#lib/ui/Icon.svelte';
 	import ScreenHeader from '#lib/ui/ScreenHeader.svelte';
+	import DesktopDownload from '#lib/ui/desktop/DesktopDownload.svelte';
 
 	let { data } = $props();
 	let blocked = $state<string[]>([]);
@@ -47,6 +48,8 @@
 
 <div class="page">
 	<ScreenHeader title="Atualizações" eyebrow="Central de atualizações" />
+
+	<div class="desk"><DesktopDownload /></div>
 
 	<section class="now">
 		<article class="glass current" data-umx-surface use:reveal>
@@ -146,6 +149,9 @@
 </div>
 
 <style>
+	.desk {
+		margin-bottom: var(--sp-5);
+	}
 	.page {
 		max-width: 1200px;
 		margin: 0 auto;

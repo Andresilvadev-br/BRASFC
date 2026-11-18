@@ -18,6 +18,8 @@
 	import Island from '#lib/ui/Island.svelte';
 	import Modal from '#lib/ui/Modal.svelte';
 	import WhatsNew from '#lib/ui/v4/WhatsNew.svelte';
+	import DesktopBar from '#lib/ui/desktop/DesktopBar.svelte';
+	import { initDesktop } from '#lib/stores/desktop.svelte.ts';
 	import { goto } from '$app/navigation';
 	import { applyUpdate, initUpdates, shouldShowWhatsNew, updates } from '#lib/stores/updates.svelte.ts';
 
@@ -31,6 +33,7 @@
 		loadPrefs();
 		void loadMotion();
 		const stopUpdates = initUpdates({ registerWorker: !import.meta.env.DEV });
+		const stopDesktop = initDesktop();
 		// Depois de uma atualização confirmada: "O que há de novo" (uma vez por versão).
 		setTimeout(() => (whatsNew = !onSplash && shouldShowWhatsNew()), 600);
 		void tick().then(() => requestAnimationFrame(markHydrated));
@@ -41,6 +44,7 @@
 		return () => {
 			window.removeEventListener('beforeunload', warn);
 			stopUpdates();
+			stopDesktop();
 		};
 	});
 
@@ -84,6 +88,7 @@
 	});
 </script>
 
+<DesktopBar />
 <Island hidden={onSplash} />
 <WhatsNew bind:open={whatsNew} />
 
@@ -105,7 +110,7 @@
 
 <style>
 	#page {
-		min-height: 100vh;
+		min-height: var(--app-h, 100vh);
 	}
 	.pending {
 		margin: var(--sp-3) 0;

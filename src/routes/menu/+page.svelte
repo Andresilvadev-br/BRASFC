@@ -11,6 +11,7 @@
 	import Badge from '#lib/ui/Badge.svelte';
 	import Button from '#lib/ui/Button.svelte';
 	import Crest from '#lib/ui/Crest.svelte';
+	import DesktopDownload from '#lib/ui/desktop/DesktopDownload.svelte';
 	import Icon from '#lib/ui/Icon.svelte';
 	import type { IconName } from '#lib/ui/icons.ts';
 	import Logo from '#lib/ui/Logo.svelte';
@@ -112,7 +113,7 @@
 			href: '/novidades',
 			eyebrow: `BRASFC Dev ${data.build.version}`,
 			headline: updates.status === 'disponivel' ? 'Há uma versão nova' : 'Central de atualizações',
-			text: 'Veja o que mudou, confira a versão em uso, atualize o jogo com um clique e instale o BRASFC como aplicativo.',
+			text: 'Veja o que mudou, confira a versão em uso, atualize o jogo com um clique e baixe o BRASFC para Windows.',
 			chips: [`Versão ${data.build.version}`, `Commit ${data.build.commit}`],
 			cta: 'Abrir central',
 			...(updates.status === 'disponivel' ? { badge: 'Nova' } : {})
@@ -223,6 +224,7 @@
 						<Button variant="ghost" href="/continuar">Todas as carreiras</Button>
 					{/if}
 				</div>
+				{#if current.id === 'novidades'}<div class="desk" data-stage><DesktopDownload compact /></div>{/if}
 			</div>
 		{/key}
 	</section>
@@ -252,9 +254,13 @@
 </div>
 
 <style>
+	.desk {
+		margin-top: var(--sp-4);
+		max-width: 620px;
+	}
 	.menu-screen {
 		position: relative;
-		min-height: 100vh;
+		min-height: var(--app-h, 100vh);
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) minmax(220px, 30vw);
 		grid-template-rows: auto 1fr auto auto;

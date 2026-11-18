@@ -74,3 +74,26 @@ describe('central de atualizações', () => {
 		stop2();
 	});
 });
+
+import { desktopRelease, pickInstaller, resetDesktopCache } from '../src/lib/server/desktop.ts';
+
+describe('instalador do Windows', () => {
+	it('só oferece download quando o instalador existe de fato', () => {
+		expect(pickInstaller(null).available).toBe(false);
+		expect(pickInstaller({ tag_name: 'v1.0.0', assets: [{ name: 'outro.zip', browser_download_url: 'https://github.com/x/y', size: 1 }] }).available).toBe(false);
+		expect(pickInstaller({ tag_name: 'v1.0.0', draft: true, assets: [] }).available).toBe(false);
+		const ok = pickInstaller({ tag_name: 'v1.2.0', published_at: '2026-11-18', assets: [{ name: 'BRASFC-Setup.exe', browser_download_url: 'https://github.com/A/B/releases/download/v1.2.0/BRASFC-Setup.exe', size: 94371840 }] });
+		expect(ok).toMatchObject({ available: true, version: '1.2.0', sizeMb: 90 });
+	});
+	it('falha de rede vira aviso honesto, sem link', async () => {
+		resetDesktopCache();
+		const r = await desktopRelease((async () => {
+			throw new Error('offline');
+		}) as unknown as typeof fetch);
+		expect(r.available).toBe(false);
+		resetDesktopCache();
+		const none = await desktopRelease((async () => new Response('{}', { status: 404 })) as unknown as typeof fetch);
+		expect(none).toMatchObject({ available: false });
+		resetDesktopCache();
+	});
+});

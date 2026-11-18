@@ -87,7 +87,7 @@ html {
 
 body {
 	margin: 0;
-	min-height: 100vh;
+	min-height: var(--app-h, 100vh);
 	background: var(--bg);
 	color: var(--text);
 	font-family: var(--font-ui);
@@ -366,4 +366,13 @@ button.chip {
 }
 :root[data-motion='reduced'] .shimmer-gold {
 	animation: none;
+}
+
+/* ===== Aplicativo do Windows: barra de título integrada (36px) ===== */
+html.desktop-app:not(.desktop-full) {
+	--desk-bar: 36px;
+	--app-h: calc(100vh - 36px);
+}
+html.desktop-app:not(.desktop-full) body {
+	padding-top: var(--desk-bar);
 }

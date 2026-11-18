@@ -603,10 +603,10 @@ export class Match {
 		if (inPossession) {
 			const line = clamp(p.defLine + 10 + (bx - 52) * 0.4, 20, 64);
 			const span = Math.min(p.blockLength + 14 + p.spacing, 98 - line);
+			const shape = shapeOf(t.tactic.formation);
 			ax = line + ((depth - 0.24) / 0.6) * span;
 			if ((s.position === 'LD' || s.position === 'LE') && bx > 45) ax += 8 * p.support + 4;
 			// Esquemas com 3 zagueiros: os alas são a amplitude do time e sobem como pontas.
-			const shape = shapeOf(t.tactic.formation);
 			if (shape.threeBack && (s.position === 'LD' || s.position === 'LE') && bx > 35) ax += 9 * (0.6 + p.support * 0.8);
 			// Sem pontas (dois atacantes centralizados), os meias chegam ao último terço para dar opção.
 			if (shape.wideForwards === 0 && (s.position === 'MC' || s.position === 'MEI') && bx > 40) ax += 6;

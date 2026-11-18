@@ -125,6 +125,24 @@ export function analyze(input: AssistantInput): Tip[] {
 		});
 	}
 
+	// 4b. Dupla de ataque sem pontas jogando por posse: medido no motor (Dev 0.4.1, 400 jogos contra o
+	// 4-3-3): o 5-3-2 rende 1,07 ponto por jogo com posse e 1,27 com bloco recuado e contra-ataque.
+	const twoStrikers = slots.filter((s) => s.position === 'ATA').length === 2 && !slots.some((s) => s.position === 'PD' || s.position === 'PE');
+	if (twoStrikers && (t.style === 'posse' || t.style === 'tiki-taka')) {
+		const five = slots.filter((s) => s.position === 'ZAG').length === 3 && t.formation === '5-3-2';
+		tips.push({
+			id: `dupla:${t.formation}:${t.style}`,
+			kind: 'ataque',
+			priority: 50,
+			title: five ? 'O 5-3-2 rende mais em contra-ataque' : 'Dupla de ataque sem pontas cria pouco com posse',
+			text: five
+				? 'Sem pontas, a posse de bola não vira chance: o time roda a bola e cede contra-ataques. Com mentalidade defensiva e estilo contra-ataque, o bloco de cinco protege a área e os dois atacantes ficam livres para a transição.'
+				: 'Sem pontas, a posse esbarra no meio. Contra-ataque, jogo vertical ou bola longa aproveitam melhor os dois atacantes.',
+			evidence: five ? ['5-3-2 contra o 4-3-3, 400 jogos: 1,07 ponto por jogo com posse × 1,27 com bloco recuado e contra-ataque'] : ['finalizações por jogo com posse: dupla sem pontas ≈ 9, contra ≈ 13 do 4-3-3'],
+			action: { type: 'tactics' }
+		});
+	}
+
 	// 5–7. Problemas observados nas últimas partidas.
 	const last = input.recent.slice(-3);
 	if (last.length) {
