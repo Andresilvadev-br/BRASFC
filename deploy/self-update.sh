@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Atualização automática SEM chaves nem secrets: a VPS acompanha a branch do GitHub,
-# constrói a imagem localmente e publica com verificação de saúde e retorno automático.
+# baixa a imagem pronta do GitHub (ou constrói localmente) e publica com verificação de saúde e retorno automático.
 #
 # Instalar (uma vez, como root):
 #   curl -fsSL https://raw.githubusercontent.com/Andresilvadev-br/BRASFC/dev/deploy/self-update.sh | bash -s -- --install
 #
-# Depois disso, a cada 5 minutos a VPS verifica se há commits novos e atualiza sozinha.
+# Depois disso, a cada minuto a VPS verifica se há commits novos e atualiza sozinha.
 # Log: /opt/brasfc/backups/self-update.log
 set -euo pipefail
 
@@ -15,6 +15,7 @@ REPO="https://github.com/Andresilvadev-br/BRASFC.git"
 BRANCH="${BRASFC_BRANCH:-dev}"
 ENV_NAME="${BRASFC_DEPLOY_ENV:-producao}"
 LOG="$DIR/backups/self-update.log"
+GHCR="ghcr.io/andresilvadev-br/brasfc"
 
 if [ "${1:-}" = "--install" ]; then
 	[ "$(id -u)" -eq 0 ] || { echo "rode como root" >&2; exit 1; }
@@ -27,13 +28,18 @@ if [ "${1:-}" = "--install" ]; then
 	chown -R deploy:deploy "$DIR"
 	CURRENT="$(crontab -u deploy -l 2>/dev/null || true)"
 	{ printf '%s\n' "$CURRENT" | grep -v 'self-update.sh' | grep -v '^$' || true
-	  echo "*/5 * * * * flock -n /tmp/brasfc-update.lock $DIR/deploy/self-update.sh >> $LOG 2>&1"; } | crontab -u deploy -
+	  echo "* * * * * flock -n /tmp/brasfc-update.lock $DIR/deploy/self-update.sh >> $LOG 2>&1"; } | crontab -u deploy -
 	echo "▶ Primeira publicação (leva alguns minutos na primeira vez)…"
 	sudo -u deploy flock /tmp/brasfc-update.lock "$DIR/deploy/self-update.sh" 2>&1 | tee -a "$LOG"
 	exit "${PIPESTATUS[0]}"
 fi
 
 stamp() { date -u '+%Y-%m-%d %H:%M:%S'; }
+
+# Instalações antigas verificavam a cada 5 minutos; passa a verificar a cada minuto.
+if crontab -l 2>/dev/null | grep -q '^\*/5 .*self-update.sh'; then
+	crontab -l 2>/dev/null | sed 's#^*/5 #* #' | crontab - || true
+fi
 
 if [ ! -d "$SRC/.git" ]; then
 	git clone --quiet --branch "$BRANCH" "$REPO" "$SRC"
@@ -54,12 +60,25 @@ git checkout --quiet --force "$REMOTE"
 
 # Atualiza os arquivos de implantação a partir do repositório.
 cp compose.yml "$DIR/compose.yml"
-cp deploy/*.sh deploy/env.example "$DIR/deploy/"
+# Troca atômica (mv): este próprio script está em execução e não pode ser sobrescrito no lugar.
+for f in deploy/*.sh deploy/env.example; do
+	cp "$f" "$DIR/deploy/.novo" && mv -f "$DIR/deploy/.novo" "$DIR/deploy/$(basename "$f")"
+done
 cp deploy/caddy/* "$DIR/deploy/caddy/"
 chmod +x "$DIR"/deploy/*.sh
 
-echo "[$(stamp)] construindo a imagem…"
-docker build --quiet --build-arg GIT_SHA="$REMOTE" -t "brasfc-local:$TAG" . >/dev/null
+# Caminho rápido: o GitHub Actions já publica a imagem pronta (pública) em ~3 min após o push.
+# Baixar leva segundos; construir na VPS leva vários minutos. Só constrói aqui se o GitHub não publicou.
+if docker pull --quiet "$GHCR:$TAG" >/dev/null 2>&1; then
+	echo "[$(stamp)] imagem pronta baixada do GitHub ($GHCR:$TAG)"
+	docker tag "$GHCR:$TAG" "brasfc-local:$TAG"
+elif [ $(( $(date +%s) - $(git log -1 --format=%ct "$REMOTE") )) -lt 900 ]; then
+	echo "[$(stamp)] aguardando o GitHub publicar a imagem de $TAG"
+	exit 0
+else
+	echo "[$(stamp)] imagem não publicada pelo GitHub; construindo na VPS…"
+	docker build --quiet --build-arg GIT_SHA="$REMOTE" -t "brasfc-local:$TAG" . >/dev/null
+fi
 
 BRASFC_IMAGE=brasfc-local BRASFC_SKIP_PULL=1 "$DIR/deploy/deploy.sh" "$ENV_NAME" "$TAG"
 
