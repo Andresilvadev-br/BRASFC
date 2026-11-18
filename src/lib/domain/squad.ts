@@ -67,15 +67,11 @@ export function generateSquad(clubId: string, seed: number): SquadPlayer[] {
 	return generateSquadFor(requireClub(clubId), seed);
 }
 
-const POSITION_WORD: Record<Position, string> = {
-	GOL: 'Goleiro', LD: 'Lateral-direito', ZAG: 'Zagueiro', LE: 'Lateral-esquerdo', VOL: 'Volante',
-	MC: 'Meia central', MEI: 'Meia', PD: 'Ponta-direita', PE: 'Ponta-esquerda', ATA: 'Atacante'
-};
-
 /**
  * Gera um elenco para qualquer clube (fictício ou real).
- * Com `pending`, os atletas NÃO recebem nomes: são vagas genéricas ("Atacante 1 · pendente")
- * à espera do elenco verificado, para não inventar nomes de pessoas reais.
+ * Com `pending`, o elenco real ainda não foi importado: os atletas recebem nomes
+ * FICTÍCIOS (combinações aleatórias, marcados como `pending`) e a interface avisa
+ * que não são jogadores reais do clube.
  */
 export function generateSquadFor(club: { id: string; reputation: number }, seed: number, opts: { pending?: boolean } = {}): SquadPlayer[] {
 	const clubId = club.id;
@@ -92,11 +88,6 @@ export function generateSquadFor(club: { id: string; reputation: number }, seed:
 			let n = randomName(rng);
 			while (usedNames.has(n.name)) n = randomName(rng);
 			usedNames.add(n.name);
-			if (opts.pending) {
-				const k2 = (perPosition.get(position) ?? 0) + 1;
-				perPosition.set(position, k2);
-				n = { name: `${POSITION_WORD[position]} ${k2} · pendente`, shortName: `${position} ${k2}` };
-			}
 
 			const starter = k === 0 || (position === 'ZAG' && k === 1);
 			const age = rng.int(18, 34);

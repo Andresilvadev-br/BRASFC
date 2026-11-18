@@ -51,8 +51,8 @@ export function narrate(e: MatchEvent, ctx: NarrationContext): NarrationLine | n
 						: `GOOOL do ${t}! ${p} ${pick(e.tick, ['manda para o fundo da rede', 'não perdoa', 'marca um belo gol'])}!`
 			};
 		case 'shot':
-			if (xg < 0.12 && !e.data?.penalty) return null;
-			return { ...base, tone: 'chance', text: e.data?.header ? `${p} sobe e cabeceia!` : `${p} ${pick(e.tick, ['finaliza', 'bate para o gol', 'arrisca'])}${xg > 0.3 ? ' — chance clara!' : '.'}` };
+			if ((xg < 0.3 && !e.data?.header) || e.data?.penalty) return null;
+			return { ...base, tone: 'chance', text: e.data?.header ? `${p} sobe e cabeceia!` : `${p} ${pick(e.tick, ['finaliza', 'bate para o gol', 'arrisca'])} — chance clara!` };
 		case 'shot_saved':
 			return { ...base, tone: 'chance', text: `${pick(e.tick, ['Defende', 'Que defesa de', 'Espalma'])} ${p}!` };
 		case 'shot_off':

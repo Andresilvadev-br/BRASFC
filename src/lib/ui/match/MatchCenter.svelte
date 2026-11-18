@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
-	import { FORMATION_IDS, FORMATIONS, MENTALITY_LABELS, STYLE_LABELS, type FormationId, type Mentality, type PlayStyle } from '#lib/domain/tactics.ts';
+	import { FORMATION_IDS, FORMATIONS, type FormationId, type Mentality, type PlayStyle } from '#lib/domain/tactics.ts';
 	import { Match } from '#lib/engine/match.ts';
 	import { narrate, type NarrationLine } from '#lib/engine/narration.ts';
 	import { possessionPct } from '#lib/engine/stats.ts';
@@ -11,11 +11,13 @@
 	import Modal from '../Modal.svelte';
 	import Segmented from '../Segmented.svelte';
 	import StylePicker from '../StylePicker.svelte';
+	import FormationBoard from './FormationBoard.svelte';
 	import PitchCanvas from './PitchCanvas.svelte';
 
 	/**
-	 * Central da partida: placar, campo 2D, escalações com notas, eventos, estatísticas,
-	 * linha do tempo e controles. Toda a informação vem do motor (eventos e estado);
+	 * Central da partida: placar, linha do tempo, campo 2D ao centro, os dois times
+	 * desenhados na formação (nome + posição + nota + condição em cada ficha) e o
+	 * comparativo de estatísticas. Toda a informação vem do motor (eventos e estado);
 	 * a velocidade só muda quantos ticks são processados por segundo, nunca o resultado.
 	 */
 	let {
@@ -56,13 +58,14 @@
 	let speed = $state<SpeedValue>('2');
 	let paused = $state(true);
 	let view = $state<ViewMode>('classico');
-	let tab = $state<'eventos' | 'estatisticas' | 'notas'>('eventos');
 	let version = $state(0);
 	let finished = $state(false);
 	let pitch: PitchCanvas | undefined = $state();
-	let subsOpen = $state(false);
 	let tacticOpen = $state(false);
-	let subOut = $state<string | null>(null);
+	/** atleta destacado no campo (escolhido numa ficha de cada time) */
+	let selHome = $state<string | null>(null);
+	let selAway = $state<string | null>(null);
+	const highlight = $derived(selHome ?? selAway);
 
 	const tps = $derived(SPEEDS.find((s) => s.value === speed)!.tps);
 	const colors = $derived({
@@ -123,19 +126,22 @@
 	});
 	const poss = $derived(possessionPct(result.stats));
 	const nameOf = (id?: string) => (id ? (match.player(id)?.shortName ?? '—') : '—');
-	const teamName = (s?: Side) => (s ? match.teams[s].setup.short : '');
+	/** Na narração, vagas genéricas ("ATA 1") ganham a sigla do time para não confundir. */
+	const narrName = (id?: string) => {
+		const p = id ? match.player(id) : undefined;
+		if (!p) return '—';
+		const side = match.teams.home.byId.has(p.id) ? 'home' : 'away';
+		return p.pending ? `${p.shortName} (${match.teams[side].setup.short})` : p.shortName;
+	};
 	const lines = $derived.by<NarrationLine[]>(() => {
 		void version;
 		const out: NarrationLine[] = [];
 		for (const e of match.events) {
-			const l = narrate(e, { name: nameOf, team: (s) => (s ? match.teams[s].setup.name : ''), minute: (t) => match.minuteLabel(t) });
+			const l = narrate(e, { name: narrName, team: (s) => (s ? match.teams[s].setup.name : ''), minute: (t) => match.minuteLabel(t) });
 			if (l) out.push(l);
 		}
 		return out.reverse();
 	});
-	const keyEvents = $derived(
-		lines.filter((l) => l.tone === 'goal' || l.tone === 'card' || l.tone === 'whistle' || l.text.startsWith('Substituição'))
-	);
 	const timeline = $derived.by(() => {
 		void version;
 		const total = Math.max(90 * 60, match.tick);
@@ -148,15 +154,6 @@
 		const t = match.half === 1 ? Math.min(match.tick, 45 * 60) : 45 * 60 + Math.min(90 * 60 - 45 * 60, match.tick - (match.events.find((e) => e.type === 'second_half')?.tick ?? match.tick));
 		return Math.min(100, (t / (90 * 60)) * 100);
 	});
-
-	function roster(side: Side) {
-		void version;
-		const t = match.teams[side];
-		const slots = FORMATIONS[t.tactic.formation];
-		const onPitch = t.tactic.lineup.map((id, i) => ({ id, slot: slots[i]?.position ?? '', state: match.states.get(id)! }));
-		const offIds = [...match.states.values()].filter((s) => s.side === side && !s.onPitch).map((s) => s.id);
-		return { onPitch, off: offIds };
-	}
 
 	// ── assistente do banco: sugestões a partir do estado real
 	const tips = $derived.by(() => {
@@ -218,17 +215,16 @@
 		}
 		return lineup;
 	}
-	function doSub(inId: string) {
-		if (!control || !subOut) return;
-		match.submit(control, { type: 'sub', outId: subOut, inId });
-		subOut = null;
-		subsOpen = false;
+	function doSub(outId: string, inId: string) {
+		if (!control) return;
+		match.submit(control, { type: 'sub', outId, inId });
 		version++;
 	}
 	const pending = $derived.by(() => {
 		void version;
 		return control ? match.pending(control) : [];
 	});
+	const pendingOut = $derived(pending.flatMap((d) => (d.type === 'sub' ? [d.outId] : [])));
 	const rejected = $derived.by(() => {
 		void version;
 		return match.applied.filter((d) => d.side === control && d.rejected).slice(-1)[0]?.rejected ?? null;
@@ -242,17 +238,12 @@
 			['Finalizações', h.shots, a.shots, h.shots, a.shots],
 			['No alvo', h.shotsOnTarget, a.shotsOnTarget, h.shotsOnTarget, a.shotsOnTarget],
 			['Gols esperados (xG)', h.xg.toFixed(2), a.xg.toFixed(2), h.xg, a.xg],
-			['Passes certos', `${h.passesCompleted}/${h.passes}`, `${a.passesCompleted}/${a.passes}`, h.passesCompleted, a.passesCompleted],
+			['Passes certos', h.passesCompleted, a.passesCompleted, h.passesCompleted, a.passesCompleted],
 			['Desarmes', h.tackles, a.tackles, h.tackles, a.tackles],
 			['Escanteios', h.corners, a.corners, h.corners, a.corners],
 			['Faltas', h.fouls, a.fouls, h.fouls, a.fouls],
-			['Impedimentos', h.offsides, a.offsides, h.offsides, a.offsides],
-			['Cartões', `${h.yellows}🟨 ${h.reds ? h.reds + '🟥' : ''}`, `${a.yellows}🟨 ${a.reds ? a.reds + '🟥' : ''}`, h.yellows + h.reds * 2, a.yellows + a.reds * 2]
+			['Impedimentos', h.offsides, a.offsides, h.offsides, a.offsides]
 		] as Array<[string, string | number, string | number, number, number]>;
-	}
-
-	function ratingClass(r: number) {
-		return r >= 7.5 ? 'great' : r >= 6.8 ? 'good' : r >= 6 ? 'ok' : 'bad';
 	}
 
 	function onKey(e: KeyboardEvent) {
@@ -277,7 +268,7 @@
 
 <div class="mc">
 	<!-- Placar -->
-	<header class="board">
+	<header class="score-bar">
 		<div class="team home">
 			<span class="swatch" style="--c1:{home.colors.primary};--c2:{home.colors.secondary}"></span>
 			<span class="tname">{home.name}</span>
@@ -295,42 +286,62 @@
 			<span class="swatch" style="--c1:{away.colors.primary};--c2:{away.colors.secondary}"></span>
 		</div>
 		<div class="possbar" aria-label="Posse de bola {poss.home}% a {poss.away}%">
-			<span style="width:{poss.home}%;background:{home.colors.primary}"></span>
-			<span style="width:{poss.away}%;background:{away.colors.primary}"></span>
+			<span style="width:{poss.home}%;background:{home.colors.primary}">{poss.home}%</span>
+			<span style="width:{poss.away}%;background:{away.colors.primary}">{poss.away}%</span>
 		</div>
 	</header>
 
-	<!-- Linha do tempo -->
+	<!-- Linha do tempo: os lances importantes viram ícones no minuto em que aconteceram -->
 	<div class="timeline" aria-label="Linha do tempo">
-		<div class="fill" style="width:{progress}%"></div>
-		<span class="ht" style="left:50%"></span>
+		<div class="track">
+			<div class="fill" style="width:{progress}%"></div>
+			<span class="ht" style="left:50%"></span>
+		</div>
 		{#each timeline as m, i (i)}
 			<span
 				class="mark {m.e.type}"
 				data-side={m.e.side}
 				style="left:{m.pct}%"
-				title="{match.minuteLabel(m.e.tick)} {m.e.type === 'goal' ? 'Gol' : m.e.type === 'sub' ? 'Substituição' : 'Cartão'} · {nameOf(m.e.player)}"
-			></span>
+				title="{match.minuteLabel(m.e.tick)} · {m.e.type === 'goal' ? 'Gol' : m.e.type === 'sub' ? 'Substituição' : m.e.type === 'red' ? 'Expulsão' : 'Amarelo'} · {nameOf(m.e.player)} ({match.teams[m.e.side ?? 'home'].setup.short})"
+			>{m.e.type === 'goal' ? '⚽' : m.e.type === 'sub' ? '⇄' : ''}</span>
 		{/each}
+		<span class="t0">0'</span><span class="t45">45'</span><span class="t90">90'</span>
 	</div>
 
 	<div class="grid">
-		<!-- Escalação mandante -->
-		<aside class="roster" aria-label="Escalação {home.name}">
-			{@render rosterList('home')}
-		</aside>
+		<FormationBoard
+			{match}
+			side="home"
+			{version}
+			players={result.players}
+			bind:selected={selHome}
+			canSub={control === 'home' && !finished && match.subsLeft('home') > 0}
+			pendingOut={control === 'home' ? pendingOut : []}
+			onsub={doSub}
+		/>
 
 		<section class="center">
 			{#if view === 'narracao'}
 				<div class="narration" aria-live="polite">
 					{#each lines.slice(0, 40) as l, i (l.tick + ':' + i)}
-						<p class="line {l.tone}" data-side={l.side}><span class="min">{l.minute}</span>{l.text}</p>
+						<p class="line {l.tone}"><span class="min">{l.minute}</span>{l.text}</p>
 					{:else}
 						<p class="muted">Aperte ▶ para começar a narração.</p>
 					{/each}
 				</div>
 			{:else}
-				<PitchCanvas bind:this={pitch} {match} mode={view} {colors} {version} />
+				<PitchCanvas
+					bind:this={pitch}
+					{match}
+					mode={view}
+					{colors}
+					{version}
+					{highlight}
+					onpick={(id, side) => {
+						selHome = side === 'home' ? id : null;
+						selAway = side === 'away' ? id : null;
+					}}
+				/>
 			{/if}
 
 			<div class="ticker" aria-live="polite">
@@ -352,152 +363,62 @@
 					<Segmented label="Velocidade" options={SPEEDS.map((s) => ({ value: s.value, label: s.label }))} bind:value={speed} />
 					<Button variant="ghost" size="sm" icon="skip" disabled={finished} onclick={skipToEnd}>Resultado</Button>
 				</div>
-				<Segmented
-					label="Visualização"
-					options={[
-						{ value: 'classico', label: 'Clássico' },
-						{ value: 'pixel', label: 'Pixel' },
-						{ value: 'narracao', label: 'Narração' }
-					]}
-					bind:value={view}
-				/>
+				<div class="playback">
+					<Segmented
+						label="Visualização"
+						options={[
+							{ value: 'classico', label: 'Clássico' },
+							{ value: 'pixel', label: 'Pixel' },
+							{ value: 'narracao', label: 'Narração' }
+						]}
+						bind:value={view}
+					/>
+					{#if control && !finished}
+						<Button size="sm" icon="tactics" onclick={openTactic}>Tática</Button>
+					{/if}
+				</div>
 			</div>
 
-			{#if control && !finished}
-				<div class="dugout">
-					<div class="dg-actions">
-						<Button size="sm" icon="tactics" onclick={openTactic}>Tática</Button>
-						<Button size="sm" icon="squad" onclick={() => ((paused = true), (subsOpen = true))} disabled={match.subsLeft(control) <= 0}>
-							Substituir ({match.subsLeft(control)})
-						</Button>
-					</div>
-					{#if pending.length}
-						<p class="pending"><Icon name="whistle" /> {pending.length} alteração(ões) aguardando a bola parar.</p>
-					{/if}
+			{#if control && !finished && (pending.length || rejected || tips.length)}
+				<div class="coach">
+					{#if pending.length}<p class="pending"><Icon name="whistle" /> Alteração aguardando a bola parar.</p>{/if}
 					{#if rejected}<p class="rejected"><Icon name="alert" /> {rejected}</p>{/if}
-					{#if tips.length}
-						<ul class="tips" aria-label="Assistente técnico">
-							{#each tips as t (t)}<li><Icon name="info" /> {t}</li>{/each}
-						</ul>
-					{/if}
+					{#each tips.slice(0, 1) as t (t)}<p class="tip"><Icon name="info" /> {t}</p>{/each}
 				</div>
 			{/if}
 
-			<div class="tabs" role="tablist">
-				{#each [['eventos', 'Lances'], ['estatisticas', 'Estatísticas'], ['notas', 'Notas']] as [id, label] (id)}
-					<button role="tab" aria-selected={tab === id} class:on={tab === id} onclick={() => (tab = id as typeof tab)}>{label}</button>
+			<!-- Comparativo: barras na cor de cada time -->
+			<div class="stats">
+				{#each statRows() as [label, hv, av, hn, an] (label)}
+					<div class="srow">
+						<span class="v">{hv}</span>
+						<div class="mid">
+							<span class="sl">{label}</span>
+							<div class="bars">
+								<span class="b" style="width:{(hn / Math.max(0.001, hn + an)) * 100}%;background:{home.colors.primary}"></span>
+								<span class="b" style="width:{(an / Math.max(0.001, hn + an)) * 100}%;background:{away.colors.primary}"></span>
+							</div>
+						</div>
+						<span class="v">{av}</span>
+					</div>
 				{/each}
 			</div>
-			{#if tab === 'eventos'}
-				<ol class="events">
-					{#each keyEvents as l, i (l.tick + ':' + i)}
-						<li class={l.tone} data-side={l.side}><span class="min">{l.minute}</span> {l.text}</li>
-					{:else}
-						<li class="muted">Nenhum lance importante ainda.</li>
-					{/each}
-				</ol>
-			{:else if tab === 'estatisticas'}
-				<div class="stats">
-					{#each statRows() as [label, hv, av, hn, an] (label)}
-						<div class="srow">
-							<span class="v">{hv}</span>
-							<div class="mid">
-								<span class="sl">{label}</span>
-								<div class="bars">
-									<span class="b h" style="width:{(hn / Math.max(0.001, hn + an)) * 100}%;background:{home.colors.primary}"></span>
-									<span class="b a" style="width:{(an / Math.max(0.001, hn + an)) * 100}%;background:{away.colors.primary}"></span>
-								</div>
-							</div>
-							<span class="v">{av}</span>
-						</div>
-					{/each}
-				</div>
-			{:else}
-				<div class="ratings">
-					{#each ['home', 'away'] as const as side (side)}
-						<div>
-							<h4>{match.teams[side].setup.short}</h4>
-							{#each [...match.states.values()].filter((s) => s.side === side && (s.onPitch || s.minuteOut !== null)) as s (s.id)}
-								{@const r = result.players[s.id]}
-								<div class="rrow">
-									<span class="num">{match.player(s.id)?.number}</span>
-									<span class="nm">{nameOf(s.id)}</span>
-									<span class="small">{r?.goals ? `⚽${r.goals > 1 ? r.goals : ''}` : ''}{r?.assists ? ' 🅰' : ''}</span>
-									<span class="rating {ratingClass(r?.rating ?? 6)}">{(r?.rating ?? 6).toFixed(1)}</span>
-								</div>
-							{/each}
-						</div>
-					{/each}
-				</div>
-			{/if}
 		</section>
 
-		<aside class="roster" aria-label="Escalação {away.name}">
-			{@render rosterList('away')}
-		</aside>
+		<FormationBoard
+			{match}
+			side="away"
+			{version}
+			players={result.players}
+			bind:selected={selAway}
+			canSub={control === 'away' && !finished && match.subsLeft('away') > 0}
+			pendingOut={control === 'away' ? pendingOut : []}
+			onsub={doSub}
+		/>
 	</div>
 </div>
 
-{#snippet rosterList(side: Side)}
-	{@const r = roster(side)}
-	{@const t = match.teams[side]}
-	<div class="rhead">
-		<strong>{t.setup.short}</strong>
-		<span>{t.tactic.formation} · {MENTALITY_LABELS[t.tactic.mentality]} · {STYLE_LABELS[t.tactic.style]}</span>
-	</div>
-	<ul class="plist">
-		{#each r.onPitch as p (p.id)}
-			{@const st = p.state}
-			{@const ps = result.players[p.id]}
-			<li class:sent={st?.sentOff} class:inj={st?.injured}>
-				<span class="pos">{p.slot}</span>
-				<span class="num">{match.player(p.id)?.number}</span>
-				<span class="nm">
-					{nameOf(p.id)}
-					{#if st?.yellow}<i class="card y" title="Amarelo"></i>{/if}
-					{#if ps?.goals}<i class="goal" title="Gol">⚽</i>{/if}
-				</span>
-				<span class="cond" title="Condição física {Math.round(st?.condition ?? 0)}%"><span style="width:{st?.condition ?? 0}%" class:low={(st?.condition ?? 100) < 60}></span></span>
-				<span class="rating {ratingClass(ps?.rating ?? 6)}">{(ps?.rating ?? 6).toFixed(1)}</span>
-			</li>
-		{/each}
-		{#each r.off as id (id)}
-			{@const st = match.states.get(id)}
-			<li class="out"><span class="pos">{st?.sentOff ? '🟥' : '↓'}</span><span class="num">{match.player(id)?.number}</span><span class="nm">{nameOf(id)}</span></li>
-		{/each}
-	</ul>
-{/snippet}
-
 {#if control}
-	<Modal bind:open={subsOpen} title="Substituição" description="Escolha quem sai e depois quem entra. A troca acontece na próxima bola parada." size="lg">
-		<div class="subgrid">
-			<div>
-				<h4>Sai</h4>
-				{#each match.onPitch(control) as s (s.id)}
-					<button class="pick" class:on={subOut === s.id} onclick={() => (subOut = s.id)}>
-						<span class="num">{match.player(s.id)?.number}</span>
-						<span class="nm">{match.player(s.id)?.shortName}</span>
-						<span class="pos">{match.player(s.id)?.position}</span>
-						<span class="cond"><span style="width:{s.condition}%" class:low={s.condition < 60}></span></span>
-					</button>
-				{/each}
-			</div>
-			<div>
-				<h4>Entra</h4>
-				{#each match.bench(control) as b (b.id)}
-					<button class="pick" disabled={!subOut} onclick={() => doSub(b.id)}>
-						<span class="num">{b.number}</span>
-						<span class="nm">{b.shortName}</span>
-						<span class="pos">{b.position}</span>
-						<span class="cond"><span style="width:{b.condition}%"></span></span>
-					</button>
-				{:else}
-					<p class="muted">Sem reservas disponíveis.</p>
-				{/each}
-			</div>
-		</div>
-	</Modal>
-
 	<Modal bind:open={tacticOpen} title="Ajuste tático" description="Mentalidade e estilo mudam na hora; a formação reorganiza os mesmos atletas." size="lg">
 		<div class="tac">
 			<div>
@@ -531,14 +452,14 @@
 	.mc {
 		display: flex;
 		flex-direction: column;
-		gap: var(--sp-3, 12px);
+		gap: 12px;
 	}
-	.board {
+	.score-bar {
 		display: grid;
 		grid-template-columns: 1fr auto 1fr;
 		align-items: center;
 		gap: 12px;
-		padding: 12px 16px 8px;
+		padding: 12px 16px 10px;
 		background: linear-gradient(180deg, var(--surface-2), var(--surface));
 		border-radius: 14px;
 		box-shadow: inset 0 0 0 1px var(--line);
@@ -600,184 +521,103 @@
 	.possbar {
 		grid-column: 1 / -1;
 		display: flex;
-		height: 4px;
-		border-radius: 4px;
+		height: 14px;
+		border-radius: 7px;
 		overflow: hidden;
 		gap: 2px;
 	}
 	.possbar span {
 		transition: width 0.6s ease;
+		font-size: 9.5px;
+		font-weight: 700;
+		line-height: 14px;
+		padding: 0 6px;
+		color: #fff;
+		text-shadow: 0 1px 2px rgb(0 0 0 / 0.6);
+		min-width: 34px;
+	}
+	.possbar span:last-child {
+		text-align: right;
 	}
 	.timeline {
 		position: relative;
-		height: 10px;
+		height: 34px;
+		margin: 0 14px;
+	}
+	.track {
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: 12px;
+		height: 8px;
 		border-radius: 6px;
 		background: var(--surface);
 		box-shadow: inset 0 0 0 1px var(--line);
 	}
-	.timeline .fill {
+	.track .fill {
 		position: absolute;
 		inset: 0 auto 0 0;
 		background: var(--emerald-soft);
 		border-radius: 6px;
 	}
-	.timeline .ht {
+	.track .ht {
 		position: absolute;
-		top: 0;
-		bottom: 0;
+		top: -3px;
+		bottom: -3px;
 		width: 1px;
 		background: var(--line-strong);
 	}
 	.mark {
 		position: absolute;
-		top: 50%;
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		transform: translate(-50%, -50%);
-		background: var(--text-2);
+		transform: translateX(-50%);
+		font-size: 12px;
+		line-height: 1;
+		cursor: default;
 	}
-	.mark.goal {
-		background: var(--emerald-strong);
-		width: 10px;
+	.mark[data-side='home'] {
+		top: -2px;
+	}
+	.mark[data-side='away'] {
+		top: 22px;
+	}
+	.mark.yellow,
+	.mark.red {
+		width: 7px;
 		height: 10px;
-	}
-	.mark.yellow {
-		background: var(--warning);
 		border-radius: 1px;
-		width: 6px;
+		background: var(--warning);
 	}
 	.mark.red {
 		background: var(--danger);
-		border-radius: 1px;
-		width: 6px;
 	}
 	.mark.sub {
-		background: var(--info);
-		width: 5px;
-		height: 5px;
+		color: var(--info);
+		font-weight: 700;
 	}
-	.mark[data-side='away'] {
-		top: 75%;
+	.t0,
+	.t45,
+	.t90 {
+		position: absolute;
+		top: 13px;
+		font-size: 9px;
+		color: var(--text-3);
 	}
-	.mark[data-side='home'] {
-		top: 25%;
+	.t0 {
+		left: -14px;
+	}
+	.t45 {
+		left: 50%;
+		transform: translateX(-50%);
+		top: 24px;
+	}
+	.t90 {
+		right: -16px;
 	}
 	.grid {
 		display: grid;
-		grid-template-columns: minmax(200px, 250px) minmax(0, 1fr) minmax(200px, 250px);
+		grid-template-columns: minmax(230px, 290px) minmax(0, 1fr) minmax(230px, 290px);
 		gap: 12px;
 		align-items: start;
-	}
-	.roster {
-		background: var(--surface);
-		border-radius: 12px;
-		padding: 10px;
-		box-shadow: inset 0 0 0 1px var(--line);
-	}
-	.rhead {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		margin-bottom: 8px;
-	}
-	.rhead span {
-		font-size: var(--fs-xs);
-		color: var(--text-3);
-	}
-	.plist {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-	}
-	.plist li {
-		display: grid;
-		grid-template-columns: 30px 22px 1fr 34px 32px;
-		align-items: center;
-		gap: 6px;
-		font-size: var(--fs-sm);
-		padding: 3px 4px;
-		border-radius: 6px;
-	}
-	.plist li:hover {
-		background: var(--surface-2);
-	}
-	.plist li.out {
-		opacity: 0.5;
-		grid-template-columns: 30px 22px 1fr;
-	}
-	.plist li.sent .nm {
-		text-decoration: line-through;
-	}
-	.plist li.inj .nm::after {
-		content: ' ✚';
-		color: var(--danger);
-	}
-	.pos {
-		font-size: 10px;
-		color: var(--text-3);
-		font-weight: 700;
-	}
-	.num {
-		color: var(--text-3);
-		font-variant-numeric: tabular-nums;
-		text-align: right;
-	}
-	.nm {
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-	.card.y {
-		display: inline-block;
-		width: 7px;
-		height: 10px;
-		background: var(--warning);
-		border-radius: 1px;
-		margin-left: 4px;
-		vertical-align: -1px;
-	}
-	.goal {
-		font-style: normal;
-		font-size: 11px;
-	}
-	.cond {
-		height: 4px;
-		border-radius: 3px;
-		background: var(--surface-3);
-		overflow: hidden;
-	}
-	.cond span {
-		display: block;
-		height: 100%;
-		background: var(--emerald);
-	}
-	.cond span.low {
-		background: var(--warning);
-	}
-	.rating {
-		font-family: var(--font-display);
-		font-weight: 700;
-		text-align: center;
-		border-radius: 5px;
-		padding: 0 3px;
-		font-variant-numeric: tabular-nums;
-	}
-	.rating.great {
-		background: var(--emerald);
-		color: #06281c;
-	}
-	.rating.good {
-		color: var(--emerald-strong);
-	}
-	.rating.ok {
-		color: var(--text-2);
-	}
-	.rating.bad {
-		color: var(--danger);
 	}
 	.center {
 		display: flex;
@@ -812,89 +652,33 @@
 		align-items: center;
 		gap: 8px;
 	}
-	.dugout {
-		padding: 10px;
-		border-radius: 12px;
-		background: var(--surface);
-		box-shadow: inset 0 0 0 1px var(--line);
+	.coach {
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
+		gap: 4px;
+		padding: 8px 12px;
+		border-radius: 10px;
+		background: var(--surface);
+		box-shadow: inset 0 0 0 1px var(--line);
 	}
-	.dg-actions {
-		display: flex;
-		gap: 8px;
-		flex-wrap: wrap;
-	}
-	.pending,
-	.rejected {
+	.coach p {
 		margin: 0;
 		font-size: var(--fs-sm);
 		display: flex;
 		gap: 6px;
 		align-items: center;
+	}
+	.pending {
 		color: var(--info);
 	}
 	.rejected {
 		color: var(--danger);
 	}
-	.tips {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-		font-size: var(--fs-sm);
+	.tip {
 		color: var(--gold);
 	}
-	.tips li {
-		display: flex;
-		gap: 6px;
-	}
-	.tabs {
-		display: flex;
-		gap: 4px;
-		border-bottom: 1px solid var(--line);
-	}
-	.tabs button {
-		background: none;
-		border: 0;
-		color: var(--text-3);
-		padding: 8px 12px;
-		font: inherit;
-		font-weight: 600;
-		cursor: pointer;
-		border-bottom: 2px solid transparent;
-	}
-	.tabs button.on {
-		color: var(--text);
-		border-color: var(--emerald);
-	}
-	.events {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-		max-height: 280px;
-		overflow: auto;
-		font-size: var(--fs-sm);
-	}
-	.events li {
-		padding: 6px 8px;
-		border-radius: 8px;
-		background: var(--surface);
-	}
-	.events li.goal {
-		background: var(--emerald-soft);
-	}
-	.events li.card {
-		background: var(--warning-soft);
-	}
 	.narration {
-		height: clamp(260px, 42vw, 440px);
+		height: clamp(260px, 36vw, 420px);
 		overflow: auto;
 		padding: 12px;
 		border-radius: 12px;
@@ -924,15 +708,19 @@
 		color: var(--text-3);
 	}
 	.stats {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 8px 18px;
+		padding: 12px;
+		border-radius: 12px;
+		background: var(--surface);
+		box-shadow: inset 0 0 0 1px var(--line);
 	}
 	.srow {
 		display: grid;
-		grid-template-columns: 64px 1fr 64px;
+		grid-template-columns: 38px 1fr 38px;
 		align-items: center;
-		gap: 8px;
+		gap: 6px;
 		font-size: var(--fs-sm);
 	}
 	.srow .v {
@@ -960,13 +748,6 @@
 		border-radius: 3px;
 		min-width: 2px;
 	}
-	.ratings {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 12px;
-	}
-	.ratings h4,
-	.subgrid h4,
 	.tac h4 {
 		margin: 0 0 6px;
 		font-size: var(--fs-sm);
@@ -974,44 +755,10 @@
 		text-transform: uppercase;
 		letter-spacing: 0.06em;
 	}
-	.rrow {
-		display: grid;
-		grid-template-columns: 22px 1fr auto 34px;
-		gap: 6px;
-		font-size: var(--fs-sm);
-		padding: 2px 0;
-	}
-	.small {
-		font-size: 11px;
-	}
-	.subgrid,
 	.tac {
 		display: grid;
 		grid-template-columns: 1fr 1fr;
 		gap: 16px;
-	}
-	.pick {
-		display: grid;
-		grid-template-columns: 24px 1fr 34px 40px;
-		gap: 8px;
-		align-items: center;
-		width: 100%;
-		padding: 6px 8px;
-		margin-bottom: 4px;
-		border: 0;
-		border-radius: 8px;
-		background: var(--surface-2);
-		color: var(--text);
-		font: inherit;
-		text-align: left;
-		cursor: pointer;
-	}
-	.pick:disabled {
-		opacity: 0.45;
-		cursor: not-allowed;
-	}
-	.pick.on {
-		box-shadow: inset 0 0 0 2px var(--emerald);
 	}
 	.fchips {
 		display: flex;
@@ -1049,7 +796,7 @@
 	.fchip.on circle {
 		fill: var(--emerald-strong);
 	}
-	@media (max-width: 1020px) {
+	@media (max-width: 1080px) {
 		.grid {
 			grid-template-columns: 1fr 1fr;
 		}
@@ -1060,9 +807,8 @@
 	}
 	@media (max-width: 640px) {
 		.grid,
-		.subgrid,
 		.tac,
-		.ratings {
+		.stats {
 			grid-template-columns: 1fr;
 		}
 		.tname {

@@ -82,7 +82,7 @@
 		<p class="note">
 			<Icon name="info" />
 			<span>Clubes reais das Séries A, B e C de 2026, conferidos em fontes públicas. Os <strong>elencos reais ainda não foram importados</strong>:
-			cada time usa vagas genéricas (sem nomes de pessoas), com força estimada pelo BRASFC.</span>
+			os jogadores têm <strong>nomes fictícios</strong> e força estimada pelo BRASFC — não são os atletas reais dos clubes.</span>
 		</p>
 
 		<div class="versus">

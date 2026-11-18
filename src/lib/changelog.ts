@@ -9,6 +9,29 @@ export interface Release {
 
 export const RELEASES: Release[] = [
 	{
+		version: '0.2.0',
+		date: '2026-11-17',
+		title: 'Motor de futebol e partidas em 2D',
+		added: [
+			'BRASFC Football Engine: simulação segundo a segundo, com campo 2D, regras completas e decisões pelos atributos',
+			'27 atributos (técnicos, físicos, mentais e de goleiro) e overall ponderado por posição',
+			'7 formações, 3 mentalidades e 7 estilos de jogo, cada um com efeito real e contrapartidas',
+			'Central da partida: placar, campo clássico, prévia pixel, narração, estatísticas, notas e linha do tempo',
+			'Velocidades, pausa e pular para o resultado sem mudar o placar',
+			'Substituições (5 em 3 paradas) e ajustes de tática durante o jogo, com sugestões do assistente',
+			'Laboratório: partida rápida entre os clubes reais das Séries A, B e C de 2026',
+			'Carreira: jogar a rodada com a tática salva; o servidor confere e grava o resultado',
+			'Classificação calculada a partir dos resultados; data avança após cada rodada',
+			'Correção: o aviso de tática não salva não fica mais preso depois de salvar'
+		],
+		next: [
+			'Elencos reais verificados das Séries A, B e C',
+			'Prévia pixel com os bonecos completos e animações',
+			'Copas, Séries B e C jogáveis na carreira e transferências',
+			'Estatísticas acumuladas da temporada e histórico de partidas'
+		]
+	},
+	{
 		version: '0.1.0',
 		date: '2026-11-17',
 		title: 'Fundação do BRASFC',

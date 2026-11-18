@@ -13,14 +13,36 @@
 		mode = 'classico',
 		colors,
 		highlight = null,
-		version = 0
+		version = 0,
+		onpick
 	}: {
 		match: Match;
 		mode?: 'classico' | 'pixel';
 		colors: Record<Side, { primary: string; secondary: string }>;
 		highlight?: string | null;
 		version?: number;
+		/** toque no campo: atleta mais próximo do ponto (ou null) */
+		onpick?: (id: string | null, side: Side | null) => void;
 	} = $props();
+
+	function click(e: MouseEvent) {
+		if (!onpick || !canvas) return;
+		const rect = canvas.getBoundingClientRect();
+		const pad = mode === 'pixel' ? 4 * (rect.width / 220) : 10;
+		const mx = ((e.clientX - rect.left - pad) / (rect.width - pad * 2)) * PITCH.length;
+		const my = ((e.clientY - rect.top - pad) / (rect.height - pad * 2)) * PITCH.width;
+		let best: { id: string; side: Side } | null = null;
+		let bd = 4;
+		for (const s of match.states.values()) {
+			if (!s.onPitch) continue;
+			const d = Math.hypot(s.x - mx, s.y - my);
+			if (d < bd) {
+				bd = d;
+				best = { id: s.id, side: s.side };
+			}
+		}
+		onpick(best?.id ?? null, best?.side ?? null);
+	}
 
 	let canvas: HTMLCanvasElement;
 	let box: HTMLDivElement;
@@ -40,6 +62,7 @@
 
 	$effect(() => {
 		void version;
+		void highlight;
 		void mode;
 		void width;
 		draw();
@@ -121,6 +144,17 @@
 			ctx.lineWidth = s.id === highlight || s.id === match.ball.owner ? 2.4 : 1.2;
 			ctx.strokeStyle = s.id === match.ball.owner ? '#FFFFFF' : isGk ? '#101418' : c.secondary;
 			ctx.stroke();
+			if (s.id === highlight) {
+				const nm = match.player(s.id)?.shortName ?? '';
+				ctx.font = `600 12px 'Inter Variable', system-ui, sans-serif`;
+				const w = ctx.measureText(nm).width + 10;
+				ctx.fillStyle = 'rgba(16,20,24,0.9)';
+				ctx.fillRect(x - w / 2, y + r + 3, w, 17);
+				ctx.fillStyle = '#34D399';
+				ctx.textAlign = 'center';
+				ctx.textBaseline = 'middle';
+				ctx.fillText(nm, x, y + r + 12);
+			}
 			if (s.injured) {
 				ctx.fillStyle = '#F87171';
 				ctx.fillRect(x + r * 0.6, y - r * 1.1, 3, 3);
@@ -211,7 +245,8 @@
 </script>
 
 <div class="pitch" bind:this={box} data-mode={mode}>
-	<canvas bind:this={canvas} aria-label="Campo da partida em 2D"></canvas>
+	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+	<canvas bind:this={canvas} aria-label="Campo da partida em 2D — toque num jogador para destacá-lo" onclick={click} class:pickable={!!onpick}></canvas>
 	{#if mode === 'pixel'}<span class="tag">Prévia pixel</span>{/if}
 </div>
 
@@ -226,6 +261,9 @@
 	}
 	canvas {
 		display: block;
+	}
+	canvas.pickable {
+		cursor: pointer;
 	}
 	.pitch[data-mode='pixel'] canvas {
 		image-rendering: pixelated;

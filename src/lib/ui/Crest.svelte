@@ -6,6 +6,12 @@
 
 	const club = $derived(given ?? (clubId ? getClub(clubId) : undefined));
 	const uid = $props.id();
+	/** Sigla clara em fundos escuros e escura em fundos claros (ex.: camisas brancas). */
+	const ink = $derived.by(() => {
+		const n = parseInt((club?.colors.primary ?? '#000000').slice(1), 16);
+		const l = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+		return l > 0.68 ? '#101418' : '#ffffff';
+	});
 
 	const SHAPES = {
 		escudo: 'M50 4 L92 16 L90 58 C88 80 70 94 50 100 C30 94 12 80 10 58 L8 16 Z',
@@ -45,8 +51,8 @@
 		<path d={SHAPES[club.crest.shape]} fill="none" stroke="#0b0f12" stroke-opacity="0.55" stroke-width="5" />
 		<path d={SHAPES[club.crest.shape]} fill="none" stroke="#ffffff" stroke-opacity="0.18" stroke-width="1.5" />
 		<g font-family="Barlow Condensed, Arial Narrow, sans-serif" font-weight="800" text-anchor="middle">
-			<text x="50" y="64" font-size="30" fill="#0b0f12" fill-opacity="0.5" dx="1.5" dy="1.5">{club.short}</text>
-			<text x="50" y="64" font-size="30" fill="#ffffff">{club.short}</text>
+			{#if ink === '#ffffff'}<text x="50" y="64" font-size="30" fill="#0b0f12" fill-opacity="0.5" dx="1.5" dy="1.5">{club.short}</text>{/if}
+			<text x="50" y="64" font-size="30" fill={ink}>{club.short}</text>
 		</g>
 	</svg>
 {/if}

@@ -23,9 +23,9 @@ describe('base Brasil 2026', () => {
 		expect(c.pendencias).not.toContain('estadio');
 	});
 
-	it('elencos pendentes não inventam nomes de pessoas', () => {
+	it('elencos pendentes ficam marcados como fictícios', () => {
 		const club = toGameClub(CLUBES_2026[0]);
 		const squad = generateSquadFor(club, 1, { pending: true });
-		expect(squad.every((p) => p.pending && p.name.includes('pendente'))).toBe(true);
+		expect(squad.every((p) => p.pending === true && p.name.length > 3)).toBe(true);
 	});
 });
