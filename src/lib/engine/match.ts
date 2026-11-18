@@ -5,7 +5,7 @@ import type { Attributes } from './attributes.ts';
 import { baseXg, clampToPitch, dist, inBox, segmentDistance, toAbs, toRel } from './geometry.ts';
 import { computeResult } from './stats.ts';
 import { paramsFromInstructions, presetInstructions, overridesOf, type AdvancedParams, type TacticalInstructions } from './instructions.ts';
-import { DEFAULT_ROLE, ROLES, roleCompatibility, type RoleDef, type RoleId } from './roles.ts';
+import { DEFAULT_ROLE, defaultRoleForSlot, ROLES, roleCompatibility, type RoleDef, type RoleId } from './roles.ts';
 import { COACH_PROFILES, inMatchAdjustment, type CoachProfile, type MatchView } from './ai-coach.ts';
 import {
 	DEFAULT_RULES,
@@ -162,14 +162,14 @@ export class Match {
 		tactic.bench = tactic.bench.filter((id) => byId.has(id) && !tactic.lineup.includes(id)).slice(0, 12);
 		const instructions = tactic.instructions ?? presetInstructions(tactic.mentality, tactic.style);
 		const shape = FORMATIONS[tactic.formation];
-		const roles = shape.map((slot, i) => {
+		const roles = shape.map((_, i) => {
 			const r = tactic.roles?.[i];
-			return r && ROLES[r] ? r : DEFAULT_ROLE[slot.position];
+			return r && ROLES[r] ? r : defaultRoleForSlot(shape, i);
 		});
 		return {
 			setup,
 			tactic,
-			params: paramsFromInstructions(tactic.mentality, tactic.style, instructions),
+			params: withFormation(paramsFromInstructions(tactic.mentality, tactic.style, instructions), tactic.formation),
 			instructions,
 			roles,
 			coach: setup.coach ?? COACH_PROFILES.equilibrado,
@@ -366,14 +366,14 @@ export class Match {
 			if (d.type === 'mentality') t.tactic.mentality = d.value;
 			else t.tactic.style = d.value;
 			t.instructions = { ...presetInstructions(t.tactic.mentality, t.tactic.style), ...custom };
-			t.params = paramsFromInstructions(t.tactic.mentality, t.tactic.style, t.instructions);
+			t.params = withFormation(paramsFromInstructions(t.tactic.mentality, t.tactic.style, t.instructions), t.tactic.formation);
 			record();
 			this.emit('tactic', { side, data: { kind: d.type, value: d.value } });
 			return;
 		}
 		if (d.type === 'instructions') {
 			t.instructions = { ...d.value };
-			t.params = paramsFromInstructions(t.tactic.mentality, t.tactic.style, t.instructions);
+			t.params = withFormation(paramsFromInstructions(t.tactic.mentality, t.tactic.style, t.instructions), t.tactic.formation);
 			record();
 			this.emit('tactic', { side, data: { kind: 'instructions' } });
 			return;
@@ -390,9 +390,10 @@ export class Match {
 				if (st) st.slot = slot;
 			});
 			t.tactic.lineup = [...d.lineup];
-			t.roles = FORMATIONS[d.value].map((slot, i) => {
+			t.params = withFormation(paramsFromInstructions(t.tactic.mentality, t.tactic.style, t.instructions), d.value);
+			t.roles = FORMATIONS[d.value].map((_, i) => {
 				const r = d.roles?.[i];
-				return r && ROLES[r] ? r : DEFAULT_ROLE[slot.position];
+				return r && ROLES[r] ? r : defaultRoleForSlot(FORMATIONS[d.value], i);
 			});
 			record();
 			this.emit('tactic', { side, data: { kind: 'formation', value: d.value } });
@@ -530,19 +531,29 @@ export class Match {
 			if ((s.position === 'LD' || s.position === 'LE') && bx > 45) ax += 8 * p.support + 4;
 			// Função: avança/recua e aproxima do centro; presença na área empurra meias no último terço.
 			ax += role.space.attack * (bx > 40 ? 1 : 0.5);
+			// Meias abertos e meias-atacantes de esquemas com 2 atacantes sobem em posse
+			// (o 4-4-2 vira 4-2-4 no ataque; o 4-2-2-2 abre os meias por dentro).
+			const wide = s.x <= 25 || s.x >= 75;
+			if (bx > 40 && depth > 0.4 && depth < 0.7 && (s.position === 'PD' || s.position === 'PE' || (s.position === 'MEI' && wide))) ax += 12;
+			if (bx > 40 && s.position === 'MEI' && !wide && depth > 0.55) ax += 5;
 			if (bx > 70 && (s.position === 'MC' || s.position === 'MEI')) ax += p.boxRunners * 3;
 			ay = PITCH.width / 2 + (lateral - PITCH.width / 2) * p.width;
 			ay += (PITCH.width / 2 - ay) * Math.min(0.8, Math.max(-0.3, role.space.narrow / 20));
 			ay += (by - PITCH.width / 2) * 0.12;
 		} else {
 			let line = clamp(p.defLine + (bx - 52) * 0.28, 11, 52);
+			// Esquemas com 3 zagueiros: os alas recompõem e formam a linha de 5 sem a bola.
+			const threeBack = formation.filter((x) => x.position === 'ZAG').length === 3;
+			const effDepth = threeBack && (s.position === 'LD' || s.position === 'LE') ? 0.3 : depth;
 			line = Math.min(line, Math.max(8, bx - 4));
 			// Bola perto da própria área: o bloco se compacta (meio-campo protege a entrada da área).
 			const span = bx < 40 ? p.blockLength * (0.62 + (bx / 40) * 0.38) / Math.sqrt(p.boxDefense) : p.blockLength;
-			ax = line + ((depth - 0.24) / 0.6) * span;
+			ax = line + ((effDepth - 0.24) / 0.6) * span;
 			ax = Math.min(ax, Math.max(line + 4, bx + 6));
 			ax += role.space.defend;
-			ay = PITCH.width / 2 + (lateral - PITCH.width / 2) * 0.72 + (by - PITCH.width / 2) * 0.32;
+			// Linha de 3/5: os zagueiros fecham o centro (os alas cuidam dos lados).
+			const narrowCB = threeBack && s.position === 'ZAG' ? 0.42 : 0.72;
+			ay = PITCH.width / 2 + (lateral - PITCH.width / 2) * narrowCB + (by - PITCH.width / 2) * 0.32;
 		}
 		// Domínio tático: times que ainda não dominam o sistema se posicionam com mais imprecisão.
 		const jitter = Math.max(0, 0.6 - this.execution(side)) * 5;
@@ -682,7 +693,10 @@ export class Match {
 		for (const { d, home } of defenders) {
 			for (const a of attackers) {
 				const dd = dist(home[0], home[1], a.x, a.y);
-				const [arx] = toRel(attSide, a.x, a.y);
+				const [arx, ary] = toRel(attSide, a.x, a.y);
+				// Zagueiros guardam o corredor central (na zona); pontas abertos ficam com laterais/alas.
+				const isCB = FORMATIONS[this.teams[defSide].tactic.formation][d.slot]?.position === 'ZAG';
+				if (isCB && !this.teams[defSide].params.manMarking && Math.abs(ary - PITCH.width / 2) > 15) continue;
 				// Marcação individual acompanha de mais longe (e é arrastada para fora da zona).
 				if (dd < (this.teams[defSide].params.manMarking ? 16 : 11) && arx > 45) pairs.push({ d, a, dist: dd });
 			}
@@ -959,7 +973,7 @@ export class Match {
 		// Função do atleta: inclina as escolhas em relação à função padrão da posição
 		// (o time padrão continua exatamente como calibrado; efeito pela metade).
 		const bias = this.relativeBias(owner);
-		const rb = (v: number) => 1 + (v - 1) * 0.5;
+		const rb = (v: number) => 1 + (v - 1) * 0.3;
 		// Recém-recuperou a bola e o plano é manter a posse: joga mais seguro.
 		const justWon = this.tick - this.teams[side].regainTick < 8;
 		const safety = p.safetyWeight * rb(bias.safe) * (justWon ? 1 + 0.3 * (p.retain - 0.5) : 1);
@@ -977,6 +991,8 @@ export class Match {
 			let threshold = p.shotThreshold * (1.15 - a.compostura / 300);
 			if (late && diff < 0) threshold *= 0.75;
 			let u = xg >= threshold ? 0.26 + xg * 5 : xg >= threshold * 0.6 ? 0.04 + xg * 2 : xg;
+			// Dentro da área, finalizador marcado ainda arrisca o chute apertado (instinto de artilheiro).
+			if (goalDist < 16 && xg < threshold && xg >= threshold * 0.6) u = Math.max(u, 0.06 + xg * 3 + (a.finalizacao - 60) / 300 + (a.compostura - 60) / 600);
 			// Chute de fora da área: arma de quem finaliza bem e tem espaço.
 			if (goalDist > 16.5 && goalDist < 28 && pressure === 0) u = Math.max(u, 0.04 + a.finalizacao / 330 + a.tecnica / 900 - (goalDist - 16.5) * 0.02);
 			options.push({ u: u * rb(bias.shoot), run: () => this.shoot(owner, false) });
@@ -1022,6 +1038,9 @@ export class Match {
 			if (Math.abs(ty - PITCH.width / 2) > 22) u += 0.1 * p.wideBias;
 			if (progress < -6) u -= 0.08 * p.progressWeight;
 			if (late && diff > 0 && progress < 0) u += 0.05;
+			// Sem "toco y me voy" infinito: devolver a quem acabou de passar rende menos,
+			// e perto do gol, com chance de chute, rodar a bola para o lado também.
+			if (this.lastPass && this.lastPass.from === m.id && this.lastPass.to === owner.id && this.tick - this.lastPass.tick <= 4) u -= 0.22;
 			// Custo de perder a bola: muito maior perto do próprio gol.
 			u -= (1 - prob) * (ax < 35 ? 0.9 : ax < 55 ? 0.35 : 0.08);
 			const runTicks = through ? Math.ceil(dist(m.x, m.y, absX, absY) / Math.max(4, this.speed(m))) : 0;
@@ -1390,7 +1409,7 @@ export class Match {
 		const gkState = this.states.get(this.teams[OTHER[side]].gkId);
 		const gk = gkState?.onPitch ? this.player(gkState.id)!.attributes : null;
 		const gkRating = gk ? gk.reflexos * 0.45 + gk.posicionamentoGol * 0.3 + gk.defesa * 0.15 + gk.agilidade * 0.1 : 25;
-		const gkFactor = 1.33 - (gkRating / 100) * 0.36 * (gkState ? this.physFactor(gkState) / 0.98 : 0);
+		const gkFactor = 1.27 - (gkRating / 100) * 0.36 * (gkState ? this.physFactor(gkState) / 0.98 : 0);
 		const pGoal = clamp(xg * skill * gkFactor, 0.005, 0.97);
 		const boxDef = this.teams[OTHER[side]].params.boxDefense;
 		const blockChance = penalty ? 0 : clamp((0.06 + this.defendersInLane(shooter) * 0.11) * boxDef, 0, 0.45);
@@ -1628,6 +1647,16 @@ export class Match {
 }
 
 export const HALF_LENGTH_TICKS = 45 * 60;
+
+/**
+ * Efeito estrutural da formação: linhas de 5 (três zagueiros + alas recompostos) põem mais
+ * gente na área — protegem melhor a entrada da área, mas atacam com menos gente.
+ */
+function withFormation(p: AdvancedParams, f: FormationId): AdvancedParams {
+	const backs = FORMATIONS[f].filter((s) => s.position === 'ZAG').length;
+	if (backs === 3) p.boxDefense *= 1.18;
+	return p;
+}
 
 /** Ruído determinístico em [-1, 1] (não consome o RNG da partida). */
 function hashNoise(a: number, b: number, c: number): number {

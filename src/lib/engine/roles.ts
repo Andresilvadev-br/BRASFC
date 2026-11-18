@@ -64,6 +64,16 @@ export const DEFAULT_ROLE: Record<Position, RoleId> = {
 	MC: 'mc-organizador', MEI: 'mei-armador', PD: 'pt-invertido', PE: 'pt-invertido', ATA: 'ata-referencia'
 };
 
+/**
+ * Função padrão de um slot do esquema: com dois atacantes, o segundo é móvel
+ * (ataca a profundidade) para a dupla não ocupar o mesmo espaço.
+ */
+export function defaultRoleForSlot(shape: ReadonlyArray<{ position: Position }>, i: number): RoleId {
+	const pos = shape[i].position;
+	if (pos === 'ATA' && shape.slice(0, i).some((s) => s.position === 'ATA')) return 'ata-movel';
+	return DEFAULT_ROLE[pos];
+}
+
 export function rolesFor(position: Position): RoleDef[] {
 	return ROLE_IDS.map((id) => ROLES[id]).filter((r) => r.positions.includes(position));
 }

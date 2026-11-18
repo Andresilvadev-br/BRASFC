@@ -1,4 +1,4 @@
-import { roleCompatibility, DEFAULT_ROLE, ROLES, type RoleId } from '#lib/engine/roles.ts';
+import { roleCompatibility, DEFAULT_ROLE, defaultRoleForSlot, ROLES, type RoleId } from '#lib/engine/roles.ts';
 import { INSTRUCTION_KEYS, type TacticalInstructions } from '#lib/engine/instructions.ts';
 import type { TeamFamiliarity } from '#lib/engine/types.ts';
 import type { SquadPlayer } from './squad.ts';
@@ -229,7 +229,7 @@ export function engineFamiliarity(st: TacticalState, formation: FormationId, sty
 export function resolveRoles(formation: FormationId, roles?: Array<RoleId | null | undefined>): RoleId[] {
 	return FORMATIONS[formation].map((slot, i) => {
 		const r = roles?.[i];
-		return r && ROLES[r]?.positions.includes(slot.position) ? r : DEFAULT_ROLE[slot.position];
+		return r && ROLES[r]?.positions.includes(slot.position) ? r : defaultRoleForSlot(FORMATIONS[formation], i);
 	});
 }
 

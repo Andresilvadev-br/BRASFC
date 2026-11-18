@@ -181,7 +181,9 @@ export function analyze(input: AssistantInput): Tip[] {
 		const wingers = t.lineup.map((id) => byId.get(id)).filter((p): p is SquadPlayer => !!p && ['PD', 'PE', 'ATA'].includes(p.position));
 		const pace = wingers.length ? wingers.reduce((s, p) => s + p.attributes.velocidade, 0) / wingers.length : 0;
 		let text = '';
-		if (ins.pressao >= 4) text = `O ${name} pressiona alto. Uma saída mais direta e atacantes rápidos podem achar espaço às costas.`;
+		if (prof.style === 'posse' || prof.style === 'tiki-taka') text = `O ${name} (perfil ${prof.label}) gosta de ficar com a bola. Bloco compacto e contra-ataque rápido, ou uma pressão bem treinada, costumam incomodar esse tipo de time.`;
+		else if (prof.style === 'contra-ataque' || prof.mentality === 'defensiva') text = `O ${name} (perfil ${prof.label}) espera e sai rápido. Cuidado com laterais muito ofensivos; paciência e amplitude ajudam a abrir a defesa.`;
+		else if (ins.pressao >= 4) text = `O ${name} pressiona alto. Uma saída mais direta e atacantes rápidos podem achar espaço às costas.`;
 		else if (ins.laterais === 3) text = `O ${name} sobe muito os laterais.${pace >= 68 ? ' Seus atacantes rápidos podem explorar os espaços na transição.' : ' Contra-ataques pelos lados podem render.'}`;
 		else if (ins.bloco === 1 || ins.linha <= 2) text = `O ${name} costuma se fechar atrás. Amplitude e paciência ajudam a abrir a defesa.`;
 		else if (ins.linha >= 4) text = `O ${name} joga com a linha alta.${pace >= 68 ? ' Movimentos em profundidade podem funcionar com seus atacantes.' : ''}`;

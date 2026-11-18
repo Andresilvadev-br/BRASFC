@@ -43,9 +43,9 @@ export interface TacticalParams {
 }
 
 const MENTALITY: Record<Mentality, Partial<TacticalParams>> = {
-	defensiva: { defLine: 30, blockLength: 32, progressWeight: 0.9, safetyWeight: 1.15, shotThreshold: 0.112, support: 0.3, boxDefense: 1.45, counterBoost: 0.5 },
-	equilibrada: { defLine: 31, blockLength: 40, progressWeight: 1, safetyWeight: 1, shotThreshold: 0.102, support: 0.5 },
-	ofensiva: { defLine: 35, blockLength: 42, progressWeight: 1.08, safetyWeight: 0.92, shotThreshold: 0.097, support: 0.7, boxDefense: 0.82, fatigueCost: 0.02 }
+	defensiva: { defLine: 30, blockLength: 32, progressWeight: 0.9, safetyWeight: 1.15, shotThreshold: 0.122, support: 0.3, boxDefense: 1.45, counterBoost: 0.5 },
+	equilibrada: { defLine: 31, blockLength: 40, progressWeight: 1, safetyWeight: 1, shotThreshold: 0.112, support: 0.5 },
+	ofensiva: { defLine: 35, blockLength: 42, progressWeight: 1.08, safetyWeight: 0.92, shotThreshold: 0.107, support: 0.7, boxDefense: 0.82, fatigueCost: 0.02 }
 };
 
 const STYLE: Record<PlayStyle, Partial<TacticalParams>> = {

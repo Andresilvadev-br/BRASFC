@@ -20,6 +20,7 @@
 	import { api } from '#lib/api.ts';
 	import { analyze, type Tip } from '#lib/domain/assistant.ts';
 	import { MASTERY_LABEL } from '#lib/domain/tactical.ts';
+	import { DRILL_DEFS } from '#lib/domain/drills.ts';
 	import AssistantTips from '#lib/ui/AssistantTips.svelte';
 
 	let { data } = $props();
@@ -107,7 +108,7 @@
 		<Panel title="Situação do clube" icon="chart" class="span-5" index={1}>
 			<dl class="stats">
 				<div><dt>Meta da diretoria</dt><dd class="goal">{boardExpectation(v.club, v.divisionLabel)}</dd></div>
-				<div><dt>Domínio tático</dt><dd><Meter value={v.mastery.execution} label="Domínio tático" /> <small class="muted">{MASTERY_LABEL(v.mastery.execution)}</small></dd></div>
+				<div><dt>Domínio tático</dt><dd><Meter value={Math.round(v.mastery.execution)} label="Domínio tático" /> <small class="muted">{MASTERY_LABEL(v.mastery.execution)}</small></dd></div>
 				<div><dt>Reputação</dt><dd><Stars value={v.club.reputation} size={16} /></dd></div>
 				<div><dt>Força do elenco</dt><dd class="big num">{v.strength}</dd></div>
 				<div><dt>Familiaridade tática</dt><dd><Meter value={familiarity} label="Familiaridade tática" /></dd></div>
@@ -166,7 +167,7 @@
 						{#if d.fixture}
 							vs {getClub(d.fixture.home === c.clubId ? d.fixture.away : d.fixture.home)?.short}
 						{:else}
-							{d.sessions.map((s) => SESSION_LABELS[s]).join(' · ')}
+							{isCoach && weekday(d.date) >= 1 && weekday(d.date) <= 5 ? DRILL_DEFS[v.trainingPlan.sessions[weekday(d.date) - 1]].short : d.sessions.map((s) => SESSION_LABELS[s]).join(' · ')}
 						{/if}
 					</span>
 				</li>

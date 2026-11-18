@@ -22,7 +22,7 @@ export const FORMATIONS = {
 		{ position: 'GOL', x: 50, y: 92 },
 		{ position: 'LD', x: 84, y: 72 }, { position: 'ZAG', x: 62, y: 76 }, { position: 'ZAG', x: 38, y: 76 }, { position: 'LE', x: 16, y: 72 },
 		{ position: 'PD', x: 84, y: 44 }, { position: 'MC', x: 61, y: 50 }, { position: 'MC', x: 39, y: 50 }, { position: 'PE', x: 16, y: 44 },
-		{ position: 'ATA', x: 62, y: 18 }, { position: 'ATA', x: 38, y: 18 }
+		{ position: 'ATA', x: 57, y: 18 }, { position: 'ATA', x: 43, y: 20 }
 	],
 	'4-2-3-1': [
 		{ position: 'GOL', x: 50, y: 92 },
@@ -35,20 +35,20 @@ export const FORMATIONS = {
 		{ position: 'GOL', x: 50, y: 92 },
 		{ position: 'ZAG', x: 72, y: 75 }, { position: 'ZAG', x: 50, y: 78 }, { position: 'ZAG', x: 28, y: 75 },
 		{ position: 'LD', x: 88, y: 48 }, { position: 'VOL', x: 50, y: 58 }, { position: 'MC', x: 67, y: 44 }, { position: 'MC', x: 33, y: 44 }, { position: 'LE', x: 12, y: 48 },
-		{ position: 'ATA', x: 62, y: 18 }, { position: 'ATA', x: 38, y: 18 }
+		{ position: 'ATA', x: 57, y: 18 }, { position: 'ATA', x: 43, y: 20 }
 	],
 	'5-3-2': [
 		{ position: 'GOL', x: 50, y: 92 },
 		{ position: 'LD', x: 88, y: 66 }, { position: 'ZAG', x: 69, y: 76 }, { position: 'ZAG', x: 50, y: 78 }, { position: 'ZAG', x: 31, y: 76 }, { position: 'LE', x: 12, y: 66 },
 		{ position: 'MC', x: 70, y: 46 }, { position: 'VOL', x: 50, y: 52 }, { position: 'MC', x: 30, y: 46 },
-		{ position: 'ATA', x: 62, y: 18 }, { position: 'ATA', x: 38, y: 18 }
+		{ position: 'ATA', x: 57, y: 18 }, { position: 'ATA', x: 43, y: 20 }
 	],
 	'4-2-2-2': [
 		{ position: 'GOL', x: 50, y: 92 },
 		{ position: 'LD', x: 84, y: 72 }, { position: 'ZAG', x: 62, y: 76 }, { position: 'ZAG', x: 38, y: 76 }, { position: 'LE', x: 16, y: 72 },
 		{ position: 'VOL', x: 62, y: 57 }, { position: 'VOL', x: 38, y: 57 },
 		{ position: 'MEI', x: 74, y: 36 }, { position: 'MEI', x: 26, y: 36 },
-		{ position: 'ATA', x: 60, y: 17 }, { position: 'ATA', x: 40, y: 17 }
+		{ position: 'ATA', x: 57, y: 17 }, { position: 'ATA', x: 43, y: 19 }
 	],
 	'3-4-3': [
 		{ position: 'GOL', x: 50, y: 92 },

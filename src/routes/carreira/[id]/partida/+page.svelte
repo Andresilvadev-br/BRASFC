@@ -177,7 +177,7 @@
 						{:else}Você não foi relacionado. Treine para ganhar espaço.{/if}
 					</p>
 				{/if}
-				<div class="m"><span>Domínio tático</span><Meter value={v.mastery.execution} label="Domínio tático" /><b>{Math.round(v.mastery.execution)} · {MASTERY_LABEL(v.mastery.execution)}</b></div>
+				<div class="m"><span>Domínio tático</span><Meter value={Math.round(v.mastery.execution)} label="Domínio tático" /><b>{Math.round(v.mastery.execution)} · {MASTERY_LABEL(v.mastery.execution)}</b></div>
 			</div>
 			<div>
 				<h3>Adversário</h3>

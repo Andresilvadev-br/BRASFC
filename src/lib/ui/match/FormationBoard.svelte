@@ -17,6 +17,7 @@
 		selected = $bindable(null),
 		canSub = false,
 		pendingOut = [],
+		color: kit,
 		onsub
 	}: {
 		match: Match;
@@ -26,6 +27,8 @@
 		selected?: string | null;
 		canSub?: boolean;
 		pendingOut?: string[];
+		/** cor do uniforme em uso (resolve choque de cores) */
+		color?: string;
 		onsub?: (outId: string, inId: string) => void;
 	} = $props();
 
@@ -48,7 +51,7 @@
 		return match.subsLeft(side);
 	});
 	const mineSelected = $derived(!!selected && slots.some((s) => s.id === selected && s.st?.onPitch));
-	const color = $derived(team.setup.colors.primary);
+	const color = $derived(kit ?? team.setup.colors.primary);
 
 	function rating(id: string) {
 		return players[id]?.rating ?? 6;

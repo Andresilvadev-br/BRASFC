@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
+	import { overridesOf, presetInstructions, type TacticalInstructions } from '#lib/engine/instructions.ts';
+	import InstructionsEditor from '../tactics/InstructionsEditor.svelte';
 	import { FORMATION_IDS, FORMATIONS, type FormationId, type Mentality, type PlayStyle } from '#lib/domain/tactics.ts';
 	import { Match } from '#lib/engine/match.ts';
 	import { narrate, type NarrationLine } from '#lib/engine/narration.ts';
@@ -68,9 +70,21 @@
 	const highlight = $derived(selHome ?? selAway);
 
 	const tps = $derived(SPEEDS.find((s) => s.value === speed)!.tps);
-	const colors = $derived({
-		home: { primary: home.colors.primary, secondary: home.colors.secondary },
-		away: { primary: away.colors.primary, secondary: away.colors.secondary }
+	/** Choque de uniformes: se as cores principais se parecem, o visitante usa o segundo uniforme. */
+	function rgb(hex: string) {
+		const n = parseInt(hex.slice(1), 16);
+		return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+	}
+	function near(a: string, b: string) {
+		const [r1, g1, b1] = rgb(a);
+		const [r2, g2, b2] = rgb(b);
+		return Math.hypot(r1 - r2, g1 - g2, b1 - b2) < 110;
+	}
+	const colors = $derived.by(() => {
+		const h = { primary: home.colors.primary, secondary: home.colors.secondary };
+		let a = { primary: away.colors.primary, secondary: away.colors.secondary };
+		if (near(h.primary, a.primary)) a = near(h.primary, a.secondary) ? { primary: '#F5F7FA', secondary: '#1A2026' } : { primary: a.secondary, secondary: a.primary };
+		return { home: h, away: a };
 	});
 
 	// ── laço de animação: acumula tempo e avança ticks inteiros
@@ -179,23 +193,43 @@
 	let mentality = $state<Mentality>('equilibrada');
 	let style = $state<PlayStyle>('posse');
 	let formation = $state<FormationId>('4-3-3');
+	let instructions = $state<TacticalInstructions>(presetInstructions('equilibrada', 'posse'));
+	let showAdvanced = $state(false);
+	let modalPreset = $state.raw(presetInstructions('equilibrada', 'posse'));
+	// Trocar mentalidade/estilo no modal troca o preset e preserva os ajustes avançados.
+	$effect(() => {
+		const next = presetInstructions(mentality, style);
+		const prev = untrack(() => modalPreset);
+		if (JSON.stringify(next) === JSON.stringify(prev)) return;
+		const custom = overridesOf(untrack(() => instructions), prev);
+		instructions = { ...next, ...custom };
+		modalPreset = next;
+	});
 	function openTactic() {
 		if (!control) return;
 		const t = match.teams[control].tactic;
 		mentality = t.mentality;
 		style = t.style;
 		formation = t.formation;
+		const rt = match.teams[control];
+		instructions = { ...rt.instructions };
+		modalPreset = presetInstructions(t.mentality, t.style);
 		paused = true;
 		tacticOpen = true;
 	}
 	function applyTactic() {
 		if (!control) return;
 		const t = match.teams[control].tactic;
+		const before = JSON.stringify(match.teams[control].instructions);
 		if (mentality !== t.mentality) match.submit(control, { type: 'mentality', value: mentality });
 		if (style !== t.style) match.submit(control, { type: 'style', value: style });
 		if (formation !== t.formation && match.onPitch(control).length === 11) {
 			match.submit(control, { type: 'formation', value: formation, lineup: reorderFor(formation) });
-		}
+			}
+			// Instruções finais (preset novo + ajustes): registradas como decisão reproduzível.
+			if (JSON.stringify(instructions) !== before || mentality !== t.mentality || style !== t.style) {
+				match.submit(control, { type: 'instructions', value: $state.snapshot(instructions) as TacticalInstructions });
+			}
 		tacticOpen = false;
 		version++;
 	}
@@ -270,7 +304,7 @@
 	<!-- Placar -->
 	<header class="score-bar">
 		<div class="team home">
-			<span class="swatch" style="--c1:{home.colors.primary};--c2:{home.colors.secondary}"></span>
+			<span class="swatch" style="--c1:{colors.home.primary};--c2:{home.colors.secondary}"></span>
 			<span class="tname">{home.name}</span>
 		</div>
 		<div class="score" aria-live="polite">
@@ -283,11 +317,11 @@
 		</div>
 		<div class="team away">
 			<span class="tname">{away.name}</span>
-			<span class="swatch" style="--c1:{away.colors.primary};--c2:{away.colors.secondary}"></span>
+			<span class="swatch" style="--c1:{colors.away.primary};--c2:{away.colors.secondary}"></span>
 		</div>
 		<div class="possbar" aria-label="Posse de bola {poss.home}% a {poss.away}%">
-			<span style="width:{poss.home}%;background:{home.colors.primary}">{poss.home}%</span>
-			<span style="width:{poss.away}%;background:{away.colors.primary}">{poss.away}%</span>
+			<span style="width:{poss.home}%;background:{colors.home.primary}">{poss.home}%</span>
+			<span style="width:{poss.away}%;background:{colors.away.primary}">{poss.away}%</span>
 		</div>
 	</header>
 
@@ -312,6 +346,7 @@
 		<FormationBoard
 			{match}
 			side="home"
+			color={colors.home.primary}
 			{version}
 			players={result.players}
 			bind:selected={selHome}
@@ -395,8 +430,8 @@
 						<div class="mid">
 							<span class="sl">{label}</span>
 							<div class="bars">
-								<span class="b" style="width:{(hn / Math.max(0.001, hn + an)) * 100}%;background:{home.colors.primary}"></span>
-								<span class="b" style="width:{(an / Math.max(0.001, hn + an)) * 100}%;background:{away.colors.primary}"></span>
+								<span class="b" style="width:{(hn / Math.max(0.001, hn + an)) * 100}%;background:{colors.home.primary}"></span>
+								<span class="b" style="width:{(an / Math.max(0.001, hn + an)) * 100}%;background:{colors.away.primary}"></span>
 							</div>
 						</div>
 						<span class="v">{av}</span>
@@ -408,6 +443,7 @@
 		<FormationBoard
 			{match}
 			side="away"
+			color={colors.away.primary}
 			{version}
 			players={result.players}
 			bind:selected={selAway}
@@ -439,8 +475,14 @@
 			<div>
 				<h4>Estilo</h4>
 				<StylePicker bind:value={style} compact />
-			</div>
-		</div>
+				</div>
+				</div>
+				<button class="adv" onclick={() => (showAdvanced = !showAdvanced)} aria-expanded={showAdvanced}>
+					<Icon name={showAdvanced ? 'chevronDown' : 'chevronRight'} size={14} /> Instruções avançadas
+				</button>
+				{#if showAdvanced}
+					<InstructionsEditor bind:value={instructions} preset={modalPreset} />
+				{/if}
 		{#snippet footer()}
 			<Button variant="ghost" onclick={() => (tacticOpen = false)}>Cancelar</Button>
 			<Button variant="primary" icon="check" onclick={applyTactic}>Aplicar</Button>
@@ -765,6 +807,18 @@
 		flex-wrap: wrap;
 		gap: 6px;
 		margin-bottom: 14px;
+	}
+	.adv {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin: 12px 0 8px;
+		border: 0;
+		background: none;
+		color: var(--emerald-strong);
+		font: inherit;
+		font-weight: 600;
+		cursor: pointer;
 	}
 	.fchip {
 		display: flex;

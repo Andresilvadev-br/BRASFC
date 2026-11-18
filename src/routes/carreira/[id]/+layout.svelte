@@ -66,10 +66,10 @@
 				<Icon name="calendar" size={16} />
 				<span class="num">{formatShort(data.career.gameDate)} {data.career.season}</span>
 			</span>
-			<button class="advance" disabled aria-describedby="advance-hint">
+			<a class="advance" href="{base}/partida" aria-describedby="advance-hint" data-umx-press>
 				Avançar <Icon name="chevronRight" size={18} />
-			</button>
-			<span id="advance-hint" class="hint">O avanço do calendário chega com o motor de partidas (Etapa 2).</span>
+			</a>
+			<span id="advance-hint" class="hint">Vai para a próxima rodada: jogo, semana sem jogo ou fim de temporada.</span>
 			<a class="exit" href="/menu" aria-label="Voltar ao menu principal" title="Menu principal" data-umx-press><Icon name="exit" /></a>
 		</div>
 	</header>
@@ -200,6 +200,7 @@
 		white-space: nowrap;
 	}
 	.advance {
+		text-decoration: none;
 		display: inline-flex;
 		align-items: center;
 		gap: 4px;
