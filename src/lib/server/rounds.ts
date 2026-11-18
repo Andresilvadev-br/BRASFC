@@ -1,3 +1,7 @@
+import { staffEffects } from '#lib/domain/staff.ts';
+import { suggestPlan } from '#lib/domain/drills.ts';
+import type { StoredRoundResult } from '#lib/domain/league.ts';
+import { ensureUniverse, inboxWorthy, officeOf, officeSeasonEnd, officeStep, universeAfterStep, universeAtSeasonEnd } from './universe.ts';
 import type { Career, CareerData } from '#lib/domain/career.ts';
 import { addDays } from '#lib/domain/dates.ts';
 import { applyTrainingWeek, recoverFitness } from '#lib/domain/drills.ts';
@@ -113,12 +117,36 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 		rows.push({ season: career.season, round, competition: r.competition, home: r.home, away: r.away, homeGoals: r.homeGoals, awayGoals: r.awayGoals, seed: r.seed, isUser: false, ...(r.goals ? { summary: { goals: r.goals } as never } : {}) });
 	}
 	// Domingo: semana de treinos e recuperação até a próxima rodada. Quarta: só o desgaste do jogo.
-	const plan = view.trainingPlan;
+	// Dev 0.5: a comissão técnica entra nos cálculos (aprendizado, recuperação, preparação).
+	const clubNow = career.mode === 'coach' ? clubStateOf(career, league) : null;
+	const fx = staffEffects(clubNow?.staff);
+	let universe = ensureUniverse(career, league);
+	let office = clubNow ? officeOf(career, clubNow, league) : null;
+	if (mine && tactical.opponentPrep) tactical = { ...tactical, opponentPrep: null }; // a preparação vale um jogo
+	const allResults: StoredRoundResult[] = [...results, ...rows.map((r) => ({ round: r.round, competition: r.competition, home: r.home, away: r.away, homeGoals: r.homeGoals, awayGoals: r.awayGoals }))];
+	const nextFix = upcomingAfter(view, allResults);
+	const nextOpponent = nextFix ? (nextFix.home === career.clubId ? nextFix.away : nextFix.home) : null;
+	let plan = view.trainingPlan;
+	let delegatedReasons: string[] = [];
 	if (step.kind === 'league') {
 		if (career.mode === 'coach') {
-			tactical = applyTrainingWeek(tactical, plan, { formation: view.tactic.formation, style: view.tactic.style, lineup: view.tactic.lineup, roles: view.tactic.roles, squad });
+			const weekCtx = { formation: view.tactic.formation, style: view.tactic.style, lineup: view.tactic.lineup, roles: view.tactic.roles, squad, nextOpponent, learning: fx.tacticalLearning, analyst: fx.opponentPrep };
+			if (office?.delegated) {
+				const avg = squad.reduce((s, p) => s + (fitness[p.id] ?? 95), 0) / Math.max(1, squad.length);
+				const sug = suggestPlan(tactical, weekCtx, avg);
+				plan = sug.plan;
+				delegatedReasons = sug.reasons;
+			}
+			tactical = applyTrainingWeek(tactical, plan, weekCtx);
 		}
-		fitness = recoverFitness(fitness, squad, career.mode === 'coach' ? plan : { sessions: ['descanso', 'formacao', 'posse', 'defesa', 'descanso'], intensity: 'normal' });
+		const before = fitness;
+		const recovered = recoverFitness(fitness, squad, career.mode === 'coach' ? plan : { sessions: ['descanso', 'formacao', 'posse', 'defesa', 'descanso'], intensity: 'normal' });
+		fitness = {};
+		for (const [id, v] of Object.entries(recovered)) {
+			const prev = before[id] ?? 95;
+			const gainF = (v - prev) * (career.mode === 'coach' ? fx.fitnessRecovery * (prev < 70 ? fx.physio : 1) : 1);
+			fitness[id] = Math.round(Math.max(30, Math.min(100, prev + gainF)) * 10) / 10;
+		}
 	}
 	const nextDate = addDays(step.date, 1);
 	// Gestão do clube e mundo vivo: finanças, torcida, diretoria, mercado da IA, propostas e olheiros.
@@ -144,7 +172,21 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 		playerCareer = { ...playerCareer, offers: [...playerCareer.offers.filter((o) => o.expiresRound >= step.round && o.season === career.season), ...offers].slice(-3) };
 		for (const o of offers) wk.news.push({ sender: `Empresário — ${playerCareer.agent.name}`, subject: `Proposta do ${getClub(o.clubId)?.name ?? o.clubId}`, body: `Salário de ${formatMoney(o.wage)} por mês, ${o.years} temporadas, como ${o.role === 'titular' ? 'titular' : 'opção de rotação'}. Responda até a rodada ${o.expiresRound}.`, important: true });
 	}
-	const data: Partial<CareerData> = { tactical, fitness, league, ...(cup ? { cup } : {}), market: wk.market, ...(career.mode === 'coach' ? { club: wk.club } : {}), ...(playerCareer ? { playerCareer } : {}) };
+	// Dev 0.5: universo vivo (forma, diretorias, demissões, notícias) e gabinete do treinador.
+	const before = universe;
+	universe = universeAfterStep(universe, career, league, { round, league: step.kind === 'league', seasonResults: allResults, newResults: rows.map(({ home, away, homeGoals, awayGoals, competition }) => ({ home, away, homeGoals, awayGoals, competition })), strengthOf });
+	let clubOut = wk.club;
+	if (career.mode === 'coach' && office) {
+		const big = wk.transfers.filter((t) => t.to === career.clubId && t.fee >= 1_000_000).sort((a, b) => b.fee - a.fee)[0];
+		const os = officeStep({ career, league, office, club: wk.club, universe, round, isLeague: step.kind === 'league', totalRounds: view.rounds, seasonResults: allResults, userMatch: mine && userMatch ? { home: mine.home, away: mine.away, homeGoals: userMatch.homeGoals, awayGoals: userMatch.awayGoals, competition: mine.competition } : null, nextOpponent, nextDecisive: !!nextFix && nextFix.competition === CUP_ID, signedBig: big?.playerName ?? null });
+		office = os.office;
+		clubOut = os.club;
+		universe = os.universe;
+		wk.news.push(...os.news);
+		if (delegatedReasons.length) wk.news.push({ sender: 'Auxiliar técnico', subject: 'Semana de treinos planejada', body: `Montei a semana: ${plan.sessions.join(', ')} (intensidade ${plan.intensity}). ${delegatedReasons.join(' ')}`, important: false });
+	}
+	wk.news.push(...inboxWorthy(before, universe, career.clubId, view.division, nextOpponent));
+	const data: Partial<CareerData> = { tactical, fitness, league, universe, ...(office ? { office } : {}), ...(cup ? { cup } : {}), market: wk.market, ...(career.mode === 'coach' ? { club: clubOut } : {}), ...(playerCareer ? { playerCareer } : {}) };
 	const key = `${career.season}:${step.key}`;
 	const updated = await db.transaction(async (tx) => {
 		await insertRound(tx, career.id, rows, ENGINE_VERSION);
@@ -159,8 +201,8 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 		round,
 		step: step.key,
 		match: userMatch,
-		finance: career.mode === 'coach' ? { balance: wk.club.balance, ledger: wk.ledger } : null,
-		dismissed: career.mode === 'coach' && wk.club.board.dismissed && !(career.data.club?.board?.dismissed ?? false),
+		finance: career.mode === 'coach' ? { balance: clubOut.balance, ledger: wk.ledger } : null,
+		dismissed: career.mode === 'coach' && clubOut.board.dismissed && !(career.data.club?.board?.dismissed ?? false),
 		results: rows.filter((r) => !r.isUser).map(({ home, away, homeGoals, awayGoals, competition }) => ({ home, away, homeGoals, awayGoals, competition }))
 	};
 }
@@ -227,6 +269,26 @@ export async function finishSeason(db: Db, profileId: string, career: Career, ve
 	const scorers = topScorers(await listSeasonGoals(db, career.id, career.season), view.division);
 	if (scorers.length) history.push(['artilharia', view.division, { players: scorers }]);
 	const nextDate = seasonStartDate(next.season);
+	// Dev 0.5: universo (projetos, técnicos, recordes) e gabinete (histórico, contrato, propostas).
+	const points: Record<string, { points: number; games: number }> = {};
+	for (const rows of Object.values(outcome.tables)) for (const r of rows ?? []) points[r.clubId] = { points: r.points, games: r.played };
+	const tablesFinal = Object.fromEntries(Object.entries(outcome.tables).map(([d, rows]) => [d, (rows ?? []).map((r) => r.clubId)]));
+	const universe = universeAtSeasonEnd(ensureUniverse(career, view.league), career, view.league, {
+		tables: tablesFinal,
+		points,
+		champions: Object.fromEntries(Object.entries(outcome.champions).filter(([, v]) => !!v)) as Record<string, string>,
+		promoted: outcome.moves.filter((m) => m.reason === 'acesso').map((m) => m.clubId),
+		relegated: outcome.moves.filter((m) => m.reason === 'rebaixamento').map((m) => m.clubId),
+		next,
+		cupChampion: cupNow?.champion ?? null
+	});
+	let officeData: Partial<CareerData> = {};
+	if (career.mode === 'coach') {
+		const oe = officeSeasonEnd({ career, office: officeOf(career, end.club, view.league), club: end.club, universe, division: view.division, position: row?.position ?? null, outcome: summary.outcome === 'rebaixado' ? 'queda' : summary.outcome === 'permanece' ? 'permanece' : summary.outcome, next });
+		end.club = oe.club;
+		end.news.push(...oe.news);
+		officeData = { office: { ...oe.office, meeting: null, press: null } };
+	}
 	// Carreira de jogador: evolução por minutos, objetivos, prêmios; contrato renovado pelo clube.
 	let playerData: Partial<CareerData> = {};
 	if (career.mode === 'player' && career.data.player) {
@@ -253,7 +315,7 @@ export async function finishSeason(db: Db, profileId: string, career: Career, ve
 			tx,
 			profileId,
 			career.id,
-			{ gameDate: nextDate, season: next.season, data: { league: next, tactical, fitness, seasons: [...view.seasons, summary], ...(nextCup ? { cup: nextCup } : {}), market: end.market, ...(career.mode === 'coach' ? { club: end.club } : {}), ...playerData } },
+			{ gameDate: nextDate, season: next.season, data: { league: next, tactical, fitness, seasons: [...view.seasons, summary], ...(nextCup ? { cup: nextCup } : {}), market: end.market, ...(career.mode === 'coach' ? { club: end.club } : {}), ...playerData, universe, ...officeData } },
 			career.version
 		);
 		if (career.mode === 'coach') await insertLedger(tx, career.id, career.season, addDays(nextDate, -1), end.ledger, `${career.season}:fim`);
@@ -313,4 +375,10 @@ function parseDecision(raw: unknown): Decision | null {
 		return { type: 'formation', value: dec.value, lineup: dec.lineup as string[], ...(roles ? { roles } : {}) };
 	}
 	return null;
+}
+
+/** Próximo jogo do usuário depois deste passo (liga ou Copa). */
+function upcomingAfter(view: ReturnType<typeof careerView>, results: StoredRoundResult[]) {
+	const played = (f: { competition: string; round: number; home: string }) => results.some((r) => (r.competition ?? 'liga-brasfc') === f.competition && r.round === f.round && r.home === f.home);
+	return view.clubFixtures.find((f) => !played(f)) ?? null;
 }

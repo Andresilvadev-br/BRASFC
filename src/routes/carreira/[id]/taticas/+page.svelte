@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { universeCoach } from '#lib/domain/matchday.ts';
 	import { untrack } from 'svelte';
 	import { beforeNavigate, goto, invalidate } from '$app/navigation';
 	import { api } from '#lib/api.ts';
@@ -75,6 +76,7 @@
 			clubId: data.career.clubId,
 			nextOpponent: v.upcoming ? (v.upcoming.home === data.career.clubId ? v.upcoming.away : v.upcoming.home) : null,
 			careerSeed: data.career.seed,
+					opponentCoach: (() => { const o = v.upcoming ? (v.upcoming.home === data.career.clubId ? v.upcoming.away : v.upcoming.home) : null; return o ? universeCoach(data.career, o) : null; })(),
 			season: data.career.season,
 			firstSeason: v.firstSeason,
 			dismissed: data.career.data.dismissedTips

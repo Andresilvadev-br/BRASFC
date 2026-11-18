@@ -9,7 +9,7 @@ import type { CoachProfile } from './ai-coach.ts';
 export const PITCH = { length: 105, width: 68, goalWidth: 7.32, boxDepth: 16.5, boxWidth: 40.3 } as const;
 
 /** Versão do motor gravada com cada resultado (mudanças de regra mudam a versão). */
-export const ENGINE_VERSION = '0.4.0';
+export const ENGINE_VERSION = '0.5.0';
 
 export type Side = 'home' | 'away';
 

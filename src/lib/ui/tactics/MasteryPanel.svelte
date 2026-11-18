@@ -27,6 +27,21 @@
 		{ label: 'Entrosamento dos titulares', v: mastery.cohesion, tip: 'Quem joga junto se entende melhor; novatos começam baixo.' }
 	]);
 	const tone = (v: number) => (v >= 70 ? 'hi' : v >= 45 ? 'mid' : 'lo');
+	// Evolução real (execução registrada em cada jogo) e domínio individual das funções.
+	const exec = $derived(st.history.slice(-20).map((h) => h.execution));
+	const best = $derived(FORMATION_IDS.reduce((a, b) => ((st.formations[b] ?? 0) > (st.formations[a] ?? 0) ? b : a), formation));
+	/** Jogos estimados para a formação atual alcançar a mais dominada (mesma curva do aprendizado por jogo). */
+	const adaptGames = $derived.by(() => {
+		let v = st.formations[formation] ?? 20;
+		const target = (st.formations[best] ?? 20) - 2;
+		let n = 0;
+		while (v < target && n < 99) {
+			v += 3.2 * Math.pow(1 - v / 100, 1.3);
+			n++;
+		}
+		return n;
+	});
+	const rolesKnown = $derived(Object.values(st.roles).filter((r) => Object.values(r).some((x) => (x ?? 0) >= 65)).length);
 </script>
 
 <div class="mp">
@@ -44,6 +59,19 @@
 			<span class="n">{Math.round(r.v)}</span>
 		</div>
 	{/each}
+	{#if exec.length >= 2}
+		<div class="evo">
+			<span class="l">Execução nos últimos {exec.length} jogos</span>
+			<svg viewBox="0 0 200 40" role="img" aria-label="Evolução da execução">
+				<polyline points={exec.map((e, i) => `${(i / (exec.length - 1)) * 200},${38 - ((e - 30) / 60) * 36}`).join(' ')} />
+			</svg>
+			<span class="n">{exec[0]} → {exec[exec.length - 1]}</span>
+		</div>
+	{/if}
+	<p class="ind">Domínio individual: <strong>{rolesKnown}</strong> atleta(s) com alguma função dominada (65+).</p>
+	{#if best !== formation && adaptGames > 0}
+		<p class="adapt">O time domina mais o <strong>{best}</strong> ({Math.round(st.formations[best])}). No {formation}, a adaptação leva cerca de <strong>{adaptGames} jogo(s)</strong> — o que foi aprendido no {best} não se perde de uma vez.</p>
+	{/if}
 	<h4>Comparar formações</h4>
 	<div class="forms">
 		{#each FORMATION_IDS as f (f)}
@@ -170,5 +198,33 @@
 	.fn {
 		font-size: 10px;
 		color: var(--text-3);
+	}
+	.evo {
+		display: grid;
+		grid-template-columns: 1fr 120px auto;
+		gap: 8px;
+		align-items: center;
+		font-size: var(--fs-sm);
+		margin-top: 10px;
+	}
+	.evo svg {
+		width: 120px;
+		height: 30px;
+	}
+	.evo polyline {
+		fill: none;
+		stroke: #10b981;
+		stroke-width: 2;
+	}
+	.ind,
+	.adapt {
+		font-size: var(--fs-sm);
+		margin: 8px 0 0;
+		color: var(--text-2);
+	}
+	.adapt {
+		padding: 8px 10px;
+		border-radius: 10px;
+		background: rgb(232 184 106 / 0.1);
 	}
 </style>

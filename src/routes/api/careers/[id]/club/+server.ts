@@ -12,6 +12,10 @@ import { clubStateOf, rosterContext } from '#lib/domain/world.ts';
 import { getDb } from '#lib/server/db/index.ts';
 import { noStore, readJson, requireProfile } from '#lib/server/http.ts';
 import { actionContext, applyAction } from '#lib/server/management.ts';
+import { applyOfficeAction, OFFICE_ACTIONS } from '#lib/server/office-actions.ts';
+import { ensureUniverse, officeOf, universeCoachMove } from '#lib/server/universe.ts';
+import { coachWage } from '#lib/domain/office.ts';
+import { tierOfDivision } from '#lib/domain/market.ts';
 import { getCareer, saveCareerProgress, VersionConflictError } from '#lib/server/repos/careers.ts';
 import { changeCareerClub, insertLedger, insertMessages, insertTransfers, listHistory, listLedger, listTransfers } from '#lib/server/repos/management.ts';
 import { listResults } from '#lib/server/repos/matches.ts';
@@ -51,6 +55,24 @@ export const POST: RequestHandler = async (event) => {
 	const view = careerView(career, await listResults(db, career.id, career.season));
 	if (view.seasonOver) error(409, 'Temporada encerrada: inicie a próxima para negociar.');
 	const ctx = actionContext(career, league, rosterContext(career, league), view.nextRound);
+	// Dev 0.5: gabinete (reuniões, coletivas, comissão, treinos delegados, plano da base).
+	if (OFFICE_ACTIONS.has(String(body.action))) {
+		try {
+			const me = view.standings.find((r) => r.clubId === career.clubId);
+			const out = applyOfficeAction(career, league, club, view.nextRound, me?.points ?? 0, me?.position ?? null, body);
+			const key = `${career.season}:gabinete:${career.version}`;
+			const updated = await db.transaction(async (tx) => {
+				const saved = await saveCareerProgress(tx, profile.id, career.id, { gameDate: career.gameDate, data: { club: out.club, office: out.office } }, career.version);
+				await insertLedger(tx, career.id, career.season, career.gameDate, out.ledger, key);
+				return saved;
+			});
+			return noStore({ career: updated, message: out.message });
+		} catch (e) {
+			if (e instanceof ManagementError) error(422, e.message);
+			if (e instanceof VersionConflictError) error(409, e.message);
+			throw e;
+		}
+	}
 	try {
 		const out = applyAction(club, sanitizeMarket(career.data.market), ctx, body);
 		const key = `${career.season}:acao:${career.version}`;
@@ -78,8 +100,13 @@ async function careerDecision(db: Awaited<ReturnType<typeof getDb>>, profileId: 
 		const division = divisionOf(league, offer.clubId);
 		const fresh = initialClubState(career.seed, offer.clubId, division, career.season);
 		const next = { ...fresh, coachReputation: club.coachReputation, jobOffers: [] };
+		// Dev 0.5: contrato negociado na proposta; o universo troca os técnicos dos dois clubes.
+		const prevOffice = officeOf(career, club, league);
+		const years = typeof body.years === 'number' && [1, 2, 3].includes(body.years) ? body.years : (offer.years ?? 2);
+		const office = { ...prevOffice, contract: { until: career.season + years - 1, wage: offer.wage ?? coachWage(tierOfDivision(division), club.coachReputation) }, meeting: null, press: null, ultimatum: null, history: [...prevOffice.history, ...(club.board.dismissed ? [] : [{ season: career.season, clubId: career.clubId, division: divisionOf(league, career.clubId), position: null, outcome: 'saiu' as const, games: 0, wins: 0, draws: 0, losses: 0, reputation: club.coachReputation }])] };
+		const universe = universeCoachMove(ensureUniverse(career, league), career, league, career.clubId, offer.clubId);
 		const ok = await db.transaction(async (tx) => {
-			const changed = await changeCareerClub(tx, profileId, career.id, offer.clubId, { club: next, tactic: null, tactical: null, fitness: {}, dismissedTips: [] }, career.version);
+			const changed = await changeCareerClub(tx, profileId, career.id, offer.clubId, { club: next, tactic: null, tactical: null, fitness: {}, dismissedTips: [], office, universe }, career.version);
 			if (changed) await insertMessages(tx, career.id, career.gameDate, [{ sender: `Diretoria — ${getClub(offer.clubId)?.name ?? offer.clubId}`, subject: `Bem-vindo ao ${getClub(offer.clubId)?.name ?? offer.clubId}`, body: 'Você é o novo treinador. Conheça o elenco, a estrutura e os objetivos da diretoria.', important: true }]);
 			return changed;
 		});

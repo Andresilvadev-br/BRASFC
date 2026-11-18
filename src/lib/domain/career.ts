@@ -1,3 +1,5 @@
+import type { UniverseState } from './universe.ts';
+import type { OfficeState } from './office.ts';
 import { isAppearance, type Appearance } from './appearance.ts';
 import { CLUBES_2026, TEMPORADA_2026 } from '#lib/data/brasil.ts';
 import { CLUBS, getClub, LEAGUE, type Club } from './clubs.ts';
@@ -64,6 +66,11 @@ club?: ClubState;
 market?: MarketState;
 /** carreira de jogador: contrato, empresário, propostas, objetivos e prêmios */
 playerCareer?: PlayerCareerState;
+// ── Dev 0.5
+/** futebol brasileiro vivo: clubes da IA, técnicos, notícias e recordes */
+universe?: UniverseState;
+/** gabinete do treinador: contrato, reuniões, coletivas, marcos e histórico */
+office?: OfficeState;
 }
 
 export interface Career {

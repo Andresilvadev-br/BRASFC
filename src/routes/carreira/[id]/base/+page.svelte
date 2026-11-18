@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { estimateRange, REGION_LABELS, scoutCandidates, type Region } from '#lib/domain/academy.ts';
+	import { estimateRange, REGION_LABELS, scoutCandidates, YOUTH_PLAN_INFO, YOUTH_PLANS, type Region } from '#lib/domain/academy.ts';
 	import { scoutMargin, youthIntake } from '#lib/domain/club.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { currentClubOf, findPlayer, formatMoney } from '#lib/domain/market.ts';
@@ -21,10 +21,14 @@
 	const POS: Array<Position | 'qualquer'> = ['qualquer', 'GOL', 'LD', 'ZAG', 'LE', 'VOL', 'MC', 'MEI', 'PD', 'PE', 'ATA'];
 	const margin = $derived(Math.max(2, 8 - club.infra.base.level));
 	const candidates = $derived(scoutCandidates(c.seed, c.season).filter((s) => !club.scouts.some((x) => x.id === s.id)));
-	const missions = $state<Record<string, { region: Region; position: Position | 'qualquer'; maxAge: number }>>({});
+	const missions = $state<Record<string, { region: Region; position: Position | 'qualquer'; maxAge: number; weeks: number }>>({});
 	$effect.pre(() => {
-		for (const s of club.scouts) missions[s.id] ??= { region: s.region, position: s.position, maxAge: s.maxAge };
+		for (const s of club.scouts) missions[s.id] ??= { region: s.region, position: s.position, maxAge: s.maxAge, weeks: 6 };
 	});
+	// Comparação de prospectos (até 3 relatórios lado a lado).
+	let compare = $state<string[]>([]);
+	const toggleCompare = (id: string) => (compare = compare.includes(id) ? compare.filter((x) => x !== id) : [...compare, id].slice(-3));
+	const PREC: Record<string, string> = { alta: 'Precisão alta', media: 'Precisão média', baixa: 'Precisão baixa' };
 
 	async function act(body: Record<string, unknown>, ok?: string) {
 		busy = true;
@@ -75,6 +79,12 @@
 					<Sparkline values={[...y.log.map((l) => l.overall), y.overall].slice(-10)} width={90} height={26} label="Evolução de {y.name}" />
 				</div>
 				<div class="prog" title="Progresso para o próximo ponto"><i style="width:{Math.round(y.progress * 100)}%"></i></div>
+				{#if (y.stalled ?? 0) >= 8}<p class="warn small">Sem evoluir há {y.stalled} semanas: risco de estagnação{y.age >= 20 ? ' (idade)' : ''}.</p>{/if}
+				<label class="plan">Plano de desenvolvimento
+					<select value={y.plan ?? 'equilibrado'} disabled={busy} onchange={(e) => act({ action: 'base-plano', youthId: y.id, plan: (e.currentTarget as HTMLSelectElement).value })}>
+						{#each YOUTH_PLANS as p (p)}<option value={p}>{YOUTH_PLAN_INFO[p].label} — {YOUTH_PLAN_INFO[p].text}</option>{/each}
+					</select>
+				</label>
 				<div class="row">
 					<Button size="sm" variant="primary" loading={busy} onclick={() => act({ action: 'base-promover', youthId: y.id })}>Promover</Button>
 					<Button size="sm" variant="ghost" disabled={busy} onclick={() => act({ action: 'base-dispensar', youthId: y.id }, `${y.name} foi dispensado.`)}>Dispensar</Button>
@@ -95,8 +105,13 @@
 					<label>Região <select bind:value={ms.region}>{#each Object.entries(REGION_LABELS) as [k, l] (k)}<option value={k}>{l}</option>{/each}</select></label>
 					<label>Posição <select bind:value={ms.position}>{#each POS as p (p)}<option value={p}>{p === 'qualquer' ? 'Qualquer' : p}</option>{/each}</select></label>
 					<label>Idade até <b>{ms.maxAge}</b><input type="range" min="17" max="35" bind:value={ms.maxAge} /></label>
+					<label>Prazo <b>{ms.weeks ? `${ms.weeks} semanas` : 'contínua'}</b><input type="range" min="0" max="12" step="2" bind:value={ms.weeks} /></label>
+					{#if s.mission}
+						{@const left = s.mission.untilWeek - club.week}
+						<p class="small mission" class:done={left < 0}>{left >= 0 ? `Missão em andamento: ${left} semana(s) restante(s)` : 'Missão concluída'} · {s.mission.found} relatório(s)</p>
+					{/if}
 					<div class="row">
-						<Button size="sm" variant="secondary" loading={busy} onclick={() => act({ action: 'olheiro-missao', scoutId: s.id, region: ms.region, position: ms.position, maxAge: ms.maxAge }, 'Missão atualizada.')}>Salvar missão</Button>
+						<Button size="sm" variant="secondary" loading={busy} onclick={() => act({ action: 'olheiro-missao', scoutId: s.id, region: ms.region, position: ms.position, maxAge: ms.maxAge, weeks: ms.weeks })}>{ms.weeks ? 'Iniciar missão' : 'Salvar observação'}</Button>
 						<Button size="sm" variant="ghost" disabled={busy} onclick={() => act({ action: 'olheiro-dispensar', scoutId: s.id }, 'Olheiro dispensado.')}>Dispensar</Button>
 					</div>
 				{/if}
@@ -116,6 +131,25 @@
 	</div>
 	{#if club.scouts.length >= club.infra.observacao.level}<p class="muted small">Para ter mais olheiros, melhore a estrutura de observação (Clube → Estrutura).</p>{/if}
 {:else}
+	{#if compare.length >= 2}
+		<section class="compare glass" use:reveal aria-label="Comparação de prospectos">
+			{#each compare as id (id)}
+				{@const r = club.reports.find((x) => x.playerId === id)}
+				{@const p = findPlayer(m.ctx, id)}
+				{#if r}
+					<div class="col">
+						<strong>{p?.name ?? id}</strong>
+						<small class="muted">{p ? `${p.position} · ${p.age} anos` : ''}</small>
+						<div class="bar"><span>Nível</span><i style="--a:{r.overall[0]}%;--b:{r.overall[1]}%"></i><b>{r.overall[0]}–{r.overall[1]}</b></div>
+						<div class="bar pot"><span>Potencial</span><i style="--a:{r.potential[0]}%;--b:{r.potential[1]}%"></i><b>{r.potential[0]}–{r.potential[1]}</b></div>
+						<small>{PREC[r.precision ?? 'media']}</small>
+					</div>
+				{/if}
+			{/each}
+		</section>
+	{:else}
+		<p class="muted small">Marque “comparar” em dois ou três relatórios para vê-los lado a lado.</p>
+	{/if}
 	<div class="grid-auto" style="--min:260px">
 		{#each reports as r, i (r.playerId + r.round)}
 			{@const p = findPlayer(m.ctx, r.playerId)}
@@ -125,8 +159,11 @@
 				<h3>{p?.name ?? r.playerId}</h3>
 				<p class="muted small">{p ? `${p.position} · ${p.age} anos` : ''} · {owner ? (getClub(owner)?.name ?? owner) : 'sem clube'}</p>
 				<div class="ranges"><div><span>Nível</span><b>{r.overall[0]}–{r.overall[1]}</b></div><div><span>Potencial</span><b>{r.potential[0]}–{r.potential[1]}</b></div></div>
-				<p>{r.note}</p>
-				<a class="link" href="/carreira/{c.id}/mercado">Abrir no mercado →</a>
+				<p>{r.note}{#if r.precision} <span class="prec {r.precision}">{PREC[r.precision]}</span>{/if}</p>
+				<div class="spread">
+					<a class="link" href="/carreira/{c.id}/mercado">Abrir no mercado →</a>
+					<label class="cmpk"><input type="checkbox" checked={compare.includes(r.playerId)} onchange={() => toggleCompare(r.playerId)} /> comparar</label>
+				</div>
 			</article>
 		{:else}
 			<p class="muted glass pad">Contrate olheiros e defina missões: os relatórios chegam toda semana.</p>
@@ -136,6 +173,77 @@
 {#if msg}<p class="msg" role="status">{msg}</p>{/if}
 
 <style>
+	.warn {
+		color: var(--gold);
+		margin: 4px 0;
+	}
+	.plan {
+		display: grid;
+		gap: 4px;
+		font-size: var(--fs-xs);
+		color: var(--text-3);
+		margin: 6px 0;
+	}
+	.plan select {
+		padding: 6px;
+		border-radius: 8px;
+		background: #1c252b;
+		color: var(--text);
+		border: 1px solid var(--line-strong);
+		font-size: var(--fs-sm);
+	}
+	.mission {
+		color: var(--emerald-strong);
+		margin: 4px 0;
+	}
+	.mission.done {
+		color: var(--text-3);
+	}
+	.prec {
+		font-size: var(--fs-xs);
+		padding: 1px 6px;
+		border-radius: 6px;
+		background: rgb(231 237 240 / 0.08);
+	}
+	.prec.alta {
+		color: var(--emerald-strong);
+	}
+	.prec.baixa {
+		color: var(--gold);
+	}
+	.cmpk {
+		display: flex;
+		gap: 4px;
+		align-items: center;
+		font-size: var(--fs-xs);
+		cursor: pointer;
+	}
+	.compare {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+		gap: var(--sp-4);
+		padding: var(--sp-4);
+		margin-bottom: var(--sp-4);
+	}
+	.col {
+		display: grid;
+		gap: 6px;
+	}
+	.bar {
+		display: grid;
+		grid-template-columns: 70px 1fr 54px;
+		gap: 8px;
+		align-items: center;
+		font-size: var(--fs-xs);
+	}
+	.bar i {
+		height: 8px;
+		border-radius: 8px;
+		background: linear-gradient(90deg, transparent var(--a), #10b981 var(--a), #10b981 var(--b), transparent var(--b)), rgb(231 237 240 / 0.07);
+	}
+	.bar.pot i {
+		background: linear-gradient(90deg, transparent var(--a), #e8b86a var(--a), #e8b86a var(--b), transparent var(--b)), rgb(231 237 240 / 0.07);
+	}
 	.hero {
 		padding: var(--sp-6);
 		display: grid;

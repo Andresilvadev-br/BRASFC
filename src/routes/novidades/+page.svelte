@@ -8,6 +8,7 @@
 	import Icon from '#lib/ui/Icon.svelte';
 	import ScreenHeader from '#lib/ui/ScreenHeader.svelte';
 	import DesktopDownload from '#lib/ui/desktop/DesktopDownload.svelte';
+	import { desktop } from '#lib/stores/desktop.svelte.ts';
 
 	let { data } = $props();
 	let blocked = $state<string[]>([]);
@@ -85,7 +86,9 @@
 
 		<article class="glass install" use:reveal={{ index: 2 }}>
 			<span class="eyebrow-gold">Aplicativo</span>
-			{#if updates.installed}
+			{#if desktop.active}
+				<p><Icon name="check" size={16} /> Você está no aplicativo do Windows. O jogo se atualiza pelo servidor (esta central) e o próprio aplicativo baixa a versão nova sozinho.</p>
+			{:else if updates.installed}
 				<p><Icon name="check" size={16} /> O BRASFC está instalado como aplicativo neste computador. As atualizações chegam por aqui.</p>
 			{:else if updates.installable}
 				<p>Instale o BRASFC para abrir em janela própria, com ícone na área de trabalho e no menu Iniciar.</p>

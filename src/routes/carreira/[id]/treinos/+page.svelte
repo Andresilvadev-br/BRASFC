@@ -46,7 +46,8 @@
 	const DAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'];
 	const DRILL_ICON: Record<DrillId, IconName> = {
 		formacao: 'tactics', posse: 'link', pressao: 'arrowRight', defesa: 'lock', 'contra-ataque': 'sparkle', movimentacao: 'field',
-		construcao: 'chart', 'bolas-paradas': 'star', entrosamento: 'squad', funcoes: 'user', descanso: 'clock'
+		construcao: 'chart', 'bolas-paradas': 'star', entrosamento: 'squad', funcoes: 'user',
+		adversario: 'eye', descanso: 'clock'
 	};
 	let plan = $state<TrainingPlan>(untrack(() => structuredClone($state.snapshot(data.view.trainingPlan))));
 	let picking = $state<number | null>(null);

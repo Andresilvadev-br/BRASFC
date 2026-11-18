@@ -17,6 +17,10 @@ export interface JobOfferDetail {
 	division: string;
 	reason: string;
 	expiresSeason: number;
+	/** Dev 0.5: proposta vinda do universo (salário, duração e projeto) */
+	wage?: number;
+	years?: number;
+	project?: string;
 }
 
 /** Propostas de emprego coerentes com a reputação do treinador (determinísticas). */

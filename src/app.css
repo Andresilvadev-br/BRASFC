@@ -376,3 +376,8 @@ html.desktop-app:not(.desktop-full) {
 html.desktop-app:not(.desktop-full) body {
 	padding-top: var(--desk-bar);
 }
+
+/* Dev 0.5: espaçamento padrão de painéis de vidro */
+.glass.pad {
+	padding: var(--sp-5);
+}

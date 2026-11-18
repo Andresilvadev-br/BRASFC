@@ -1,5 +1,30 @@
 # Novidades
 
+## 0.5.0 — 2026-11-18 · Manager Update
+
+### Novo
+- **Futebol brasileiro vivo** (`careers.data.universe`): cada clube da IA tem filosofia, projeto (título, crescimento, estabilidade, reconstrução, crise), diretoria, técnico fictício com reputação e histórico, formação e domínio dela. Diretorias perdem a confiança com maus resultados (pelo perfil) e demitem; técnicos livres são contratados conforme o porte; entre temporadas, clubes grandes buscam técnicos em alta, rebaixados se reconstroem e promovidos crescem. Em 10 temporadas simuladas: ~19 demissões e ~12 trocas de comando por temporada, sem nenhuma inconsistência.
+- **Notícias** geradas pelos fatos: demissões, contratações, sequências, lideranças, títulos, recordes e mudanças de projeto; as relevantes chegam à caixa de mensagens (no máximo duas por passo).
+- **Gabinete do treinador**: reuniões com a diretoria (orçamento, advertência com ultimato, avaliação do meio da temporada, renovação) e coletivas de imprensa em momentos relevantes, com efeitos proporcionais em torcida, diretoria e reputação; contrato, reputação, marcos, decisões e linha do tempo da carreira; propostas de emprego vindas de clubes com vaga ou insatisfeitos, com salário e duração.
+- **Comissão técnica**: auxiliar, preparador físico, treinador de goleiros, analista, fisioterapeuta, coordenador da base e chefe de observação, com competência, salário, contrato, rescisão e efeito medido; recomendações contextuais.
+- **Treinos**: preparação específica para o próximo adversário (vale um jogo, teto de +6 de execução) e planejamento delegado ao auxiliar.
+- **Base e olheiros**: plano de desenvolvimento por jovem, estagnação após os 19 anos, missões com prazo, precisão dos relatórios e comparação de prospectos.
+- **Legado**: comparação interativa entre temporadas, revelados pela base e recordes do universo.
+
+### Medições
+- Passo de domingo: ~1,9–2,0 s (0.4: ~1,9 s); primeiro passo de saves antigos: ~2,5 s (cria o universo).
+- Navegação interna: 42–104 ms; memória da página: ~108 MB (0.4: ~96 MB).
+
+## 0.4.1 — 2026-11-18 · Stability Update
+
+### Novo
+- App para Windows (Electron, pasta `desktop/`): janela sempre centralizada no monitor do cursor, tamanho lembrado, tela cheia por F11/Alt+Enter ou botão, barra de título integrada, tela própria sem conexão, atualização automática do aplicativo; instalador gerado e publicado pelo GitHub Actions; botão de download no menu, na Central de Atualizações e nas Configurações (só aparece quando o instalador existe).
+
+### Corrigido / auditado
+- Grupos A11–A16 da Série D 2026 conferidos clube a clube com a lista do sorteio da CBF (TNH1, 06/03/2026).
+- 5-3-2: diagnóstico com 400 jogos por configuração. Com posse de bola rende 1,07 ponto por jogo contra o 4-3-3 (o 4-4-2 rende 1,10); com mentalidade defensiva e contra-ataque, 1,27. Cinco ajustes no motor foram testados e descartados (pioravam ou ficavam dentro do ruído); o auxiliar agora recomenda o uso medido.
+- Dez temporadas seguidas conferidas: acessos, quedas e tamanhos das divisões fecham todo ano.
+
 ## 0.4.0 — 2026-11-18 · Evolution Update
 
 ### Novo

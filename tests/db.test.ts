@@ -217,6 +217,20 @@ describe('partidas da carreira (Dev 0.2/0.3)', () => {
 		// Saldo após o fechamento = saldo anterior + lançamentos do fechamento.
 		const all = await listLedger(db, career.id, 2026);
 		expect(after.balance).toBe(start + all.reduce((s, l) => s + l.amount, 0));
+		// Dev 0.5: universo vivo, gabinete e comissão técnica persistidos e consistentes.
+		const { universeIssues } = await import('#lib/domain/universe.ts');
+		const u = res.career.data.universe!;
+		expect(u.season).toBe(2027);
+		expect(universeIssues(u)).toEqual([]);
+		expect(u.news.length).toBeGreaterThan(0);
+		expect(u.log).toHaveLength(1);
+		expect(Object.values(u.records.titles).reduce((a, b) => a + b, 0)).toBe(5);
+		const office = res.career.data.office!;
+		expect(office.history).toHaveLength(1);
+		const userGames = (await listResults(db, career.id, 2026)).filter((r) => r.home === 'mirassol' || r.away === 'mirassol').length;
+		expect(office.totals.games).toBe(userGames);
+		expect(office.history[0].games).toBe(userGames);
+		expect(ledger.some((l) => l.description === 'Salários da comissão técnica')).toBe(true);
 	}, 400_000);
 
 	it('save da Dev 0.3 (Brasil sem Série D e sem Copa) continua e ganha a Série D na troca de temporada', async () => {

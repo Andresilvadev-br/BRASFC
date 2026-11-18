@@ -5,7 +5,8 @@ import type { AppliedDecision, MatchResult as EngineResult, PlayerStats, Side, T
 import type { TacticalInstructions } from '#lib/engine/instructions.ts';
 import type { RoleId } from '#lib/engine/roles.ts';
 import type { Career } from './career.ts';
-import { aiTeamPlan, scoutFrom, type ObservedMatch } from './coaches.ts';
+import { aiTeamPlan, scoutFrom, type CoachOverride, type ObservedMatch } from './coaches.ts';
+import { aiExecution, type UniverseState } from './universe.ts';
 import { requireClub } from './clubs.ts';
 import { randomAppearance } from './appearance.ts';
 import { createRng, deriveSeed } from './rng.ts';
@@ -78,7 +79,7 @@ export interface MatchdayContext {
 export function userTeam(career: Career, myTactic: Tactic, ctx: MatchdayContext, round: number): { setup: TeamSetup; tactic: Tactic & { roles: RoleId[] } } {
 	const squad = withFitness(careerSquad(career), ctx.fitness);
 	if (career.mode === 'player') {
-		const plan = aiTeamPlan(career.seed, career.clubId, ctx.season, ctx.firstSeason, squad, undefined, round);
+		const plan = aiTeamPlan(career.seed, career.clubId, ctx.season, ctx.firstSeason, squad, undefined, round, universeCoach(career, career.clubId));
 		const t = plan.tactic;
 		const setup = buildTeamSetup(identity(career.clubId), squad, t);
 		setup.familiarity = engineFamiliarity(ctx.tactical, t.formation, t.style, setup.tactic.lineup, t.roles, t.instructions);
@@ -99,13 +100,23 @@ export function userTeam(career: Career, myTactic: Tactic, ctx: MatchdayContext,
 export function aiTeam(career: Career, clubId: string, ctx: Pick<MatchdayContext, 'season' | 'firstSeason'>, round: number, opponentObserved?: ObservedMatch[]): { setup: TeamSetup; reasons: string[]; coachLabel: string } {
 	const squad: SquadPlayer[] = rosterOf(rosterContext(career), clubId);
 	const scout = opponentObserved ? scoutFrom(opponentObserved, squad) : undefined;
-	const plan = aiTeamPlan(career.seed, clubId, ctx.season, ctx.firstSeason, squad, scout, round);
+	const override = universeCoach(career, clubId);
+	const plan = aiTeamPlan(career.seed, clubId, ctx.season, ctx.firstSeason, squad, scout, round, override);
 	const setup = buildTeamSetup(identity(clubId), squad, plan.tactic);
 	setup.tactic.instructions = plan.tactic.instructions;
 	setup.tactic.roles = plan.tactic.roles;
 	setup.familiarity = plan.familiarity;
 	setup.coach = plan.coach.profile;
-	return { setup, reasons: plan.reasons, coachLabel: plan.coach.profile.label };
+	return { setup, reasons: plan.reasons, coachLabel: override ? `${override.name} (${plan.coach.profile.label})` : plan.coach.profile.label };
+}
+
+/** Técnico, sistema e domínio do clube no universo da carreira (null em saves sem universo). */
+export function universeCoach(career: Pick<Career, 'data'>, clubId: string): CoachOverride | null {
+	const u = career.data.universe as UniverseState | undefined;
+	const mind = u?.clubs?.[clubId];
+	const coach = mind?.coachId ? u!.coaches?.[mind.coachId] : null;
+	if (!mind || !coach) return null;
+	return { style: coach.style, formation: mind.formation, execution: aiExecution(u, clubId) ?? 55, name: coach.name, since: coach.since };
 }
 
 /** Monta os dois times da partida do usuário. */
@@ -115,6 +126,9 @@ export function fixtureSetup(career: Career, fixture: Fixture, myTactic: Tactic,
 	const me = userTeam(career, myTactic, ctx, fixture.round);
 	const them = aiTeam(career, opp, ctx, fixture.round, ctx.observed);
 	const mySide: Side = fixture.home === mine ? 'home' : 'away';
+	// Preparação específica (treino "adversário" + analista): execução um pouco melhor contra ESTE rival.
+	const prep = ctx.tactical.opponentPrep;
+	if (career.mode === 'coach' && prep && prep.opponent === opp && me.setup.familiarity) me.setup.familiarity = { ...me.setup.familiarity, execution: Math.min(95, me.setup.familiarity.execution + prep.bonus) };
 	return {
 		home: mySide === 'home' ? me.setup : them.setup,
 		away: mySide === 'home' ? them.setup : me.setup,

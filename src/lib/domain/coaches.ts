@@ -63,10 +63,19 @@ export interface AiTeamPlan {
  * Plano do clube da IA para um jogo: formação/estilo do perfil, funções pelo elenco,
  * domínio pela permanência do técnico e, se houver observação do adversário, contramedidas.
  */
-export function aiTeamPlan(careerSeed: number, clubId: string, season: number, firstSeason: number, squad: SquadPlayer[], scout?: Scouting, round = 0): AiTeamPlan {
-	const coach = clubCoach(careerSeed, clubId, season, firstSeason);
+/** Comando do clube vindo do universo persistido (Dev 0.5): técnico, sistema e domínio reais da carreira. */
+export interface CoachOverride {
+	style: CoachStyleId;
+	formation: FormationId;
+	execution: number;
+	name: string;
+	since: number;
+}
+
+export function aiTeamPlan(careerSeed: number, clubId: string, season: number, firstSeason: number, squad: SquadPlayer[], scout?: Scouting, round = 0, override?: CoachOverride | null): AiTeamPlan {
+	const coach: ClubCoach = override ? { profile: COACH_PROFILES[override.style], tenure: Math.max(0, season - override.since), changed: override.since === season } : clubCoach(careerSeed, clubId, season, firstSeason);
 	const p = coach.profile;
-	const formation = coachFormation(p, squad);
+	const formation = override?.formation ?? coachFormation(p, squad);
 	const lineup = autoLineup(formation, squad);
 	const roles = bestRoles(formation, lineup, squad);
 	let instructions = presetInstructions(p.mentality, p.style);
@@ -78,7 +87,7 @@ export function aiTeamPlan(careerSeed: number, clubId: string, season: number, f
 		reasons.push(...plan.reasons);
 	}
 	// Domínio: técnico novo começa em ~52; cada temporada no cargo soma, até ~74.
-	const execution = Math.min(74, 52 + coach.tenure * 5 + Math.min(10, round * 0.3));
+	const execution = override ? override.execution : Math.min(74, 52 + coach.tenure * 5 + Math.min(10, round * 0.3));
 	return {
 		tactic: { formation, lineup, mentality: p.mentality, style: p.style, instructions, roles },
 		familiarity: { execution, setPieces: 50 },

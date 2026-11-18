@@ -40,7 +40,9 @@
 							{ href: `${base}/mercado`, label: 'Mercado', icon: 'briefcase' as IconName, badge: data.manage.club.incoming.length || undefined },
 							{ href: `${base}/financas`, label: 'Finanças', icon: 'chart' as IconName },
 							{ href: `${base}/clube`, label: 'Clube', icon: 'crown' as IconName, alert: data.manage.club.board.dismissed || data.manage.club.board.confidence < 30 },
-							{ href: `${base}/base`, label: 'Base e olheiros', icon: 'sparkle' as IconName }
+							{ href: `${base}/base`, label: 'Base e olheiros', icon: 'sparkle' as IconName },
+							{ href: `${base}/comissao`, label: 'Comissão técnica', icon: 'whistle' as IconName, alert: data.office.vacant.length >= 4 },
+							{ href: `${base}/gabinete`, label: 'Gabinete', icon: 'user' as IconName, badge: data.office.pending || undefined }
 						]
 					}
 				]
@@ -48,6 +50,7 @@
 		{
 			label: 'Mundo',
 			items: [
+				{ href: `${base}/mundo`, label: 'Notícias e mundo', icon: 'globe' },
 				{ href: `${base}/competicoes`, label: 'Competições', icon: 'trophy' },
 				...(brasil ? [{ href: `${base}/copa`, label: 'Copa do Brasil', icon: 'star' as IconName }] : []),
 				{ href: `${base}/calendario`, label: 'Calendário', icon: 'calendar' },

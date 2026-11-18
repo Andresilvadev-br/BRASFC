@@ -1,3 +1,5 @@
+import { initialStaff, monthlyStaffCost, sanitizeStaff, staffCandidates, staffEffects, staffSeverance, STAFF_INFO, type StaffRole, type StaffState } from './staff.ts';
+import type { YouthPlan } from './academy.ts';
 import { developYouth, promoteYouth, reportFor, youthIntakeFor, REGIONS, scoutCandidates, type Scout, type ScoutReport, type Youth, type Region } from './academy.ts';
 import {
 	attendance,
@@ -115,6 +117,10 @@ export interface ClubState {
 	youthMinutes: number;
 	coachReputation: number;
 	jobOffers: JobOffer[];
+	/** Dev 0.5: comissão técnica */
+	staff?: StaffState;
+	/** Dev 0.5: jovens revelados pela base do clube (para o legado) */
+	revealed?: Array<{ id: string; name: string; position: string; season: number; overall: number; potentialHint: number }>;
 }
 
 export interface LedgerLine {
@@ -173,7 +179,9 @@ export function initialClubState(seed: number, clubId: string, division: string 
 		negotiations: [],
 		youthMinutes: 0,
 		coachReputation: 30 + (getClub(clubId)?.reputation ?? 2) * 5,
-		jobOffers: []
+		jobOffers: [],
+		staff: initialStaff(seed, clubId, season, tier, getClub(clubId)?.reputation ?? 2),
+		revealed: []
 	};
 }
 
@@ -201,7 +209,9 @@ export function sanitizeClubState(raw: unknown, seed: number, clubId: string, di
 		months: Array.isArray(r.months) ? r.months.slice(-36) : [],
 		incoming: Array.isArray(r.incoming) ? r.incoming : [],
 		negotiations: Array.isArray(r.negotiations) ? r.negotiations.slice(-30) : [],
-		jobOffers: Array.isArray(r.jobOffers) ? r.jobOffers : []
+		jobOffers: Array.isArray(r.jobOffers) ? r.jobOffers : [],
+		staff: sanitizeStaff(r.staff) ?? base.staff,
+		revealed: Array.isArray(r.revealed) ? r.revealed.slice(-80) : []
 	};
 }
 
@@ -274,6 +284,7 @@ export function processWeek(prev: ClubState, w: WeekInput): WeekOutcome {
 		add('estrutura', -maintenanceWeekly(Object.fromEntries(FACILITIES.map((f) => [f, st.infra[f].level])) as Record<Facility, number>, w.tier), 'Manutenção da estrutura');
 		add('base', -(2500 + st.infra.base.level * 4000) * (w.tier === 'A' ? 3 : w.tier === 'B' ? 1.5 : 1) / 4.33, 'Custeio das categorias de base');
 		add('comissao', -st.scouts.reduce((s, x) => s + x.wage, 0) / 4.33, 'Salários dos olheiros');
+		add('comissao', -monthlyStaffCost(st.staff) / 4.33, 'Salários da comissão técnica');
 		// Obras concluídas
 		for (const f of FACILITIES) {
 			const pr = st.infra[f].project;
@@ -283,7 +294,7 @@ export function processWeek(prev: ClubState, w: WeekInput): WeekOutcome {
 			}
 		}
 		// Base: uma semana de desenvolvimento
-		st.academy = st.academy.map((y) => developYouth(y, st.infra.ct.level, st.infra.base.level, 1, w.seed, w.season, w.round));
+		st.academy = st.academy.map((y) => developYouth(y, st.infra.ct.level, st.infra.base.level, staffEffects(st.staff).youthDevelopment * (st.board.notes.includes(`base-investida-${w.season}`) ? 1.15 : 1), w.seed, w.season, w.round));
 	}
 	if (w.cupPrize) add('premiacao', w.cupPrize, 'Premiação da Copa do Brasil');
 
@@ -341,7 +352,10 @@ export function processWeek(prev: ClubState, w: WeekInput): WeekOutcome {
 /** Relatórios de olheiros da semana (atletas de outros clubes da região/posição pedida). */
 export function scoutWeek(st: ClubState, ctx: RosterContext, clubsByUf: (uf: string) => string[], ufOf: (clubId: string) => string | null, season: number, round: number, needOverall: number): ScoutReport[] {
 	const out: ScoutReport[] = [];
+	const bonus = staffEffects(st.staff).scoutJudgement;
 	for (const scout of st.scouts) {
+		// Dev 0.5: missão com prazo — fora dela o olheiro fica parado (sem relatórios).
+		if (scout.mission && st.week > scout.mission.untilWeek) continue;
 		const rng = createRng(deriveSeed(ctx.seed, 'olheiro-semana', scout.id, season, round));
 		const clubs = REGIONS[scout.region].flatMap((uf) => clubsByUf(uf)).filter((c) => c !== ctx.userClub);
 		if (!clubs.length) continue;
@@ -349,7 +363,8 @@ export function scoutWeek(st: ClubState, ctx: RosterContext, clubsByUf: (uf: str
 		const pool = rosterOf(ctx, club).filter((p) => (scout.position === 'qualquer' || p.position === scout.position) && p.age <= scout.maxAge && !st.reports.some((r) => r.playerId === p.id));
 		if (!pool.length) continue;
 		const p = pool.sort((a, b) => b.overall + b.potential * 0.3 - (a.overall + a.potential * 0.3))[rng.int(0, Math.min(3, pool.length - 1))];
-		out.push(reportFor(scout, p, st.infra.observacao.level, season, round, needOverall));
+		out.push(reportFor(scout, p, st.infra.observacao.level, season, round, needOverall, bonus));
+		if (scout.mission) scout.mission.found++;
 		void ufOf;
 	}
 	return out;
@@ -627,7 +642,7 @@ export function hireScout(club: ClubState, seed: number, season: number, candida
 	return st;
 }
 
-export function assignScout(club: ClubState, scoutId: string, region: Region, position: Position | 'qualquer', maxAge: number): ClubState {
+export function assignScout(club: ClubState, scoutId: string, region: Region, position: Position | 'qualquer', maxAge: number, weeks = 0): ClubState {
 	const st = structuredClone(club);
 	const s = st.scouts.find((x) => x.id === scoutId);
 	if (!s) throw new ManagementError('Olheiro não encontrado.');
@@ -635,7 +650,54 @@ export function assignScout(club: ClubState, scoutId: string, region: Region, po
 	s.region = region;
 	s.position = position;
 	s.maxAge = Math.max(17, Math.min(35, Math.round(maxAge)));
+	// Dev 0.5: missão com prazo (2 a 12 semanas); 0 = observação contínua.
+	if (weeks) {
+		if (!Number.isInteger(weeks) || weeks < 2 || weeks > 12) throw new ManagementError('Prazo da missão inválido (2 a 12 semanas).');
+		s.mission = { untilWeek: st.week + weeks, found: 0, startedWeek: st.week };
+	} else s.mission = null;
 	return st;
+}
+
+/** Dev 0.5: plano de desenvolvimento de um jovem da base. */
+export function setYouthPlan(club: ClubState, youthId: string, plan: YouthPlan): ClubState {
+	const st = structuredClone(club);
+	const y = st.academy.find((x) => x.id === youthId);
+	if (!y) throw new ManagementError('Jovem não encontrado na base.');
+	y.plan = plan;
+	return st;
+}
+
+/** Dev 0.5: contrata um profissional para a comissão (substitui quem ocupa o cargo, pagando a rescisão). */
+export function hireStaff(club: ClubState, seed: number, season: number, round: number, tier: Tier, role: StaffRole, candidateId: string): { state: ClubState; ledger: LedgerLine[]; message: string } {
+	const st = structuredClone(club);
+	const half: 1 | 2 = round <= 19 ? 1 : 2;
+	const c = staffCandidates(seed, season, half, role, tier).find((x) => x.id === candidateId);
+	if (!c) throw new ManagementError('Profissional indisponível.');
+	const staff = { ...(st.staff ?? {}) };
+	if (staff[role]?.id === c.id) throw new ManagementError('Este profissional já trabalha no clube.');
+	const ledger: LedgerLine[] = [];
+	const cur = staff[role];
+	if (cur) {
+		const fee = staffSeverance(cur, season, Math.max(0, 10 - Math.floor(round / 4)));
+				ledger.push({ category: 'comissao', amount: -fee, description: `Rescisão: ${cur.name} (${STAFF_INFO[role].label})` });
+		st.balance -= fee;
+	}
+	staff[role] = c;
+	st.staff = staff;
+	return { state: st, ledger, message: `${c.name} é o novo ${STAFF_INFO[role].label.toLowerCase()}.` };
+}
+
+/** Dev 0.5: dispensa um profissional (rescisão de metade dos salários restantes). */
+export function fireStaff(club: ClubState, season: number, round: number, role: StaffRole): { state: ClubState; ledger: LedgerLine[]; message: string } {
+	const st = structuredClone(club);
+	const cur = st.staff?.[role];
+	if (!cur) throw new ManagementError('Cargo já está vago.');
+	const fee = staffSeverance(cur, season, Math.max(0, 10 - Math.floor(round / 4)));
+	st.balance -= fee;
+	const staff = { ...(st.staff ?? {}) };
+	delete staff[role];
+	st.staff = staff;
+	return { state: st, ledger: [{ category: 'comissao', amount: -fee, description: `Rescisão: ${cur.name} (${STAFF_INFO[role].label})` }], message: `${cur.name} foi dispensado. Um interino assume até a contratação.` };
 }
 
 export function fireScout(club: ClubState, scoutId: string): ClubState {
@@ -657,6 +719,7 @@ export function promote(club: ClubState, market: MarketState, ctx: ActionContext
 	while (used.has(number)) number++;
 	const player = promoteYouth(y, number);
 	mk.extra[player.id] = { player, season: ctx.season, origin: 'base', formedBy: ctx.clubId };
+	st.revealed = [...(st.revealed ?? []), { id: player.id, name: player.name, position: player.position, season: ctx.season, overall: player.overall, potentialHint: Math.round((y.potential + y.overall) / 2) }].slice(-80);
 	const contract: Contract = { wage: Math.max(2000, roundMoney(wageDemand(player, ctx.tier, 3, 'jovem', 3) * 0.6)), until: ctx.season + 2, role: 'jovem' };
 	setOverride(mk, player.id, ctx.clubId, contract, ctx.gameDate);
 	st.academy = st.academy.filter((x) => x.id !== youthId);

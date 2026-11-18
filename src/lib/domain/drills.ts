@@ -10,7 +10,7 @@ import { FORMATION_IDS, STYLES, type FormationId, type PlayStyle } from './tacti
  * pesado antes do jogo deixa o time mais cansado no domingo.
  */
 export const DRILLS = [
-	'formacao', 'posse', 'pressao', 'defesa', 'contra-ataque', 'movimentacao', 'construcao', 'bolas-paradas', 'entrosamento', 'funcoes', 'descanso'
+	'formacao', 'posse', 'pressao', 'defesa', 'contra-ataque', 'movimentacao', 'construcao', 'bolas-paradas', 'entrosamento', 'funcoes', 'adversario', 'descanso'
 ] as const;
 export type DrillId = (typeof DRILLS)[number];
 export type Intensity = 'leve' | 'normal' | 'intensa';
@@ -37,6 +37,7 @@ export const DRILL_DEFS: Record<DrillId, DrillDef> = {
 	'bolas-paradas': { id: 'bolas-paradas', label: 'Bolas paradas', short: 'Bola parada', what: 'Escanteios e faltas ensaiados.', load: 3, styles: [] },
 	entrosamento: { id: 'entrosamento', label: 'Entrosamento coletivo', short: 'Entrosamento', what: 'Coletivos com os titulares: integra quem chegou agora.', load: 6, styles: [] },
 	funcoes: { id: 'funcoes', label: 'Adaptação às funções', short: 'Funções', what: 'Treino específico de cada função na escalação.', load: 5, styles: [] },
+	adversario: { id: 'adversario', label: 'Preparação para o adversário', short: 'Adversário', what: 'Estuda o próximo rival com o analista: execução melhor só neste jogo.', load: 4, styles: [] },
 	descanso: { id: 'descanso', label: 'Descanso / regenerativo', short: 'Descanso', what: 'Recupera a parte física.', load: 0, styles: [] }
 };
 
@@ -85,6 +86,12 @@ export interface WeekContext {
 	lineup: string[];
 	roles: RoleId[];
 	squad: SquadPlayer[];
+	/** Dev 0.5: próximo adversário (treino de preparação) */
+	nextOpponent?: string | null;
+	/** Dev 0.5: multiplicador do auxiliar técnico sobre o ganho */
+	learning?: number;
+	/** Dev 0.5: fator do analista de desempenho (1–5) */
+	analyst?: number;
 }
 
 /**
@@ -93,7 +100,9 @@ export interface WeekContext {
  */
 export function applyTrainingWeek(prev: TacticalState, plan: TrainingPlan, ctx: WeekContext): TacticalState {
 	const st = structuredClone(prev);
-	const g = INTENSITY[plan.intensity].gain;
+	const g = INTENSITY[plan.intensity].gain * (ctx.learning ?? 1);
+	// A preparação vale para um adversário: se o próximo rival mudou, a anterior se perde.
+	if (st.opponentPrep && st.opponentPrep.opponent !== ctx.nextOpponent) st.opponentPrep = null;
 	const byId = new Map(ctx.squad.map((p) => [p.id, p]));
 	const teamRate = ctx.lineup.length ? ctx.lineup.reduce((s, id) => s + (byId.has(id) ? learningRate(byId.get(id)!) : 1), 0) / ctx.lineup.length : 1;
 	// Repetir o mesmo treino na semana rende menos (fadiga mental).
@@ -126,6 +135,12 @@ export function applyTrainingWeek(prev: TacticalState, plan: TrainingPlan, ctx: 
 					const v = roles[ctx.roles[i]] ?? 20;
 					roles[ctx.roles[i]] = r1(clamp(v + gain(v, 2 * k * (byId.has(id) ? learningRate(byId.get(id)!) : 1))));
 				});
+				break;
+			case 'adversario':
+				if (ctx.nextOpponent) {
+					const cur = st.opponentPrep?.opponent === ctx.nextOpponent ? st.opponentPrep.bonus : 0;
+					st.opponentPrep = { opponent: ctx.nextOpponent, bonus: r1(Math.min(6, cur + 1.2 * k * (ctx.analyst ?? 2))) };
+				}
 				break;
 			case 'descanso':
 				break;
@@ -190,8 +205,13 @@ export function suggestPlan(st: TacticalState, ctx: WeekContext, avgCondition: n
 		reasons.push(`${DRILL_DEFS[d].label}: ${why}.`);
 	}
 	const tired = avgCondition < 75;
-	sessions.push(tired ? 'descanso' : 'defesa');
-	if (tired) reasons.push(`Condição média em ${Math.round(avgCondition)}%: um descanso extra antes do jogo.`);
+	if (tired) {
+		sessions.push('descanso');
+		reasons.push(`Condição média em ${Math.round(avgCondition)}%: um descanso extra antes do jogo.`);
+	} else if (ctx.nextOpponent && (ctx.analyst ?? 0) >= 3) {
+		sessions.push('adversario');
+		reasons.push('O analista tem material do próximo adversário: uma sessão de preparação específica.');
+	} else sessions.push('defesa');
 	return { plan: { sessions, intensity: tired ? 'leve' : 'normal' }, reasons };
 }
 

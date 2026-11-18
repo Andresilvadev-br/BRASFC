@@ -28,6 +28,23 @@ export interface Youth {
 	appearance: SquadPlayer['appearance'];
 	attributes: SquadPlayer['attributes'];
 	archetype: string;
+	/** Dev 0.5: plano de desenvolvimento definido pelo treinador */
+	plan?: YouthPlan;
+	/** semanas seguidas sem evoluir (risco de estagnação) */
+	stalled?: number;
+}
+
+export const YOUTH_PLANS = ['equilibrado', 'tecnico', 'fisico', 'tatico', 'finalizacao'] as const;
+export type YouthPlan = (typeof YOUTH_PLANS)[number];
+export const YOUTH_PLAN_INFO: Record<YouthPlan, { label: string; text: string; attrs: string[] }> = {
+	equilibrado: { label: 'Equilibrado', text: 'Evolui tudo um pouco.', attrs: [] },
+	tecnico: { label: 'Técnico', text: 'Passe, domínio, drible e técnica.', attrs: ['passe', 'dominio', 'drible', 'tecnica', 'visao'] },
+	fisico: { label: 'Físico', text: 'Velocidade, força, resistência e impulsão.', attrs: ['velocidade', 'aceleracao', 'forca', 'resistencia', 'impulsao'] },
+	tatico: { label: 'Tático', text: 'Posicionamento, decisões, marcação e leitura.', attrs: ['posicionamento', 'decisoes', 'desarme', 'antecipacao', 'concentracao'] },
+	finalizacao: { label: 'Finalização', text: 'Finalização, cabeceio e compostura.', attrs: ['finalizacao', 'cabeceio', 'compostura', 'chuteLonge'] }
+};
+export function isYouthPlan(v: unknown): v is YouthPlan {
+	return typeof v === 'string' && (YOUTH_PLANS as readonly string[]).includes(v);
 }
 
 const POSITIONS: Position[] = ['GOL', 'ZAG', 'ZAG', 'LD', 'LE', 'VOL', 'MC', 'MC', 'MEI', 'PD', 'PE', 'ATA', 'ATA'];
@@ -69,17 +86,24 @@ export function youthIntakeFor(seed: number, clubId: string, season: number, bas
 export function developYouth(y: Youth, ctLevel: number, baseLevel: number, intensity: number, seed: number, season: number, round: number): Youth {
 	if (y.overall >= y.potential) return y;
 	const rng = createRng(deriveSeed(seed, 'base-semana', y.id, season, round));
-	const rate = 0.09 * ctDevelopment(ctLevel) * (0.85 + baseLevel * 0.06) * intensity * (y.age <= 17 ? 1.15 : 1) * (0.7 + rng.next() * 0.6);
+	// Dev 0.5: quem passa dos 19 sem subir ao profissional evolui menos (estagnação), e o
+	// coordenador da base (intensity) reduz esse efeito.
+	const ageDrag = y.age >= 20 ? Math.max(0.35, 1 - (y.age - 19) * 0.22 / Math.max(0.8, intensity)) : 1;
+	const rate = 0.09 * ctDevelopment(ctLevel) * (0.85 + baseLevel * 0.06) * intensity * (y.age <= 17 ? 1.15 : 1) * ageDrag * (0.7 + rng.next() * 0.6);
 	let progress = y.progress + rate * Math.min(1, (y.potential - y.overall) / 12 + 0.25);
 	let overall = y.overall;
 	let attributes = y.attributes;
+	const focus = y.plan && y.plan !== 'equilibrado' ? new Set(YOUTH_PLAN_INFO[y.plan].attrs) : null;
 	while (progress >= 1 && overall < y.potential) {
 		progress -= 1;
-		attributes = Object.fromEntries(Object.entries(attributes).map(([k, v]) => [k, Math.min(95, v + 1)])) as typeof attributes;
-		overall = computeOverall(attributes, y.position);
+		// Plano focado: +2 nos atributos do foco e +0 nos demais (especializa; o overall depende da posição).
+		attributes = Object.fromEntries(Object.entries(attributes).map(([k, v]) => [k, Math.min(95, v + (focus ? (focus.has(k) ? 2 : 0) : 1))])) as typeof attributes;
+		const next = computeOverall(attributes, y.position);
+		overall = Math.min(y.potential, Math.max(overall, next));
 	}
 	const log = overall !== y.overall ? [...y.log, { season, round, overall }].slice(-24) : y.log;
-	return { ...y, overall, attributes, progress: Math.round(progress * 1000) / 1000, log };
+	const stalled = overall !== y.overall ? 0 : (y.stalled ?? 0) + 1;
+	return { ...y, overall, attributes, progress: Math.round(progress * 1000) / 1000, log, stalled };
 }
 
 /** Converte um jovem promovido em atleta do elenco profissional. */
@@ -131,6 +155,8 @@ export interface Scout {
 	region: Region;
 	position: Position | 'qualquer';
 	maxAge: number;
+	/** Dev 0.5: missão com prazo (semana do clube em que termina) e relatórios produzidos */
+	mission?: { untilWeek: number; found: number; startedWeek: number } | null;
 }
 
 export interface ScoutReport {
@@ -142,6 +168,8 @@ export interface ScoutReport {
 	potential: [number, number];
 	verdict: 'recomendado' | 'observar' | 'descartar';
 	note: string;
+	/** Dev 0.5: precisão do relatório pela margem (alta ≤ 3, média ≤ 6) */
+	precision?: 'alta' | 'media' | 'baixa';
 }
 
 const SCOUT_FIRST = ['Álvaro', 'Benedito', 'Cristiano', 'Durval', 'Edson', 'Fausto', 'Gilmar', 'Hélio', 'Ivo', 'Jairo', 'Laércio', 'Moacir', 'Nilton', 'Osmar', 'Paulo'];
@@ -164,8 +192,8 @@ export function scoutCandidates(seed: number, season: number): Scout[] {
 	});
 }
 
-export function reportFor(scout: Scout, player: Pick<SquadPlayer, 'id' | 'overall' | 'potential' | 'age'>, obsLevel: number, season: number, round: number, needOverall: number): ScoutReport {
-	const margin = scoutMargin(obsLevel, scout.judgement);
+export function reportFor(scout: Scout, player: Pick<SquadPlayer, 'id' | 'overall' | 'potential' | 'age'>, obsLevel: number, season: number, round: number, needOverall: number, judgementBonus = 0): ScoutReport {
+	const margin = scoutMargin(obsLevel, scout.judgement + judgementBonus);
 	const overall = estimateRange(player.overall, margin, `${scout.id}:${player.id}:o`);
 	const potential = estimateRange(player.potential, margin + 2, `${scout.id}:${player.id}:p`);
 	const mid = (overall[0] + overall[1]) / 2;
@@ -179,5 +207,5 @@ export function reportFor(scout: Scout, player: Pick<SquadPlayer, 'id' | 'overal
 			: verdict === 'observar'
 				? 'Pode ser útil como opção de elenco.'
 				: 'Abaixo do nível do nosso elenco.';
-	return { playerId: player.id, scoutId: scout.id, season, round, overall, potential, verdict, note };
+	return { playerId: player.id, scoutId: scout.id, season, round, overall, potential, verdict, note, precision: margin <= 3 ? 'alta' : margin <= 6 ? 'media' : 'baixa' };
 }

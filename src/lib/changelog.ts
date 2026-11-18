@@ -19,6 +19,46 @@ export interface Release {
 
 export const RELEASES: Release[] = [
 	{
+		version: '0.5.0',
+		date: '2026-11-18',
+		title: 'Manager Update',
+		channel: 'desenvolvimento',
+		highlights: [
+			{ title: 'Futebol brasileiro vivo', text: 'Cada clube tem filosofia, projeto, técnico e sistema próprios. Técnicos caem, trocam de clube e constroem carreira.', icon: 'globe' },
+			{ title: 'Gabinete do treinador', text: 'Reuniões com a diretoria e coletivas de imprensa com consequências, contrato, reputação, marcos e linha do tempo.', icon: 'briefcase' },
+			{ title: 'Comissão técnica', text: 'Sete cargos com competência, salário e efeito medido em treino, recuperação, base e observação.', icon: 'whistle' },
+			{ title: 'Treinos mais profundos', text: 'Preparação para o adversário, treinos delegados ao auxiliar e domínio tático com evolução visível.', icon: 'training' },
+			{ title: 'Base e olheiros', text: 'Plano de desenvolvimento, risco de estagnação, missões com prazo, precisão dos relatórios e comparação.', icon: 'sparkle' },
+			{ title: 'App para Windows', text: 'Instalador com janela sempre centralizada, tela cheia (F11) e atualização automática.', icon: 'windows' }
+		],
+		added: [
+			'Universo persistente: filosofia, projeto, diretoria, técnico, formação e domínio de cada clube da IA',
+			'Demissões e contratações de técnicos pela confiança das diretorias; mercado de técnicos entre temporadas',
+			'Notícias geradas pelos resultados (demissões, sequências, lideranças, títulos, recordes, projetos)',
+			'Reuniões com a diretoria (orçamento, advertência com ultimato, avaliação, renovação) e coletivas de imprensa',
+			'Contrato do treinador, reputação, propostas coerentes com o universo, histórico e marcos',
+			'Comissão técnica com 7 cargos, contratações, dispensas e recomendações contextuais',
+			'Treino de preparação para o adversário e planejamento delegado ao auxiliar',
+			'Planos de desenvolvimento na base, estagnação, missões de olheiros com prazo, precisão e comparação de prospectos',
+			'Legado: comparação entre temporadas, revelados pela base, recordes do universo'
+		],
+		improved: ['Técnicos da IA comandam com o sistema e o domínio salvos no universo', 'Domínio tático mostra a evolução jogo a jogo e o tempo de adaptação a outro esquema'],
+		fixed: ['Clubes vindos dos estaduais entram no universo com diretoria e técnico'],
+		compat: { database: 'sem migração nova (dados na carreira)', saves: 'saves 0.1–0.4 continuam; o universo é criado no próximo passo do calendário' },
+		next: ['Elencos e técnicos reais com fontes verificadas', 'Criação de chances dos esquemas com dois atacantes', 'Assinatura digital do instalador']
+	},
+	{
+		version: '0.4.1',
+		date: '2026-11-18',
+		title: 'Stability Update',
+		channel: 'desenvolvimento',
+		added: ['App para Windows (instalador), janela sempre centralizada, tela cheia e botão de download'],
+		improved: ['Recomendação do auxiliar para o 5-3-2 com base em 400 jogos medidos'],
+		fixed: ['Grupos A11–A16 da Série D conferidos com a lista do sorteio da CBF', 'Barra do aplicativo não cobre menus fixos nem altera alturas das telas'],
+		compat: { database: 'sem migração nova', saves: 'todos os saves anteriores continuam' },
+		next: []
+	},
+	{
 		version: '0.4.0',
 		date: '2026-11-18',
 		title: 'Evolution Update',

@@ -34,6 +34,8 @@ export interface TacticalState {
 	setPieces: number;
 	/** desempenho por formação/estilo (histórico) */
 	history: TacticalRecord[];
+	/** preparação específica para o próximo adversário (treino + analista; vale um jogo) */
+	opponentPrep?: { opponent: string; bonus: number } | null;
 }
 
 export interface TacticalRecord {

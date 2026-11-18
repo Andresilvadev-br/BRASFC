@@ -66,6 +66,23 @@ const avail = Math.floor(Math.min(cb.data.club.transferBudget, Math.max(0, cb.da
 const offer = await act('proposta por atleta da Série B dentro do orçamento (negociação real)', { action: 'oferta', playerId: 'avai-14', kind: 'compra', fee: avail, wage: 120000, years: 3, role: 'rotacao' });
 results.actions.push({ label: 'resposta da negociação', negotiation: offer.json.negotiation });
 
+// ── Dev 0.5: gabinete, comissão, base e treinos delegados
+{
+	const c = await career();
+	const office = c.data.office;
+	if (office?.meeting) await act('responder reunião da diretoria', { action: 'reuniao', meetingId: office.meeting.id, choice: office.meeting.options[0].id });
+	ok('universo vivo criado no 1º passo (técnicos e notícias)', !!c.data.universe && Object.keys(c.data.universe.coaches).length > 150, `${Object.keys(c.data.universe?.coaches ?? {}).length} técnicos`);
+	await act('reunião inexistente é recusada', { action: 'reuniao', meetingId: 'x', choice: 'aceitar' }, 422);
+	await act('contratar analista de desempenho', { action: 'comissao-contratar', role: 'analista', candidateId: 'st-analista-2026-1-1' });
+	await act('cargo inválido é recusado', { action: 'comissao-contratar', role: 'presidente', candidateId: 'x' }, 422);
+	await act('delegar treinos ao auxiliar', { action: 'treino-delegar', on: true });
+	const y = (await career()).data.club.academy[0];
+	if (y) await act('plano de desenvolvimento de jovem', { action: 'base-plano', youthId: y.id, plan: 'fisico' });
+	const sc = (await career()).data.club.scouts[0];
+	if (sc) await act('missão de olheiro com prazo', { action: 'olheiro-missao', scoutId: sc.id, region: 'nordeste', position: 'ATA', maxAge: 23, weeks: 4 });
+	await act('prazo de missão inválido é recusado', { action: 'olheiro-missao', scoutId: sc?.id ?? 'x', region: 'nordeste', position: 'ATA', maxAge: 23, weeks: 40 }, 422);
+}
+
 // ── passos de calendário até a 2ª fase da Copa
 for (let i = 0; i < 6; i++) {
 	const p = (await api(`/api/careers/${id}/proximo`)).json;
@@ -119,13 +136,16 @@ const pages = [
 	[`${c}/base`, 'Base e olheiros'],
 	[`${c}/copa`, 'Copa do Brasil'],
 	[`${c}/competicoes`, 'Série A'],
-	[`${c}/historia`, 'História da carreira'],
+	[`${c}/historia`, 'Legado'],
+	[`${c}/gabinete`, 'Gabinete do treinador'],
+	[`${c}/comissao`, 'Quem trabalha com você'],
+	[`${c}/mundo`, 'Notícias e mundo'],
 	[`${c}/calendario`, ''],
 	[`${c}/estatisticas`, ''],
 	[`${c}/treinos`, ''],
 	[`${c}/partida`, ''],
 	['/novidades', 'Versão em uso'],
-	['/configuracoes', 'Leve']
+	['/configuracoes', 'Janela e aplicativo']
 ];
 for (const [path, text] of pages) {
 	pageErrors.length = 0;

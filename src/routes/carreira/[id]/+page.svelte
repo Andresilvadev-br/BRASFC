@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { universeCoach } from '#lib/domain/matchday.ts';
 	import { goto, invalidate } from '$app/navigation';
 	import { api } from '#lib/api.ts';
 	import { analyze, type Tip } from '#lib/domain/assistant.ts';
@@ -49,7 +50,9 @@
 	const expiring = $derived(m.roster.filter((p) => p.contract.until <= c.season && !p.loan && p.id !== 'eu'));
 	const alerts = $derived(
 		[
-			...(isCoach && m.club.board.dismissed ? [{ tone: 'bad', icon: 'alert' as const, text: 'Você foi demitido: veja as propostas de outros clubes.', href: `${base}/clube` }] : []),
+			...(isCoach && data.office.office.meeting ? [{ tone: 'gold', icon: 'briefcase' as const, text: `A diretoria convocou: ${data.office.office.meeting.title.toLowerCase()}.`, href: `${base}/gabinete` }] : []),
+			...(isCoach && data.office.office.press ? [{ tone: 'gold', icon: 'news' as const, text: `${data.office.office.press.title}: os jornalistas aguardam.`, href: `${base}/gabinete` }] : []),
+			...(isCoach && m.club.board.dismissed ? [{ tone: 'bad', icon: 'alert' as const, text: 'Você foi demitido: veja as propostas de outros clubes.', href: `${base}/gabinete` }] : []),
 			...(isCoach && !m.club.board.dismissed && m.club.board.confidence < 35 ? [{ tone: 'bad', icon: 'alert' as const, text: `Confiança da diretoria em ${Math.round(m.club.board.confidence)}%.`, href: `${base}/clube` }] : []),
 			...(isCoach && m.club.incoming.length ? [{ tone: 'gold', icon: 'briefcase' as const, text: `${m.club.incoming.length} proposta(s) por atletas do elenco.`, href: `${base}/mercado` }] : []),
 			...(isCoach && expiring.length ? [{ tone: 'gold', icon: 'clock' as const, text: `${expiring.length} contrato(s) terminam nesta temporada.`, href: `${base}/elenco` }] : []),
@@ -57,8 +60,9 @@
 			...(isCoach && !m.club.sponsors.length && m.club.sponsorOffers.length ? [{ tone: 'gold', icon: 'star' as const, text: 'Nenhum patrocínio assinado: há propostas na mesa.', href: `${base}/financas` }] : []),
 			...(isCoach && m.club.balance < 0 ? [{ tone: 'bad', icon: 'chart' as const, text: `Caixa negativo: ${formatMoney(m.club.balance)}.`, href: `${base}/financas` }] : []),
 			...(!isCoach && c.data.playerCareer?.offers?.length ? [{ tone: 'gold', icon: 'briefcase' as const, text: 'Seu empresário trouxe propostas.', href: `${base}/clube` }] : []),
-			...(avgFitness < 75 ? [{ tone: 'gold', icon: 'training' as const, text: `Condição média do elenco em ${avgFitness}%: considere poupar titulares.`, href: `${base}/treinos` }] : [])
-		] as Array<{ tone: string; icon: 'alert' | 'briefcase' | 'clock' | 'star' | 'chart' | 'training'; text: string; href: string }>
+			...(avgFitness < 75 ? [{ tone: 'gold', icon: 'training' as const, text: `Condição média do elenco em ${avgFitness}%: considere poupar titulares.`, href: `${base}/treinos` }] : []),
+			...(isCoach && data.office.advice.length ? [{ tone: 'ok', icon: 'whistle' as const, text: `Comissão técnica — ${data.office.advice[0].title}`, href: `${base}/comissao` }] : [])
+		] as Array<{ tone: string; icon: 'alert' | 'briefcase' | 'clock' | 'star' | 'chart' | 'training' | 'news' | 'whistle'; text: string; href: string }>
 	);
 	const upcoming = $derived(v.clubFixtures.filter((f) => !v.results.some((r) => r.round === f.round && r.home === f.home && (r.competition ?? 'liga-brasfc') === f.competition)).slice(0, 6));
 	const tips = $derived(
@@ -72,6 +76,7 @@
 					clubId: c.clubId,
 					nextOpponent: oppId,
 					careerSeed: c.seed,
+					opponentCoach: (() => { const o = oppId; return o ? universeCoach(c, o) : null; })(),
 					season: c.season,
 					firstSeason: v.firstSeason,
 					dismissed: c.data.dismissedTips
@@ -172,6 +177,15 @@
 				<span class="muted small">{c.data.player?.age} anos · reputação {c.data.playerCareer?.reputation ?? c.data.player?.reputation}</span>
 				<a class="link" href="{base}/clube">Minha carreira →</a>
 			</div>
+		</section>
+	{/if}
+
+	{#if data.office.universe?.news.length}
+		<section class="ticker glass" use:reveal={{ index: 3 }} aria-label="Últimas notícias">
+			<span class="tk"><Icon name="globe" size={16} /> Mundo</span>
+			<ul>
+				{#each [...data.office.universe.news].reverse().slice(0, 3) as n (n.id)}<li><a href="{base}/mundo">{n.title}</a></li>{/each}
+			</ul>
 		</section>
 	{/if}
 
@@ -425,6 +439,51 @@
 	}
 	.money strong.neg {
 		color: var(--danger);
+	}
+	.ticker {
+		grid-column: 1 / -1;
+		display: flex;
+		gap: 14px;
+		align-items: center;
+		padding: 10px 16px;
+		overflow: hidden;
+	}
+	.tk {
+		display: inline-flex;
+		gap: 6px;
+		align-items: center;
+		flex: none;
+		color: var(--gold);
+		font-size: var(--fs-xs);
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+	}
+	.ticker ul {
+		display: flex;
+		gap: 24px;
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		min-width: 0;
+		overflow: hidden;
+	}
+	.ticker li {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		font-size: var(--fs-sm);
+	}
+	.ticker a {
+		color: inherit;
+		text-decoration: none;
+	}
+	.ticker a:hover {
+		color: var(--emerald-strong);
+	}
+	@media (max-width: 760px) {
+		.ticker li:not(:first-child) {
+			display: none;
+		}
 	}
 	.alerts {
 		grid-column: span 8;

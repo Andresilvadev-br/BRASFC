@@ -308,7 +308,8 @@ export function applyAction(club: ClubState, market: MarketState, ctx: ActionCon
 			const region = str('region');
 			const position = str('position');
 			if (!REGIONS_OK.has(region) || !POSITIONS.has(position)) throw new ManagementError('Missão inválida.');
-			return result(assignScout(club, str('scoutId'), region as Region, position as Position, num('maxAge')), 'Missão do olheiro atualizada.');
+			const weeks = Number.isFinite(num('weeks')) ? num('weeks') : 0;
+			return result(assignScout(club, str('scoutId'), region as Region, position as Position, num('maxAge'), weeks), weeks ? `Missão de ${weeks} semanas iniciada.` : 'Missão do olheiro atualizada.');
 		}
 		case 'olheiro-dispensar':
 			return result(fireScout(club, str('scoutId')), 'Olheiro dispensado.');
