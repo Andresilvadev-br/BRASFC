@@ -34,7 +34,7 @@ jobs:
       - name: Autoteste da janela (centralização e tela cheia)
         shell: bash
         run: npx electron . --selftest
-      - name: Versão já publicada?
+      - name: Instalador já publicado?
         id: ver
         shell: bash
         env:
@@ -42,12 +42,26 @@ jobs:
         run: |
           V=$(node -p "require('./package.json').version")
           echo "version=$V" >> "$GITHUB_OUTPUT"
+          # Só conta como publicado se a release tiver o instalador (uma release parcial é completada).
+          if gh release view "v$V" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' 2>/dev/null | grep -qx 'BRASFC-Setup.exe'; then echo "done=true" >> "$GITHUB_OUTPUT"; else echo "done=false" >> "$GITHUB_OUTPUT"; fi
           if gh release view "v$V" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then echo "exists=true" >> "$GITHUB_OUTPUT"; else echo "exists=false" >> "$GITHUB_OUTPUT"; fi
-      - name: Gerar e publicar instalador
-        if: steps.ver.outputs.exists != 'true'
+      - name: Gerar instalador
+        if: steps.ver.outputs.done != 'true'
+        run: npx electron-builder --win --x64 --publish never
+      - name: Publicar no GitHub Releases
+        if: steps.ver.outputs.done != 'true'
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --win --x64 --publish always
+        run: |
+          V="${{ steps.ver.outputs.version }}"
+          ls -la dist
+          FILES="dist/BRASFC-Setup.exe dist/BRASFC-Setup.exe.blockmap dist/latest.yml"
+          if [ "${{ steps.ver.outputs.exists }}" = "true" ]; then
+            gh release upload "v$V" $FILES --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "v$V" $FILES --repo "$GITHUB_REPOSITORY" --title "BRASFC para Windows $V" --notes "Instalador do BRASFC para Windows 10 e 11 (64 bits): janela sempre centralizada, tela cheia (F11) e atualização automática. O jogo em si se atualiza pelo servidor."
+          fi
       - name: Instalador já publicado
-        if: steps.ver.outputs.exists == 'true'
-        run: echo "::notice::v${{ steps.ver.outputs.version }} já publicada; aumente a versão em desktop/package.json para gerar outra."
+        if: steps.ver.outputs.done == 'true'
+        run: echo "::notice::v${{ steps.ver.outputs.version }} já tem o instalador; aumente a versão em desktop/package.json para gerar outra."
