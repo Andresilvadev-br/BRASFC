@@ -67,6 +67,19 @@
 			cta: 'Criar carreira'
 		},
 		{
+			id: 'laboratorio',
+			label: 'Laboratório',
+			hint: 'Partida rápida · clubes 2026',
+			icon: 'flask',
+			href: '/laboratorio',
+			eyebrow: 'Partida rápida',
+			headline: 'Teste qualquer confronto',
+			text: 'Escolha dois clubes das Séries A, B ou C de 2026, defina as táticas e acompanhe a partida em 2D, com substituições e mudanças em tempo real.',
+			chips: ['Motor 2D determinístico', 'Clubes reais 2026', 'Elencos ainda pendentes'],
+			cta: 'Abrir laboratório',
+			badge: 'Novo'
+		},
+		{
 			id: 'multiplayer',
 			label: 'Multiplayer',
 			hint: 'Salas privadas · beta',

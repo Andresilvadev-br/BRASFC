@@ -3,5 +3,5 @@ import type { LayoutLoad } from './$types';
 
 export const load: LayoutLoad = ({ data }) => ({
 	...data,
-	view: careerView(data.career)
+	view: careerView(data.career, data.results)
 });

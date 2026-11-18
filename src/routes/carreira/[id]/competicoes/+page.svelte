@@ -22,7 +22,7 @@
 <div class="head" data-umx-enter>
 	<span class="eyebrow">Temporada {c.season}</span>
 	<h1>{LEAGUE.name}</h1>
-	<p class="muted">20 clubes · turno e returno · os 4 primeiros em destaque verde, os 4 últimos em vermelho. A tabela começa zerada: nenhuma rodada foi disputada.</p>
+	<p class="muted">20 clubes · turno e returno · os 4 primeiros em destaque verde, os 4 últimos em vermelho. {data.view.results.length ? `Calculada a partir de ${new Set(data.view.results.map((r) => r.round)).size} rodada(s) disputada(s).` : 'A tabela começa zerada: nenhuma rodada foi disputada.'}</p>
 </div>
 
 <div class="layout">

@@ -5,6 +5,9 @@ import type { Attributes } from './attributes.ts';
 /** Campo em metros: x ao longo do comprimento (0–105), y na largura (0–68). */
 export const PITCH = { length: 105, width: 68, goalWidth: 7.32, boxDepth: 16.5, boxWidth: 40.3 } as const;
 
+/** Versão do motor gravada com cada resultado (mudanças de regra mudam a versão). */
+export const ENGINE_VERSION = '0.2.0';
+
 export type Side = 'home' | 'away';
 
 export interface EnginePlayer {

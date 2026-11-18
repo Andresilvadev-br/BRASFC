@@ -1,6 +1,7 @@
 import type { Career } from './career.ts';
 import { CLUBS, requireClub } from './clubs.ts';
-import { clubFixtures, computeStandings, generateLeagueFixtures, nextFixture } from './season.ts';
+import { clubFixtures, computeStandings, generateLeagueFixtures, type MatchResult } from './season.ts';
+import { nextUnplayed } from './matchday.ts';
 import { generateSquad, squadStrength } from './squad.ts';
 import { defaultTactic, sanitizeTactic, type Tactic } from './tactics.ts';
 
@@ -9,7 +10,7 @@ import { defaultTactic, sanitizeTactic, type Tactic } from './tactics.ts';
  * semente (elencos, calendário, classificação) é calculado aqui, igual no
  * servidor e no navegador, sem precisar ser armazenado.
  */
-export function careerView(career: Career) {
+export function careerView(career: Career, results: Array<MatchResult & { round: number }> = []) {
 	const club = requireClub(career.clubId);
 	const squad = generateSquad(career.clubId, career.seed);
 	const fixtures = generateLeagueFixtures(career.seed);
@@ -22,11 +23,12 @@ export function careerView(career: Career) {
 		squad,
 		fixtures,
 		clubFixtures: mine,
-		next: nextFixture(fixtures, career.clubId, career.gameDate),
-		// Nenhuma rodada foi disputada ainda: a tabela começa zerada.
+		next: nextUnplayed(mine, new Set(results.filter((r) => r.home === career.clubId || r.away === career.clubId).map((r) => r.round))),
+		results,
+		/** classificação calculada só a partir dos resultados gravados */
 		standings: computeStandings(
 			CLUBS.map((c) => c.id),
-			[]
+			results
 		),
 		strength: squadStrength(squad),
 		tactic,

@@ -45,6 +45,8 @@ export interface SquadPlayer {
 	attributes: Attributes;
 	/** perfil do atleta (ex.: "Ponta velocista") */
 	archetype: string;
+	/** vaga genérica de elenco real ainda não importado (sem nome de pessoa) */
+	pending?: boolean;
 }
 
 export const MORALE_LABELS: Record<Morale, string> = {
@@ -62,10 +64,21 @@ export function randomName(rng: Rng): { name: string; shortName: string } {
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 export function generateSquad(clubId: string, seed: number): SquadPlayer[] {
-	const club = requireClub(clubId);
+	return generateSquadFor(requireClub(clubId), seed);
+}
+
+/**
+ * Gera um elenco para qualquer clube (fictício ou real).
+ * Com `pending`, o elenco real ainda não foi importado: os atletas recebem nomes
+ * FICTÍCIOS (combinações aleatórias, marcados como `pending`) e a interface avisa
+ * que não são jogadores reais do clube.
+ */
+export function generateSquadFor(club: { id: string; reputation: number }, seed: number, opts: { pending?: boolean } = {}): SquadPlayer[] {
+	const clubId = club.id;
 	const rng = createRng(deriveSeed(seed, 'squad', clubId));
-	const base = 54 + club.reputation * 4; // 58 (modesto) a 74 (gigante)
+	const base = 57 + club.reputation * 3; // 60 (modesto) a 72 (gigante)
 	const players: SquadPlayer[] = [];
+	const perPosition = new Map<Position, number>();
 	const usedNumbers = new Set<number>();
 	const usedNames = new Set<string>();
 	let index = 0;
@@ -94,7 +107,8 @@ export function generateSquad(clubId: string, seed: number): SquadPlayer[] {
 				morale: rng.pick(['excelente', 'boa', 'boa', 'regular'] as const),
 				appearance: randomAppearance(rng),
 				attributes: {} as Attributes,
-				archetype: ''
+				archetype: '',
+				...(opts.pending ? { pending: true } : {})
 			});
 			index++;
 		}

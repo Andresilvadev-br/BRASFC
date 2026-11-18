@@ -104,11 +104,15 @@ export class Match {
 	private kickoffSide: Side = 'home';
 	/** janela de contra-ataque: até que tick cada lado está em transição rápida */
 	private counterUntil: Record<Side, number> = { home: -1, away: -1 };
+	/** "dia" de cada equipe (0,93–1,07): o mais forte nem sempre vence */
+	readonly form: Record<Side, number>;
 
 	constructor(opts: MatchOptions) {
 		this.rules = { ...DEFAULT_RULES, ...(opts.rules ?? {}) };
 		this.seed = opts.seed >>> 0;
 		this.rng = createRng(this.seed);
+		const formRng = createRng((this.seed ^ 0x9e3779b9) >>> 0);
+		this.form = { home: 0.93 + formRng.next() * 0.14, away: 0.93 + formRng.next() * 0.14 };
 		this.teams = {
 			home: this.makeTeam(opts.home, opts.ai?.home ?? true),
 			away: this.makeTeam(opts.away, opts.ai?.away ?? true)
@@ -138,7 +142,7 @@ export class Match {
 	}
 
 	private makeTeam(setup: TeamSetup, ai: boolean): TeamRuntime {
-		const tactic = structuredClone(setup.tactic);
+		const tactic = { ...setup.tactic, lineup: [...setup.tactic.lineup], bench: [...setup.tactic.bench] };
 		const byId = new Map(setup.players.map((p) => [p.id, p]));
 		if (tactic.lineup.length !== 11 || new Set(tactic.lineup).size !== 11 || tactic.lineup.some((id) => !byId.has(id))) {
 			throw new Error(`Escalação inválida para ${setup.name}`);
@@ -310,11 +314,14 @@ export class Match {
 	// ──────────────────────────────────────────────── decisões do treinador
 
 	private applyDecisions() {
-		if (this.replay) {
-			for (const d of this.replay.get(this.tick) ?? []) this.applyDecision(d.side, d.decision, true);
-			return;
-		}
+		// Na reprodução, o treinador automático roda de novo (é determinístico);
+		// só as decisões dos lados humanos vêm do registro.
+		const replayed = this.replay?.get(this.tick) ?? [];
 		for (const side of ['home', 'away'] as const) {
+			if (this.replay && !this.teams[side].ai) {
+				for (const d of replayed) if (d.side === side && !d.rejected) this.applyDecision(side, d.decision, true);
+				continue;
+			}
 			if (this.teams[side].ai) this.aiManager(side);
 			const keep: Decision[] = [];
 			for (const d of this.queue[side]) {
@@ -611,7 +618,7 @@ export class Match {
 	}
 
 	private homeBoost(side: Side): number {
-		return this.rules.homeAdvantage && side === 'home' ? 1.07 : 1;
+		return (this.rules.homeAdvantage && side === 'home' ? 1.07 : 1) * this.form[side];
 	}
 
 	private fatigue() {

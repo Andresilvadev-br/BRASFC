@@ -1,194 +1,97 @@
 <script lang="ts">
-	import { tick } from 'svelte';
-	import type { CapsuleMorph } from 'ultra-motion-x';
-	import { animate, loadMotion, motion } from '#lib/motion/motion.svelte.ts';
 	import { currentActivity, dismissTransient, island } from '#lib/stores/island.svelte.ts';
 	import Icon from './Icon.svelte';
 
 	/**
-	 * Dynamic Island contextual. A forma (largura/altura/raio) é uma CapsuleMorph
-	 * da Ultra Motion X: molas independentes que preservam velocidade, então
-	 * trocas rápidas de atividade nunca "saltam".
+	 * Aviso discreto no canto inferior: aparece só quando há algo a dizer
+	 * (salvou, erro, nova versão) e some sozinho. Sem elemento fixo na tela.
 	 */
 	let { hidden = false }: { hidden?: boolean } = $props();
-
-	let shape: HTMLDivElement;
-	let content: HTMLDivElement | undefined = $state();
-	let capsule: CapsuleMorph | null = null;
-
 	const activity = $derived(currentActivity());
-	const key = $derived(activity?.id ?? `idle:${island.context}`);
-
-	async function resize() {
-		await tick();
-		if (!content || !shape) return;
-		const w = Math.ceil(content.offsetWidth) + 28;
-		const h = activity?.detail || activity?.action ? 52 : 40;
-		if (capsule && !motion.reduced) {
-			void capsule.morphTo({ width: w, height: h, radius: h / 2 });
-		} else {
-			shape.style.width = `${w}px`;
-			shape.style.height = `${h}px`;
-			shape.style.borderRadius = `${h / 2}px`;
-		}
-		void animate(content, { opacity: 1, scale: 1 }, { spring: 'capsule', from: { opacity: 0, scale: 0.94 } });
-	}
-
-	$effect(() => {
-		void key;
-		void resize();
-	});
-
-	$effect(() => {
-		void loadMotion().then((umx) => {
-			if (!umx || !shape || capsule) return;
-			capsule = umx.capsule(shape, { width: shape.offsetWidth || 160, height: shape.offsetHeight || 40, radius: 20 });
-			void resize();
-		});
-		return () => capsule?.destroy();
-	});
-
-	const toneClass = $derived(activity?.tone ?? 'neutral');
+	const isTransient = $derived(!!island.transient && activity?.id === island.transient.id);
 </script>
 
-<div class="wrap" class:hidden aria-hidden={hidden}>
-	<div class="island {toneClass}" bind:this={shape} role="status" aria-live="polite">
-		{#key key}
-			<div class="content" bind:this={content}>
-				{#if activity}
-					<span class="ico"><Icon name={activity.icon} size={18} stroke={2} /></span>
-					<span class="txt">
-						<strong>{activity.title}</strong>
-						{#if activity.detail}<small>{activity.detail}</small>{/if}
-					</span>
-					{#if activity.action}
-						<button class="act" onclick={activity.action.run} data-umx-press>{activity.action.label}</button>
-					{:else if island.transient}
-						<button class="x" onclick={dismissTransient} aria-label="Dispensar aviso"><Icon name="x" size={14} /></button>
-					{/if}
-				{:else}
-					<span class="mark" aria-hidden="true"></span>
-					<span class="ctx">{island.context || 'BRASFC'}</span>
-				{/if}
-			</div>
-		{/key}
+{#if activity && !hidden}
+	<div class="toast" data-tone={activity.tone ?? 'neutral'} role="status" aria-live="polite">
+		<Icon name={activity.icon} />
+		<div class="txt">
+			<strong>{activity.title}</strong>
+			{#if activity.detail}<span>{activity.detail}</span>{/if}
+		</div>
+		{#if activity.action}
+			<button class="act" onclick={activity.action.run}>{activity.action.label}</button>
+		{/if}
+		{#if isTransient}
+			<button class="x" onclick={dismissTransient} aria-label="Fechar aviso"><Icon name="x" /></button>
+		{/if}
 	</div>
-</div>
+{/if}
 
 <style>
-	.wrap {
+	.toast {
 		position: fixed;
-		top: 12px;
-		left: 50%;
-		translate: -50% 0;
+		right: 16px;
+		bottom: 16px;
 		z-index: 60;
-		pointer-events: none;
-		transition: opacity 0.25s;
-	}
-	.hidden {
-		opacity: 0;
-		visibility: hidden;
-	}
-	.island {
-		position: relative;
-		width: 160px;
-		height: 40px;
-		border-radius: 20px;
-		background: #06090b;
-		border: 1px solid rgb(231 237 240 / 0.1);
-		box-shadow:
-			0 10px 30px rgb(0 0 0 / 0.45),
-			inset 0 1px 0 rgb(255 255 255 / 0.05);
-		overflow: hidden;
-		pointer-events: auto;
-	}
-	.content {
-		position: absolute;
-		left: 50%;
-		top: 50%;
-		translate: -50% -50%;
 		display: flex;
 		align-items: center;
 		gap: 10px;
-		white-space: nowrap;
-	}
-	.ico {
-		display: grid;
-		place-items: center;
-		width: 26px;
-		height: 26px;
-		border-radius: 50%;
-		background: var(--surface-3);
+		max-width: min(420px, calc(100vw - 32px));
+		padding: 10px 12px;
+		border-radius: 12px;
+		background: var(--surface-2);
 		color: var(--text);
+		box-shadow: 0 10px 30px rgb(0 0 0 / 0.45), inset 0 0 0 1px var(--line-strong);
+		font-size: var(--fs-sm);
+		animation: in 0.22s ease-out;
 	}
-	.success .ico {
-		background: var(--emerald-soft);
+	.toast[data-tone='success'] :global(svg:first-child) {
 		color: var(--emerald-strong);
 	}
-	.info .ico {
-		background: var(--info-soft);
-		color: var(--info);
-	}
-	.warning .ico {
-		background: var(--warning-soft);
-		color: var(--warning);
-	}
-	.error .ico {
-		background: var(--danger-soft);
+	.toast[data-tone='error'] :global(svg:first-child) {
 		color: var(--danger);
 	}
-	.gold .ico {
-		background: var(--gold-soft);
+	.toast[data-tone='warning'] :global(svg:first-child),
+	.toast[data-tone='gold'] :global(svg:first-child) {
 		color: var(--gold);
 	}
 	.txt {
 		display: flex;
 		flex-direction: column;
-		line-height: 1.2;
+		min-width: 0;
 	}
-	strong {
-		font-size: var(--fs-sm);
-		font-weight: 600;
-	}
-	small {
-		font-size: 12px;
-		color: var(--text-2);
+	.txt span {
+		color: var(--text-3);
+		font-size: var(--fs-xs);
 	}
 	.act {
-		height: 30px;
-		padding: 0 12px;
+		margin-left: auto;
 		border: 0;
-		border-radius: 15px;
+		border-radius: 8px;
+		padding: 6px 10px;
 		background: var(--emerald);
-		color: #04140e;
-		font-size: var(--fs-xs);
+		color: #06281c;
+		font: inherit;
 		font-weight: 700;
+		cursor: pointer;
 	}
 	.x {
-		display: grid;
-		place-items: center;
-		width: 24px;
-		height: 24px;
+		margin-left: auto;
 		border: 0;
-		border-radius: 50%;
-		background: transparent;
+		background: none;
 		color: var(--text-3);
+		cursor: pointer;
+		padding: 2px;
 	}
-	.x:hover {
-		color: var(--text);
-		background: var(--surface-3);
+	@keyframes in {
+		from {
+			opacity: 0;
+			transform: translateY(8px);
+		}
 	}
-	.mark {
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		background: var(--emerald);
-		box-shadow: 0 0 0 3px var(--emerald-soft);
-	}
-	.ctx {
-		font-size: var(--fs-xs);
-		font-weight: 600;
-		letter-spacing: 0.04em;
-		color: var(--text-2);
+	@media (prefers-reduced-motion: reduce) {
+		.toast {
+			animation: none;
+		}
 	}
 </style>
