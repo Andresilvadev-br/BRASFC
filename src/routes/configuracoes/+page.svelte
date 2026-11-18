@@ -22,6 +22,7 @@
 	const MOTION: Opt<MotionPreference>[] = [
 		{ value: 'auto', label: 'Automático', hint: 'Segue a preferência do sistema', icon: 'sparkle' },
 		{ value: 'completo', label: 'Completo', hint: 'Transições e efeitos cinematográficos', icon: 'play' },
+		{ value: 'leve', label: 'Leve', hint: 'Menos efeitos, ideal para computadores modestos', icon: 'refresh' },
 		{ value: 'reduzido', label: 'Reduzido', hint: 'Sem deslocamentos nem efeitos', icon: 'eye' }
 	];
 	const PROFILES: Array<Opt<MotionProfileId> & { level: number }> = [

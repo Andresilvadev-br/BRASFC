@@ -30,7 +30,7 @@ function read(): Partial<Prefs> {
 
 function sanitize(p: Partial<Prefs>): Prefs {
 	return {
-		motion: ['auto', 'completo', 'reduzido'].includes(p.motion as string) ? (p.motion as MotionPreference) : DEFAULTS.motion,
+		motion: ['auto', 'completo', 'leve', 'reduzido'].includes(p.motion as string) ? (p.motion as MotionPreference) : DEFAULTS.motion,
 		motionProfile: ['ultra', 'balanced', 'performance'].includes(p.motionProfile as string)
 			? (p.motionProfile as MotionProfileId)
 			: DEFAULTS.motionProfile,

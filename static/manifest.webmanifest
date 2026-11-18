@@ -1,0 +1,24 @@
+{
+	"name": "BRASFC — Simulador de Futebol Brasileiro",
+	"short_name": "BRASFC",
+	"description": "Carreiras de treinador e jogador no futebol brasileiro: Séries A a D, Copa do Brasil, mercado e partidas simuladas segundo a segundo.",
+	"id": "/",
+	"start_url": "/menu",
+	"scope": "/",
+	"display": "standalone",
+	"display_override": ["window-controls-overlay", "standalone"],
+	"orientation": "any",
+	"background_color": "#101418",
+	"theme_color": "#101418",
+	"lang": "pt-BR",
+	"categories": ["games", "sports"],
+	"icons": [
+		{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+		{ "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+		{ "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+	],
+	"shortcuts": [
+		{ "name": "Continuar carreira", "url": "/continuar", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+		{ "name": "Central de atualizações", "url": "/novidades", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+	]
+}

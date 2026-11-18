@@ -61,6 +61,10 @@ declare module 'ultra-motion-x' {
 		bind(root?: Element | Document): () => void;
 	}
 
+	export interface MagneticField {
+		bind(root?: Element | Document): () => void;
+	}
+
 	export interface EffectsLayer {
 		burst(opts: { x: number; y: number; count?: number; color?: string; speed?: number; life?: number; size?: number }): void;
 		wave(opts: { x: number; y: number; color?: string; radius?: number; life?: number; width?: number }): void;
@@ -78,6 +82,8 @@ declare module 'ultra-motion-x' {
 		capsule(el: HTMLElement, opts?: { spring?: SpringSpec; width?: number; height?: number; radius?: number }): CapsuleMorph;
 		indicator(el: HTMLElement, opts?: { axis?: 'x' | 'y'; spring?: SpringSpec; stretch?: number; cross?: string }): LiquidIndicator;
 		surface(opts?: { selector?: string; tilt?: number; spring?: SpringSpec; maxTiltSize?: number }): SurfaceMaterial;
+		magnetic(opts?: { selector?: string; strength?: number; max?: number; spring?: SpringSpec }): MagneticField;
+		number(el: Element, value: number, opts?: { format?: (v: number) => string; spring?: SpringSpec }): Promise<boolean>;
 		metrics(): unknown;
 		destroy(): void;
 	}

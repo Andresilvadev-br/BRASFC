@@ -5,5 +5,13 @@
     "noUncheckedIndexedAccess": false,
     "sourceMap": true
   },
-  "include": ["src", "tests", "*.ts"]
+  "include": [
+    "src",
+    "tests",
+    "*.ts"
+  ],
+  "exclude": [
+    "src/service-worker.ts",
+    "src/service-worker"
+  ]
 }
