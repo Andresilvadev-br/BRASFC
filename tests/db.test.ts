@@ -103,3 +103,59 @@ describe('salas', () => {
 		await expect(joinRoom(db, 'ZZZZZZ', guest.id)).rejects.toMatchObject({ status: 404 });
 	});
 });
+
+describe('partidas da carreira (Dev 0.2)', () => {
+	it('tática salva sobrevive ao jsonb e a rodada é reproduzida e gravada', async () => {
+		const { careerView } = await import('#lib/domain/view.ts');
+		const { fixtureSetup, newFixtureMatch, simulateOtherFixtures, summarize } = await import('#lib/domain/matchday.ts');
+		const { sameTactic } = await import('#lib/domain/tactics.ts');
+		const { advanceCareerDate } = await import('#lib/server/repos/careers.ts');
+		const { insertRound, listResults, listUserMatches } = await import('#lib/server/repos/matches.ts');
+		const { addDays } = await import('#lib/domain/dates.ts');
+
+		const { profile } = await createGuestProfile(db);
+		let career = await createCareer(db, profile.id, { mode: 'coach', personName: 'Técnico Partida', clubId: 'aurora' });
+		const v0 = careerView(career);
+		const tactic = { ...v0.tactic, mentality: 'ofensiva' as const, style: 'pressao' as const };
+		career = await patchCareerData(db, profile.id, career.id, { tactic }, career.version);
+		const reloaded = (await getCareer(db, profile.id, career.id))!;
+		const view = careerView(reloaded, await listResults(db, career.id));
+		expect(view.tacticSaved).toBe(true);
+		expect(sameTactic(view.tactic, tactic)).toBe(true);
+
+		// "Cliente" joga com uma substituição; o "servidor" reproduz só com as decisões.
+		const fixture = view.next!;
+		const setup = fixtureSetup(reloaded, fixture, view.tactic);
+		const live = newFixtureMatch(reloaded, fixture, view.tactic);
+		for (let i = 0; i < 55 * 60; i++) live.step();
+		const side = setup.control!;
+		live.submit(side, { type: 'sub', outId: live.onPitch(side).find((s) => s.slot === 10)!.id, inId: live.bench(side)[2].id });
+		const played = live.runToEnd();
+		const mine = played.decisions.filter((d) => d.side === side);
+		const server = newFixtureMatch(reloaded, fixture, view.tactic, mine);
+		const authoritative = server.runToEnd();
+		expect([authoritative.homeGoals, authoritative.awayGoals]).toEqual([played.homeGoals, played.awayGoals]);
+		expect(authoritative.events.length).toBe(played.events.length);
+
+		const others = view.fixtures.filter((f) => f.round === fixture.round && f.home !== fixture.home);
+		const otherResults = simulateOtherFixtures(reloaded, others);
+		await db.transaction(async (tx) => {
+			await insertRound(tx, career.id, [
+				{ round: fixture.round, home: fixture.home, away: fixture.away, homeGoals: authoritative.homeGoals, awayGoals: authoritative.awayGoals, seed: setup.seed, isUser: true, decisions: mine, summary: summarize(server, authoritative, setup.mySide) },
+				...otherResults.map((r) => ({ round: fixture.round, ...r, seed: 1, isUser: false }))
+			], '0.2.0');
+			await advanceCareerDate(tx, profile.id, career.id, addDays(fixture.date, 1), reloaded.version);
+		});
+
+		const results = await listResults(db, career.id);
+		expect(results).toHaveLength(10);
+		const after = careerView((await getCareer(db, profile.id, career.id))!, results);
+		expect(after.next!.round).toBe(fixture.round + 1);
+		expect(after.standings.reduce((s, r) => s + r.played, 0)).toBe(20);
+		const [userMatch] = await listUserMatches(db, career.id);
+		expect(userMatch.summary.stats.home.shots).toBe(authoritative.stats.home.shots);
+
+		// Rodada repetida é recusada (chave primária).
+		await expect(insertRound(db, career.id, [{ round: fixture.round, home: fixture.home, away: fixture.away, homeGoals: 0, awayGoals: 0, seed: 1, isUser: true }], '0.2.0')).rejects.toThrow();
+	});
+});

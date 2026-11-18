@@ -43,7 +43,7 @@
 <svelte:head><title>Painel · {v.club.name} · BRASFC</title></svelte:head>
 
 <div class="greet" data-umx-enter>
-	<span class="eyebrow">{formatLong(c.gameDate)} · pré-temporada</span>
+	<span class="eyebrow">{formatLong(c.gameDate)} · {v.results.length ? `rodada ${Math.max(...v.results.map((r) => r.round))} disputada` : 'pré-temporada'}</span>
 	<h1>Olá, {c.personName.split(' ')[0]}</h1>
 </div>
 
@@ -52,10 +52,11 @@
 		{#if v.next}
 			<FixtureCard fixture={v.next} clubId={c.clubId} today={c.gameDate} />
 			<div class="row-actions">
+				<Button variant="primary" icon="whistle" href="{base}/partida">{isCoach ? 'Comandar a partida' : 'Ir para o jogo'}</Button>
 				{#if isCoach}
-					<Button variant="primary" icon="tactics" href="{base}/taticas">Preparar a equipe</Button>
+					<Button icon="tactics" href="{base}/taticas">Preparar a equipe</Button>
 				{:else}
-					<Button variant="primary" icon="training" href="{base}/treinos">Treinar para o jogo</Button>
+					<Button icon="training" href="{base}/treinos">Treinar</Button>
 				{/if}
 				<Button variant="ghost" href="{base}/calendario" iconRight="chevronRight">Calendário</Button>
 			</div>
@@ -71,7 +72,7 @@
 				<div><dt>Reputação</dt><dd><Stars value={v.club.reputation} size={16} /></dd></div>
 				<div><dt>Força do elenco</dt><dd class="big num">{v.strength}</dd></div>
 				<div><dt>Familiaridade tática</dt><dd><Meter value={familiarity} label="Familiaridade tática" /></dd></div>
-				<div><dt>Posição na liga</dt><dd class="muted">Temporada não iniciada</dd></div>
+				<div><dt>Posição na liga</dt>{#if v.results.length}<dd class="big num">{v.standings.find((r) => r.clubId === c.clubId)?.position}º</dd>{:else}<dd class="muted">Temporada não iniciada</dd>{/if}</div>
 			</dl>
 			<Unavailable title="Finanças e orçamento" detail="Receitas, salários e patrocínios" icon="briefcase" stage="Etapa futura" />
 		</Panel>

@@ -125,6 +125,18 @@ export async function patchCareerData(
 	return mapCareer(rows[0]);
 }
 
+/** Avança a data do jogo (após uma rodada), com controle otimista de versão. */
+export async function advanceCareerDate(db: Db, profileId: string, id: string, gameDate: string, expectedVersion: number): Promise<Career> {
+	const rows = await db.query<CareerRow>(
+		`UPDATE careers c SET game_date = $3::date, version = c.version + 1, updated_at = now()
+		 WHERE c.id = $1 AND c.profile_id = $2 AND c.version = $4
+		 RETURNING ${COLUMNS}`,
+		[id, profileId, gameDate, expectedVersion]
+	);
+	if (!rows[0]) throw new VersionConflictError('A carreira foi alterada em outra janela. Recarregue para continuar.');
+	return mapCareer(rows[0]);
+}
+
 export async function touchCareer(db: Db, profileId: string, id: string): Promise<void> {
 	await db.query('UPDATE careers SET updated_at = now() WHERE id = $1 AND profile_id = $2', [id, profileId]);
 }

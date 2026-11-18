@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { getClub } from '#lib/domain/clubs.ts';
+	import { getClub, type Club } from '#lib/domain/clubs.ts';
 
-	/** Escudo gerado a partir das cores do clube fictício — sem marcas reais. */
-	let { clubId, size = 40, title }: { clubId: string; size?: number; title?: string } = $props();
+	/** Escudo genérico gerado a partir das cores do clube — nunca reproduz marcas reais. */
+	let { clubId, club: given, size = 40, title }: { clubId?: string; club?: Club; size?: number; title?: string } = $props();
 
-	const club = $derived(getClub(clubId));
+	const club = $derived(given ?? (clubId ? getClub(clubId) : undefined));
 	const uid = $props.id();
 
 	const SHAPES = {

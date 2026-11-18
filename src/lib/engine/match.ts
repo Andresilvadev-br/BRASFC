@@ -142,7 +142,7 @@ export class Match {
 	}
 
 	private makeTeam(setup: TeamSetup, ai: boolean): TeamRuntime {
-		const tactic = structuredClone(setup.tactic);
+		const tactic = { ...setup.tactic, lineup: [...setup.tactic.lineup], bench: [...setup.tactic.bench] };
 		const byId = new Map(setup.players.map((p) => [p.id, p]));
 		if (tactic.lineup.length !== 11 || new Set(tactic.lineup).size !== 11 || tactic.lineup.some((id) => !byId.has(id))) {
 			throw new Error(`Escalação inválida para ${setup.name}`);
@@ -314,11 +314,14 @@ export class Match {
 	// ──────────────────────────────────────────────── decisões do treinador
 
 	private applyDecisions() {
-		if (this.replay) {
-			for (const d of this.replay.get(this.tick) ?? []) this.applyDecision(d.side, d.decision, true);
-			return;
-		}
+		// Na reprodução, o treinador automático roda de novo (é determinístico);
+		// só as decisões dos lados humanos vêm do registro.
+		const replayed = this.replay?.get(this.tick) ?? [];
 		for (const side of ['home', 'away'] as const) {
+			if (this.replay && !this.teams[side].ai) {
+				for (const d of replayed) if (d.side === side && !d.rejected) this.applyDecision(side, d.decision, true);
+				continue;
+			}
 			if (this.teams[side].ai) this.aiManager(side);
 			const keep: Decision[] = [];
 			for (const d of this.queue[side]) {
