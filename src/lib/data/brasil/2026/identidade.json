@@ -1,0 +1,419 @@
+{
+ "athletico-pr": {
+  "cores": {
+   "primaria": "#C8102E",
+   "secundaria": "#111111"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "atletico-mg": {
+  "cores": {
+   "primaria": "#111111",
+   "secundaria": "#F5F5F5"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "bahia": {
+  "cores": {
+   "primaria": "#1D4FA3",
+   "secundaria": "#F5F5F5"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "botafogo": {
+  "cores": {
+   "primaria": "#111111",
+   "secundaria": "#F5F5F5"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "chapecoense": {
+  "cores": {
+   "primaria": "#0B7A3B",
+   "secundaria": "#F5F5F5"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "corinthians": {
+  "cores": {
+   "primaria": "#F5F5F5",
+   "secundaria": "#111111"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "coritiba": {
+  "cores": {
+   "primaria": "#0B6B3A",
+   "secundaria": "#F5F5F5"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "cruzeiro": {
+  "cores": {
+   "primaria": "#1B3F94",
+   "secundaria": "#F5F5F5"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "flamengo": {
+  "cores": {
+   "primaria": "#C8102E",
+   "secundaria": "#111111"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "fluminense": {
+  "cores": {
+   "primaria": "#7A1E34",
+   "secundaria": "#0B6B3A"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "gremio": {
+  "cores": {
+   "primaria": "#1C8AD1",
+   "secundaria": "#111111"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "internacional": {
+  "cores": {
+   "primaria": "#C8102E",
+   "secundaria": "#F5F5F5"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "mirassol": {
+  "cores": {
+   "primaria": "#F2C80F",
+   "secundaria": "#0B6B3A"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "palmeiras": {
+  "cores": {
+   "primaria": "#0B6B3A",
+   "secundaria": "#F5F5F5"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "rb-bragantino": {
+  "cores": {
+   "primaria": "#F5F5F5",
+   "secundaria": "#C8102E"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "remo": {
+  "cores": {
+   "primaria": "#14285A",
+   "secundaria": "#F5F5F5"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "santos": {
+  "cores": {
+   "primaria": "#F5F5F5",
+   "secundaria": "#111111"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "sao-paulo": {
+  "cores": {
+   "primaria": "#F5F5F5",
+   "secundaria": "#C8102E"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "vasco": {
+  "cores": {
+   "primaria": "#111111",
+   "secundaria": "#F5F5F5"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "vitoria": {
+  "cores": {
+   "primaria": "#C8102E",
+   "secundaria": "#111111"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "ceara": {
+  "cores": {
+   "primaria": "#111111",
+   "secundaria": "#F5F5F5"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "fortaleza": {
+  "cores": {
+   "primaria": "#C8102E",
+   "secundaria": "#1B3F94"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "juventude": {
+  "cores": {
+   "primaria": "#0B6B3A",
+   "secundaria": "#F5F5F5"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "sport": {
+  "cores": {
+   "primaria": "#C8102E",
+   "secundaria": "#111111"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "ponte-preta": {
+  "cores": {
+   "primaria": "#111111",
+   "secundaria": "#F5F5F5"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "londrina": {
+  "cores": null,
+  "status": "pendente",
+  "escudo": null
+ },
+ "nautico": {
+  "cores": {
+   "primaria": "#C8102E",
+   "secundaria": "#F5F5F5"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "sao-bernardo": {
+  "cores": null,
+  "status": "pendente",
+  "escudo": null
+ },
+ "criciuma": {
+  "cores": {
+   "primaria": "#F2C80F",
+   "secundaria": "#111111"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "goias": {
+  "cores": {
+   "primaria": "#0B6B3A",
+   "secundaria": "#F5F5F5"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "novorizontino": {
+  "cores": {
+   "primaria": "#F2C80F",
+   "secundaria": "#111111"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "crb": {
+  "cores": {
+   "primaria": "#C8102E",
+   "secundaria": "#F5F5F5"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "avai": {
+  "cores": {
+   "primaria": "#1B3F94",
+   "secundaria": "#F5F5F5"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "cuiaba": {
+  "cores": null,
+  "status": "pendente",
+  "escudo": null
+ },
+ "atletico-go": {
+  "cores": {
+   "primaria": "#C8102E",
+   "secundaria": "#111111"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "operario-pr": {
+  "cores": {
+   "primaria": "#111111",
+   "secundaria": "#F5F5F5"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "vila-nova": {
+  "cores": {
+   "primaria": "#C8102E",
+   "secundaria": "#F5F5F5"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "america-mg": {
+  "cores": {
+   "primaria": "#0B6B3A",
+   "secundaria": "#111111"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "athletic-mg": {
+  "cores": null,
+  "status": "pendente",
+  "escudo": null
+ },
+ "botafogo-sp": {
+  "cores": null,
+  "status": "pendente",
+  "escudo": null
+ },
+ "amazonas": {
+  "cores": null,
+  "status": "pendente",
+  "escudo": null
+ },
+ "anapolis": {
+  "cores": null,
+  "status": "pendente",
+  "escudo": null
+ },
+ "barra": {
+  "cores": null,
+  "status": "pendente",
+  "escudo": null
+ },
+ "botafogo-pb": {
+  "cores": null,
+  "status": "pendente",
+  "escudo": null
+ },
+ "brusque": {
+  "cores": null,
+  "status": "pendente",
+  "escudo": null
+ },
+ "caxias": {
+  "cores": null,
+  "status": "pendente",
+  "escudo": null
+ },
+ "confianca": {
+  "cores": null,
+  "status": "pendente",
+  "escudo": null
+ },
+ "ferroviaria": {
+  "cores": null,
+  "status": "pendente",
+  "escudo": null
+ },
+ "figueirense": {
+  "cores": {
+   "primaria": "#111111",
+   "secundaria": "#F5F5F5"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "floresta": {
+  "cores": null,
+  "status": "pendente",
+  "escudo": null
+ },
+ "guarani": {
+  "cores": {
+   "primaria": "#0B6B3A",
+   "secundaria": "#F5F5F5"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "inter-de-limeira": {
+  "cores": null,
+  "status": "pendente",
+  "escudo": null
+ },
+ "itabaiana": {
+  "cores": null,
+  "status": "pendente",
+  "escudo": null
+ },
+ "ituano": {
+  "cores": null,
+  "status": "pendente",
+  "escudo": null
+ },
+ "maranhao": {
+  "cores": null,
+  "status": "pendente",
+  "escudo": null
+ },
+ "maringa": {
+  "cores": null,
+  "status": "pendente",
+  "escudo": null
+ },
+ "paysandu": {
+  "cores": {
+   "primaria": "#3FA9F5",
+   "secundaria": "#F5F5F5"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "santa-cruz": {
+  "cores": {
+   "primaria": "#111111",
+   "secundaria": "#C8102E"
+  },
+  "status": "aproximação visual (a confirmar)",
+  "escudo": null
+ },
+ "volta-redonda": {
+  "cores": null,
+  "status": "pendente",
+  "escudo": null
+ },
+ "ypiranga": {
+  "cores": null,
+  "status": "pendente",
+  "escudo": null
+ }
+}

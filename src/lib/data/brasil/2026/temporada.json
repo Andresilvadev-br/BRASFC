@@ -1,0 +1,113 @@
+{
+ "temporada": 2026,
+ "versaoDados": "2026.1",
+ "atualizadoEm": "2026-11-17",
+ "aviso": "Participantes, cidades, UF e estádios conferidos em fontes (fontes.json). Técnicos, nomes oficiais, cores de parte dos clubes e elencos reais estão pendentes. A força é uma estimativa própria do BRASFC (1–5).",
+ "competicoes": [
+  {
+   "id": "serie-a",
+   "nome": "Série A",
+   "clubes": [
+    "athletico-pr",
+    "atletico-mg",
+    "bahia",
+    "botafogo",
+    "chapecoense",
+    "corinthians",
+    "coritiba",
+    "cruzeiro",
+    "flamengo",
+    "fluminense",
+    "gremio",
+    "internacional",
+    "mirassol",
+    "palmeiras",
+    "rb-bragantino",
+    "remo",
+    "santos",
+    "sao-paulo",
+    "vasco",
+    "vitoria"
+   ]
+  },
+  {
+   "id": "serie-b",
+   "nome": "Série B",
+   "clubes": [
+    "ceara",
+    "fortaleza",
+    "juventude",
+    "sport",
+    "ponte-preta",
+    "londrina",
+    "nautico",
+    "sao-bernardo",
+    "criciuma",
+    "goias",
+    "novorizontino",
+    "crb",
+    "avai",
+    "cuiaba",
+    "atletico-go",
+    "operario-pr",
+    "vila-nova",
+    "america-mg",
+    "athletic-mg",
+    "botafogo-sp"
+   ]
+  },
+  {
+   "id": "serie-c",
+   "nome": "Série C",
+   "clubes": [
+    "amazonas",
+    "anapolis",
+    "barra",
+    "botafogo-pb",
+    "brusque",
+    "caxias",
+    "confianca",
+    "ferroviaria",
+    "figueirense",
+    "floresta",
+    "guarani",
+    "inter-de-limeira",
+    "itabaiana",
+    "ituano",
+    "maranhao",
+    "maringa",
+    "paysandu",
+    "santa-cruz",
+    "volta-redonda",
+    "ypiranga"
+   ]
+  }
+ ],
+ "regras": {
+  "serie-a": {
+   "formato": "pontos-corridos",
+   "turnos": 2,
+   "rebaixados": 4,
+   "fonte": null,
+   "status": "a confirmar em fonte oficial (CBF)"
+  },
+  "serie-b": {
+   "formato": "pontos-corridos",
+   "turnos": 2,
+   "promovidos": 4,
+   "rebaixados": 4,
+   "fonte": null,
+   "status": "a confirmar em fonte oficial (CBF)"
+  },
+  "serie-c": {
+   "formato": "primeira-fase-mais-grupos",
+   "turnos": 1,
+   "classificados": 8,
+   "grupos": 2,
+   "promovidos": 4,
+   "rebaixados": 2,
+   "fonte": "wiki-serie-c-2026",
+   "status": "conferido (Wikipédia); rebaixamento à Série D não simulado no jogo"
+  }
+ }
+}

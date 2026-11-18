@@ -1,0 +1,1224 @@
+[
+ {
+  "id": "athletico-pr",
+  "nome": "Athletico Paranaense",
+  "sigla": "CAP",
+  "serie": "A",
+  "cidade": "Curitiba",
+  "uf": "PR",
+  "estadio": "Arena da Baixada",
+  "tecnico": null,
+  "forcaEstimada": 4,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "mkt-2025-12-serie-a",
+   "90min-2026-clubes",
+   "wiki-serie-a-2026"
+  ]
+ },
+ {
+  "id": "atletico-mg",
+  "nome": "Atlético Mineiro",
+  "sigla": "CAM",
+  "serie": "A",
+  "cidade": "Belo Horizonte",
+  "uf": "MG",
+  "estadio": "Arena MRV",
+  "tecnico": null,
+  "forcaEstimada": 4,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "mkt-2025-12-serie-a",
+   "90min-2026-clubes",
+   "wiki-serie-a-2026"
+  ]
+ },
+ {
+  "id": "bahia",
+  "nome": "Bahia",
+  "sigla": "BAH",
+  "serie": "A",
+  "cidade": "Salvador",
+  "uf": "BA",
+  "estadio": "Arena Fonte Nova",
+  "tecnico": null,
+  "forcaEstimada": 4,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "mkt-2025-12-serie-a",
+   "90min-2026-clubes",
+   "wiki-serie-a-2026"
+  ]
+ },
+ {
+  "id": "botafogo",
+  "nome": "Botafogo",
+  "sigla": "BOT",
+  "serie": "A",
+  "cidade": "Rio de Janeiro",
+  "uf": "RJ",
+  "estadio": "Estádio Olímpico Nilton Santos",
+  "tecnico": null,
+  "forcaEstimada": 4,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "mkt-2025-12-serie-a",
+   "90min-2026-clubes",
+   "wiki-serie-a-2026"
+  ]
+ },
+ {
+  "id": "chapecoense",
+  "nome": "Chapecoense",
+  "sigla": "CHA",
+  "serie": "A",
+  "cidade": "Chapecó",
+  "uf": "SC",
+  "estadio": "Arena Condá",
+  "tecnico": null,
+  "forcaEstimada": 2,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "mkt-2025-12-serie-a",
+   "90min-2026-clubes",
+   "wiki-serie-a-2026"
+  ]
+ },
+ {
+  "id": "corinthians",
+  "nome": "Corinthians",
+  "sigla": "COR",
+  "serie": "A",
+  "cidade": "São Paulo",
+  "uf": "SP",
+  "estadio": "Neo Química Arena",
+  "tecnico": null,
+  "forcaEstimada": 4,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "mkt-2025-12-serie-a",
+   "90min-2026-clubes",
+   "wiki-serie-a-2026"
+  ]
+ },
+ {
+  "id": "coritiba",
+  "nome": "Coritiba",
+  "sigla": "CFC",
+  "serie": "A",
+  "cidade": "Curitiba",
+  "uf": "PR",
+  "estadio": "Couto Pereira",
+  "tecnico": null,
+  "forcaEstimada": 3,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "mkt-2025-12-serie-a",
+   "90min-2026-clubes",
+   "wiki-serie-a-2026"
+  ]
+ },
+ {
+  "id": "cruzeiro",
+  "nome": "Cruzeiro",
+  "sigla": "CRU",
+  "serie": "A",
+  "cidade": "Belo Horizonte",
+  "uf": "MG",
+  "estadio": "Mineirão",
+  "tecnico": null,
+  "forcaEstimada": 4,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "mkt-2025-12-serie-a",
+   "90min-2026-clubes",
+   "wiki-serie-a-2026"
+  ]
+ },
+ {
+  "id": "flamengo",
+  "nome": "Flamengo",
+  "sigla": "FLA",
+  "serie": "A",
+  "cidade": "Rio de Janeiro",
+  "uf": "RJ",
+  "estadio": "Maracanã",
+  "tecnico": null,
+  "forcaEstimada": 5,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "mkt-2025-12-serie-a",
+   "90min-2026-clubes",
+   "wiki-serie-a-2026"
+  ]
+ },
+ {
+  "id": "fluminense",
+  "nome": "Fluminense",
+  "sigla": "FLU",
+  "serie": "A",
+  "cidade": "Rio de Janeiro",
+  "uf": "RJ",
+  "estadio": "Maracanã",
+  "tecnico": null,
+  "forcaEstimada": 4,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "mkt-2025-12-serie-a",
+   "90min-2026-clubes",
+   "wiki-serie-a-2026"
+  ]
+ },
+ {
+  "id": "gremio",
+  "nome": "Grêmio",
+  "sigla": "GRE",
+  "serie": "A",
+  "cidade": "Porto Alegre",
+  "uf": "RS",
+  "estadio": "Arena do Grêmio",
+  "tecnico": null,
+  "forcaEstimada": 4,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "mkt-2025-12-serie-a",
+   "90min-2026-clubes",
+   "wiki-serie-a-2026"
+  ]
+ },
+ {
+  "id": "internacional",
+  "nome": "Internacional",
+  "sigla": "INT",
+  "serie": "A",
+  "cidade": "Porto Alegre",
+  "uf": "RS",
+  "estadio": "Beira-Rio",
+  "tecnico": null,
+  "forcaEstimada": 4,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "mkt-2025-12-serie-a",
+   "90min-2026-clubes",
+   "wiki-serie-a-2026"
+  ]
+ },
+ {
+  "id": "mirassol",
+  "nome": "Mirassol",
+  "sigla": "MIR",
+  "serie": "A",
+  "cidade": "Mirassol",
+  "uf": "SP",
+  "estadio": "Maião",
+  "tecnico": null,
+  "forcaEstimada": 3,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "mkt-2025-12-serie-a",
+   "90min-2026-clubes",
+   "wiki-serie-a-2026"
+  ]
+ },
+ {
+  "id": "palmeiras",
+  "nome": "Palmeiras",
+  "sigla": "PAL",
+  "serie": "A",
+  "cidade": "São Paulo",
+  "uf": "SP",
+  "estadio": "Nubank Parque",
+  "tecnico": null,
+  "forcaEstimada": 5,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "mkt-2025-12-serie-a",
+   "90min-2026-clubes",
+   "wiki-serie-a-2026"
+  ]
+ },
+ {
+  "id": "rb-bragantino",
+  "nome": "RB Bragantino",
+  "sigla": "RBB",
+  "serie": "A",
+  "cidade": "Bragança Paulista",
+  "uf": "SP",
+  "estadio": "Cícero de Souza Marques",
+  "tecnico": null,
+  "forcaEstimada": 3,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "mkt-2025-12-serie-a",
+   "90min-2026-clubes",
+   "wiki-serie-a-2026"
+  ]
+ },
+ {
+  "id": "remo",
+  "nome": "Remo",
+  "sigla": "REM",
+  "serie": "A",
+  "cidade": "Belém",
+  "uf": "PA",
+  "estadio": "Mangueirão",
+  "tecnico": null,
+  "forcaEstimada": 2,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "mkt-2025-12-serie-a",
+   "90min-2026-clubes",
+   "wiki-serie-a-2026"
+  ]
+ },
+ {
+  "id": "santos",
+  "nome": "Santos",
+  "sigla": "SAN",
+  "serie": "A",
+  "cidade": "Santos",
+  "uf": "SP",
+  "estadio": "Vila Belmiro",
+  "tecnico": null,
+  "forcaEstimada": 3,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "mkt-2025-12-serie-a",
+   "90min-2026-clubes",
+   "wiki-serie-a-2026"
+  ]
+ },
+ {
+  "id": "sao-paulo",
+  "nome": "São Paulo",
+  "sigla": "SAO",
+  "serie": "A",
+  "cidade": "São Paulo",
+  "uf": "SP",
+  "estadio": "Morumbis",
+  "tecnico": null,
+  "forcaEstimada": 4,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "mkt-2025-12-serie-a",
+   "90min-2026-clubes",
+   "wiki-serie-a-2026"
+  ]
+ },
+ {
+  "id": "vasco",
+  "nome": "Vasco da Gama",
+  "sigla": "VAS",
+  "serie": "A",
+  "cidade": "Rio de Janeiro",
+  "uf": "RJ",
+  "estadio": "São Januário",
+  "tecnico": null,
+  "forcaEstimada": 3,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "mkt-2025-12-serie-a",
+   "90min-2026-clubes",
+   "wiki-serie-a-2026"
+  ]
+ },
+ {
+  "id": "vitoria",
+  "nome": "Vitória",
+  "sigla": "VIT",
+  "serie": "A",
+  "cidade": "Salvador",
+  "uf": "BA",
+  "estadio": "Barradão",
+  "tecnico": null,
+  "forcaEstimada": 3,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "mkt-2025-12-serie-a",
+   "90min-2026-clubes",
+   "wiki-serie-a-2026"
+  ]
+ },
+ {
+  "id": "ceara",
+  "nome": "Ceará",
+  "sigla": "CEA",
+  "serie": "B",
+  "cidade": "Fortaleza",
+  "uf": "CE",
+  "estadio": "Arena Castelão",
+  "tecnico": null,
+  "forcaEstimada": 3,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "tnh1-2025-12-serie-b",
+   "wiki-serie-b-2026"
+  ]
+ },
+ {
+  "id": "fortaleza",
+  "nome": "Fortaleza",
+  "sigla": "FOR",
+  "serie": "B",
+  "cidade": "Fortaleza",
+  "uf": "CE",
+  "estadio": "Arena Castelão",
+  "tecnico": null,
+  "forcaEstimada": 3,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "tnh1-2025-12-serie-b",
+   "wiki-serie-b-2026"
+  ]
+ },
+ {
+  "id": "juventude",
+  "nome": "Juventude",
+  "sigla": "JUV",
+  "serie": "B",
+  "cidade": "Caxias do Sul",
+  "uf": "RS",
+  "estadio": "Alfredo Jaconi",
+  "tecnico": null,
+  "forcaEstimada": 2,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "tnh1-2025-12-serie-b",
+   "wiki-serie-b-2026"
+  ]
+ },
+ {
+  "id": "sport",
+  "nome": "Sport",
+  "sigla": "SPT",
+  "serie": "B",
+  "cidade": "Recife",
+  "uf": "PE",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 3,
+  "pendencias": [
+   "nomeOficial",
+   "estadio",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "tnh1-2025-12-serie-b",
+   "wiki-serie-b-2026"
+  ]
+ },
+ {
+  "id": "ponte-preta",
+  "nome": "Ponte Preta",
+  "sigla": "PON",
+  "serie": "B",
+  "cidade": "Campinas",
+  "uf": "SP",
+  "estadio": "Moisés Lucarelli",
+  "tecnico": null,
+  "forcaEstimada": 2,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "tnh1-2025-12-serie-b",
+   "wiki-serie-b-2026"
+  ]
+ },
+ {
+  "id": "londrina",
+  "nome": "Londrina",
+  "sigla": "LON",
+  "serie": "B",
+  "cidade": "Londrina",
+  "uf": "PR",
+  "estadio": "VGD",
+  "tecnico": null,
+  "forcaEstimada": 2,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "tnh1-2025-12-serie-b",
+   "wiki-serie-b-2026"
+  ]
+ },
+ {
+  "id": "nautico",
+  "nome": "Náutico",
+  "sigla": "NAU",
+  "serie": "B",
+  "cidade": "Recife",
+  "uf": "PE",
+  "estadio": "Aflitos",
+  "tecnico": null,
+  "forcaEstimada": 2,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "tnh1-2025-12-serie-b",
+   "wiki-serie-b-2026"
+  ]
+ },
+ {
+  "id": "sao-bernardo",
+  "nome": "São Bernardo",
+  "sigla": "SBE",
+  "serie": "B",
+  "cidade": "São Bernardo do Campo",
+  "uf": "SP",
+  "estadio": "1º de Maio",
+  "tecnico": null,
+  "forcaEstimada": 2,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "tnh1-2025-12-serie-b",
+   "wiki-serie-b-2026"
+  ]
+ },
+ {
+  "id": "criciuma",
+  "nome": "Criciúma",
+  "sigla": "CRI",
+  "serie": "B",
+  "cidade": "Criciúma",
+  "uf": "SC",
+  "estadio": "Heriberto Hülse",
+  "tecnico": null,
+  "forcaEstimada": 2,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "tnh1-2025-12-serie-b",
+   "wiki-serie-b-2026"
+  ]
+ },
+ {
+  "id": "goias",
+  "nome": "Goiás",
+  "sigla": "GOI",
+  "serie": "B",
+  "cidade": "Goiânia",
+  "uf": "GO",
+  "estadio": "Serrinha",
+  "tecnico": null,
+  "forcaEstimada": 3,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "tnh1-2025-12-serie-b",
+   "wiki-serie-b-2026"
+  ]
+ },
+ {
+  "id": "novorizontino",
+  "nome": "Novorizontino",
+  "sigla": "NOV",
+  "serie": "B",
+  "cidade": "Novo Horizonte",
+  "uf": "SP",
+  "estadio": "Jorjão",
+  "tecnico": null,
+  "forcaEstimada": 2,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "tnh1-2025-12-serie-b",
+   "wiki-serie-b-2026"
+  ]
+ },
+ {
+  "id": "crb",
+  "nome": "CRB",
+  "sigla": "CRB",
+  "serie": "B",
+  "cidade": "Maceió",
+  "uf": "AL",
+  "estadio": "Rei Pelé",
+  "tecnico": null,
+  "forcaEstimada": 2,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "tnh1-2025-12-serie-b",
+   "wiki-serie-b-2026"
+  ]
+ },
+ {
+  "id": "avai",
+  "nome": "Avaí",
+  "sigla": "AVA",
+  "serie": "B",
+  "cidade": "Florianópolis",
+  "uf": "SC",
+  "estadio": "Ressacada",
+  "tecnico": null,
+  "forcaEstimada": 2,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "tnh1-2025-12-serie-b",
+   "wiki-serie-b-2026"
+  ]
+ },
+ {
+  "id": "cuiaba",
+  "nome": "Cuiabá",
+  "sigla": "CUI",
+  "serie": "B",
+  "cidade": "Cuiabá",
+  "uf": "MT",
+  "estadio": "Arena Pantanal",
+  "tecnico": null,
+  "forcaEstimada": 2,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "tnh1-2025-12-serie-b",
+   "wiki-serie-b-2026"
+  ]
+ },
+ {
+  "id": "atletico-go",
+  "nome": "Atlético Goianiense",
+  "sigla": "ACG",
+  "serie": "B",
+  "cidade": "Goiânia",
+  "uf": "GO",
+  "estadio": "Antônio Accioly",
+  "tecnico": null,
+  "forcaEstimada": 2,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "tnh1-2025-12-serie-b",
+   "wiki-serie-b-2026"
+  ]
+ },
+ {
+  "id": "operario-pr",
+  "nome": "Operário Ferroviário",
+  "sigla": "OPE",
+  "serie": "B",
+  "cidade": "Ponta Grossa",
+  "uf": "PR",
+  "estadio": "Germano Krüger",
+  "tecnico": null,
+  "forcaEstimada": 2,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "tnh1-2025-12-serie-b",
+   "wiki-serie-b-2026"
+  ]
+ },
+ {
+  "id": "vila-nova",
+  "nome": "Vila Nova",
+  "sigla": "VIL",
+  "serie": "B",
+  "cidade": "Goiânia",
+  "uf": "GO",
+  "estadio": null,
+  "tecnico": null,
+  "forcaEstimada": 2,
+  "pendencias": [
+   "nomeOficial",
+   "estadio",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "tnh1-2025-12-serie-b",
+   "wiki-serie-b-2026"
+  ]
+ },
+ {
+  "id": "america-mg",
+  "nome": "América Mineiro",
+  "sigla": "AME",
+  "serie": "B",
+  "cidade": "Belo Horizonte",
+  "uf": "MG",
+  "estadio": "Independência",
+  "tecnico": null,
+  "forcaEstimada": 2,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "tnh1-2025-12-serie-b",
+   "wiki-serie-b-2026"
+  ]
+ },
+ {
+  "id": "athletic-mg",
+  "nome": "Athletic Club",
+  "sigla": "ATH",
+  "serie": "B",
+  "cidade": "São João del-Rei",
+  "uf": "MG",
+  "estadio": "Arena Sicredi (Joaquim Portugal)",
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "tnh1-2025-12-serie-b",
+   "wiki-serie-b-2026"
+  ]
+ },
+ {
+  "id": "botafogo-sp",
+  "nome": "Botafogo-SP",
+  "sigla": "BFS",
+  "serie": "B",
+  "cidade": "Ribeirão Preto",
+  "uf": "SP",
+  "estadio": "Santa Cruz",
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "tnh1-2025-12-serie-b",
+   "wiki-serie-b-2026"
+  ]
+ },
+ {
+  "id": "amazonas",
+  "nome": "Amazonas",
+  "sigla": "AMA",
+  "serie": "C",
+  "cidade": "Manaus",
+  "uf": "AM",
+  "estadio": "Carlos Zamith",
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "itatiaia-2025-11-serie-c",
+   "wiki-serie-c-2026"
+  ]
+ },
+ {
+  "id": "anapolis",
+  "nome": "Anápolis",
+  "sigla": "ANA",
+  "serie": "C",
+  "cidade": "Anápolis",
+  "uf": "GO",
+  "estadio": "Jonas Duarte",
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "itatiaia-2025-11-serie-c",
+   "wiki-serie-c-2026"
+  ]
+ },
+ {
+  "id": "barra",
+  "nome": "Barra-SC",
+  "sigla": "BAR",
+  "serie": "C",
+  "cidade": "Balneário Camboriú",
+  "uf": "SC",
+  "estadio": "Arena Barra FC",
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "itatiaia-2025-11-serie-c",
+   "wiki-serie-c-2026"
+  ]
+ },
+ {
+  "id": "botafogo-pb",
+  "nome": "Botafogo-PB",
+  "sigla": "BPB",
+  "serie": "C",
+  "cidade": "João Pessoa",
+  "uf": "PB",
+  "estadio": "Almeidão",
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "itatiaia-2025-11-serie-c",
+   "wiki-serie-c-2026"
+  ]
+ },
+ {
+  "id": "brusque",
+  "nome": "Brusque",
+  "sigla": "BRU",
+  "serie": "C",
+  "cidade": "Brusque",
+  "uf": "SC",
+  "estadio": "Arena Simon",
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "itatiaia-2025-11-serie-c",
+   "wiki-serie-c-2026"
+  ]
+ },
+ {
+  "id": "caxias",
+  "nome": "Caxias",
+  "sigla": "CAX",
+  "serie": "C",
+  "cidade": "Caxias do Sul",
+  "uf": "RS",
+  "estadio": "Centenário",
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "itatiaia-2025-11-serie-c",
+   "wiki-serie-c-2026"
+  ]
+ },
+ {
+  "id": "confianca",
+  "nome": "Confiança",
+  "sigla": "CON",
+  "serie": "C",
+  "cidade": "Aracaju",
+  "uf": "SE",
+  "estadio": "Batistão",
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "itatiaia-2025-11-serie-c",
+   "wiki-serie-c-2026"
+  ]
+ },
+ {
+  "id": "ferroviaria",
+  "nome": "Ferroviária",
+  "sigla": "FER",
+  "serie": "C",
+  "cidade": "Araraquara",
+  "uf": "SP",
+  "estadio": "Fonte Luminosa",
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "itatiaia-2025-11-serie-c",
+   "wiki-serie-c-2026"
+  ]
+ },
+ {
+  "id": "figueirense",
+  "nome": "Figueirense",
+  "sigla": "FIG",
+  "serie": "C",
+  "cidade": "Florianópolis",
+  "uf": "SC",
+  "estadio": "Orlando Scarpelli",
+  "tecnico": null,
+  "forcaEstimada": 2,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "itatiaia-2025-11-serie-c",
+   "wiki-serie-c-2026"
+  ]
+ },
+ {
+  "id": "floresta",
+  "nome": "Floresta",
+  "sigla": "FLO",
+  "serie": "C",
+  "cidade": "Fortaleza",
+  "uf": "CE",
+  "estadio": "Domingão",
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "itatiaia-2025-11-serie-c",
+   "wiki-serie-c-2026"
+  ]
+ },
+ {
+  "id": "guarani",
+  "nome": "Guarani",
+  "sigla": "GUA",
+  "serie": "C",
+  "cidade": "Campinas",
+  "uf": "SP",
+  "estadio": "Brinco de Ouro",
+  "tecnico": null,
+  "forcaEstimada": 2,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "itatiaia-2025-11-serie-c",
+   "wiki-serie-c-2026"
+  ]
+ },
+ {
+  "id": "inter-de-limeira",
+  "nome": "Inter de Limeira",
+  "sigla": "INL",
+  "serie": "C",
+  "cidade": "Limeira",
+  "uf": "SP",
+  "estadio": "Limeirão",
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "itatiaia-2025-11-serie-c",
+   "wiki-serie-c-2026"
+  ]
+ },
+ {
+  "id": "itabaiana",
+  "nome": "Itabaiana",
+  "sigla": "ITA",
+  "serie": "C",
+  "cidade": "Itabaiana",
+  "uf": "SE",
+  "estadio": "Etelvino Mendonça",
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "itatiaia-2025-11-serie-c",
+   "wiki-serie-c-2026"
+  ]
+ },
+ {
+  "id": "ituano",
+  "nome": "Ituano",
+  "sigla": "ITU",
+  "serie": "C",
+  "cidade": "Itu",
+  "uf": "SP",
+  "estadio": "Novelli Júnior",
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "itatiaia-2025-11-serie-c",
+   "wiki-serie-c-2026"
+  ]
+ },
+ {
+  "id": "maranhao",
+  "nome": "Maranhão",
+  "sigla": "MAR",
+  "serie": "C",
+  "cidade": "São Luís",
+  "uf": "MA",
+  "estadio": "Castelão",
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "itatiaia-2025-11-serie-c",
+   "wiki-serie-c-2026"
+  ]
+ },
+ {
+  "id": "maringa",
+  "nome": "Maringá",
+  "sigla": "MGA",
+  "serie": "C",
+  "cidade": "Maringá",
+  "uf": "PR",
+  "estadio": "Willie Davids",
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "itatiaia-2025-11-serie-c",
+   "wiki-serie-c-2026"
+  ]
+ },
+ {
+  "id": "paysandu",
+  "nome": "Paysandu",
+  "sigla": "PAY",
+  "serie": "C",
+  "cidade": "Belém",
+  "uf": "PA",
+  "estadio": "Curuzu",
+  "tecnico": null,
+  "forcaEstimada": 2,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "itatiaia-2025-11-serie-c",
+   "wiki-serie-c-2026"
+  ]
+ },
+ {
+  "id": "santa-cruz",
+  "nome": "Santa Cruz",
+  "sigla": "STA",
+  "serie": "C",
+  "cidade": "Recife",
+  "uf": "PE",
+  "estadio": "Arena de Pernambuco",
+  "tecnico": null,
+  "forcaEstimada": 2,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "itatiaia-2025-11-serie-c",
+   "wiki-serie-c-2026"
+  ]
+ },
+ {
+  "id": "volta-redonda",
+  "nome": "Volta Redonda",
+  "sigla": "VRE",
+  "serie": "C",
+  "cidade": "Volta Redonda",
+  "uf": "RJ",
+  "estadio": "Raulino de Oliveira",
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "itatiaia-2025-11-serie-c",
+   "wiki-serie-c-2026"
+  ]
+ },
+ {
+  "id": "ypiranga",
+  "nome": "Ypiranga de Erechim",
+  "sigla": "YPI",
+  "serie": "C",
+  "cidade": "Erechim",
+  "uf": "RS",
+  "estadio": "Colosso da Lagoa",
+  "tecnico": null,
+  "forcaEstimada": 1,
+  "pendencias": [
+   "nomeOficial",
+   "tecnico",
+   "elenco"
+  ],
+  "fontes": [
+   "itatiaia-2025-11-serie-c",
+   "wiki-serie-c-2026"
+  ]
+ }
+]
