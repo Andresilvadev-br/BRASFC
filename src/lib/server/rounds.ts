@@ -1,7 +1,10 @@
 import type { Career, CareerData } from '#lib/domain/career.ts';
 import { addDays } from '#lib/domain/dates.ts';
 import { applyTrainingWeek, recoverFitness } from '#lib/domain/drills.ts';
-import { closeSeason, computeCGroups, firstRoundDate, needsCGroups, seasonFixtures, seasonStartDate, type SeasonSummary } from '#lib/domain/league.ts';
+import { closeSeason, prepareRound, seasonFixtures, seasonStartDate, type SeasonSummary } from '#lib/domain/league.ts';
+import { CUP_ID, cupFixtures, cupView, prepareCup, projectedCup } from '#lib/domain/cup.ts';
+import { strengthFor } from '#lib/domain/strength.ts';
+import type { Fixture } from '#lib/domain/season.ts';
 import { careerSquad, fixtureSetup, newFixtureMatch, observedFrom, simulateOtherFixtures, summarize, type MatchdayContext } from '#lib/domain/matchday.ts';
 import { learnFromMatch, teamMastery } from '#lib/domain/tactical.ts';
 import { careerView } from '#lib/domain/view.ts';
@@ -34,28 +37,35 @@ export async function matchdayContext(db: Db, career: Career, view?: ReturnType<
 	return { season: career.season, firstSeason: view.firstSeason, tactical: view.tactical, fitness: career.data.fitness, observed };
 }
 
+
 /**
- * Processa a próxima rodada do calendário: reproduz a partida do usuário pela semente +
- * decisões (o placar enviado pelo cliente nunca é aceito), simula os demais jogos de todas
- * as divisões, aplica aprendizado tático, treino e recuperação, e grava tudo de uma vez.
+ * Processa o próximo PASSO do calendário (domingo de liga ou quarta de Copa): reproduz a partida do
+ * usuário pela semente + decisões (o placar enviado pelo cliente nunca é aceito), simula os demais
+ * jogos, aplica aprendizado tático, treino e recuperação, e grava tudo de uma vez.
+ * Jogos da competição do usuário usam o motor completo; os demais, o modelo rápido calibrado.
  */
-export async function playRound(db: Db, profileId: string, career: Career, body: { version: number; round: number; decisions?: AppliedDecision[] }) {
+export async function playRound(db: Db, profileId: string, career: Career, body: { version: number; round?: number; step?: string; decisions?: AppliedDecision[] }) {
 	if (body.version !== career.version) throw new RoundError('A carreira mudou em outra janela. Recarregue para continuar.', 409);
 	const results = await listResults(db, career.id, career.season);
 	const view = careerView(career, results);
-	if (view.seasonOver) throw new RoundError('A temporada terminou. Encerre-a para começar a próxima.', 409);
-	const round = view.nextRound;
-	if (body.round !== round) throw new RoundError('Esta rodada já foi disputada ou ainda não chegou.', 409);
+	if (view.seasonOver || !view.step) throw new RoundError('A temporada terminou. Encerre-a para começar a próxima.', 409);
+	const step = view.step;
+	const asked = body.step ?? (typeof body.round === 'number' ? `league:${body.round}` : null);
+	if (asked !== step.key) throw new RoundError('Este passo do calendário já foi disputado ou ainda não chegou.', 409);
+	const strengthOf = strengthFor(career);
 
 	let league = view.league;
-	let fixtures = view.fixtures;
-	// Série C: grupos da 2ª fase são definidos quando a 1ª fase termina.
-	if (needsCGroups(league, round)) {
-		league = { ...league, cGroups: computeCGroups(league, results) };
-		fixtures = seasonFixtures(league, career.seed);
+	let cup = view.cup;
+	let fixtures: Fixture[];
+	if (step.kind === 'league') {
+		league = prepareRound(league, step.round, results, career.seed, strengthOf);
+		fixtures = seasonFixtures(league, career.seed).filter((f) => f.round === step.round);
+	} else {
+		cup = prepareCup(cup!, step.matchday, results, career.seed, strengthOf);
+		fixtures = cupFixtures(cup).filter((f) => f.round === step.matchday);
 	}
-	const roundFixtures = fixtures.filter((f) => f.round === round);
-	const mine = roundFixtures.find((f) => f.home === career.clubId || f.away === career.clubId) ?? null;
+	const round = step.kind === 'league' ? step.round : step.matchday;
+	const mine = fixtures.find((f) => f.home === career.clubId || f.away === career.clubId) ?? null;
 	const ctx = await matchdayContext(db, career, view);
 	const rows: RoundInsert[] = [];
 	let userMatch: { homeGoals: number; awayGoals: number; summary: ReturnType<typeof summarize> } | null = null;
@@ -87,33 +97,38 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 		tactical.history = [...tactical.history, { season: career.season, round, formation: t.formation, style: t.style, goalsFor: setup.mySide === 'home' ? result.homeGoals : result.awayGoals, goalsAgainst: setup.mySide === 'home' ? result.awayGoals : result.homeGoals, execution: mastery.execution }].slice(-120);
 		for (const [id, st] of Object.entries(result.players)) if (squad.some((p) => p.id === id) && st.minutes > 0) fitness[id] = st.condition;
 	}
-	const others = roundFixtures.filter((f) => f !== mine);
-	for (const r of simulateOtherFixtures(career, others, ctx)) {
+	const others = fixtures.filter((f) => f !== mine);
+	// Motor completo: a divisão do usuário (rodadas de liga) e todo o mundo fictício; o resto, modelo rápido.
+	const full = view.world === 'brasfc' ? () => true : (f: Fixture) => step.kind === 'league' && f.competition === view.division;
+	for (const r of simulateOtherFixtures(career, others, ctx, { full, strengthOf })) {
 		rows.push({ season: career.season, round, competition: r.competition, home: r.home, away: r.away, homeGoals: r.homeGoals, awayGoals: r.awayGoals, seed: r.seed, isUser: false });
 	}
-	// Semana de treinos e recuperação até a próxima rodada.
+	// Domingo: semana de treinos e recuperação até a próxima rodada. Quarta: só o desgaste do jogo.
 	const plan = view.trainingPlan;
-	if (career.mode === 'coach') {
-		tactical = applyTrainingWeek(tactical, plan, { formation: view.tactic.formation, style: view.tactic.style, lineup: view.tactic.lineup, roles: view.tactic.roles, squad });
+	if (step.kind === 'league') {
+		if (career.mode === 'coach') {
+			tactical = applyTrainingWeek(tactical, plan, { formation: view.tactic.formation, style: view.tactic.style, lineup: view.tactic.lineup, roles: view.tactic.roles, squad });
+		}
+		fitness = recoverFitness(fitness, squad, career.mode === 'coach' ? plan : { sessions: ['descanso', 'formacao', 'posse', 'defesa', 'descanso'], intensity: 'normal' });
 	}
-	fitness = recoverFitness(fitness, squad, career.mode === 'coach' ? plan : { sessions: ['descanso', 'formacao', 'posse', 'defesa', 'descanso'], intensity: 'normal' });
-
-	const nextDate = addDays(firstRoundDate(career.season), (round - 1) * 7 + 1);
-	const data: Partial<CareerData> = { tactical, fitness, league };
+	const nextDate = addDays(step.date, 1);
+	const data: Partial<CareerData> = { tactical, fitness, league, ...(cup ? { cup } : {}) };
 	const updated = await db.transaction(async (tx) => {
 		await insertRound(tx, career.id, rows, ENGINE_VERSION);
 		return saveCareerProgress(tx, profileId, career.id, { gameDate: nextDate, data }, career.version);
 	});
-	return { career: updated, round, match: userMatch, results: rows.filter((r) => !r.isUser).map(({ home, away, homeGoals, awayGoals, competition }) => ({ home, away, homeGoals, awayGoals, competition })) };
+	return { career: updated, round, step: step.key, match: userMatch, results: rows.filter((r) => !r.isUser).map(({ home, away, homeGoals, awayGoals, competition }) => ({ home, away, homeGoals, awayGoals, competition })) };
 }
 
-/** Encerra a temporada: tabela final, acesso/rebaixamento e início da próxima. */
+/** Encerra a temporada: tabela final, acesso/rebaixamento, Copa e início da próxima. */
 export async function finishSeason(db: Db, profileId: string, career: Career, version: number) {
 	if (version !== career.version) throw new RoundError('A carreira mudou em outra janela. Recarregue para continuar.', 409);
 	const results = await listResults(db, career.id, career.season);
 	const view = careerView(career, results);
-	if (!view.seasonOver) throw new RoundError('Ainda há rodadas a disputar nesta temporada.', 409);
-	const outcome = closeSeason(view.league, results);
+	if (!view.seasonOver) throw new RoundError('Ainda há jogos a disputar nesta temporada.', 409);
+	const strengthOf = strengthFor(career);
+	const leagueResults = results.filter((r) => r.competition !== CUP_ID);
+	const outcome = closeSeason(view.league, leagueResults, career.seed, strengthOf);
 	const table = outcome.tables[view.division] ?? [];
 	const row = table.find((r) => r.clubId === career.clubId);
 	const move = outcome.moves.find((m) => m.clubId === career.clubId);
@@ -133,14 +148,20 @@ export async function finishSeason(db: Db, profileId: string, career: Career, ve
 	const fitness: Record<string, number> = {};
 	for (const p of view.squad) fitness[p.id] = 100;
 	const next = outcome.next;
+	const cupNow = view.cup ? cupView(view.cup, results, career.seed, strengthOf) : null;
+	// Copa da próxima temporada (projeção) a partir das novas divisões e dos campeões.
+	const nextCup =
+		view.world === 'brasil'
+			? projectedCup(next, { cChampion: outcome.champions['serie-c'], cRunnerUp: outcome.runnersUp['serie-c'], dChampion: outcome.champions['serie-d'], dRunnerUp: outcome.runnersUp['serie-d'], dRanking: outcome.tables['serie-d']?.map((r) => r.clubId) })
+			: undefined;
 	const updated = await saveCareerProgress(
 		db,
 		profileId,
 		career.id,
-		{ gameDate: seasonStartDate(next.season), season: next.season, data: { league: next, tactical, fitness, seasons: [...view.seasons, summary] } },
+		{ gameDate: seasonStartDate(next.season), season: next.season, data: { league: next, tactical, fitness, seasons: [...view.seasons, summary], ...(nextCup ? { cup: nextCup } : {}) } },
 		career.version
 	);
-	return { career: updated, summary, moves: outcome.moves, champions: outcome.champions };
+	return { career: updated, summary, moves: outcome.moves, champions: outcome.champions, cupChampion: cupNow?.champion ?? null };
 }
 
 const MAX_DECISIONS = 80;

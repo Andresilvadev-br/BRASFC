@@ -4,6 +4,7 @@ import { CLUBS, getClub, LEAGUE, type Club } from './clubs.ts';
 import type { TrainingPlan } from './drills.ts';
 import { DIVISION_LABELS, firstRoundDate, initialLeague, seasonStartDate, type LeagueState, type SeasonSummary, type World } from './league.ts';
 import type { TacticalState } from './tactical.ts';
+import { initialCup, type CupState } from './cup.ts';
 import { formatLong } from './dates.ts';
 import { isPosition, POSITION_INFO, type Position } from './positions.ts';
 import { createRng, deriveSeed } from './rng.ts';
@@ -51,6 +52,9 @@ fitness?: Record<string, number>;
 seasons?: SeasonSummary[];
 /** recomendações do auxiliar que o usuário dispensou */
 dismissedTips?: string[];
+// ── Dev 0.4
+/** Copa do Brasil da temporada em andamento (sorteios e entradas) */
+cup?: CupState;
 }
 
 export interface Career {
@@ -124,7 +128,7 @@ export function validateCreateCareer(input: unknown): ValidationResult<CreateCar
 export function initialCareerData(input: CreateCareerInput, seed: number): CareerData {
 	const world = input.world ?? 'brasfc';
 	const start = careerStart(world);
-	const data: CareerData = { appearance: input.appearance, world, firstSeason: start.season, league: initialLeague(world, start.season) };
+	const data: CareerData = { appearance: input.appearance, world, firstSeason: start.season, league: initialLeague(world, start.season), ...(world === 'brasil' ? { cup: initialCup(start.season) } : {}) };
 	if (input.mode === 'player' && input.position) {
 		const rng = createRng(deriveSeed(seed, 'player'));
 		const overall = rng.int(54, 60);

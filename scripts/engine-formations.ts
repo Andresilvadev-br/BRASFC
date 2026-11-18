@@ -8,7 +8,7 @@ import { buildTeamSetup } from '../src/lib/engine/teams.ts';
 const [c1, c2] = CLUBS.filter((c) => c.reputation === 3);
 const n = Number(process.argv[2] ?? 40);
 const setup = (c: typeof c1, f: string) => buildTeamSetup({ id: c.id, name: c.name, short: c.short, colors: c.colors }, generateSquad(c.id, 7), { formation: f as never, mentality: 'equilibrada', style: 'posse' });
-for (const f of FORMATION_IDS) {
+for (const f of FORMATION_IDS.filter((x) => !process.env.FORMS || process.env.FORMS.split(',').includes(x))) {
 	let p = 0, gf = 0, ga = 0, sf = 0, sa = 0;
 	for (let k = 0; k < n; k++) {
 		const a = k % 2 ? c1 : c2, b = k % 2 ? c2 : c1;

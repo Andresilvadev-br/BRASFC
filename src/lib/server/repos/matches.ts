@@ -68,13 +68,23 @@ export interface RoundInsert {
 	summary?: MatchSummary;
 }
 
-/** Grava uma rodada inteira; falha (sem gravar nada, dentro da transação) se ela já existir. */
+/**
+ * Grava um passo inteiro em lotes (uma instrução por até 100 partidas); falha sem gravar nada
+ * (dentro da transação) se alguma partida já existir — a chave impede rodadas duplicadas.
+ */
 export async function insertRound(tx: Db, careerId: string, rows: RoundInsert[], engineVersion: string): Promise<void> {
-	for (const r of rows) {
+	const COLS = 13;
+	for (let i = 0; i < rows.length; i += 100) {
+		const chunk = rows.slice(i, i + 100);
+		const params: unknown[] = [];
+		const values = chunk.map((r, k) => {
+			params.push(careerId, r.season, r.round, r.competition, r.home, r.away, r.homeGoals, r.awayGoals, r.seed, r.isUser, r.decisions ? JSON.stringify(r.decisions) : null, r.summary ? JSON.stringify(r.summary) : null, engineVersion);
+			const p = (n: number) => '$' + (k * COLS + n);
+			return `(${p(1)}, ${p(2)}, ${p(3)}, ${p(4)}, ${p(5)}, ${p(6)}, ${p(7)}, ${p(8)}, ${p(9)}, ${p(10)}, ${p(11)}::jsonb, ${p(12)}::jsonb, ${p(13)})`;
+		});
 		await tx.query(
-			`INSERT INTO career_matches (career_id, season, round, competition, home, away, home_goals, away_goals, seed, is_user, decisions, summary, engine_version)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb, $13)`,
-			[careerId, r.season, r.round, r.competition, r.home, r.away, r.homeGoals, r.awayGoals, r.seed, r.isUser, r.decisions ? JSON.stringify(r.decisions) : null, r.summary ? JSON.stringify(r.summary) : null, engineVersion]
+			`INSERT INTO career_matches (career_id, season, round, competition, home, away, home_goals, away_goals, seed, is_user, decisions, summary, engine_version) VALUES ${values.join(', ')}`,
+			params
 		);
 	}
 }

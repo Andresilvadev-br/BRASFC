@@ -15,8 +15,10 @@ export interface Fixture {
 	away: string;
 	/** id da competição: 'liga-brasfc' (fictícia) ou 'serie-a' | 'serie-b' | 'serie-c' */
 	competition: string;
-	/** grupo (2ª fase da Série C) */
+	/** grupo (1ª fase com grupos ou quadrangular da Série C) */
 	group?: number;
+	/** fase (ex.: "Quadrangular", "Semifinal", "3ª fase") */
+	phase?: string;
 }
 
 export interface MatchResult {

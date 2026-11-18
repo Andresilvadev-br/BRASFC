@@ -194,20 +194,25 @@ describe('decisões táticas reproduzíveis', () => {
 });
 
 describe('temporadas e competições', () => {
-	it('fecha a temporada com acesso e rebaixamento e mantém 20 clubes por série', () => {
+	it('fecha 2026 com acessos/rebaixamentos reais e expande a Série C para 24 em 2027', () => {
 		const league = initialLeague('brasil', 2026);
 		const fx = seasonFixtures(league, 123);
 		expect(fx.filter((f) => f.competition === 'serie-a')).toHaveLength(380);
 		expect(fx.filter((f) => f.competition === 'serie-c')).toHaveLength(190); // 1ª fase em turno único
+		expect(fx.filter((f) => f.competition === 'serie-d')).toHaveLength(16 * 30); // 16 grupos de 6, ida e volta
 		// resultados sintéticos: o mandante sempre vence (ordem determinística)
 		const results: StoredRoundResult[] = fx.map((f) => ({ round: f.round, home: f.home, away: f.away, homeGoals: 1, awayGoals: 0, competition: f.competition }));
 		const out = closeSeason(league, results);
-		expect(out.moves.filter((m) => m.reason === 'acesso')).toHaveLength(8);
-		expect(out.moves.filter((m) => m.reason === 'rebaixamento')).toHaveLength(8);
-		for (const d of ['serie-a', 'serie-b', 'serie-c'] as const) expect(out.next.divisions[d]).toHaveLength(20);
+		// sobem 4 (B→A) + 4 (C→B) + 6 (D→C); caem 4 (A→B) + 4 (B→C) + 2 (C→D)
+		expect(out.moves.filter((m) => m.reason === 'acesso')).toHaveLength(14);
+		expect(out.moves.filter((m) => m.reason === 'rebaixamento')).toHaveLength(10);
+		expect(out.next.divisions['serie-a']).toHaveLength(20);
+		expect(out.next.divisions['serie-b']).toHaveLength(20);
+		expect(out.next.divisions['serie-c']).toHaveLength(24);
+		expect(out.next.divisions['serie-d']).toHaveLength(96);
 		expect(out.next.season).toBe(2027);
 		const all = Object.values(out.next.divisions).flat();
-		expect(new Set(all).size).toBe(60);
+		expect(new Set(all).size).toBe(all.length);
 	});
 });
 

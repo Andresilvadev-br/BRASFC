@@ -11,6 +11,8 @@ import { randomAppearance } from './appearance.ts';
 import { createRng, deriveSeed } from './rng.ts';
 import type { Fixture, MatchResult } from './season.ts';
 import { generateSquad, type SquadPlayer } from './squad.ts';
+import { quickMatch } from './quick.ts';
+import { baseStrength } from './strength.ts';
 import { engineFamiliarity, resolveRoles, type TacticalState } from './tactical.ts';
 import type { FormationId, PlayStyle, Tactic } from './tactics.ts';
 
@@ -20,8 +22,9 @@ import type { FormationId, PlayStyle, Tactic } from './tactics.ts';
  */
 export const CAREER_PLAYER_ID = 'eu';
 
-/** Semente de uma partida da carreira: carreira + temporada + rodada + mandante. */
-export function matchSeed(career: Pick<Career, 'seed'>, season: number, round: number, home: string): number {
+/** Semente de uma partida da carreira: carreira + temporada + rodada + mandante (+ Copa). */
+export function matchSeed(career: Pick<Career, 'seed'>, season: number, round: number, home: string, competition?: string): number {
+	if (competition === 'copa-do-brasil') return deriveSeed(career.seed, 'match', `${season}:copa:${round}:${home}`);
 	return deriveSeed(career.seed, 'match', `${season}:${round}:${home}`);
 }
 
@@ -114,7 +117,8 @@ export function fixtureSetup(career: Career, fixture: Fixture, myTactic: Tactic,
 	return {
 		home: mySide === 'home' ? me.setup : them.setup,
 		away: mySide === 'home' ? them.setup : me.setup,
-		seed: matchSeed(career, ctx.season, fixture.round, fixture.home),
+		seed: matchSeed(career, ctx.season, fixture.round, fixture.home, fixture.competition),
+		neutral: !!(fixture as Fixture & { neutral?: boolean }).neutral,
 		mySide,
 		/** o treinador comanda o próprio lado; no modo jogador ninguém comanda (IA dos dois lados) */
 		control: career.mode === 'coach' ? mySide : null,
@@ -131,17 +135,36 @@ export function newFixtureMatch(career: Career, fixture: Fixture, myTactic: Tact
 		away: s.away,
 		seed: s.seed,
 		ai: { home: s.control !== 'home', away: s.control !== 'away' },
+		...(s.neutral ? { rules: { homeAdvantage: false } } : {}),
 		...(replay ? { replay } : {})
 	});
 }
 
-/** Demais jogos da rodada (IA × IA), simulados direto pelo mesmo motor. */
-export function simulateOtherFixtures(career: Career, fixtures: Fixture[], ctx: Pick<MatchdayContext, 'season' | 'firstSeason'>): Array<MatchResult & { competition: string; seed: number }> {
+/**
+ * Demais jogos da rodada (IA × IA). `full` decide quais usam o motor completo (padrão: todos);
+ * os outros usam o modelo rápido calibrado pelo motor (src/lib/domain/quick.ts).
+ */
+export function simulateOtherFixtures(
+	career: Career,
+	fixtures: Fixture[],
+	ctx: Pick<MatchdayContext, 'season' | 'firstSeason'>,
+	opts: { full?: (f: Fixture) => boolean; strengthOf?: (clubId: string) => number } = {}
+): Array<MatchResult & { competition: string; seed: number; quick?: boolean }> {
 	return fixtures.map((f) => {
-		const seed = matchSeed(career, ctx.season, f.round, f.home);
-		const r = simulateMatch({ home: aiTeam(career, f.home, ctx, f.round).setup, away: aiTeam(career, f.away, ctx, f.round).setup, seed });
+		const seed = matchSeed(career, ctx.season, f.round, f.home, f.competition);
+		const neutral = !!(f as Fixture & { neutral?: boolean }).neutral;
+		if (opts.full && !opts.full(f)) {
+			const st = opts.strengthOf ?? ((id: string) => squadStrengthOf(career, id));
+			const q = quickMatch(st(f.home), st(f.away), seed, neutral);
+			return { home: f.home, away: f.away, homeGoals: q.homeGoals, awayGoals: q.awayGoals, competition: f.competition, seed, quick: true };
+		}
+		const r = simulateMatch({ home: aiTeam(career, f.home, ctx, f.round).setup, away: aiTeam(career, f.away, ctx, f.round).setup, seed, ...(neutral ? { rules: { homeAdvantage: false } } : {}) });
 		return { home: f.home, away: f.away, homeGoals: r.homeGoals, awayGoals: r.awayGoals, competition: f.competition, seed };
 	});
+}
+
+function squadStrengthOf(career: Career, clubId: string): number {
+	return baseStrength(career.seed, clubId);
 }
 
 /** Resumo persistido da partida do usuário (sem o registro completo de eventos). */

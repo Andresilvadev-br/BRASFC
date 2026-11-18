@@ -71,6 +71,10 @@ export const DEFAULT_ROLE: Record<Position, RoleId> = {
 export function defaultRoleForSlot(shape: ReadonlyArray<{ position: Position }>, i: number): RoleId {
 	const pos = shape[i].position;
 	if (pos === 'ATA' && shape.slice(0, i).some((s) => s.position === 'ATA')) return 'ata-movel';
+	// Com três zagueiros, laterais são alas: a amplitude do time vem deles.
+	if ((pos === 'LD' || pos === 'LE') && shape.filter((s) => s.position === 'ZAG').length === 3) return 'ala';
+	// Sem pontas, um dos meias centrais chega à área para acompanhar a dupla de ataque.
+	if (pos === 'MC' && !shape.some((s) => s.position === 'PD' || s.position === 'PE') && !shape.slice(0, i).some((s) => s.position === 'MC')) return 'mc-area-a-area';
 	return DEFAULT_ROLE[pos];
 }
 

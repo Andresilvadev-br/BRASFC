@@ -152,6 +152,56 @@ describe('partidas da carreira (Dev 0.2/0.3)', () => {
 		expect(userMatch.summary.tactic?.formation).toBe(tactic.formation);
 	});
 
+	it('carreira Brasil: passos de liga e de Copa em ordem, sem duplicar, com Série D e Copa gravadas', async () => {
+		const { careerView } = await import('#lib/domain/view.ts');
+		const { playRound, RoundError } = await import('#lib/server/rounds.ts');
+		const { listResults } = await import('#lib/server/repos/matches.ts');
+		const { profile } = await createGuestProfile(db);
+		let career = await createCareer(db, profile.id, { mode: 'coach', personName: 'Técnico Copa', clubId: 'fortaleza', world: 'brasil' });
+		expect(career.data.cup?.entrants['2']).toContain('fortaleza');
+		const seen: string[] = [];
+		// Até a 2ª fase da Copa (quarta após a 5ª rodada), onde o Fortaleza estreia.
+		for (let i = 0; i < 8; i++) {
+			const v = careerView(career, await listResults(db, career.id, career.season));
+			const res = await playRound(db, profile.id, career, { version: career.version, step: v.step!.key });
+			seen.push(res.step);
+			career = res.career;
+		}
+		expect(seen).toEqual(['league:1', 'league:2', 'league:3', 'cup:1', 'league:4', 'league:5', 'cup:2', 'league:6']);
+		const results = await listResults(db, career.id, career.season);
+		const cupRows = results.filter((r) => r.competition === 'copa-do-brasil');
+		expect(cupRows.filter((r) => r.round === 1)).toHaveLength(14);
+		expect(cupRows.filter((r) => r.round === 2)).toHaveLength(44);
+		expect(cupRows.some((r) => r.round === 2 && (r.home === 'fortaleza' || r.away === 'fortaleza'))).toBe(true);
+		expect(results.filter((r) => r.competition === 'serie-d' && r.round === 1)).toHaveLength(48);
+		// Passo repetido ou fora de ordem é recusado (nada é gravado duas vezes).
+		await expect(playRound(db, profile.id, career, { version: career.version, step: 'cup:2' })).rejects.toBeInstanceOf(RoundError);
+		await expect(playRound(db, profile.id, career, { version: career.version, step: 'league:8' })).rejects.toBeInstanceOf(RoundError);
+		expect((await listResults(db, career.id, career.season)).length).toBe(results.length);
+		const v = careerView(career, results);
+		expect(v.cup!.stages).toHaveLength(2);
+		expect(v.step!.key).toBe('league:7');
+	}, 120_000);
+
+	it('save da Dev 0.3 (Brasil sem Série D e sem Copa) continua e ganha a Série D na troca de temporada', async () => {
+		const { careerView } = await import('#lib/domain/view.ts');
+		const { closeSeason } = await import('#lib/domain/league.ts');
+		const { profile } = await createGuestProfile(db);
+		const c = await createCareer(db, profile.id, { mode: 'coach', personName: 'Save 0.3', clubId: 'bahia', world: 'brasil' });
+		const legacyLeague = { ...c.data.league!, divisions: { 'serie-a': c.data.league!.divisions['serie-a'], 'serie-b': c.data.league!.divisions['serie-b'], 'serie-c': c.data.league!.divisions['serie-c'] }, groups: undefined, pool: undefined, cGroups: null };
+		await db.query(`UPDATE careers SET data = data - 'cup' || jsonb_build_object('league', $2::jsonb) WHERE id = $1`, [c.id, JSON.stringify(legacyLeague)]);
+		const legacy = (await getCareer(db, profile.id, c.id))!;
+		const v = careerView(legacy);
+		expect(v.cup).toBeNull();
+		expect(v.steps.every((s) => s.kind === 'league')).toBe(true);
+		expect(v.fixtures.some((f) => f.competition === 'serie-d')).toBe(false);
+		const out = closeSeason(v.league, []);
+		expect(out.next.divisions['serie-c']).toHaveLength(24);
+		expect(out.next.divisions['serie-d']).toHaveLength(96);
+		// Sem Série D simulada em 2026, sobem os acessos REAIS da Série D 2026.
+		expect(out.moves.filter((m) => m.to === 'serie-c' && m.reason === 'acesso').map((m) => m.clubId).sort()).toEqual(['abc', 'asa', 'gama', 'goiatuba', 'nacional-am', 'uberlandia']);
+	});
+
 	it('save da Dev 0.2 (sem mundo/tático) abre e continua na liga fictícia', async () => {
 		const { careerView } = await import('#lib/domain/view.ts');
 		const { profile } = await createGuestProfile(db);

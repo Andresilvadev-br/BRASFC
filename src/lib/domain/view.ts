@@ -15,6 +15,9 @@ import {
 } from './league.ts';
 import { careerSquad, withFitness } from './matchday.ts';
 import { clubFixtures } from './season.ts';
+import { allFixtures, nextStep, processedKeys, seasonSteps, stepFixtures } from './calendar.ts';
+import { CUP_ID, sanitizeCup } from './cup.ts';
+import { CLUBES_2026 } from '#lib/data/brasil.ts';
 import { squadStrength } from './squad.ts';
 import { resolveRoles, sanitizeTacticalState, syncSquad, teamMastery } from './tactical.ts';
 import { defaultTactic, sanitizeTactic, type Tactic } from './tactics.ts';
@@ -24,6 +27,8 @@ import { defaultTactic, sanitizeTactic, type Tactic } from './tactics.ts';
  * estado salvo (elencos, calendário, classificação, domínio tático) é calculado aqui,
  * igual no servidor e no navegador.
  */
+const KNOWN = new Set(CLUBES_2026.map((c) => c.id));
+
 export function careerView(career: Career, results: StoredRoundResult[] = []) {
 	const club = requireClub(career.clubId);
 	const world = careerWorld(career);
@@ -36,14 +41,24 @@ export function careerView(career: Career, results: StoredRoundResult[] = []) {
 	const tactic: Tactic = persisted ?? defaultTactic(squad);
 	const roles = resolveRoles(tactic.formation, tactic.roles);
 	const tactical = syncSquad(sanitizeTacticalState(career.data.tactical, squad, tactic.formation, tactic.style), squad);
-	const processed = new Set(results.map((r) => r.round));
+	const cup = world === 'brasil' ? sanitizeCup(career.data.cup, KNOWN) : null;
+	const activeCup = cup && cup.season === career.season ? cup : null;
+	const steps = seasonSteps(league, activeCup);
+	const done = processedKeys(results);
+	const step = nextStep(steps, done);
 	const rounds = totalRounds(league);
-	// Próxima rodada do CALENDÁRIO (todas as divisões); o usuário pode não jogar nela.
-	let nextRound = 1;
-	while (processed.has(nextRound) && nextRound <= rounds) nextRound++;
-	const seasonOver = nextRound > rounds;
-	const next = seasonOver ? null : (mine.find((f) => f.round === nextRound) ?? null);
-	const upcoming = mine.find((f) => f.round >= nextRound) ?? null;
+	const seasonOver = step === null;
+	const everything = allFixtures(fixtures, activeCup);
+	const mineAll = everything.filter((f) => f.home === career.clubId || f.away === career.clubId);
+	const played = (f: (typeof everything)[number]) => results.some((r) => (r.competition ?? 'liga-brasfc') === f.competition && r.round === f.round && r.home === f.home);
+	// Próximo passo do CALENDÁRIO (todas as competições); o usuário pode não jogar nele.
+	const next = step ? (stepFixtures(step, everything).find((f) => f.home === career.clubId || f.away === career.clubId) ?? null) : null;
+	const upcoming = mineAll.find((f) => !played(f)) ?? null;
+	let nextRound = step?.kind === 'league' ? step.round : 1;
+	if (step?.kind === 'cup') {
+		const leagueDone = new Set(results.filter((r) => r.competition !== CUP_ID).map((r) => r.round));
+		while (leagueDone.has(nextRound) && nextRound <= rounds) nextRound++;
+	} else if (!step) nextRound = rounds + 1;
 	const standings = divisionStandings(league, division, results);
 	return {
 		club,
@@ -53,7 +68,13 @@ export function careerView(career: Career, results: StoredRoundResult[] = []) {
 		divisionLabel: DIVISION_LABELS[division],
 		squad,
 		fixtures,
-		clubFixtures: mine,
+		clubFixtures: mineAll,
+		/** só as partidas de liga do clube */
+		leagueFixtures: mine,
+		cup: activeCup,
+		steps,
+		/** próximo passo do calendário (domingo de liga ou quarta de Copa) */
+		step,
 		/** partida do usuário na próxima rodada (null = folga nesta rodada ou temporada encerrada) */
 		next,
 		/** próximo jogo do usuário, mesmo que não seja na próxima rodada */

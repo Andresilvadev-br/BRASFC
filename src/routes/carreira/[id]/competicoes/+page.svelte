@@ -2,7 +2,7 @@
 	import { untrack } from 'svelte';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { formatShort } from '#lib/domain/dates.ts';
-	import { DIVISION_LABELS, divisionStandings, groupStandings, rulesFor, type BrasilDivision, type DivisionId } from '#lib/domain/league.ts';
+	import { DIVISION_LABELS, divisionStandings, effectiveRule, groupStandings, type BrasilDivision, type DivisionId } from '#lib/domain/league.ts';
 	import StandingsTable from '#lib/ui/career/StandingsTable.svelte';
 	import Button from '#lib/ui/Button.svelte';
 	import Crest from '#lib/ui/Crest.svelte';
@@ -27,10 +27,12 @@
 	const resultOf = (home: string) => v.results.find((r) => r.round === shownRound && r.home === home && (r.competition ?? div) === div);
 	const zones = $derived.by(() => {
 		if (div === 'liga-brasfc') return { up: 4, down: 4, text: 'Os 4 primeiros em verde e os 4 últimos em vermelho (liga fictícia, sem acesso).' };
-		const r = rulesFor(div as BrasilDivision);
-		if (div === 'serie-a') return { up: 0, down: r.rebaixados ?? 4, text: `Os ${r.rebaixados ?? 4} últimos caem para a Série B. Regra: ${r.status}.` };
-		if (div === 'serie-b') return { up: r.promovidos ?? 4, down: r.rebaixados ?? 4, text: `Os ${r.promovidos ?? 4} primeiros sobem; os ${r.rebaixados ?? 4} últimos caem para a Série C. Regra: ${r.status}.` };
-		return { up: r.classificados ?? 8, down: 0, text: `1ª fase em turno único: os ${r.classificados ?? 8} primeiros vão a dois grupos de 4; os 2 primeiros de cada grupo sobem. ${r.status}.` };
+		const r = effectiveRule(v.league, div as BrasilDivision);
+		const st = r.status === 'oficial' ? 'regra oficial' : r.status === 'anunciado' ? 'regra anunciada' : 'regra projetada pelo BRASFC';
+		if (div === 'serie-a') return { up: 0, down: r.relegated, text: `Os ${r.relegated} últimos caem para a Série B (${st}).` };
+		if (div === 'serie-b') return { up: r.promoted, down: r.relegated, text: `Os ${r.promoted} primeiros sobem; os ${r.relegated} últimos caem para a Série C (${st}).` };
+		if (div === 'serie-d') return { up: 0, down: 0, text: `16 grupos de 6; os 4 primeiros de cada grupo vão ao mata-mata. Sobem os semifinalistas e os vencedores dos playoffs (${st}).` };
+		return { up: 8, down: r.relegated, text: `${r.size} clubes. ${r.nota ?? ''} Sobem 4; caem ${r.relegated} (${st}).` };
 	});
 	const OUTCOME: Record<string, string> = { campeao: 'Campeão', acesso: 'Acesso', rebaixado: 'Rebaixado', permanece: 'Permanência' };
 </script>

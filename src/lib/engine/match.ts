@@ -117,6 +117,17 @@ function shiftSetup(setup: TeamSetup, shift: number): TeamSetup {
 	};
 }
 
+const SHAPES = new Map<string, { threeBack: boolean; wideForwards: number }>();
+function shapeOf(formation: keyof typeof FORMATIONS): { threeBack: boolean; wideForwards: number } {
+	let v = SHAPES.get(formation);
+	if (!v) {
+		const f = FORMATIONS[formation];
+		v = { threeBack: f.filter((x) => x.position === 'ZAG').length === 3, wideForwards: f.filter((x) => x.position === 'PD' || x.position === 'PE').length };
+		SHAPES.set(formation, v);
+	}
+	return v;
+}
+
 const THREE_BACK = new Map<string, boolean>();
 function threeBackOf(formation: keyof typeof FORMATIONS): boolean {
 	let v = THREE_BACK.get(formation);
@@ -594,6 +605,11 @@ export class Match {
 			const span = Math.min(p.blockLength + 14 + p.spacing, 98 - line);
 			ax = line + ((depth - 0.24) / 0.6) * span;
 			if ((s.position === 'LD' || s.position === 'LE') && bx > 45) ax += 8 * p.support + 4;
+			// Esquemas com 3 zagueiros: os alas são a amplitude do time e sobem como pontas.
+			const shape = shapeOf(t.tactic.formation);
+			if (shape.threeBack && (s.position === 'LD' || s.position === 'LE') && bx > 35) ax += 9 * (0.6 + p.support * 0.8);
+			// Sem pontas (dois atacantes centralizados), os meias chegam ao último terço para dar opção.
+			if (shape.wideForwards === 0 && (s.position === 'MC' || s.position === 'MEI') && bx > 40) ax += 6;
 			// Função: avança/recua e aproxima do centro; presença na área empurra meias no último terço.
 			ax += role.space.attack * (bx > 40 ? 1 : 0.5);
 			// Meias abertos e meias-atacantes de esquemas com 2 atacantes sobem em posse
@@ -617,7 +633,7 @@ export class Match {
 			ax = Math.min(ax, Math.max(line + 4, bx + 6));
 			ax += role.space.defend;
 			// Linha de 3/5: os zagueiros fecham o centro (os alas cuidam dos lados).
-			const narrowCB = threeBack && s.position === 'ZAG' ? 0.42 : 0.72;
+			const narrowCB = threeBack && s.position === 'ZAG' ? 0.62 : 0.72;
 			ay = PITCH.width / 2 + (lateral - PITCH.width / 2) * narrowCB + (by - PITCH.width / 2) * 0.32;
 		}
 		// Domínio tático: sem a bola, times que ainda não dominam o sistema deixam buracos
