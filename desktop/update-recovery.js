@@ -1,17 +1,18 @@
 const { spawn } = require('node:child_process');
 const { createHash } = require('node:crypto');
-const { createReadStream } = require('node:fs');
+const physical = require('original-fs');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
+// Electron normally treats app.asar as a virtual directory. Recovery must copy and hash the physical archive.
 async function manifest(directory, relative = '') {
 	const files = {};
-	for (const entry of await fs.readdir(path.join(directory, relative), { withFileTypes: true })) {
+	for (const entry of await physical.promises.readdir(path.join(directory, relative), { withFileTypes: true })) {
 		const file = path.join(relative, entry.name);
 		if (entry.isDirectory()) Object.assign(files, await manifest(directory, file));
 		else if (entry.isFile()) {
 			const hash = createHash('sha256');
-			for await (const chunk of createReadStream(path.join(directory, file))) hash.update(chunk);
+			for await (const chunk of physical.createReadStream(path.join(directory, file))) hash.update(chunk);
 			files[file] = hash.digest('hex');
 		}
 		else throw Error('A instalação tem arquivos especiais e não pôde ser copiada com segurança.');
@@ -40,7 +41,7 @@ function updateRecovery(app) {
 		const state = { dir, exe, install, installer, targetVersion, previousVersion: app.getVersion(), oldPid: process.pid,
 			saves: path.join(app.getPath('userData'), 'saves'), preferences: path.join(app.getPath('userData'), 'janela.json') };
 		try {
-			await fs.cp(install, path.join(dir, 'program'), { recursive: true, errorOnExist: true, force: false });
+			await physical.promises.cp(install, path.join(dir, 'program'), { recursive: true, errorOnExist: true, force: false });
 			const files = await manifest(path.join(dir, 'program'));
 			const original = await manifest(install);
 			if (Object.keys(files).length !== Object.keys(original).length || Object.entries(files).some(([file, hash]) => original[file] !== hash)) throw Error('A cópia de segurança do aplicativo divergiu da instalação.');
