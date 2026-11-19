@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import { enter, pop } from '#lib/motion/actions.ts';
-	import { api } from '#lib/api.ts';
+	import { ApiError, api, connectionIssue, retryDelay } from '#lib/api.ts';
 	import type { updateLiveRound } from '#lib/server/connected-world.ts';
 	import { FORMATIONS, FORMATION_IDS, MENTALITIES, MENTALITY_LABELS, STYLES, STYLE_LABELS, autoLineup, type FormationId } from '#lib/domain/tactics.ts';
 	import { presetInstructions, type Level5 } from '#lib/engine/instructions.ts';
@@ -15,9 +15,15 @@
 
 	type Session = NonNullable<Awaited<ReturnType<typeof updateLiveRound>>['session']>;
 	let { path, profile, names, online, onchange, oncomplete }: { path: string; profile: string; names: Record<string, string>; online: boolean;
-		onchange: (loading: boolean) => void; oncomplete: () => void } = $props();
+		onchange: (loading: boolean) => void; oncomplete: () => Promise<void> } = $props();
 	let session = $state.raw<Session | null>(null);
 	let pending = $state(false);
+	let pulseFailures = $state(0);
+	let retryPause = 0;
+	let timer: ReturnType<typeof setTimeout>;
+	let disposed = false;
+	let lastPulse: AbortController | undefined;
+	let completed = false;
 	let error = $state('');
 	let skipped = $state(false);
 	let now = $state(0);
@@ -58,31 +64,59 @@
 		if (pending) return;
 		pending = true;
 		try {
-			const data = await api<{ session: Session | null }>(`${path}?live${action === 'pulse' ? '=pulse' : ''}`, { body: action === 'pulse' ? { action } : {
+			if (action === 'pulse') lastPulse = new AbortController();
+			const data = await api<{ session: Session | null }>(`${path}?live${action === 'pulse' ? '=pulse' : ''}`, { signal: action === 'pulse' ? lastPulse?.signal : undefined, body: action === 'pulse' ? { action } : {
 				action, session: session?.id, sequence: session?.sequence, op: crypto.randomUUID(), ...extra
 			} });
 			if (!data.session) {
-				oncomplete();
+				await oncomplete();
+				completed = true;
 				return;
 			}
+			pulseFailures = 0;
+			retryPause = 0;
 			error = '';
 			const frame = data.session.relevant?.match;
 			if (frame && frame.tick !== frameSet.at(-1)?.tick && replayIndex === null) frameSet = [...frameSet.slice(-8), frame];
 			session = data.session;
 			onchange(session.phase === 'LOADING');
 		} catch (e) {
+			if (disposed) return;
 			error = e instanceof Error ? e.message : 'Falha temporária na sessão.';
+			if (action === 'pulse') {
+				retryPause = retryDelay(pulseFailures, e instanceof ApiError ? e.retryAfterMs : undefined);
+				pulseFailures = connectionIssue(e) ? pulseFailures + 1 : 5;
+			}
 		} finally {
+			if (action === 'pulse') lastPulse = undefined;
 			pending = false;
 		}
 	}
 
+	async function poll() {
+		if (disposed || completed || !navigator.onLine || pulseFailures >= 5) return;
+		await request('pulse');
+		if (!disposed && !completed && pulseFailures < 5) timer = setTimeout(poll, retryPause || 950);
+	}
+	function recoverConnection() {
+		clearTimeout(timer);
+		pulseFailures = 0;
+		retryPause = 0;
+		void poll();
+	}
 	onMount(() => {
-		void request('pulse');
-		const poll = setInterval(() => { if (navigator.onLine) void request('pulse'); }, 950);
+		void poll();
+		window.addEventListener('online', recoverConnection);
 		const clock = setInterval(() => { now = Date.now(); }, 200);
 		now = Date.now();
-		return () => { clearInterval(poll); clearInterval(clock); clearInterval(replayTimer); };
+		return () => {
+			disposed = true;
+			lastPulse?.abort();
+			window.removeEventListener('online', recoverConnection);
+			clearTimeout(timer);
+			clearInterval(clock);
+			clearInterval(replayTimer);
+		};
 	});
 
 	$effect(() => {
@@ -116,6 +150,7 @@
 </script>
 
 <section class="live" aria-label="Transmissão da rodada" use:enter>
+	{#if pulseFailures >= 5}<Button size="sm" onclick={recoverConnection}>Reconectar à partida</Button>{/if}
 	{#if error}<p role="alert">{error}</p>{/if}
 	{#if !session || session.phase === 'LOADING'}
 		<div class="surface waiting">

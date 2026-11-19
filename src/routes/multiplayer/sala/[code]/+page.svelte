@@ -76,7 +76,8 @@
 		<div class="layout">
 			<section class="lobby" aria-label="Jogadores na sala">
 				<div class="status">
-					<span class="conn" data-s={s.status}><span class="led"></span>{s.status === 'online' ? 'Conectado em tempo real' : s.status === 'reconnecting' ? 'Reconectando…' : 'Conectando…'}</span>
+					<span class="conn" data-s={s.status}><span class="led"></span>{s.status === 'online' ? 'Conectado em tempo real' : s.status === 'reconnecting' ? 'Reconectando…' : s.status === 'offline' ? 'Sem conexão de rede' : s.status === 'unavailable' ? 'Servidor temporariamente indisponível' : 'Conectando…'}</span>
+					{#if s.status === 'unavailable'}<Button size="sm" onclick={conn.start}>Reconectar</Button>{/if}
 					{#if s.error}<span class="err">{s.error}</span>{/if}
 				</div>
 				<div class="bench">

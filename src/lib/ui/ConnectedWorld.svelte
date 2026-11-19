@@ -9,7 +9,7 @@
 	}
 
 	import { onMount, untrack } from 'svelte';
-	import { ApiError, api } from '#lib/api.ts';
+	import { ApiError, api, connectionIssue } from '#lib/api.ts';
 	import { APPEARANCE_OPTIONS, APPEARANCE_FIELDS, DEFAULT_APPEARANCE, HAIR_COLORS, HAIR_STYLES, HAIR_STYLE_LABELS, SKIN_TONES, type Appearance } from '#lib/domain/appearance.ts';
 	import type { DominantFoot } from '#lib/domain/career.ts';
 	import { playerKit } from '#lib/pixel/kits.ts';
@@ -60,6 +60,9 @@
 	let savedLineup = $state<string[]>([]);
 	let drill = $state<DrillId>('formacao');
 	let saving = $state(false);
+	const resultEventLabels: Record<string, string> = {
+		goal: 'Gol', goal_disallowed: 'Gol anulado', yellow: 'Amarelo', red: 'Vermelho', injury: 'Lesão', sub: 'Substituição'
+	};
 	let replay = $state.raw<Awaited<ReturnType<typeof worldReplay>> | null>(null);
 	let message = $state('');
 	let failed = $state(false);
@@ -112,7 +115,7 @@
 
 	onMount(() => {
 		const interval = window.setInterval(() => {
-			if (!document.hidden && !saving) {
+			if (!online && !world.live && !document.hidden && !saving && navigator.onLine) {
 				void api<{ revision: number }>(`${path}?revision`).then((next) => {
 					if (next.revision > world.revision) return refresh();
 				}).catch((e) => {
@@ -137,8 +140,8 @@
 		} catch (e) {
 			failed = true;
 			message = e instanceof Error ? e.message : 'Falha na sincronização.';
-			if (e instanceof ApiError && !e.status) retry = command;
-			void refresh().catch(() => {});
+			if (connectionIssue(e)) retry = command;
+			else if (e instanceof ApiError && e.status === 409) void refresh().catch(() => {});
 		} finally {
 			saving = false;
 		}
@@ -174,7 +177,7 @@
 	<Island {friends} loading={world.live} />
 {/if}
 {#if world.live}
-	<LiveMatch {path} profile={profileId} {names} {online} onchange={(loading) => (loadingLive = loading)} oncomplete={() => void refresh().catch(() => {})} />
+	<LiveMatch {path} profile={profileId} {names} {online} onchange={(loading) => (loadingLive = loading)} oncomplete={refresh} />
 {:else}
 <section class="world" use:enter>
 	<div class="heading">
@@ -214,7 +217,7 @@
 					{#if row.me}<p>{row.me.selection} · {row.me.stats?.minutes ?? 0} min{row.me.stats ? ` · nota ${row.me.stats.rating.toFixed(1)} · ${row.me.stats.goals} gol(s)` : ''}</p>{/if}
 					{#if row.replay}<Button size="sm" onclick={() => watchMatch(row.home, row.away)}>Rever jogo oficial</Button>{/if}
 					{#if row.events?.length}<details><summary>Eventos da partida</summary>
-						{#each row.events as event}<p>{Math.floor(event.tick / 60)}′ · {{ goal: 'Gol', yellow: 'Amarelo', red: 'Vermelho', injury: 'Lesão', sub: 'Substituição' }[event.type]} · {world.roster.find((p) => p.id === event.player)?.name ?? clubName(event.side === 'home' ? row.home : row.away)}</p>{/each}
+						{#each row.events as event}<p>{Math.floor(event.tick / 60)}′ · {resultEventLabels[event.type]}{event.type === 'goal_disallowed' && event.data?.reason === 'impedimento' ? ' por impedimento' : ''} · {world.roster.find((p) => p.id === event.player)?.name ?? clubName(event.side === 'home' ? row.home : row.away)}</p>{/each}
 					</details>{/if}
 				{/each}
 				<details><summary>Todos os placares ({world.last.length})</summary>

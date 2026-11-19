@@ -33,7 +33,7 @@
 					}}
 					title={desktop.mode === 'offline' ? 'Jogando offline: carreiras salvas neste computador. Clique para jogar online.' : 'Jogando online: carreiras salvas no servidor. Clique para jogar offline.'}
 				>
-					<i aria-hidden="true"></i><span>{desktop.mode === 'offline' ? 'Offline' : 'Online'}</span>
+					<i aria-hidden="true"></i><span>{desktop.mode === 'offline' ? 'Modo local' : 'Modo online'}</span>
 				</button>
 			{/if}
 			<button type="button" class="full" onclick={toggleFullscreen} title="Tela cheia (F11)" aria-label="Entrar em tela cheia (F11)">

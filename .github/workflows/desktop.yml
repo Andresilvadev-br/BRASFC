@@ -84,8 +84,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $old = Join-Path $env:RUNNER_TEMP 'brasfc-1.3.0'
-          gh release download v1.3.0 --pattern BRASFC-Setup.exe --dir $old --repo $env:GITHUB_REPOSITORY
+          $old = Join-Path $env:RUNNER_TEMP 'brasfc-1.3.1'
+          gh release download v1.3.1 --pattern BRASFC-Setup.exe --dir $old --repo $env:GITHUB_REPOSITORY
           $process = Start-Process (Join-Path $old 'BRASFC-Setup.exe') -ArgumentList '/S' -PassThru -Wait
           if ($process.ExitCode -ne 0) { throw "Instalação anterior falhou: $($process.ExitCode)" }
           Stop-Process -Name BRASFC -ErrorAction SilentlyContinue

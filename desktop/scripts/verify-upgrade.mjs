@@ -1,4 +1,4 @@
-// Run from the repository root on an isolated Windows runner after installing 1.3.0.
+// Run from the repository root on an isolated Windows runner after installing the stable baseline.
 import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -51,7 +51,8 @@ const server = createServer((request, response) => {
 	} else createReadStream(file).pipe(response);
 });
 await new Promise((resolve) => server.listen(4187, '127.0.0.1', resolve));
-const result = { targetVersion: version, tests: [] };
+const fromVersion = process.env.BRASFC_BASE_VERSION ?? '1.3.1';
+const result = { fromVersion, targetVersion: version, tests: [] };
 let app;
 let socket;
 let inspector = false;
@@ -117,7 +118,7 @@ try {
 	const { mkdirSync } = await import('node:fs');
 	mkdirSync(join(preferences, '..'), { recursive: true });
 	writeFileSync(preferences, JSON.stringify({ mode: 'offline', automatic: false, width: 1001 }));
-	assert.match(installedVersion(), /^1\.3\.0\b/);
+	assert.equal(installedVersion().split(' ')[0], fromVersion);
 	await launch();
 	await until(() => evaluate("location.origin.startsWith('http://127.0.0.1:47615') && !!window.brasfcDesktop"));
 	const old = await evaluate(`(async () => {
@@ -129,7 +130,7 @@ try {
 		if (!round.match) throw Error('Falha ao registrar o primeiro jogo');
 		return { id:career.id, profile:profile.id, score:[round.match.homeGoals,round.match.awayGoals] };
 	})()`);
-	result.tests.push('1.3.0 instalado, perfil local e primeira partida oficial persistidos');
+	result.tests.push(`${fromVersion} instalado, perfil local e primeira partida oficial persistidos`);
 	await evaluate("window.brasfcDesktop.update('auto', false)");
 	await evaluate("window.brasfcDesktop.update('check', true)");
 	await until(async () => (await evaluate("window.brasfcDesktop.update('state')"))?.version === version);
@@ -143,7 +144,7 @@ try {
 		assert(served[failure] > 0);
 		if (failure === 'corrupt') assert.match(state.error, /sha512|checksum|integrity/i);
 		assert.equal(await evaluate("window.brasfcDesktop.update('install')"), false);
-		assert.match(installedVersion(), /^1\.3\.0\b/);
+		assert.equal(installedVersion().split(' ')[0], fromVersion);
 		const preserved = await evaluate(`Promise.all([
 			fetch('/api/session').then(r => r.json()).then(data => data.profile?.id),
 			fetch('/api/careers/${old.id}/matches').then(r => r.json()).then(data => {
@@ -228,7 +229,8 @@ try {
 			});
 			await waitOffline();
 			await downloadCandidate();
-			assert.equal(await evaluate("window.brasfcDesktop.update('install')"), true);
+			const installed = await evaluate("window.brasfcDesktop.update('install')");
+			assert.equal(installed, true, JSON.stringify(await evaluate("window.brasfcDesktop.update('state')")));
 			socket.close();
 			const restored = await until(() => {
 				const state = outcome();

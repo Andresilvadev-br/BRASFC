@@ -1,0 +1,58 @@
+[
+  {
+    "width": 1440,
+    "height": 900,
+    "options": 5,
+    "switches": 15,
+    "movement": {
+      "menu": 0,
+      "stage": 0,
+      "title": 0,
+      "footer": 0,
+      "scroll": 0
+    },
+    "keyboardAndNavigation": true
+  },
+  {
+    "width": 1024,
+    "height": 640,
+    "options": 5,
+    "switches": 15,
+    "movement": {
+      "menu": 0,
+      "stage": 0,
+      "title": 0,
+      "footer": 0,
+      "scroll": 0
+    },
+    "keyboardAndNavigation": true
+  },
+  {
+    "width": 768,
+    "height": 1024,
+    "options": 5,
+    "switches": 15,
+    "movement": {
+      "menu": 0,
+      "stage": 0,
+      "title": 0,
+      "footer": 0,
+      "scroll": 0
+    },
+    "keyboardAndNavigation": true
+  },
+  {
+    "width": 390,
+    "height": 667,
+    "options": 5,
+    "switches": 15,
+    "movement": {
+      "menu": 0,
+      "stage": 0,
+      "title": 0,
+      "footer": 0,
+      "scroll": 0
+    },
+    "keyboardAndNavigation": true
+  }
+]

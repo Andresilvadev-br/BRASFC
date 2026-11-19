@@ -24,7 +24,7 @@ import { ensureUniverse, universeAfterStep, universeAtSeasonEnd } from './univer
 import { computeOverall } from '#lib/engine/attributes.ts';
 import { buildTeamSetup } from '#lib/engine/teams.ts';
 import { Match } from '#lib/engine/match.ts';
-import { ENGINE_VERSION, supportsEngineVersion, type MatchResult, type Side, type PlayerStats } from '#lib/engine/types.ts';
+import { ENGINE_VERSION, supportsEngineVersion, type MatchEvent, type MatchResult, type Side, type PlayerStats } from '#lib/engine/types.ts';
 import { canCommitRound, checkpoint, enginesFor, forgetRound, keepEngines, matchView, preparedFixtures, pulseRound, rememberFixtures, startRound, type LiveFixture, type LiveRound, type RoundReplay } from './live-round.ts';
 import { parseDecision } from './rounds.ts';
 import type { Db } from './db/index.ts';
@@ -38,7 +38,7 @@ type Assignment = {
 type AthleteDeal = { profile: string; offer: string; from: string; to: string; approvals: string[] };
 type Deal = { id: string; from: string; to: string; player: string; fee: number };
 type Replay = RoundReplay;
-type Played = StoredRoundResult & { replay?: Replay; replayVersion?: string; athletes?: Record<string, { stats?: PlayerStats; selection: 'titular' | 'reserva' | 'fora' }>; events?: Array<{ tick: number; type: string; side?: string; player?: string; other?: string }> };
+type Played = StoredRoundResult & { replay?: Replay; replayVersion?: string; athletes?: Record<string, { stats?: PlayerStats; selection: 'titular' | 'reserva' | 'fora' }>; events?: MatchEvent[] };
 type WorldState = {
 	universe?: CareerData['universe']; league: LeagueState; cup: ReturnType<typeof initialCup> | null; date: string; step: number; firstSeason: number;
 	participants: Record<string, Assignment>; tactics: Record<string, Tactic>;

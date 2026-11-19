@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { invalidate } from '$app/navigation';
+	import { api } from '#lib/api.ts';
 	import { MODE_LABELS } from '#lib/domain/career.ts';
 	import { formatShort } from '#lib/domain/dates.ts';
 	import { formatMoney } from '#lib/domain/market.ts';
@@ -12,6 +14,14 @@
 	let { data, children } = $props();
 
 	const base = $derived(`/carreira/${data.career.id}`);
+	let visited = '';
+	$effect(() => {
+		const id = data.career.id;
+		if (visited !== id) {
+			visited = id;
+			void api(`/api/careers/${id}`, { method: 'PATCH', body: { action: 'touch' } }).catch(() => {});
+		}
+	});
 	const unread = $derived(data.career.unreadMessages ?? 0);
 	const coach = $derived(data.career.mode === 'coach');
 	const brasil = $derived(data.view.world === 'brasil');
@@ -71,6 +81,9 @@
 	});
 </script>
 
+{#if data.degraded.length}
+	<p class="load-notice" role="status">Não foi possível carregar {data.degraded.join(' e ')}. <button type="button" onclick={() => invalidate('app:career')}>Tentar novamente</button></p>
+{/if}
 <div class="shell" style="--club:{data.view.club.colors.primary}">
 	<aside class="rail" aria-label="Navegação da carreira">
 		<a class="club" href={base} data-umx-shared="career-crest">
@@ -86,7 +99,7 @@
 			{#each groups as g (g.label)}
 				<p class="group">{g.label}</p>
 				{#each g.items as t (t.href)}
-					<a href={t.href} aria-current={current === t.href ? 'page' : undefined} data-sveltekit-preload-data="hover">
+					<a href={t.href} aria-current={current === t.href ? 'page' : undefined} data-sveltekit-preload-data="off" data-sveltekit-preload-code="hover">
 						<Icon name={t.icon} size={18} />
 						<span>{t.label}</span>
 						{#if t.badge}<span class="count" aria-label="{t.badge} pendentes">{t.badge}</span>{/if}
@@ -127,6 +140,9 @@
 </div>
 
 <style>
+	.load-notice { margin: 0; padding: 8px var(--sp-4); background: var(--surface-2); color: var(--text-2); font-size: var(--fs-sm); }
+	.load-notice button { color: var(--emerald-strong); }
+
 	.shell {
 		min-height: var(--app-h, 100vh);
 		display: grid;

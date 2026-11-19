@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { getDb } from '#lib/server/db/index.ts';
-import { ensureProfile, noStore, RateLimiter, readJson } from '#lib/server/http.ts';
+import { ensureProfile, limitedResponse, noStore, RateLimiter, readJson } from '#lib/server/http.ts';
 import { createRoom, listRoomsForProfile, normalizeRoomName, RoomError } from '#lib/server/repos/rooms.ts';
 import type { RequestHandler } from './$types';
 
@@ -16,7 +16,8 @@ export const POST: RequestHandler = async (event) => {
 	const name = normalizeRoomName(body.name);
 	if (!name) error(400, 'Dê um nome de 2 a 40 caracteres para a sala.');
 	const profile = await ensureProfile(event);
-	if (!createLimiter.take(profile.id)) error(429, 'Você criou muitas salas em pouco tempo. Aguarde alguns minutos.');
+	const retry = createLimiter.retryAfter(profile.id);
+	if (retry) return limitedResponse(retry, 'Você criou muitas salas em pouco tempo.');
 	try {
 		return noStore({ room: await createRoom(await getDb(), profile.id, name) }, { status: 201 });
 	} catch (e) {

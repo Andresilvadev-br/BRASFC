@@ -8,6 +8,7 @@ declare global {
 	namespace App {
 		interface Locals {
 			profile: Profile | null;
+			requestId: string;
 		}
 		interface Error {
 			message: string;

@@ -7,7 +7,7 @@ import { isPlayerFocus, isPlayerFocusForPosition, isTeamFocus } from '#lib/domai
 import { sanitizePlan } from '#lib/domain/drills.ts';
 import { getDb } from '#lib/server/db/index.ts';
 import { noStore, readJson, requireProfile } from '#lib/server/http.ts';
-import { deleteCareer, getCareer, patchCareerData, touchCareer, VersionConflictError } from '#lib/server/repos/careers.ts';
+import { deleteCareer, getCareer, isUuid, patchCareerData, touchCareer, VersionConflictError } from '#lib/server/repos/careers.ts';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async (event) => {
@@ -21,14 +21,13 @@ export const GET: RequestHandler = async (event) => {
 export const PATCH: RequestHandler = async (event) => {
 	const profile = requireProfile(event);
 	const db = await getDb();
-	const career = await getCareer(db, profile.id, event.params.id);
-	if (!career) error(404, 'Carreira não encontrada.');
 	const body = await readJson(event.request);
-
 	if (body.action === 'touch') {
-		await touchCareer(db, profile.id, career.id);
+		if (!isUuid(event.params.id) || !await touchCareer(db, profile.id, event.params.id)) error(404, 'Carreira não encontrada.');
 		return noStore({ ok: true });
 	}
+	const career = await getCareer(db, profile.id, event.params.id);
+	if (!career) error(404, 'Carreira não encontrada.');
 
 	const version = Number(body.version);
 	if (!Number.isInteger(version)) error(400, 'Versão da carreira ausente.');

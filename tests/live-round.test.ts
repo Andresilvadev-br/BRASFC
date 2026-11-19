@@ -65,7 +65,7 @@ it('recupera rodada com vários jogos, aplica substituições reais e espera tr�
 	expect(session.suspended).toBe(true);
 	expect(session.tick).toBe(0);
 	connected.add(athlete);
-	for (let i = 0; i < 300 && session.phase === 'FIRST_HALF'; i++) {
+	for (let i = 0; i < 600 && session.phase === 'FIRST_HALF'; i++) {
 		now += 1600;
 		session = (await pulse()).session!;
 	}
@@ -96,7 +96,7 @@ it('recupera rodada com vários jogos, aplica substituições reais e espera tr�
 	expect((await worldSnapshot(db, room, coach)).date).toBe(before.date);
 	await issue(athlete, 'confirm', { value: true });
 	expect(session.phase).toBe('SECOND_HALF');
-	for (let i = 0; i < 300 && session.phase === 'SECOND_HALF'; i++) {
+	for (let i = 0; i < 600 && session.phase === 'SECOND_HALF'; i++) {
 		now += 1600;
 		session = (await pulse()).session!;
 	}

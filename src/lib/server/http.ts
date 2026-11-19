@@ -15,9 +15,14 @@ export function setSessionCookie(cookies: Cookies, token: string, secure: boolea
 	});
 }
 
+const profileLookups = new Map<string, Promise<Profile | null>>();
 export async function profileFromToken(token: string | undefined): Promise<Profile | null> {
 	if (!token) return null;
-	return findProfileByToken(await getDb(), token);
+	const existing = profileLookups.get(token);
+	if (existing) return existing;
+	const pending = getDb().then((db) => findProfileByToken(db, token)).finally(() => profileLookups.delete(token));
+	profileLookups.set(token, pending);
+	return pending;
 }
 
 /** Perfil atual; cria um convidado se ainda não existir (somente em mutações/rotas explícitas). */
@@ -62,19 +67,28 @@ export class RateLimiter {
 	) {}
 
 	take(key: string, now = Date.now()): boolean {
+		return this.retryAfter(key, now) === 0;
+	}
+
+	/** Charges one operation when admitted, otherwise returns the real wait in seconds. */
+	retryAfter(key: string, now = Date.now()): number {
 		const since = now - this.windowMs;
 		const list = (this.hits.get(key) ?? []).filter((t) => t > since);
 		if (list.length >= this.limit) {
 			this.hits.set(key, list);
-			return false;
+			return Math.max(1, Math.ceil((list[0] + this.windowMs - now) / 1000));
 		}
 		list.push(now);
 		this.hits.set(key, list);
 		if (this.hits.size > 5_000) this.sweep(since);
-		return true;
+		return 0;
 	}
 
 	private sweep(since: number) {
 		for (const [k, v] of this.hits) if (!v.some((t) => t > since)) this.hits.delete(k);
 	}
+}
+
+export function limitedResponse(seconds: number, message = 'Muitas requisições. Aguarde um instante.') {
+	return noStore({ message }, { status: 429, headers: { 'retry-after': String(seconds) } });
 }

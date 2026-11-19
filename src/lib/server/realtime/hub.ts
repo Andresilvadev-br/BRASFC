@@ -75,7 +75,7 @@ export class RealtimeHub {
 		ws.on('message', (data) => void this.onMessage(conn, data.toString()));
 		ws.on('close', () => {
 			this.conns.delete(conn);
-			if (conn.roomId) void this.broadcastRoom(conn.roomId);
+			if (conn.roomId) void this.broadcastRoom(conn.roomId).catch(() => {});
 		});
 		ws.on('error', () => ws.terminate());
 		this.send(conn, { t: 'welcome', profileId: profile.id, displayName: profile.displayName });
@@ -117,8 +117,10 @@ export class RealtimeHub {
 				}
 				case 'activity': {
 					if (!conn.roomId) return;
+					const now = Date.now();
+					if (conn.activity === msg.value && (conn.activityUntil ?? 0) > now + 10_000) return;
 					conn.activity = msg.value;
-					conn.activityUntil = Date.now() + 45_000;
+					conn.activityUntil = now + 45_000;
 					return this.broadcastRoom(conn.roomId);
 				}
 				case 'ready': {

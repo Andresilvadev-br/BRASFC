@@ -45,9 +45,13 @@ function desktopUpdates({ updater, publish, persist, automatic = true, canInstal
 		return downloading;
 	}
 	async function install() {
-		if (installing || state.status !== 'ready' || !canInstall()) return false;
+		if (installing || state.status !== 'ready') return false;
+		if (!canInstall()) {
+			set({ error: 'Aguarde a confirmação das gravações antes de reiniciar.' });
+			return false;
+		}
 		installing = true;
-		set({ status: 'installing' });
+		set({ status: 'installing', error: null });
 		try {
 			await drain();
 			await recovery?.prepare(state.version, installer);

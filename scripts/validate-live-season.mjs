@@ -12,7 +12,7 @@ const limit = Number(process.env.BRASFC_TEST_ROUNDS ?? 0);
 assert(Number.isSafeInteger(limit) && limit >= 0 && limit <= 51);
 
 const started = performance.now();
-const report = { rounds: [], requests: {}, serverTiming: {}, errors: {}, scenarios: [], maxRssBytes: 0, maxCpuPercent: 0 };
+const report = { rounds: [], requests: {}, serverTiming: {}, clientTiming: {}, network: { connections: 0, intentionalDisconnects: 0, unexpectedDisconnects: 0 }, errors: {}, scenarios: [], maxRssBytes: 0, maxCpuPercent: 0 };
 const sessions = [];
 const ip = new URL(base);
 let cpuStart;
@@ -33,8 +33,14 @@ async function call(actor, path, payload) {
 	const kind = payload?.action ?? (payload ? 'create' : 'read');
 	const result = await fetch(base + path, { method: payload ? 'POST' : 'GET', headers: { origin: base, cookie: actor?.cookie ?? '',
 		...(payload ? { 'content-type': 'application/json' } : {}) }, body: payload ? JSON.stringify(payload) : undefined });
+	const headersAt = performance.now();
 	const body = await result.json();
-	(report.requests[kind] ??= []).push(performance.now() - t0);
+	const elapsed = performance.now() - t0;
+	(report.requests[kind] ??= []).push(elapsed);
+	if (kind === 'pulse') {
+		(report.clientTiming.headers ??= []).push(headersAt - t0);
+		(report.clientTiming.bodyAndJson ??= []).push(elapsed - (headersAt - t0));
+	}
 	for (const entry of (result.headers.get('server-timing') ?? '').matchAll(/([a-z-]+);dur=([\d.]+)/g)) {
 		(report.serverTiming[entry[1]] ??= []).push(Number(entry[2]));
 	}
@@ -44,16 +50,21 @@ async function call(actor, path, payload) {
 }
 
 async function connect(actor, code) {
+	const started = performance.now();
 	const socket = new WebSocket(`ws://${ip.host}/ws/realtime`, { origin: base, headers: { cookie: actor.cookie } });
 	actor.socket = socket;
+	socket.on('close', () => { if (!actor.disconnectPlanned) report.network.unexpectedDisconnects++; });
 	await new Promise((resolve, reject) => {
 		const timer = setTimeout(() => reject(Error('Presença não confirmada')), 10000);
 		socket.on('open', () => socket.send(JSON.stringify({ t: 'join', code })));
 		socket.on('message', (raw) => {
-			if (JSON.parse(String(raw)).t === 'room') { clearTimeout(timer); resolve(); }
+			if (JSON.parse(String(raw)).t === 'room') {
+				clearTimeout(timer); resolve();
+			}
 		});
 		socket.on('error', reject);
-	});
+	});	report.network.connections++;
+	(report.clientTiming.websocketJoin ??= []).push(performance.now() - started);
 }
 try {
 	for (let i = 0; i < 4; i++) sessions.push({ cookie: (await call(null,'/api/session',{})).headers.get('set-cookie').split(';')[0] });
@@ -99,7 +110,7 @@ try {
 		assert.equal(view.phase, 'LOADING');
 		for (const [i] of sessions.entries()) view = await live(i, 'loaded', { session: view.id, op: randomUUID() });
 		let half = false, finish = false, count = 0, maxFixtures = 0;
-		while (view && count++ < 500) {
+		while (view && count++ < 900) {
 			const phase = view.phase;
 			maxFixtures = Math.max(maxFixtures, view.fixtures.length);
 			if (phase === 'HALF_TIME' && !half) {
@@ -109,9 +120,12 @@ try {
 					const current = await live(0);
 					await live(0, 'decision', { session: current.id, sequence: current.sequence, op: randomUUID(), decision: { type: 'mentality', value: 'ofensiva' } });
 					const interrupted = sessions[3].socket;
+					sessions[3].disconnectPlanned = true;
+					report.network.intentionalDisconnects++;
 					const closed = new Promise((resolve) => interrupted.once('close', resolve));
 					interrupted.close();
 					await closed;
+					sessions[3].disconnectPlanned = false;
 					view = await live(0);
 					assert.equal(view.phase, 'HALF_TIME');
 					await connect(sessions[3], code);
@@ -146,7 +160,7 @@ try {
 	process.exitCode = 1;
 } finally {
 	clearInterval(sampler);
-	await Promise.all(sessions.map((actor) => actor.socket?.terminate()));
+	for (const actor of sessions) { actor.disconnectPlanned = true; actor.socket?.terminate(); }
 	report.ms = performance.now() - started;
 	const summarize = (samples) => Object.fromEntries(Object.entries(samples).map(([key, values]) => {
 		values.sort((a,b) => a-b);
@@ -155,6 +169,7 @@ try {
 	}));
 	report.requests = summarize(report.requests);
 	report.serverTiming = summarize(report.serverTiming);
+	report.clientTiming = summarize(report.clientTiming);
 	writeFileSync(output, JSON.stringify(report, null, 2));
 	console.log(JSON.stringify({ ...report, rounds: report.rounds.length }));
 }

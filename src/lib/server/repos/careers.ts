@@ -161,8 +161,9 @@ export async function advanceCareerDate(db: Db, profileId: string, id: string, g
 	return mapCareer(rows[0]);
 }
 
-export async function touchCareer(db: Db, profileId: string, id: string): Promise<void> {
-	await db.query('UPDATE careers SET updated_at = now() WHERE id = $1 AND profile_id = $2', [id, profileId]);
+export async function touchCareer(db: Db, profileId: string, id: string): Promise<boolean> {
+	const rows = await db.query('UPDATE careers SET updated_at = now() WHERE id = $1 AND profile_id = $2 RETURNING id', [id, profileId]);
+	return rows.length === 1;
 }
 
 export async function deleteCareer(db: Db, profileId: string, id: string): Promise<boolean> {
