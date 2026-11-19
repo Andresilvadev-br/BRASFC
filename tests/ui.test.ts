@@ -29,8 +29,10 @@ describe('editor tático (interface)', () => {
 		expect(body).toContain('Sem a bola');
 		expect(body).toContain('Ritmo');
 		expect(body).toContain('Acelerado');
-		expect(body).toContain('aria-checked="true" title="Acelerado"');
-		expect(body).toMatch(/class="mod[ "]/); // ponto dourado: diferente do preset
+		expect(body).toContain('aria-valuetext="Acelerado"'); // régua de 5 níveis com o valor por extenso
+		expect(body).toMatch(/Padrão do estilo: <strong[^>]*>Calmo</);
+		expect(body).toMatch(/class="card [^"]*\bmod\b/); // destaque dourado: diferente do preset
+		expect(body).toContain('Transições');
 	});
 
 	it('funções: ordena por compatibilidade, recomenda e explica atributos e riscos', () => {
@@ -48,7 +50,9 @@ describe('editor tático (interface)', () => {
 		const { body } = render(MasteryPanel, { props: { state: st, mastery, formation: t.formation, style: t.style } });
 		expect(body).toContain('Execução do plano');
 		expect(body).toContain('Entrosamento dos titulares');
-		for (const f of ['4-3-3', '4-4-2', '4-2-3-1', '3-5-2', '5-3-2', '4-2-2-2', '3-4-3']) expect(body).toContain(f);
+		expect(body).toContain('Compreensão das instruções');
+		expect(body).toContain('Formações'); // comparação das 7 formações fica na aba própria
+		expect(body).toContain('Atletas');
 	});
 
 	it('auxiliar: recomendações com dados de apoio e ações', () => {
