@@ -405,7 +405,7 @@ export function sanitizeDecisions(raw: unknown, side: 'home' | 'away' | null): A
 }
 
 
-function parseDecision(raw: unknown): Decision | null {
+export function parseDecision(raw: unknown): Decision | null {
 	const dec = raw as Record<string, unknown> | undefined;
 	if (!dec || typeof dec !== 'object') return null;
 	if (dec.type === 'sub' && typeof dec.outId === 'string' && typeof dec.inId === 'string') return { type: 'sub', outId: dec.outId, inId: dec.inId };

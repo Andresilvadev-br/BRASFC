@@ -17,7 +17,7 @@
 	import { loadPrefs } from '#lib/stores/prefs.svelte.ts';
 	import { hasUnsaved, unsavedLabels } from '#lib/stores/unsaved.svelte.ts';
 	import Button from '#lib/ui/Button.svelte';
-	import Island from '#lib/ui/Island.svelte';
+	import Toast from '#lib/ui/Toast.svelte';
 	import Modal from '#lib/ui/Modal.svelte';
 	import WhatsNew from '#lib/ui/v4/WhatsNew.svelte';
 	import DesktopBar from '#lib/ui/desktop/DesktopBar.svelte';
@@ -93,7 +93,7 @@
 </script>
 
 <DesktopBar />
-<Island hidden={onSplash} />
+<Toast hidden={onSplash} />
 <WhatsNew bind:open={whatsNew} />
 
 <div id="page">

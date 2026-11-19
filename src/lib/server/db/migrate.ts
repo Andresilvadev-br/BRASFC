@@ -16,14 +16,14 @@ const LOCK_ID = 727_2027;
 
 /** Aplica, em transação, cada migração ainda não registrada. Idempotente. */
 export async function runMigrations(db: Db, migrations: Migration[] = MIGRATIONS): Promise<string[]> {
-	await db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
-		version TEXT PRIMARY KEY,
-		applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
-	)`);
 	const applied: string[] = [];
 	await db.transaction(async (tx) => {
-		// Impede duas instâncias migrando ao mesmo tempo (liberado no fim da transação).
+		// Construtores concorrentes também precisam serializar a primeira criação da tabela.
 		await tx.query('SELECT pg_advisory_xact_lock($1)', [LOCK_ID]);
+		await tx.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
+			version TEXT PRIMARY KEY,
+			applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+		)`);
 		const rows = await tx.query<{ version: string }>('SELECT version FROM schema_migrations');
 		const done = new Set(rows.map((r) => r.version));
 		for (const m of migrations) {

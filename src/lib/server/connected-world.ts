@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { careerStart, initialCareerData, validateCreateCareer, type Career, type CareerData } from '#lib/domain/career.ts';
 import { DEFAULT_APPEARANCE } from '#lib/domain/appearance.ts';
 import { getClub } from '#lib/domain/clubs.ts';
@@ -23,18 +24,20 @@ import { ensureUniverse, universeAfterStep, universeAtSeasonEnd } from './univer
 import { computeOverall } from '#lib/engine/attributes.ts';
 import { buildTeamSetup } from '#lib/engine/teams.ts';
 import { Match } from '#lib/engine/match.ts';
-import { ENGINE_VERSION, type PlayerStats, type TeamSetup } from '#lib/engine/types.ts';
+import { ENGINE_VERSION, type MatchResult, type Side, type PlayerStats } from '#lib/engine/types.ts';
+import { canCommitRound, checkpoint, enginesFor, forgetRound, keepEngines, matchView, preparedFixtures, pulseRound, rememberFixtures, startRound, type LiveFixture, type LiveRound, type RoundReplay } from './live-round.ts';
+import { parseDecision } from './rounds.ts';
 import type { Db } from './db/index.ts';
 import { isUuid } from './repos/careers.ts';
 import { listMembers, RoomError, type Room } from './repos/rooms.ts';
 
 type Assignment = {
 	profile: string; name: string; club: string; role: 'coach' | 'assistant' | 'player';
-	ready: boolean; delegated?: boolean; athlete?: CareerData; history: Array<{ club: string; role: string; date: string }>;
+	ready: boolean; delegated?: boolean; matchDelegated?: boolean; athlete?: CareerData; history: Array<{ club: string; role: string; date: string }>;
 };
 type AthleteDeal = { profile: string; offer: string; from: string; to: string; approvals: string[] };
 type Deal = { id: string; from: string; to: string; player: string; fee: number };
-type Replay = { home: TeamSetup; away: TeamSetup; seed: number; neutral: boolean; version: string };
+type Replay = RoundReplay;
 type Played = StoredRoundResult & { replay?: Replay; replayVersion?: string; athletes?: Record<string, { stats?: PlayerStats; selection: 'titular' | 'reserva' | 'fora' }>; events?: Array<{ tick: number; type: string; side?: string; player?: string; other?: string }> };
 type WorldState = {
 	universe?: CareerData['universe']; league: LeagueState; cup: ReturnType<typeof initialCup> | null; date: string; step: number; firstSeason: number;
@@ -117,12 +120,13 @@ export async function worldSnapshot(db: Db, room: Room, profile: string) {
 	const step = stepOf(s);
 	const ownClub = current && current.role !== 'player' ? clubStateOf(context(room, s, current.club), s.league) : null;
 	const fixtures = [...seasonFixtures(s.league, seedOf(room)), ...(s.cup ? cupFixtures(s.cup) : [])];
-	return { revision: Number(row?.revision ?? 0), ownerId: room.ownerId, season: s.league.season, date: s.date,
+	const [live] = await db.query('SELECT 1 FROM room_live_rounds WHERE room_id=$1', [room.id]);
+	return { live: !!live, revision: Number(row?.revision ?? 0), ownerId: room.ownerId, season: s.league.season, date: s.date,
 		next: step, fixture: current && step ? fixtures.find((f) => f.competition === (step.kind === 'cup' ? 'copa-do-brasil' : f.competition)
 			&& (step.kind === 'cup' || f.competition !== 'copa-do-brasil') && f.round === (step.kind === 'league' ? step.round : step.matchday)
 			&& [f.home, f.away].includes(current.club)) : null,
 		members: members.map((m) => { const p = s.participants[m.profileId]; return {
-			...m, assignment: p ? { club: p.club, role: p.role, ready: p.ready, delegated: p.delegated } : null }; }),
+			...m, assignment: p ? { club: p.club, role: p.role, ready: p.ready, delegated: p.delegated, matchDelegated: p.matchDelegated } : null }; }),
 		clubs: clubList(s).map((id) => ({ id, name: getClub(id)?.name ?? id })),
 		current, standings: division ? divisionStandings(s.league, division, past) : [],
 		last: s.last.map(({ athletes, events, replay, replayVersion, ...match }) => ({ ...match,
@@ -156,7 +160,9 @@ async function playOfficialMatch(replay: Replay) {
 	return match.result();
 }
 
-async function advance(tx: Db, room: Room, s: WorldState) {
+type OfficialResult = { replay: Replay; match: MatchResult };
+type RoundRun = { prepare: LiveFixture[]; finished?: never } | { finished: OfficialResult[]; prepare?: never };
+async function advance(tx: Db, room: Room, s: WorldState, run?: RoundRun) {
 	const active = Object.values(s.participants);
 	if (!active.length || (!s.allowAbsent && active.some((p) => !p.ready))) fail('Aguarde a confirmação dos participantes.', 409);
 	const step = stepOf(s);
@@ -254,7 +260,7 @@ async function advance(tx: Db, room: Room, s: WorldState) {
 	s.date = step.date;
 	const rows: Played[] = [];
 	for (const f of fixtures) {
-		if (!participatingClubs.has(f.home) && !participatingClubs.has(f.away)) {
+		if (!run && !participatingClubs.has(f.home) && !participatingClubs.has(f.away)) {
 			rows.push({ ...simulateOtherFixtures(c, [f], { season, firstSeason: s.firstSeason }, { full: () => false, strengthOf: strength })[0], round });
 			continue;
 		}
@@ -275,9 +281,18 @@ async function advance(tx: Db, room: Room, s: WorldState) {
 			}
 			return built;
 		};
-		const home = team(f.home), away = team(f.away);
-		const replay = { home, away, seed: matchSeed({ seed }, season, round, f.home, f.competition), neutral: Boolean('neutral' in f && f.neutral), version: ENGINE_VERSION };
-		const match = await playOfficialMatch(replay);
+		const official = run?.finished?.[rows.length];
+		const home = official?.replay.home ?? team(f.home), away = official?.replay.away ?? team(f.away);
+		const replay: Replay = official?.replay ?? { home, away, seed: matchSeed({ seed }, season, round, f.home, f.competition),
+			neutral: Boolean('neutral' in f && f.neutral), version: ENGINE_VERSION };
+		if (run?.prepare) {
+			replay.ai = { home: !active.some((p) => p.club === f.home && p.role === 'coach'),
+				away: !active.some((p) => p.club === f.away && p.role === 'coach') };
+			run.prepare.push({ competition: f.competition, replay });
+			continue;
+		}
+		if (run?.finished && (!official || home.id !== f.home || away.id !== f.away)) fail('Súmula divergente na rodada.', 409);
+		const match = official?.match ?? await playOfficialMatch(replay);
 		for (const side of [home, away]) {
 			const conditions = (fitness[side.id] ??= {});
 			for (const player of side.players) {
@@ -299,6 +314,7 @@ async function advance(tx: Db, room: Room, s: WorldState) {
 			events: match.events.filter((e) => ['goal', 'yellow', 'red', 'injury', 'sub'].includes(e.type)).slice(0, 100) });
 		await new Promise<void>((resolve) => setImmediate(resolve));
 	}
+	if (run?.prepare) return;
 	const simulationMs = performance.now() - started;
 	const writeStarted = performance.now();
 	if (rows.length) await tx.query(`INSERT INTO room_world_matches (room_id, season, step, competition, home, away, result)
@@ -369,7 +385,8 @@ export async function worldReplay(db: Db, room: Room, profile: string, home: str
 	return match.replay;
 }
 
-export async function applyWorldCommand(db: Db, room: Room, profile: string, body: Record<string, unknown>) {
+type RoundConnection = { online: () => ReadonlySet<string>; now?: () => number };
+export async function applyWorldCommand(db: Db, room: Room, profile: string, body: Record<string, unknown>, connection?: RoundConnection) {
 	const op = body.op;
 	if (typeof op !== 'string' || !isUuid(op) || !Number.isInteger(body.revision)) fail('Comando ou revisão inválida.', 400);
 	return db.transaction(async (tx) => {
@@ -387,6 +404,8 @@ export async function applyWorldCommand(db: Db, room: Room, profile: string, bod
 		const p = s.participants[profile];
 		const owner = identity.owner_id === profile;
 		const action = body.action;
+		const [activeRound] = await tx.query('SELECT 1 FROM room_live_rounds WHERE room_id=$1', [room.id]);
+		if (activeRound) fail('A rodada está em andamento. Conclua a sessão antes de alterar o universo.', 409);
 		let timing: Awaited<ReturnType<typeof advance>> = undefined;
 		const managed = () => { if (!p || p.role !== 'coach') fail('Apenas o treinador principal pode realizar esta ação.', 403); return p; };
 		if (action === 'assign') {
@@ -428,7 +447,8 @@ export async function applyWorldCommand(db: Db, room: Room, profile: string, bod
 		} else if (action === 'delegate') {
 			const coach = managed(), assistant = typeof body.target === 'string' ? s.participants[body.target] : null;
 			if (!assistant || assistant.role !== 'assistant' || assistant.club !== coach.club || typeof body.value !== 'boolean') fail('Auxiliar inválido.');
-			assistant.delegated = body.value;
+			if (body.area === 'match') assistant.matchDelegated = body.value;
+			else assistant.delegated = body.value;
 		} else if (action === 'vacancy') {
 			if (!owner) fail('Apenas o administrador pode oferecer uma vaga.', 403);
 			if (typeof body.target !== 'string' || s.participants[body.target]?.role !== 'assistant' || typeof body.club !== 'string' || !clubList(s).includes(body.club) ||
@@ -525,7 +545,10 @@ export async function applyWorldCommand(db: Db, room: Room, profile: string, bod
 			p.ready = false;
 		} else {
 			if (!owner) fail('Ação exclusiva do administrador.', 403);
-			if (action === 'advance') timing = await advance(tx, room, s);
+			if (action === 'advance') {
+				if (connection) timing = await beginLiveRound(tx, room, s, connection);
+				else timing = await advance(tx, room, s);
+			}
 			else if (action === 'settings') {
 				if (typeof body.allowAbsent !== 'boolean' || typeof body.inviteOpen !== 'boolean') fail('Preferências inválidas.');
 				s.allowAbsent = body.allowAbsent; s.inviteOpen = body.inviteOpen;
@@ -541,9 +564,136 @@ export async function applyWorldCommand(db: Db, room: Room, profile: string, bod
 				}
 			} else fail('Ação desconhecida.', 400);
 		}
+		if (connection && ['assign', 'tactic', 'training', 'club', 'accept-deal', 'approve-athlete', 'jogador-renovar', 'jogador-aceitar', 'jogador-treinar', 'jogador-cancelar-treino'].includes(String(action))) {
+			// Conservatively require a new collective confirmation after a match-relevant change.
+			for (const participant of Object.values(s.participants)) participant.ready = false;
+		}
+		if (connection && action === 'ready' && body.value === true && stepOf(s) && allReady(s, connection.online())) {
+			await beginLiveRound(tx, room, s, connection);
+		}
 		if (!row) await tx.query('INSERT INTO room_worlds (room_id,revision,state) VALUES ($1,$2,$3::jsonb)', [room.id, revision + 1, JSON.stringify(s)]);
 		else await tx.query('UPDATE room_worlds SET revision=$2,state=$3::jsonb WHERE room_id=$1', [room.id, revision + 1, JSON.stringify(s)]);
 		await tx.query('INSERT INTO room_world_operations (room_id,profile_id,operation_id,revision) VALUES ($1,$2,$3,$4)', [room.id, profile, op, revision + 1]);
 		return { revision: revision + 1, duplicate: false, ...(timing ? { timing } : {}) };
+	});
+}
+
+function allReady(state: WorldState, online: ReadonlySet<string>) {
+	const members = Object.values(state.participants);
+	return members.length > 0 && members.every((p) => p.ready && online.has(p.profile));
+}
+
+async function beginLiveRound(tx: Db, room: Room, s: WorldState, connection: RoundConnection) {
+	if (!allReady(s, connection.online())) fail('Todos os participantes precisam estar online e prontos.', 409);
+	const step = stepOf(s);
+	if (!step) return advance(tx, room, s);
+	const fixtures: LiveFixture[] = [];
+	await advance(tx, room, structuredClone(s), { prepare: fixtures });
+	const round = step.kind === 'cup' ? step.matchday : step.round;
+	const required = Object.keys(s.participants);
+	const session = startRound(randomUUID(), s.league.season, step.key, round, step.date, fixtures, required, (connection.now ?? Date.now)());
+	await tx.query('INSERT INTO room_live_rounds (room_id,session_id,state,fixtures) VALUES ($1,$2,$3::jsonb,$4::jsonb)', [
+		room.id, session.id, JSON.stringify(checkpoint(session)), JSON.stringify(fixtures)
+	]);
+	rememberFixtures(session.id, fixtures);
+}
+
+function viewLiveRound(round: LiveRound, player: Assignment, participants: WorldState['participants'], online: ReadonlySet<string>) {
+	const matches = enginesFor(round);
+	const index = round.fixtures.findIndex(({ replay }) => [replay.home.id, replay.away.id].includes(player.club));
+	const fixture = round.fixtures[index];
+	const side: Side | null = fixture ? fixture.replay.home.id === player.club ? 'home' : 'away' : null;
+	return { id: round.id, season: round.season, round: round.round, date: round.date, phase: round.phase, sequence: round.sequence, since: round.since,
+		countdownUntil: round.phase === 'LOADING' && round.since ? round.since + 3000 : null,
+		waiting: round.required.filter((id) => !online.has(id)), suspended: round.suspended, tick: round.tick,
+		loaded: round.loaded, confirmed: round.confirmed, required: round.required,
+		relevant: fixture && side ? { ...fixture, match: matchView(matches[index]), side,
+			stadium: getClub(fixture.replay.home.id)?.stadium,
+			crew: Object.values(participants).filter((p) => p.role !== 'player' && [fixture.replay.home.id, fixture.replay.away.id].includes(p.club))
+				.map(({ club, role, name }) => ({ club, role, name })), canManage: player.role === 'coach' || (player.role === 'assistant' && !!player.matchDelegated) } : null,
+		suggestions: round.suggestions.filter((item) => item.club === player.club),
+		role: player.role, athleteId: player.role === 'player' ? athleteId(player) : null,
+		fixtures: round.fixtures.map(({ competition, replay }, i) => ({ competition, home: replay.home.id, away: replay.away.id,
+			score: { ...matches[i].score }, phase: matches[i].phase, minute: matches[i].minuteLabel(matches[i].tick) })) };
+}
+
+export async function updateLiveRound(db: Db, room: Room, profile: string, body: Record<string, unknown>, connection: RoundConnection) {
+	return db.transaction(async (tx) => {
+		const [identity] = await tx.query('SELECT id FROM rooms WHERE id=$1 AND status=\'open\' FOR UPDATE', [room.id]);
+		if (!identity || !(await listMembers(tx, room.id)).some((member) => member.profileId === profile)) fail('Universo não encontrado.', 404);
+		const [row] = await tx.query<{ session_id: string; state: Omit<LiveRound, 'fixtures'> }>(
+			'SELECT session_id,state FROM room_live_rounds WHERE room_id=$1', [room.id]
+		);
+		if (!row) return { session: null };
+		const fixtures = preparedFixtures(row.session_id) ?? rememberFixtures(row.session_id,
+			(await tx.query<{ fixtures: LiveFixture[] }>('SELECT fixtures FROM room_live_rounds WHERE room_id=$1', [room.id]))[0].fixtures);
+		const round = { ...row.state, fixtures };
+		const [{ participants }] = await tx.query<{ participants: WorldState['participants'] }>(
+			"SELECT state->'participants' AS participants FROM room_worlds WHERE room_id=$1", [room.id]);
+		const player = participants[profile];
+		if (!player || !round.required.includes(profile)) fail('Você não participa desta rodada.', 403);
+		const online = connection.online();
+		const now = (connection.now ?? Date.now)();
+		const action = body.action;
+		let changed = false;
+		if (action !== 'pulse') {
+			if (body.session !== round.id || !isUuid(String(body.op))) fail('Comando de sessão inválido.', 400);
+			const request = `${profile}:${body.op}`;
+			if (round.requests.includes(request)) return { session: viewLiveRound(round, player, participants, online) };
+			if (!online.has(profile)) fail('Reconecte-se à sala para confirmar esta ação.', 409);
+			if (round.requests.length >= 512) fail('Limite de operações desta sessão atingido.', 409);
+			if (action === 'loaded' && round.phase === 'LOADING') {
+				if (!round.loaded.includes(profile)) round.loaded.push(profile);
+			} else if (action === 'confirm' && round.phase === 'HALF_TIME' && typeof body.value === 'boolean') {
+				round.confirmed = [...round.confirmed.filter((id) => id !== profile), ...(body.value ? [profile] : [])];
+			} else if ((action === 'decision' || action === 'suggest') && ['FIRST_HALF', 'HALF_TIME', 'SECOND_HALF'].includes(round.phase)) {
+				const decision = parseDecision(body.decision);
+				const index = round.fixtures.findIndex(({ replay }) => [replay.home.id, replay.away.id].includes(player.club));
+				if (!decision || index < 0) fail('Decisão inválida para este confronto.');
+				if (action === 'suggest') {
+					if (player.role !== 'assistant') fail('Apenas o auxiliar pode enviar sugestões.', 403);
+					round.suggestions.push({ profile, club: player.club, decision, id: String(body.op) });
+					round.confirmed = round.confirmed.filter((id) => id !== profile);
+				} else {
+					if (player.role !== 'coach' && !(player.role === 'assistant' && player.matchDelegated)) fail('Seu cargo não autoriza intervenções.', 403);
+					if (body.sequence !== round.sequence) fail('A partida avançou. Revise a decisão.', 409);
+					const match = enginesFor(round)[index];
+					const side = round.fixtures[index].replay.home.id === player.club ? 'home' : 'away';
+					if (match.phase === 'finished') fail('Este confronto já terminou.', 409);
+					const atInterval = round.phase === 'HALF_TIME';
+					if (atInterval) {
+						const rejected = match.prepareInterval(side, decision);
+						if (rejected) {
+							forgetRound(round.id);
+							fail(rejected);
+						}
+					} else match.submit(side, decision);
+					round.submissions.push({ fixture: index, tick: match.tick, side, decision, id: String(body.op), secondHalf: round.phase === 'SECOND_HALF', atInterval });
+					round.confirmed = round.confirmed.filter((id) => participants[id]?.club !== player.club);
+				}
+			} else fail('A ação não é válida nesta fase da rodada.', 409);
+			round.requests.push(request);
+			round.sequence++;
+			keepEngines(round);
+			changed = true;
+		}
+		if (pulseRound(round, online, now)) { round.sequence++; keepEngines(round); changed = true; }
+		if (canCommitRound(round, now)) {
+			const official = enginesFor(round).map((match, index) => {
+				const replay = round.fixtures[index].replay;
+				const result = match.result();
+				return { replay: { ...replay, decisions: result.decisions }, match: result };
+			});
+			const [world] = await tx.query<RecordRow>('SELECT revision,state FROM room_worlds WHERE room_id=$1', [room.id]);
+			const state = readState(world);
+			await advance(tx, room, state, { finished: official });
+			const revision = Number(world.revision) + 1;
+			await tx.query('UPDATE room_worlds SET revision=$2,state=$3::jsonb WHERE room_id=$1', [room.id, revision, JSON.stringify(state)]);
+			await tx.query('DELETE FROM room_live_rounds WHERE room_id=$1 AND session_id=$2', [room.id, round.id]);
+			forgetRound(round.id);
+			return { session: null, revision };
+		}
+		if (changed) await tx.query('UPDATE room_live_rounds SET state=$2::jsonb WHERE room_id=$1', [room.id, JSON.stringify(checkpoint(round))]);
+		return { session: viewLiveRound(round, player, participants, online) };
 	});
 }

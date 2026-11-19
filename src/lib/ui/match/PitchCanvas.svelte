@@ -16,7 +16,7 @@
 		version = 0,
 		onpick
 	}: {
-		match: Match;
+		match: Pick<Match, 'states' | 'player' | 'tick' | 'ball' | 'events'> & { teams: Record<Side, { gkId: string }> };
 		mode?: 'classico' | 'pixel';
 		colors: Record<Side, { primary: string; secondary: string }>;
 		highlight?: string | null;

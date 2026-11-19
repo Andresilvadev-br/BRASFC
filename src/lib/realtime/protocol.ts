@@ -1,8 +1,12 @@
 /** Protocolo do canal de tempo real (servidor autoritativo). */
 export const REALTIME_PATH = '/ws/realtime';
 
+export const ROOM_ACTIVITIES = ['rodada', 'carreira', 'mercado', 'admin', 'escalacao', 'taticas', 'contratos'] as const;
+export type RoomActivity = (typeof ROOM_ACTIVITIES)[number];
+
 export type ClientMessage =
 	| { t: 'join'; code: string }
+	| { t: 'activity'; value: RoomActivity }
 	| { t: 'ready'; value: boolean }
 	| { t: 'leave' }
 	| { t: 'ping' };
@@ -13,6 +17,8 @@ export interface PresenceMember {
 	role: 'owner' | 'member';
 	online: boolean;
 	ready: boolean;
+	activity?: RoomActivity;
+	activityUntil?: number;
 }
 
 export interface RoomSnapshot {
@@ -46,6 +52,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
 	switch (m.t) {
 		case 'join':
 			return typeof m.code === 'string' && m.code.length <= 12 ? { t: 'join', code: m.code } : null;
+		case 'activity':
+			return ROOM_ACTIVITIES.includes(m.value as RoomActivity) ? { t: 'activity', value: m.value as RoomActivity } : null;
 		case 'ready':
 			return typeof m.value === 'boolean' ? { t: 'ready', value: m.value } : null;
 		case 'leave':

@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { applyWorldCommand, worldReplay, worldRevision, worldSnapshot } from '#lib/server/connected-world.ts';
+import { applyWorldCommand, updateLiveRound, worldReplay, worldRevision, worldSnapshot } from '#lib/server/connected-world.ts';
 import { getDb } from '#lib/server/db/index.ts';
 import { noStore, RateLimiter, readJson, requireProfile } from '#lib/server/http.ts';
 import { getRealtimeHub } from '#lib/server/realtime/hub.ts';
@@ -8,6 +8,7 @@ import { ManagementError } from '#lib/domain/management.ts';
 import type { RequestHandler } from './$types';
 
 const limiter = new RateLimiter(90, 60_000);
+const liveLimiter = new RateLimiter(180, 60_000);
 
 async function roomOf(db: Awaited<ReturnType<typeof getDb>>, raw: string) {
 	const code = normalizeCode(raw);
@@ -32,14 +33,21 @@ export const GET: RequestHandler = async (event) => {
 
 export const POST: RequestHandler = async (event) => {
 	const profile = requireProfile(event);
-	if (!limiter.take(profile.id)) error(429, 'Muitas ações. Aguarde alguns instantes.');
+	const live = event.url.searchParams.has('live');
+	if (!(live ? liveLimiter : limiter).take(profile.id)) error(429, 'Muitas ações. Aguarde alguns instantes.');
 	const db = await getDb();
 	const room = await roomOf(db, event.params.code);
 	try {
 		const t = performance.now();
 		const command = await readJson(event.request);
-		const committed = await applyWorldCommand(db, room, profile.id, command);
 		const hub = getRealtimeHub();
+		const connection = { online: () => hub.onlineProfiles(room.id) };
+		if (live) {
+			const result = await updateLiveRound(db, room, profile.id, command, connection);
+			if (result.revision) void hub.publishWorldRevision(room.id, result.revision).catch(() => {});
+			return noStore(result);
+		}
+		const committed = await applyWorldCommand(db, room, profile.id, command, connection);
 		if (!committed.duplicate) {
 			const publish = ['remove', 'archive', 'transfer-owner'].includes(String(command.action))
 				? hub.broadcastRoom(room.id) : hub.publishWorldRevision(room.id, committed.revision);

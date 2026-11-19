@@ -1,5 +1,12 @@
 # Novidades
 
+## 0.8.0 — Ultimate Football Experience (desenvolvimento)
+
+- Rodada cooperativa com presença obrigatória, carregamento coletivo, intervalo compartilhado e gravação transacional.
+- Transmissão com placares simultâneos, escalações animadas, campo 2D ligado ao servidor e alterações táticas oficiais.
+- Cápsula pré-partida da sala com atividades e prontidão dos participantes. Avisos comuns permanecem no sistema de toasts.
+- Migração incremental de sessões. O instalador Windows passa a 1.4.0 no próximo lançamento estável.
+
 ## 0.7.0 — Connected World (desenvolvimento)
 
 - Universos privados persistentes com papéis, convites, rodada oficial, classificação, decisões e negociação entre clubes.

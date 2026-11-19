@@ -4,6 +4,9 @@
 	import { APPEARANCE_OPTIONS, APPEARANCE_FIELDS, DEFAULT_APPEARANCE, HAIR_COLORS, HAIR_STYLES, HAIR_STYLE_LABELS, SKIN_TONES, type Appearance } from '#lib/domain/appearance.ts';
 	import type { DominantFoot } from '#lib/domain/career.ts';
 	import { playerKit } from '#lib/pixel/kits.ts';
+	import type { PresenceMember, RoomActivity } from '#lib/realtime/protocol.ts';
+	import Island from './Island.svelte';
+	import LiveMatch from './match/LiveMatch.svelte';
 	import type { worldReplay, worldSnapshot } from '#lib/server/connected-world.ts';
 	import { FORMATIONS, FORMATION_IDS, MENTALITIES, MENTALITY_LABELS, STYLES, STYLE_LABELS, autoLineup, type FormationId, type Mentality, type PlayStyle } from '#lib/domain/tactics.ts';
 	import type { SquadPlayer } from '#lib/domain/squad.ts';
@@ -21,7 +24,9 @@
 
 	type World = Awaited<ReturnType<typeof worldSnapshot>>;
 	type Member = Pick<World['members'][number], 'profileId' | 'displayName' | 'role'>;
-	let { code, initial, profileId, revision, membership }: { code: string; initial: World; profileId: string; revision?: number; membership?: Member[] } = $props();
+	let { code, initial, profileId, revision, membership, online = false, onactivity }: { code: string; initial: World; profileId: string; revision?: number;
+		membership?: PresenceMember[]; online?: boolean; onactivity?: (value: RoomActivity) => void } = $props();
+	let loadingLive = $state(false);
 	let world = $state.raw<World>(untrack(() => initial));
 	let section = $state<'rodada' | 'carreira' | 'mercado' | 'admin'>('rodada');
 	let role = $state<'coach' | 'assistant' | 'player'>('coach');
@@ -61,6 +66,20 @@
 	const tacticalRoster = $derived(world.roster as SquadPlayer[]);
 	const sortedOpponents = $derived(world.members.filter((m) => m.profileId !== profileId && m.assignment?.role === 'coach' && m.assignment.club !== current?.club));
 	const labels = { coach: 'Treinador', assistant: 'Auxiliar', player: 'Jogador' };
+
+	const friends = $derived(world.members.flatMap((member) => {
+		if (!member.assignment) return [];
+		const connected = membership?.find((presence) => presence.profileId === member.profileId);
+		return [{ id: member.profileId, name: member.displayName, club: member.assignment.club, role: labels[member.assignment.role],
+			online: !!connected?.online && (member.profileId !== profileId || online), ready: member.assignment.ready,
+			activity: connected?.activity, activityUntil: connected?.activityUntil }];
+	}));
+	const names = $derived(Object.fromEntries(world.members.map((member) => [member.profileId, member.displayName])));
+	const everyoneReady = $derived(friends.length > 0 && friends.every((friend) => friend.online && friend.ready));
+	$effect(() => {
+		if (world.live) return;
+		onactivity?.(section === 'carreira' && savedLineup.length ? 'escalacao' : section === 'mercado' && current?.role === 'player' ? 'contratos' : section);
+	});
 
 	const membershipKey = (members: Member[]) => JSON.stringify(members.map((m) => [m.profileId, m.displayName, m.role]).sort());
 	const liveMembers = $derived(membership && membershipKey(membership));
@@ -142,6 +161,12 @@
 	}
 </script>
 
+{#if friends.length && (!world.live || loadingLive)}
+	<Island {friends} loading={world.live} />
+{/if}
+{#if world.live}
+	<LiveMatch {path} profile={profileId} {names} {online} onchange={(loading) => (loadingLive = loading)} oncomplete={() => void refresh().catch(() => {})} />
+{:else}
 <section class="world" use:enter>
 	<div class="heading">
 		<div><small>UNIVERSO COMPARTILHADO</small><h2>Temporada {world.season}</h2><span>{world.date.split('-').reverse().join('/')}</span></div>
@@ -152,7 +177,7 @@
 	{#if retry}<Button size="sm" disabled={saving} onclick={() => retry && execute(retry)}>Conferir o mesmo comando</Button>{/if}
 	{#if replay}
 		<Button onclick={() => (replay = null)}>Fechar reprodução</Button>
-		<MatchCenter home={replay.home} away={replay.away} seed={replay.seed} neutral={replay.neutral} />
+		<MatchCenter home={replay.home} away={replay.away} seed={replay.seed} neutral={replay.neutral} official={replay} />
 	{/if}
 	{#key section}
 	<div class="cards" use:enter>
@@ -162,10 +187,15 @@
 				{#if world.fixture}
 					<div class="match"><Crest clubId={world.fixture.home} size={42} />{clubName(world.fixture.home)} × {clubName(world.fixture.away)}<Crest clubId={world.fixture.away} size={42} /></div>
 				{:else}<p>{current ? 'Acompanhe os compromissos do universo neste passo.' : 'Selecione uma carreira para entrar na rodada.'}</p>{/if}
-				<p>{world.members.filter((m) => m.assignment?.ready).length}/{world.members.filter((m) => m.assignment).length} prontos</p>
+				<p>{friends.filter((friend) => friend.ready && friend.online).length}/{friends.length} prontos · {friends.filter((friend) => friend.online).length}/{friends.length} online</p>
+				<div class="ready-team">
+					{#each friends as friend (friend.id)}
+						<div><Crest clubId={friend.club} size={28} /><span><strong>{friend.name}</strong><small>{friend.role}</small></span><small>{friend.online ? friend.ready ? 'Pronto' : 'Em preparação' : 'Offline'}</small></div>
+					{/each}
+				</div>
 				<div class="actions">
-					{#if current}<Button disabled={saving} onclick={() => send('ready', { value: !current.ready })}>{current.ready ? 'Cancelar confirmação' : 'Estou pronto'}</Button>{/if}
-					{#if owner}<Button variant="primary" loading={saving} onclick={() => send('advance')}>{world.next ? 'Simular rodada oficial' : 'Iniciar nova temporada'}</Button>{/if}
+					{#if current}<Button disabled={saving || !online} onclick={() => send('ready', { value: !current.ready })}>{current.ready ? 'Cancelar confirmação' : 'Estou pronto'}</Button>{/if}
+					{#if owner}<Button variant="primary" loading={saving} disabled={!everyoneReady} onclick={() => send('advance')}>{world.next ? 'Simular rodada oficial' : 'Iniciar nova temporada'}</Button>{/if}
 				</div>
 			</article>
 			{#if world.last.length}<article>
@@ -317,6 +347,7 @@
 					<div class="actions">
 						{#if current?.role === 'coach' && m.assignment?.role === 'assistant' && m.assignment.club === current.club}
 							<Button size="sm" disabled={saving} onclick={() => send('delegate', { target: m.profileId, value: !m.assignment?.delegated })}>{m.assignment.delegated ? 'Revogar treino' : 'Delegar treino'}</Button>
+							<Button size="sm" disabled={saving} onclick={() => send('delegate', { target: m.profileId, area: 'match', value: !m.assignment?.matchDelegated })}>{m.assignment.matchDelegated ? 'Revogar comando de partida' : 'Delegar comando de partida'}</Button>
 						{/if}
 						{#if owner && m.profileId !== profileId}
 							<Button size="sm" disabled={saving} onclick={() => { if (confirm(`Transferir a administração para ${m.displayName}?`)) void send('transfer-owner', { target: m.profileId }); }}>Transferir administração</Button>
@@ -329,7 +360,6 @@
 			{#if owner}<article><h3>Regras do universo</h3>
 				<label>Clube para vaga<select bind:value={vacancyClub}><option value="">Selecione</option>{#each upcoming as c}<option value={c.id}>{c.name}</option>{/each}</select></label>
 				<div class="actions">
-					<Button disabled={saving} onclick={() => send('settings', { allowAbsent: !world.allowAbsent, inviteOpen: world.inviteOpen })}>{world.allowAbsent ? 'Exigir todos prontos' : 'Permitir avanço com participantes pendentes'}</Button>
 					<Button disabled={saving} onclick={() => send('settings', { allowAbsent: world.allowAbsent, inviteOpen: !world.inviteOpen })}>{world.inviteOpen ? 'Fechar convites' : 'Abrir convites'}</Button>
 					<Button variant="danger" disabled={saving} onclick={() => { if (confirm('Arquivar o universo para todos?')) void send('archive'); }}>Arquivar</Button>
 				</div>
@@ -338,6 +368,7 @@
 	</div>
 	{/key}
 </section>
+{/if}
 
 <style>
 	.world { display: grid; gap: 12px; margin-bottom: 20px; min-width: 0; }
@@ -348,6 +379,9 @@
 	.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 12px; align-items: start; }
 	article { min-width: 0; border: 1px solid var(--line); border-radius: 14px; background: linear-gradient(150deg, var(--emerald-soft), transparent 50%), var(--surface); padding: 16px; }
 	h3 { margin-top: 0; }
+	.ready-team { display:grid; gap:5px; margin:10px 0; }
+	.ready-team div { display:grid; grid-template-columns:28px 1fr auto; gap:8px;align-items:center;padding:7px;border:1px solid var(--line);border-radius:8px; }
+	.ready-team small {display:block;color:var(--text-3);}
 	.standing { justify-content: space-between; border-bottom: 1px solid var(--line); padding: 6px 0; }
 	label { display: grid; gap: 4px; margin: 8px 0; }
 	select,input { min-width: 0; max-width: 100%; color: var(--text); background: var(--surface-sunken); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }

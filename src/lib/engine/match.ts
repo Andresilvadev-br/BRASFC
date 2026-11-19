@@ -315,6 +315,13 @@ export class Match {
 		this.queue[side].push(decision);
 	}
 
+	/** Confere e prepara uma mudança no intervalo sem avançar o relógio. */
+	prepareInterval(side: Side, decision: Decision): string | undefined {
+		if (this.phase !== 'half_time' || this.replay) return 'O confronto ainda não está no intervalo.';
+		this.applyDecision(side, decision, false);
+		return this.applied.at(-1)?.rejected;
+	}
+
 	pending(side: Side): Decision[] {
 		return [...this.queue[side]];
 	}

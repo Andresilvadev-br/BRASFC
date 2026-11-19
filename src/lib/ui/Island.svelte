@@ -1,97 +1,58 @@
 <script lang="ts">
-	import { currentActivity, dismissTransient, island } from '#lib/stores/island.svelte.ts';
-	import Icon from './Icon.svelte';
+	import { pop, enter } from '#lib/motion/actions.ts';
+	import { onMount } from 'svelte';
+	import Crest from './Crest.svelte';
+	import type { RoomActivity } from '#lib/realtime/protocol.ts';
 
-	/**
-	 * Aviso discreto no canto inferior: aparece só quando há algo a dizer
-	 * (salvou, erro, nova versão) e some sozinho. Sem elemento fixo na tela.
-	 */
-	let { hidden = false }: { hidden?: boolean } = $props();
-	const activity = $derived(currentActivity());
-	const isTransient = $derived(!!island.transient && activity?.id === island.transient.id);
+	type Friend = { id: string; name: string; club: string; role: string; online: boolean; ready: boolean; activity?: RoomActivity; activityUntil?: number };
+	let { friends, loading = false }: { friends: Friend[]; loading?: boolean } = $props();
+	let open = $state(false);
+	let now = $state(0);
+	const activity: Record<RoomActivity, string> = { rodada: 'Na Central da Rodada', carreira: 'Visualizando elenco', mercado: 'No mercado', admin: 'Gerenciando a sala',
+		escalacao: 'Editando escalação', taticas: 'Ajustando táticas', contratos: 'Gerenciando contratos' };
+	const ready = $derived(friends.filter((friend) => friend.online && friend.ready).length);
+	const online = $derived(friends.filter((friend) => friend.online).length);
+
+	onMount(() => {
+		now = Date.now();
+		const timer = setInterval(() => { now = Date.now(); }, 1000);
+		return () => clearInterval(timer);
+	});
+
+	function detail(friend: Friend) {
+		if (!friend.online) return 'Offline';
+		if (loading) return 'Carregando partida';
+		if (friend.ready) return 'Pronto';
+		return friend.activity && (friend.activityUntil ?? 0) > now ? activity[friend.activity] : 'Online';
+	}
 </script>
 
-{#if activity && !hidden}
-	<div class="toast" data-tone={activity.tone ?? 'neutral'} role="status" aria-live="polite">
-		<Icon name={activity.icon} />
-		<div class="txt">
-			<strong>{activity.title}</strong>
-			{#if activity.detail}<span>{activity.detail}</span>{/if}
+<aside class="island" aria-label="Prontidão dos amigos" use:pop>
+	<button aria-expanded={open} onclick={() => (open = !open)}>
+		<span class="dot"></span>
+		{#key ready}<strong use:pop>{ready}/{friends.length} prontos</strong>{/key}
+		<span>{loading ? 'Partida iniciando' : `${online} online`}</span>
+		<span aria-hidden="true">{open ? '−' : '+'}</span>
+	</button>
+	{#if open}
+		<div class="friends" use:enter>
+			{#each friends as friend (friend.id)}
+				<div class="friend">
+					<Crest clubId={friend.club} size={35} />
+					<div><strong>{friend.name}</strong><small>{friend.role}</small></div>
+					<span class:ready={friend.ready && friend.online}>{detail(friend)}</span>
+				</div>
+			{/each}
 		</div>
-		{#if activity.action}
-			<button class="act" onclick={activity.action.run}>{activity.action.label}</button>
-		{/if}
-		{#if isTransient}
-			<button class="x" onclick={dismissTransient} aria-label="Fechar aviso"><Icon name="x" /></button>
-		{/if}
-	</div>
-{/if}
+	{/if}
+</aside>
 
 <style>
-	.toast {
-		position: fixed;
-		right: 16px;
-		bottom: 16px;
-		z-index: 60;
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		max-width: min(420px, calc(100vw - 32px));
-		padding: 10px 12px;
-		border-radius: 12px;
-		background: var(--surface-2);
-		color: var(--text);
-		box-shadow: 0 10px 30px rgb(0 0 0 / 0.45), inset 0 0 0 1px var(--line-strong);
-		font-size: var(--fs-sm);
-		animation: in 0.22s ease-out;
-	}
-	.toast[data-tone='success'] :global(svg:first-child) {
-		color: var(--emerald-strong);
-	}
-	.toast[data-tone='error'] :global(svg:first-child) {
-		color: var(--danger);
-	}
-	.toast[data-tone='warning'] :global(svg:first-child),
-	.toast[data-tone='gold'] :global(svg:first-child) {
-		color: var(--gold);
-	}
-	.txt {
-		display: flex;
-		flex-direction: column;
-		min-width: 0;
-	}
-	.txt span {
-		color: var(--text-3);
-		font-size: var(--fs-xs);
-	}
-	.act {
-		margin-left: auto;
-		border: 0;
-		border-radius: 8px;
-		padding: 6px 10px;
-		background: var(--emerald);
-		color: #06281c;
-		font: inherit;
-		font-weight: 700;
-		cursor: pointer;
-	}
-	.x {
-		margin-left: auto;
-		border: 0;
-		background: none;
-		color: var(--text-3);
-		cursor: pointer;
-		padding: 2px;
-	}
-	@keyframes in {
-		from {
-			opacity: 0;
-			transform: translateY(8px);
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.toast {
-			animation: none;
-		}
-	}
+	.island{position:sticky;top:8px;justify-self:center;z-index:30;max-width:min(100%,430px);color:#eefaf4}
+	button{width:100%;display:flex;gap:10px;align-items:center;justify-content:center;background:#0d1816;color:inherit;border:1px solid #326053;border-radius:999px;padding:10px 16px;cursor:pointer;box-shadow:0 8px 25px #0005;font:inherit}
+	.dot{width:7px;height:7px;border-radius:50%;background:#46df93;flex:none}
+	.friends{margin-top:5px;background:#101a18;border:1px solid #326053;border-radius:18px;padding:8px 12px;box-shadow:0 8px 25px #0006}
+	.friend{display:grid;grid-template-columns:35px 1fr auto;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #234038}
+	.friend:last-child{border-bottom:0}.friend small{display:block;color:#a6b8b2}.friend span{font-size:.8rem;color:#b9cbc5;text-align:right}.friend .ready{color:#67e6a6}
+	@media(max-width:460px){button{gap:6px;padding-inline:10px;font-size:.82rem}.friend{grid-template-columns:29px 1fr auto}}
 </style>

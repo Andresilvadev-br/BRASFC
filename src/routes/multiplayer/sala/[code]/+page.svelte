@@ -5,7 +5,7 @@
 	import { HAIR_STYLES } from '#lib/domain/appearance.ts';
 	import { createRng, hashString } from '#lib/domain/rng.ts';
 	import { createRoomConnection } from '#lib/realtime/client.svelte.ts';
-	import { notify, setPersistent } from '#lib/stores/island.svelte.ts';
+	import { notify } from '#lib/stores/island.svelte.ts';
 	import ConnectedWorld from '#lib/ui/ConnectedWorld.svelte';
 	import Badge from '#lib/ui/Badge.svelte';
 	import Button from '#lib/ui/Button.svelte';
@@ -30,24 +30,7 @@
 	}
 	const SHIRTS = ['#10B981', '#1F6FEB', '#DC2626', '#EAB308', '#9333EA', '#0E7490', '#EA580C', '#E7EDF0'];
 
-	onMount(() => {
-		conn.start();
-		return () => {
-			conn.stop();
-			setPersistent('room', null);
-		};
-	});
-
-	$effect(() => {
-		if (s.status === 'online') {
-			const online = s.room?.members.filter((m) => m.online).length ?? 0;
-			setPersistent('room', { icon: 'multiplayer', tone: 'success', title: `Sala ${data.room.code}`, detail: `${online} online` });
-		} else if (s.status === 'reconnecting') {
-			setPersistent('room', { icon: 'refresh', tone: 'warning', title: 'Reconectando…', detail: `Sala ${data.room.code}` });
-		} else if (s.status === 'closed') {
-			setPersistent('room', null);
-		}
-	});
+	onMount(() => { conn.start(); return conn.stop; });
 
 	async function copy() {
 		try {
@@ -89,7 +72,7 @@
 			<Button variant="primary" href="/multiplayer">Voltar ao multiplayer</Button>
 		</div>
 	{:else}
-		<ConnectedWorld code={data.room.code} initial={data.world} profileId={data.profileId} revision={s.worldRevision} membership={s.room?.members} />
+		<ConnectedWorld code={data.room.code} initial={data.world} profileId={data.profileId} revision={s.worldRevision} membership={s.room?.members} online={s.status === 'online'} onactivity={conn.setActivity} />
 		<div class="layout">
 			<section class="lobby" aria-label="Jogadores na sala">
 				<div class="status">
@@ -98,15 +81,14 @@
 				</div>
 				<div class="bench">
 					{#each s.room?.members ?? [] as m, i (m.profileId)}
-						<div class="member" class:offline={!m.online} class:ready={m.ready}>
+						<div class="member" class:offline={!m.online}>
 							<div class="spot">
 								<Pixel variant="full" appearance={look(m.profileId)} kit={{ shirt: SHIRTS[i % SHIRTS.length], trim: '#E7EDF0', shorts: '#101418', socks: SHIRTS[i % SHIRTS.length] }} size={130} ball={false} />
-								{#if m.ready}<span class="tick" aria-hidden="true"><Icon name="check" size={16} stroke={3} /></span>{/if}
 							</div>
 							<strong>{m.displayName}{#if m.profileId === s.me} <small>(você)</small>{/if}</strong>
 							<span class="tags">
 								{#if m.role === 'owner'}<Badge tone="gold" icon="crown">Anfitrião</Badge>{/if}
-								<Badge tone={m.online ? (m.ready ? 'emerald' : 'neutral') : 'neutral'}>{m.online ? (m.ready ? 'Pronto' : 'Online') : 'Offline'}</Badge>
+								<Badge tone={m.online ? 'emerald' : 'neutral'}>{m.online ? 'Online' : 'Offline'}</Badge>
 							</span>
 						</div>
 					{/each}
@@ -227,18 +209,6 @@
 	.placeholder strong {
 		color: var(--text-3);
 		font-weight: 500;
-	}
-	.tick {
-		position: absolute;
-		top: -6px;
-		right: -6px;
-		display: grid;
-		place-items: center;
-		width: 28px;
-		height: 28px;
-		border-radius: 50%;
-		background: var(--emerald);
-		color: #04140e;
 	}
 	.member strong {
 		font-size: var(--fs-sm);

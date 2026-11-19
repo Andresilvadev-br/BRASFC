@@ -29,6 +29,7 @@
 		control = null,
 		aiOpponent = true,
 		neutral = false,
+		official,
 		onfinish
 	}: {
 		home: TeamSetup;
@@ -38,6 +39,7 @@
 		control?: Side | null;
 		aiOpponent?: boolean;
 		neutral?: boolean;
+		official?: { ai?: Partial<Record<Side, boolean>>; decisions?: import('#lib/engine/types.ts').AppliedDecision[] };
 		onfinish?: (result: MatchResult, match: Match) => void;
 	} = $props();
 
@@ -48,7 +50,8 @@
 		away,
 		seed,
 		...(neutral ? { rules: { homeAdvantage: false } } : {}),
-		ai: { home: control !== 'home' && aiOpponent, away: control !== 'away' && aiOpponent }
+		ai: official?.ai ?? { home: control !== 'home' && aiOpponent, away: control !== 'away' && aiOpponent },
+		replay: official?.decisions
 	});
 
 	const SPEEDS = [

@@ -1,4 +1,4 @@
-import { REALTIME_PATH, type ClientMessage, type RoomSnapshot, type ServerMessage } from './protocol.ts';
+import { REALTIME_PATH, type ClientMessage, type RoomActivity, type RoomSnapshot, type ServerMessage } from './protocol.ts';
 
 export type ConnectionStatus = 'idle' | 'connecting' | 'online' | 'reconnecting' | 'closed';
 
@@ -21,6 +21,7 @@ export function createRoomConnection(code: string) {
 	let timer: ReturnType<typeof setTimeout> | null = null;
 	let ping: ReturnType<typeof setInterval> | null = null;
 	let stopped = false;
+	let activity: RoomActivity = 'rodada';
 
 	function send(msg: ClientMessage) {
 		if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
@@ -35,7 +36,7 @@ export function createRoomConnection(code: string) {
 			attempts = 0;
 			state.error = null;
 			send({ t: 'join', code });
-			ping = setInterval(() => send({ t: 'ping' }), 20_000);
+			ping = setInterval(() => { send({ t: 'ping' }); send({ t: 'activity', value: activity }); }, 20_000);
 		};
 		ws.onmessage = (ev) => {
 			let msg: ServerMessage;
@@ -48,7 +49,9 @@ export function createRoomConnection(code: string) {
 			else if (msg.t === 'room') {
 				state.room = msg.room;
 				state.worldRevision = Math.max(state.worldRevision, msg.room.worldRevision ?? 0);
+				const joined = state.status !== 'online';
 				state.status = 'online';
+				if (joined) send({ t: 'activity', value: activity });
 			} else if (msg.t === 'world' && msg.v === 1) state.worldRevision = Math.max(state.worldRevision, msg.revision);
 			else if (msg.t === 'closed') {
 				state.closedReason = msg.reason;
@@ -76,6 +79,11 @@ export function createRoomConnection(code: string) {
 	return {
 		state,
 		start: connect,
+		setActivity(value: RoomActivity) {
+			if (value === activity) return;
+			activity = value;
+			send({ t: 'activity', value });
+		},
 		setReady: (value: boolean) => send({ t: 'ready', value }),
 		leave() {
 			send({ t: 'leave' });
