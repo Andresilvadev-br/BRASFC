@@ -488,6 +488,24 @@
 		font-size: 11px;
 		text-align: center;
 	}
+	@media (min-width: 1101px) and (max-height: 840px) {
+		.menu-screen {
+			gap: var(--sp-4);
+			padding-block: var(--sp-4);
+		}
+		.top {
+			padding-top: 32px;
+		}
+		.copy {
+			padding-block: var(--sp-3);
+		}
+		.figure :global(svg.pixel) {
+			height: min(42vh, 330px);
+		}
+		.duo .coach :global(svg.pixel) {
+			height: min(34vh, 280px);
+		}
+	}
 	@media (max-width: 1100px) {
 		.menu-screen {
 			grid-template-columns: 1fr;
