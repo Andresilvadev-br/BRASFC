@@ -1,10 +1,9 @@
 import { error } from '@sveltejs/kit';
 import { careerWorld } from '#lib/domain/career.ts';
-import { sanitizePlayerCareer } from '#lib/domain/careerlife.ts';
 import { getClub } from '#lib/domain/clubs.ts';
 import { divisionOf } from '#lib/domain/league.ts';
 import { initialClubState } from '#lib/domain/management.ts';
-import { formatMoney } from '#lib/domain/market.ts';
+import { applyPlayerAction } from '#lib/server/player-actions.ts';
 import { sanitizeLeague } from '#lib/domain/league.ts';
 import { ManagementError, sanitizeMarket } from '#lib/domain/management.ts';
 import { careerView } from '#lib/domain/view.ts';
@@ -46,8 +45,29 @@ export const POST: RequestHandler = async (event) => {
 	if (version !== career.version) error(409, 'A carreira mudou em outra janela. Recarregue para continuar.');
 	const league = sanitizeLeague(career.data.league, careerWorld(career), career.season);
 	// Decisões de carreira (trocam o clube da carreira).
-	if (body.action === 'emprego' || body.action === 'jogador-aceitar' || body.action === 'jogador-recusar') {
+	if (body.action === 'emprego') {
 		return careerDecision(db, profile.id, career, league, body);
+	}
+	if (typeof body.action === 'string' && body.action.startsWith('jogador-')) {
+		if (career.mode !== 'player') error(403, 'Ação exclusiva da carreira de jogador.');
+		try {
+			const view = careerView(career, await listResults(db, career.id, career.season));
+			const out = applyPlayerAction(career, view, body);
+			const updated = await db.transaction(async (tx) => {
+				const saved = await saveCareerProgress(tx, profile.id, career.id, {
+					gameDate: career.gameDate, clubId: out.clubId,
+					data: { playerCareer: out.state, ...(out.clubId ? { tactical: null, fitness: { eu: out.state.daily.condition } } : {}) }
+				}, career.version);
+				if (out.movement) await insertTransfers(tx, career.id, career.season, career.gameDate, [{ playerId: 'eu', playerName: career.personName, from: career.clubId, to: out.clubId ?? career.clubId, kind: out.movement, fee: 0, wage: out.state.contract.wage }], `${career.season}:jogador:${career.version}`);
+				if (out.movement || body.action === 'jogador-entrevista') await insertMessages(tx, career.id, career.gameDate, [{ sender: body.action === 'jogador-entrevista' ? 'Imprensa' : out.state.agent.name, subject: body.action === 'jogador-entrevista' ? 'Repercussão da entrevista' : 'Contrato profissional', body: out.message, important: !!out.movement }]);
+				return saved;
+			});
+			return noStore({ career: updated, message: out.message });
+		} catch (e) {
+			if (e instanceof ManagementError) error(422, e.message);
+			if (e instanceof VersionConflictError) error(409, e.message);
+			throw e;
+		}
 	}
 	if (career.mode !== 'coach') error(403, 'Só o treinador gerencia o clube.');
 	const club = clubStateOf(career, league);
@@ -92,44 +112,23 @@ export const POST: RequestHandler = async (event) => {
 
 async function careerDecision(db: Awaited<ReturnType<typeof getDb>>, profileId: string, career: NonNullable<Awaited<ReturnType<typeof getCareer>>>, league: ReturnType<typeof sanitizeLeague>, body: Record<string, unknown>) {
 	const offerId = typeof body.offerId === 'string' ? body.offerId : '';
-	if (body.action === 'emprego') {
-		if (career.mode !== 'coach') error(403, 'Propostas de emprego são para treinadores.');
-		const club = clubStateOf(career, league);
-		const offer = club.jobOffers.find((o) => o.id === offerId);
-		if (!offer || offer.expiresSeason < career.season) error(422, 'Proposta indisponível ou expirada.');
-		const division = divisionOf(league, offer.clubId);
-		const fresh = initialClubState(career.seed, offer.clubId, division, career.season);
-		const next = { ...fresh, coachReputation: club.coachReputation, jobOffers: [] };
-		// Dev 0.5: contrato negociado na proposta; o universo troca os técnicos dos dois clubes.
-		const prevOffice = officeOf(career, club, league);
-		const years = typeof body.years === 'number' && [1, 2, 3].includes(body.years) ? body.years : (offer.years ?? 2);
-		const office = { ...prevOffice, contract: { until: career.season + years - 1, wage: offer.wage ?? coachWage(tierOfDivision(division), club.coachReputation) }, meeting: null, press: null, ultimatum: null, history: [...prevOffice.history, ...(club.board.dismissed ? [] : [{ season: career.season, clubId: career.clubId, division: divisionOf(league, career.clubId), position: null, outcome: 'saiu' as const, games: 0, wins: 0, draws: 0, losses: 0, reputation: club.coachReputation }])] };
-		const universe = universeCoachMove(ensureUniverse(career, league), career, league, career.clubId, offer.clubId);
-		const ok = await db.transaction(async (tx) => {
-			const changed = await changeCareerClub(tx, profileId, career.id, offer.clubId, { club: next, tactic: null, tactical: null, fitness: {}, dismissedTips: [], office, universe }, career.version);
-			if (changed) await insertMessages(tx, career.id, career.gameDate, [{ sender: `Diretoria — ${getClub(offer.clubId)?.name ?? offer.clubId}`, subject: `Bem-vindo ao ${getClub(offer.clubId)?.name ?? offer.clubId}`, body: 'Você é o novo treinador. Conheça o elenco, a estrutura e os objetivos da diretoria.', important: true }]);
-			return changed;
-		});
-		if (!ok) error(409, 'A carreira mudou em outra janela. Recarregue para continuar.');
-		return noStore({ career: await getCareer(db, profileId, career.id), message: `Você assumiu o ${getClub(offer.clubId)?.name ?? offer.clubId}.` });
-	}
-	if (career.mode !== 'player') error(403, 'Propostas de clubes são da carreira de jogador.');
-	const pc = sanitizePlayerCareer(career.data.playerCareer, career.seed, career.data.player, divisionOf(league, career.clubId), career.season);
-	const offer = pc?.offers.find((o) => o.id === offerId);
-	if (!pc || !offer) error(422, 'Proposta indisponível ou expirada.');
-	if (body.action === 'jogador-recusar') {
-		const saved = await saveCareerProgress(db, profileId, career.id, { gameDate: career.gameDate, data: { playerCareer: { ...pc, offers: pc.offers.filter((o) => o.id !== offerId) } } }, career.version);
-		return noStore({ career: saved, message: 'Proposta recusada.' });
-	}
-	const state = { ...pc, offers: [], contract: { wage: offer.wage, until: career.season + offer.years - 1, role: offer.role } };
+	if (career.mode !== 'coach') error(403, 'Propostas de emprego são para treinadores.');
+	const club = clubStateOf(career, league);
+	const offer = club.jobOffers.find((o) => o.id === offerId);
+	if (!offer || offer.expiresSeason < career.season) error(422, 'Proposta indisponível ou expirada.');
+	const division = divisionOf(league, offer.clubId);
+	const fresh = initialClubState(career.seed, offer.clubId, division, career.season);
+	const next = { ...fresh, coachReputation: club.coachReputation, jobOffers: [] };
+	// Dev 0.5: contrato negociado na proposta; o universo troca os técnicos dos dois clubes.
+	const prevOffice = officeOf(career, club, league);
+	const years = typeof body.years === 'number' && [1, 2, 3].includes(body.years) ? body.years : (offer.years ?? 2);
+	const office = { ...prevOffice, contract: { until: career.season + years - 1, wage: offer.wage ?? coachWage(tierOfDivision(division), club.coachReputation) }, meeting: null, press: null, ultimatum: null, history: [...prevOffice.history, ...(club.board.dismissed ? [] : [{ season: career.season, clubId: career.clubId, division: divisionOf(league, career.clubId), position: null, outcome: 'saiu' as const, games: 0, wins: 0, draws: 0, losses: 0, reputation: club.coachReputation }])] };
+	const universe = universeCoachMove(ensureUniverse(career, league), career, league, career.clubId, offer.clubId);
 	const ok = await db.transaction(async (tx) => {
-		const changed = await changeCareerClub(tx, profileId, career.id, offer.clubId, { playerCareer: state }, career.version);
-		if (changed) {
-			await insertTransfers(tx, career.id, career.season, career.gameDate, [{ playerId: 'eu', playerName: career.personName, from: career.clubId, to: offer.clubId, kind: 'compra', fee: 0, wage: offer.wage }], `${career.season}:jogador:${career.version}`);
-			await insertMessages(tx, career.id, career.gameDate, [{ sender: `Coordenação — ${getClub(offer.clubId)?.name ?? offer.clubId}`, subject: 'Contrato assinado', body: `Bem-vindo! Contrato até ${state.contract.until}, ${formatMoney(offer.wage)} por mês.`, important: true }]);
-		}
+		const changed = await changeCareerClub(tx, profileId, career.id, offer.clubId, { club: next, tactic: null, tactical: null, fitness: {}, dismissedTips: [], office, universe }, career.version);
+		if (changed) await insertMessages(tx, career.id, career.gameDate, [{ sender: `Diretoria — ${getClub(offer.clubId)?.name ?? offer.clubId}`, subject: `Bem-vindo ao ${getClub(offer.clubId)?.name ?? offer.clubId}`, body: 'Você é o novo treinador. Conheça o elenco, a estrutura e os objetivos da diretoria.', important: true }]);
 		return changed;
 	});
 	if (!ok) error(409, 'A carreira mudou em outra janela. Recarregue para continuar.');
-	return noStore({ career: await getCareer(db, profileId, career.id), message: `Você assinou com o ${getClub(offer.clubId)?.name ?? offer.clubId}.` });
+	return noStore({ career: await getCareer(db, profileId, career.id), message: `Você assumiu o ${getClub(offer.clubId)?.name ?? offer.clubId}.` });
 }

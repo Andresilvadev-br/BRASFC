@@ -1,5 +1,12 @@
 # Novidades
 
+## 0.6.0 — 2026-11-19 · Carreira de Jogador
+
+- Criação de jogador com dados pessoais, prévia em pixel art e uniforme configurável.
+- Central dedicada, treinos individuais no calendário, concorrência por posição, convocação, objetivos e avaliação pelo motor de partidas.
+- Evolução de atributos, condição física, lesões, entrevistas, empresário, contratos, transferências, empréstimos e patrocínio individual.
+- Estatísticas, recordes pessoais e trajetória profissional em saves independentes da carreira de treinador.
+
 ## 0.5.0 — 2026-11-18 · Manager Update
 
 ### Novo

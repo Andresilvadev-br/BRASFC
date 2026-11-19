@@ -3,7 +3,7 @@ import type { CareerData } from '#lib/domain/career.ts';
 // O elenco ATUAL (contratações, vendas, base), o mesmo que a tela de táticas mostra.
 import { careerSquad } from '#lib/domain/matchday.ts';
 import { sanitizeTactic } from '#lib/domain/tactics.ts';
-import { isPlayerFocus, isTeamFocus } from '#lib/domain/training.ts';
+import { isPlayerFocus, isPlayerFocusForPosition, isTeamFocus } from '#lib/domain/training.ts';
 import { sanitizePlan } from '#lib/domain/drills.ts';
 import { getDb } from '#lib/server/db/index.ts';
 import { noStore, readJson, requireProfile } from '#lib/server/http.ts';
@@ -54,7 +54,7 @@ export const PATCH: RequestHandler = async (event) => {
 		patch.dismissedTips = [...(career.data.dismissedTips ?? []), body.dismissTip].slice(-60);
 	}
 	if (body.playerFocus !== undefined) {
-		if (career.mode !== 'player' || !isPlayerFocus(body.playerFocus)) error(400, 'Foco individual inválido.');
+		if (career.mode !== 'player' || !career.data.position || !isPlayerFocus(body.playerFocus) || !isPlayerFocusForPosition(body.playerFocus, career.data.position)) error(400, 'Foco individual inválido.');
 		patch.playerFocus = body.playerFocus;
 	}
 	if (!Object.keys(patch).length) error(400, 'Nada para atualizar.');

@@ -1,17 +1,27 @@
 import type { Rng } from './rng.ts';
 
-/**
- * Aparência dos personagens em pixel art.
- * Estrutura pronta para a personalização completa (rosto, acessórios,
- * mangas, meiões) prevista para uma etapa posterior.
- */
+export const APPEARANCE_OPTIONS = {
+	face: { neutro: 'Clássico', barba: 'Barba', bigode: 'Bigode' },
+	body: { atletico: 'Atlético', esguio: 'Esguio', forte: 'Forte' },
+	accessory: { nenhum: 'Nenhum', faixa: 'Faixa', munhequeira: 'Munhequeira' },
+	sleeves: { curta: 'Curta', longa: 'Longa' },
+	socks: { curto: 'Curto', alto: 'Alto' },
+	shirt: { dentro: 'Por dentro', fora: 'Por fora' }
+} as const;
+
+export const APPEARANCE_FIELDS: Record<keyof typeof APPEARANCE_OPTIONS, string> = {
+	face: 'Rosto', body: 'Corpo', accessory: 'Acessório', sleeves: 'Manga', socks: 'Meião', shirt: 'Camisa'
+};
+
+export type AppearanceDetails = { [K in keyof typeof APPEARANCE_OPTIONS]?: keyof (typeof APPEARANCE_OPTIONS)[K] };
+
 export const SKIN_TONES = ['#F6D3B3', '#E8B48C', '#C98E62', '#A06A43', '#7A4B2C', '#553320'] as const;
 export const HAIR_COLORS = ['#1B1410', '#3B2417', '#6B3F1F', '#A0612B', '#D9A441', '#9AA0A6'] as const;
 export const HAIR_STYLES = ['curto', 'espetado', 'raspado', 'cacheado', 'moicano', 'longo'] as const;
 
 export type HairStyle = (typeof HAIR_STYLES)[number];
 
-export interface Appearance {
+export interface Appearance extends AppearanceDetails {
 	skin: number;
 	hairColor: number;
 	hairStyle: HairStyle;
@@ -45,7 +55,10 @@ export function isAppearance(value: unknown): value is Appearance {
 		(v.hairColor as number) >= 0 &&
 		(v.hairColor as number) < HAIR_COLORS.length &&
 		typeof v.hairStyle === 'string' &&
-		(HAIR_STYLES as readonly string[]).includes(v.hairStyle)
+		(HAIR_STYLES as readonly string[]).includes(v.hairStyle) &&
+		Object.entries(APPEARANCE_OPTIONS).every(([key, options]) =>
+			v[key] === undefined || (typeof v[key] === 'string' && Object.hasOwn(options, v[key]))
+		)
 	);
 }
 

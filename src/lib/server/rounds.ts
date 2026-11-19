@@ -3,6 +3,7 @@ import { suggestPlan } from '#lib/domain/drills.ts';
 import type { StoredRoundResult } from '#lib/domain/league.ts';
 import { ensureUniverse, inboxWorthy, officeOf, officeSeasonEnd, officeStep, universeAfterStep, universeAtSeasonEnd } from './universe.ts';
 import type { Career, CareerData } from '#lib/domain/career.ts';
+import { advancePlayerDays, assessPlayer, playerState, recordProgress } from '#lib/domain/player-development.ts';
 import { addDays } from '#lib/domain/dates.ts';
 import { applyTrainingWeek, recoverFitness } from '#lib/domain/drills.ts';
 import { closeSeason, prepareRound, seasonFixtures, seasonStartDate, type SeasonSummary } from '#lib/domain/league.ts';
@@ -10,7 +11,7 @@ import { CUP_ID, clubCupRun, cupFixtures, cupView, prepareCup, projectedCup } fr
 import { sanitizeMarket } from '#lib/domain/management.ts';
 import { clubStateOf, rosterContext } from '#lib/domain/world.ts';
 import { seasonEndManagement, weeklyManagement } from './management.ts';
-import { closePlayerSeason, playerOffers, sanitizePlayerCareer } from '#lib/domain/careerlife.ts';
+import { closePlayerSeason, playerOffers } from '#lib/domain/careerlife.ts';
 import { divisionOf } from '#lib/domain/league.ts';
 import { expectedWage, formatMoney, tierOfDivision, transferWindow } from '#lib/domain/market.ts';
 import { getClub } from '#lib/domain/clubs.ts';
@@ -18,7 +19,7 @@ import { playerTotals } from '#lib/domain/playerstats.ts';
 import { insertLedger, insertMessages, insertTransfers, upsertHistory } from './repos/management.ts';
 import { strengthFor } from '#lib/domain/strength.ts';
 import type { Fixture } from '#lib/domain/season.ts';
-import { careerSquad, fixtureSetup, newFixtureMatch, observedFrom, simulateOtherFixtures, summarize, type MatchdayContext } from '#lib/domain/matchday.ts';
+import { CAREER_PLAYER_ID, careerSquad, fixtureSetup, newFixtureMatch, observedFrom, selectionOf, simulateOtherFixtures, summarize, type MatchdayContext } from '#lib/domain/matchday.ts';
 import { learnFromMatch, teamMastery } from '#lib/domain/tactical.ts';
 import { careerView } from '#lib/domain/view.ts';
 import { ENGINE_VERSION, type AppliedDecision } from '#lib/engine/types.ts';
@@ -28,7 +29,7 @@ import { isRoleId } from '#lib/engine/roles.ts';
 import type { Decision } from '#lib/engine/types.ts';
 import type { Db } from './db/index.ts';
 import { saveCareerProgress } from './repos/careers.ts';
-import { insertRound, listResults, listSeasonGoals, listUserMatches, type RoundInsert } from './repos/matches.ts';
+import { insertRound, listResults, listSeasonGoals, listUserMatches, recentUserMatches, type RoundInsert } from './repos/matches.ts';
 
 export class RoundError extends Error {
 	constructor(
@@ -42,12 +43,11 @@ export class RoundError extends Error {
 /** Contexto do dia de jogo a partir do estado salvo (o mesmo usado pelo navegador). */
 export async function matchdayContext(db: Db, career: Career, view?: ReturnType<typeof careerView>): Promise<MatchdayContext> {
 	view ??= careerView(career, await listResults(db, career.id, career.season));
-	const previous = await listUserMatches(db, career.id);
+	const previous = await recentUserMatches(db, career.id, 3);
 	const observed = previous
-		.slice(-3)
 		.map((m) => observedFrom(m.summary))
 		.filter((o) => o !== null);
-	return { season: career.season, firstSeason: view.firstSeason, tactical: view.tactical, fitness: career.data.fitness, observed };
+	return { season: career.season, firstSeason: view.firstSeason, tactical: view.tactical, fitness: career.data.fitness, observed, playerCalendar: { division: view.division, gameDates: view.clubFixtures.map((f) => f.date) } };
 }
 
 
@@ -81,10 +81,13 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 	const mine = fixtures.find((f) => f.home === career.clubId || f.away === career.clubId) ?? null;
 	const ctx = await matchdayContext(db, career, view);
 	const rows: RoundInsert[] = [];
-	let userMatch: { homeGoals: number; awayGoals: number; summary: ReturnType<typeof summarize> } | null = null;
+	let userMatch: { fixture: Fixture; homeGoals: number; awayGoals: number; summary: ReturnType<typeof summarize> } | null = null;
 	let tactical = view.tactical;
 	let fitness = { ...(career.data.fitness ?? {}) };
 	const squad = careerSquad(career);
+	const originalPlayer = career.mode === 'player' ? playerState(career, view.division) : null;
+	const gameDates = view.clubFixtures.map((f) => f.date);
+	let playerCareer = originalPlayer ? advancePlayerDays(career, originalPlayer, step.date, gameDates) : null;
 
 	if (mine) {
 		const setup = fixtureSetup(career, mine, view.tactic, ctx);
@@ -99,8 +102,19 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 			opponentPlan: setup.opponentPlan,
 			execution: mastery.execution
 		});
+		if (playerCareer) {
+			const team = setup.mySide === 'home' ? setup.home : setup.away;
+			const events = result.events.filter((e) => e.side === setup.mySide);
+			summary.playerEvents = events.flatMap((e) => {
+				const kind = e.type === 'injury' && e.player === CAREER_PLAYER_ID ? 'lesao' :
+					e.type === 'sub' && e.player === CAREER_PLAYER_ID ? 'entrou' :
+					e.type === 'sub' && e.other === CAREER_PLAYER_ID ? 'saiu' : null;
+				return kind ? [{ minute: match.minuteLabel(e.tick), kind }] : [];
+			});
+			summary.assessment = assessPlayer(career, playerCareer, step.date, selectionOf(team), summary.me, summary.playerEvents.some((e) => e.kind === 'lesao'));
+		}
 		rows.push({ season: career.season, round, competition: mine.competition, home: mine.home, away: mine.away, homeGoals: result.homeGoals, awayGoals: result.awayGoals, seed: setup.seed, isUser: true, decisions: result.decisions.filter((d) => d.side === setup.control), summary });
-		userMatch = { homeGoals: result.homeGoals, awayGoals: result.awayGoals, summary };
+		userMatch = { fixture: mine, homeGoals: result.homeGoals, awayGoals: result.awayGoals, summary };
 		// Aprendizado: quem jogou, quantos minutos e em que função (titulares pelo slot; reservas na função do slot que ocuparam).
 		const team = match.teams[setup.mySide];
 		const appearances = [...match.states.values()]
@@ -162,16 +176,21 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 		strengthOf
 	});
 	// Carreira de jogador: o empresário traz propostas na janela, conforme desempenho recente.
-	let playerCareer = career.mode === 'player' ? sanitizePlayerCareer(career.data.playerCareer, career.seed, career.data.player, view.division, career.season) : null;
-	if (playerCareer && career.data.player && step.kind === 'league' && transferWindow(step.round)) {
-		const recent = (await listUserMatches(db, career.id, career.season)).slice(-5).map((m) => m.summary.me?.rating).filter((r): r is number => typeof r === 'number');
-		const cur = userMatch?.summary.me?.rating;
-		const ratings = cur ? [...recent, cur] : recent;
-		const avg = ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 6.3;
-		const offers = playerOffers(career.seed, career.season, step.round, playerCareer, career.data.player, avg, career.clubId, league.divisions as Record<string, string[]>, (id) => divisionOf(league, id));
-		playerCareer = { ...playerCareer, offers: [...playerCareer.offers.filter((o) => o.expiresRound >= step.round && o.season === career.season), ...offers].slice(-3) };
-		for (const o of offers) wk.news.push({ sender: `Empresário — ${playerCareer.agent.name}`, subject: `Proposta do ${getClub(o.clubId)?.name ?? o.clubId}`, body: `Salário de ${formatMoney(o.wage)} por mês, ${o.years} temporadas, como ${o.role === 'titular' ? 'titular' : 'opção de rotação'}. Responda até a rodada ${o.expiresRound}.`, important: true });
+	if (playerCareer && career.data.player) {
+		playerCareer = advancePlayerDays({ ...career, gameDate: step.date }, playerCareer, nextDate, gameDates, mine ? step.date : undefined);
+		fitness[CAREER_PLAYER_ID] = playerCareer.daily.condition;
+		if (step.kind === 'league') {
+			const active = playerCareer.offers.filter((o) => o.expiresRound > step.round && o.season === career.season);
+			const form = playerCareer.daily.form;
+			const avg = form.length ? form.reduce((acc, rating) => acc + rating, 0) / form.length : 6.3;
+			const offers = transferWindow(step.round) ? playerOffers(career.seed, career.season, step.round, playerCareer, career.data.player, avg, career.clubId, league.divisions as Record<string, string[]>, (id) => divisionOf(league, id)) : [];
+			playerCareer.offers = [...active, ...offers].slice(-3);
+			for (const offer of offers) wk.news.push({ sender: `Empresário — ${playerCareer.agent.name}`, subject: `Proposta do ${getClub(offer.clubId)?.name ?? offer.clubId}`, body: `${offer.kind === 'emprestimo' ? 'Empréstimo' : 'Transferência'} por ${formatMoney(offer.wage)} ao mês. Responda até a rodada ${offer.expiresRound}.`, important: true });
+		}
+		const assessment = userMatch?.summary.assessment;
+		if (assessment?.injuryUntil) wk.news.push({ sender: 'Departamento médico', subject: 'Lesão registrada', body: `Previsão de retorno: ${assessment.injuryUntil}.`, important: true });
 	}
+
 	// Dev 0.5: universo vivo (forma, diretorias, demissões, notícias) e gabinete do treinador.
 	const before = universe;
 	universe = universeAfterStep(universe, career, league, { round, league: step.kind === 'league', seasonResults: allResults, newResults: rows.map(({ home, away, homeGoals, awayGoals, competition }) => ({ home, away, homeGoals, awayGoals, competition })), strengthOf });
@@ -193,7 +212,7 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 		const saved = await saveCareerProgress(tx, profileId, career.id, { gameDate: nextDate, data }, career.version);
 		if (career.mode === 'coach') await insertLedger(tx, career.id, career.season, step.date, wk.ledger, key);
 		await insertTransfers(tx, career.id, career.season, step.date, wk.transfers, `${key}:t`);
-		await insertMessages(tx, career.id, nextDate, career.mode === 'coach' ? wk.news : wk.news.filter((n) => n.sender?.startsWith('Empresário')));
+		await insertMessages(tx, career.id, nextDate, career.mode === 'coach' ? wk.news : wk.news.filter((n) => n.sender?.startsWith('Empresário') || n.sender === 'Departamento médico'));
 		return saved;
 	});
 	return {
@@ -291,20 +310,42 @@ export async function finishSeason(db: Db, profileId: string, career: Career, ve
 	}
 	// Carreira de jogador: evolução por minutos, objetivos, prêmios; contrato renovado pelo clube.
 	let playerData: Partial<CareerData> = {};
+	let returnedTo: string | undefined;
 	if (career.mode === 'player' && career.data.player) {
-		const pc = sanitizePlayerCareer(career.data.playerCareer, career.seed, career.data.player, view.division, career.season)!;
+		const pc = advancePlayerDays(career, playerState(career, view.division)!, nextDate, []);
 		const matches = await listUserMatches(db, career.id, career.season);
 		const totals = playerTotals(matches);
 		const me = totals.eu ?? null;
-		const ranked = Object.entries(totals).filter(([, t]) => t.games >= 10);
+		const atClub = playerTotals(matches.filter((m) => (m.summary.mySide === 'away' ? m.away : m.home) === career.clubId));
+		const ranked = Object.entries(atClub).filter(([, t]) => t.games >= 10);
 		const bestRating = ranked.sort((a, b) => b[1].rating - a[1].rating)[0]?.[0] === 'eu';
-		const bestScorer = Object.entries(totals).sort((a, b) => b[1].goals - a[1].goals)[0]?.[0] === 'eu';
+		const bestScorer = Object.entries(atClub).sort((a, b) => b[1].goals - a[1].goals)[0]?.[0] === 'eu';
 		const closed = closePlayerSeason(pc, career.data.player, { games: me?.games ?? 0, starts: me?.starts ?? 0, goals: me?.goals ?? 0, assists: me?.assists ?? 0, rating: me?.rating ?? 0, minutes: me?.minutes ?? 0 }, { rating: bestRating, scorer: bestScorer }, career.season, career.seed);
 		let state = closed.state;
+		if (state.daily.loan && state.daily.loan.until <= career.season) {
+			returnedTo = state.daily.loan.parent;
+			state.daily.clubs = [...state.daily.clubs, { clubId: returnedTo, date: nextDate, kind: 'retorno' }];
+			state.daily.trust = 48;
+			state.daily.support = { ...state.daily.support, fans: 50, squad: 50 };
+			state.daily.loan = null;
+			closed.news.push({ subject: 'Fim do empréstimo', body: `Você retornou ao ${getClub(returnedTo)?.name ?? returnedTo}.` });
+		}
+		state.daily.renewal = null;
+		state.daily.press = null;
+		state.daily.form = [];
+		state.daily.drills = [];
+		state.daily.condition = 100;
+		state.daily.injuryUntil = null;
+		if (state.daily.sponsor && state.daily.sponsor.until < next.season) state.daily.sponsor = null;
+		for (const key of Object.keys(state.daily.gains) as Array<keyof typeof state.daily.gains>) {
+			state.daily.gains[key] = (state.daily.gains[key] ?? 0) * (closed.profile.age >= 30 ? 0.55 : 0.85);
+		}
+		if (me && summary.outcome === 'campeao' && (atClub.eu?.games ?? 0) > 0) state.awards.push({ season: career.season, label: `Campeão da ${view.divisionLabel}` });
+		recordProgress({ ...career, data: { ...career.data, player: closed.profile } }, state, nextDate);
 		if (state.contract.until <= career.season) {
-			const wage = Math.max(state.contract.wage, expectedWage(closed.profile.overall, tierOfDivision(divisionOf(next, career.clubId)), closed.profile.age));
-			state = { ...state, contract: { ...state.contract, wage, until: career.season + 2, role: closed.profile.overall >= 65 ? 'titular' : 'rotacao' } };
-			closed.news.push({ subject: 'Contrato renovado', body: `O clube renovou seu contrato até ${career.season + 2} (${formatMoney(wage)} por mês).` });
+			const wage = Math.max(state.contract.wage, expectedWage(closed.profile.overall, tierOfDivision(divisionOf(next, returnedTo ?? career.clubId)), closed.profile.age));
+			state = { ...state, contract: { ...state.contract, wage, until: next.season, role: closed.profile.overall >= 65 ? 'rotacao' : 'reserva' } };
+			closed.news.push({ subject: 'Extensão de uma temporada', body: `O clube prorrogou seu vínculo até ${next.season} (${formatMoney(wage)} por mês).` });
 		}
 		playerData = { player: closed.profile, playerCareer: state };
 		end.news.push(...closed.news);
@@ -315,9 +356,10 @@ export async function finishSeason(db: Db, profileId: string, career: Career, ve
 			tx,
 			profileId,
 			career.id,
-			{ gameDate: nextDate, season: next.season, data: { league: next, tactical, fitness, seasons: [...view.seasons, summary], ...(nextCup ? { cup: nextCup } : {}), market: end.market, ...(career.mode === 'coach' ? { club: end.club } : {}), ...playerData, universe, ...officeData } },
+			{ gameDate: nextDate, season: next.season, clubId: returnedTo, data: { league: next, ...(returnedTo ? { tactical: null, fitness: {} } : { tactical, fitness }), seasons: [...view.seasons, summary], ...(nextCup ? { cup: nextCup } : {}), market: end.market, ...(career.mode === 'coach' ? { club: end.club } : {}), ...playerData, universe, ...officeData } },
 			career.version
 		);
+		if (returnedTo && playerData.playerCareer) await insertTransfers(tx, career.id, next.season, nextDate, [{ playerId: CAREER_PLAYER_ID, playerName: career.personName, from: career.clubId, to: returnedTo, kind: 'retorno', fee: 0, wage: playerData.playerCareer.contract.wage }], `${career.season}:jogador:retorno`);
 		if (career.mode === 'coach') await insertLedger(tx, career.id, career.season, addDays(nextDate, -1), end.ledger, `${career.season}:fim`);
 		await insertTransfers(tx, career.id, career.season, addDays(nextDate, -1), end.transfers, `${career.season}:fim:t`);
 		await insertMessages(tx, career.id, nextDate, end.news);

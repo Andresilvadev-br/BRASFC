@@ -16,7 +16,7 @@
 		ball = true
 	}: { appearance: Appearance; kit: Kit; variant?: 'bust' | 'full'; size?: number; label?: string; idle?: boolean; ball?: boolean } = $props();
 
-	const grid = $derived(variant === 'full' ? bodyGrid(appearance.hairStyle, { ball }) : bustGrid(appearance.hairStyle));
+	const grid = $derived(variant === 'full' ? bodyGrid(appearance.hairStyle, { ball, details: appearance }) : bustGrid(appearance.hairStyle, appearance));
 	const runs = $derived(toRuns(grid, palette(appearance, kit)));
 	const w = $derived(grid[0].length);
 	const h = $derived(grid.length);

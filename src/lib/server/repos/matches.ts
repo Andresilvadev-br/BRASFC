@@ -48,10 +48,19 @@ export async function listResults(db: Db, careerId: string, season: number): Pro
 /** Partidas do usuário (com resumo), de todas as temporadas ou de uma. */
 export async function listUserMatches(db: Db, careerId: string, season?: number): Promise<UserMatch[]> {
 	const rows = await db.query<Row>(
-		`SELECT ${COLS}, summary FROM career_matches WHERE career_id = $1 AND is_user ${season === undefined ? '' : 'AND season = $2'} ORDER BY season, round`,
+		`SELECT ${COLS}, summary FROM career_matches WHERE career_id = $1 AND is_user ${season === undefined ? '' : 'AND season = $2'} ORDER BY season, played_at, round`,
 		season === undefined ? [careerId] : [careerId, season]
 	);
 	return rows.map((r) => ({ ...map(r), summary: (typeof r.summary === 'string' ? JSON.parse(r.summary) : r.summary) as MatchSummary }));
+}
+
+/** Últimas súmulas, em ordem cronológica, sem carregar a carreira inteira. */
+export async function recentUserMatches(db: Db, careerId: string, limit: number): Promise<UserMatch[]> {
+	const rows = await db.query<Row>(
+		`SELECT ${COLS}, summary FROM career_matches WHERE career_id = $1 AND is_user ORDER BY played_at DESC, season DESC, round DESC LIMIT $2`,
+		[careerId, limit]
+	);
+	return rows.reverse().map((r) => ({ ...map(r), summary: (typeof r.summary === 'string' ? JSON.parse(r.summary) : r.summary) as MatchSummary }));
 }
 
 export interface RoundInsert {

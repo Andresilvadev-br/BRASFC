@@ -133,14 +133,14 @@ export async function saveCareerProgress(
 	db: Db,
 	profileId: string,
 	id: string,
-	change: { gameDate: string; season?: number; data: Partial<CareerData> },
+	change: { gameDate: string; season?: number; clubId?: string; data: Partial<CareerData> },
 	expectedVersion: number
 ): Promise<Career> {
 	const rows = await db.query<CareerRow>(
-		`UPDATE careers c SET game_date = $3::date, season = COALESCE($4, c.season), data = c.data || $5::jsonb, version = c.version + 1, updated_at = now()
+		`UPDATE careers c SET game_date = $3::date, season = COALESCE($4, c.season), club_id = COALESCE($7, c.club_id), data = c.data || $5::jsonb, version = c.version + 1, updated_at = now()
 		 WHERE c.id = $1 AND c.profile_id = $2 AND c.version = $6
 		 RETURNING ${COLUMNS}`,
-		[id, profileId, change.gameDate, change.season ?? null, JSON.stringify(change.data), expectedVersion]
+		[id, profileId, change.gameDate, change.season ?? null, JSON.stringify(change.data), expectedVersion, change.clubId ?? null]
 	);
 	if (!rows[0]) throw new VersionConflictError('A carreira foi alterada em outra janela. Recarregue para continuar.');
 	return mapCareer(rows[0]);

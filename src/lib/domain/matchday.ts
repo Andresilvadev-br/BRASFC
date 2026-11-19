@@ -1,4 +1,4 @@
-import { computeOverall, generateAttributes } from '#lib/engine/attributes.ts';
+import { computeOverall } from '#lib/engine/attributes.ts';
 import { Match, simulateMatch } from '#lib/engine/match.ts';
 import { buildTeamSetup } from '#lib/engine/teams.ts';
 import type { AppliedDecision, MatchResult as EngineResult, PlayerStats, Side, TeamSetup } from '#lib/engine/types.ts';
@@ -13,6 +13,7 @@ import { createRng, deriveSeed } from './rng.ts';
 import type { Fixture, MatchResult } from './season.ts';
 import { squadStrength, type SquadPlayer } from './squad.ts';
 import { rosterOf } from './market.ts';
+import { advancePlayerDays, playerAttributes, playerState, type PlayerAssessment, type PlayerSelection } from './player-development.ts';
 import { rosterContext } from './world.ts';
 import { quickMatch } from './quick.ts';
 import { engineFamiliarity, resolveRoles, type TacticalState } from './tactical.ts';
@@ -36,7 +37,7 @@ export function careerSquad(career: Career): SquadPlayer[] {
 	if (career.mode !== 'player' || !career.data.player || !career.data.position) return squad;
 	const p = career.data.player;
 	const rng = createRng(deriveSeed(career.seed, 'eu-attr'));
-	const { attributes, archetype } = generateAttributes(career.data.position, p.overall, rng);
+	const { attributes, archetype } = playerAttributes(career.seed, career.data.position, p, career.data.playerCareer?.daily);
 	const me: SquadPlayer = {
 		id: CAREER_PLAYER_ID,
 		name: career.personName,
@@ -46,7 +47,7 @@ export function careerSquad(career: Career): SquadPlayer[] {
 		age: p.age,
 		overall: computeOverall(attributes, career.data.position),
 		potential: p.potential,
-		condition: 100,
+		condition: career.data.playerCareer?.daily?.condition ?? career.data.fitness?.eu ?? 95,
 		morale: 'boa',
 		appearance: career.data.appearance ?? randomAppearance(rng),
 		attributes,
@@ -73,15 +74,22 @@ export interface MatchdayContext {
 	fitness?: Record<string, number>;
 	/** partidas anteriores do usuário (para o adversário estudar) */
 	observed: ObservedMatch[];
+	playerCalendar?: { division: string; gameDates: string[] };
 }
 
 /** Time do usuário: tática salva (treinador) ou plano do técnico da IA (modo jogador). */
 export function userTeam(career: Career, myTactic: Tactic, ctx: MatchdayContext, round: number): { setup: TeamSetup; tactic: Tactic & { roles: RoleId[] } } {
 	const squad = withFitness(careerSquad(career), ctx.fitness);
 	if (career.mode === 'player') {
-		const plan = aiTeamPlan(career.seed, career.clubId, ctx.season, ctx.firstSeason, squad, undefined, round, universeCoach(career, career.clubId));
+		const d = career.data.playerCareer?.daily;
+		const fit = squad.filter((p) => p.id !== CAREER_PLAYER_ID || !d || (!d.injuryUntil && d.condition >= 55))
+			.map((p) => p.id === CAREER_PLAYER_ID && d ? {
+				...p, condition: d.condition,
+				overall: p.overall + (d.trust - 50) * 0.28 + (d.support.squad - 50) * 0.07 + (d.condition - 95) * 0.32
+			} : p);
+		const plan = aiTeamPlan(career.seed, career.clubId, ctx.season, ctx.firstSeason, fit, undefined, round, universeCoach(career, career.clubId));
 		const t = plan.tactic;
-		const setup = buildTeamSetup(identity(career.clubId), squad, t);
+		const setup = buildTeamSetup(identity(career.clubId), fit, t);
 		setup.familiarity = engineFamiliarity(ctx.tactical, t.formation, t.style, setup.tactic.lineup, t.roles, t.instructions);
 		setup.coach = plan.coach.profile;
 		setup.tactic.instructions = t.instructions;
@@ -123,7 +131,13 @@ export function universeCoach(career: Pick<Career, 'data'>, clubId: string): Coa
 export function fixtureSetup(career: Career, fixture: Fixture, myTactic: Tactic, ctx: MatchdayContext) {
 	const mine = career.clubId;
 	const opp = fixture.home === mine ? fixture.away : fixture.home;
-	const me = userTeam(career, myTactic, ctx, fixture.round);
+	let prepared = career;
+	if (career.mode === 'player' && career.data.player && ctx.playerCalendar) {
+		const state = advancePlayerDays(career, playerState(career, ctx.playerCalendar.division)!, fixture.date, ctx.playerCalendar.gameDates);
+		if (state.daily.injuryUntil && state.daily.injuryUntil <= fixture.date) state.daily.injuryUntil = null;
+		prepared = { ...career, data: { ...career.data, playerCareer: state } };
+	}
+	const me = userTeam(prepared, myTactic, ctx, fixture.round);
 	const them = aiTeam(career, opp, ctx, fixture.round, ctx.observed);
 	const mySide: Side = fixture.home === mine ? 'home' : 'away';
 	// Preparação específica (treino "adversário" + analista): execução um pouco melhor contra ESTE rival.
@@ -141,6 +155,10 @@ export function fixtureSetup(career: Career, fixture: Fixture, myTactic: Tactic,
 		opponentPlan: them.reasons,
 		opponentCoach: them.coachLabel
 	};
+}
+
+export function selectionOf(team: TeamSetup): PlayerSelection {
+	return team.tactic.lineup.includes(CAREER_PLAYER_ID) ? 'titular' : team.tactic.bench.includes(CAREER_PLAYER_ID) ? 'reserva' : 'fora';
 }
 
 export function newFixtureMatch(career: Career, fixture: Fixture, myTactic: Tactic, ctx: MatchdayContext, replay?: AppliedDecision[]): Match {
@@ -191,6 +209,8 @@ export interface MatchSummary {
 	goals: Array<{ tick: number; side: Side; player: string; assist?: string; minute: string }>;
 	cards: Array<{ tick: number; side: Side; player: string; kind: 'yellow' | 'red'; minute: string }>;
 	me?: PlayerStats;
+	assessment?: PlayerAssessment;
+	playerEvents?: Array<{ minute: string; kind: 'entrou' | 'saiu' | 'lesao' }>;
 	/** titulares do usuário (para titularidades) */
 	starters?: string[];
 	/** o que o adversário pôde observar deste jogo */
@@ -214,7 +234,7 @@ export function summarize(match: Match, result: EngineResult, mySide: Side, extr
 		cards: result.events
 			.filter((e) => e.type === 'yellow' || e.type === 'red')
 			.map((e) => ({ tick: e.tick, side: e.side!, player: e.player!, kind: e.type as 'yellow' | 'red', minute: match.minuteLabel(e.tick) })),
-		...(result.players[CAREER_PLAYER_ID] ? { me: result.players[CAREER_PLAYER_ID] } : {}),
+		...(result.players[CAREER_PLAYER_ID]?.minutes ? { me: result.players[CAREER_PLAYER_ID] } : {}),
 		starters: [...match.teams[mySide].setup.tactic.lineup],
 		mySide,
 		...extra

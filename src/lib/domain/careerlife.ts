@@ -1,15 +1,9 @@
-import type { Career, PlayerProfile } from './career.ts';
+import type { PlayerProfile } from './career.ts';
 import { getClub } from './clubs.ts';
 import { expectedWage, roundMoney, tierOfDivision, type Contract } from './market.ts';
+import type { AttributeKey } from '#lib/engine/attributes.ts';
+import type { PlayerFocus } from './training.ts';
 import { createRng, deriveSeed } from './rng.ts';
-
-/**
- * Carreiras mais vivas (Dev 0.4).
- *  - Treinador: propostas de emprego (após demissão ou por destaque), coerentes com a reputação.
- *  - Jogador: contrato, propostas de outros clubes via empresário, objetivos pessoais, prêmios e
- *    evolução por temporada que depende de minutos jogados e do desempenho.
- * A vida pessoal fica de fora: o foco é a trajetória no futebol.
- */
 
 export interface JobOfferDetail {
 	id: string;
@@ -53,24 +47,50 @@ export interface PlayerCareerState {
 	contract: Contract;
 	/** reputação 1–100 (visibilidade no mercado) */
 	reputation: number;
-	offers: Array<{ id: string; clubId: string; wage: number; years: number; role: 'titular' | 'rotacao'; expiresRound: number; season: number }>;
+	offers: Array<{ id: string; clubId: string; wage: number; years: number; role: 'titular' | 'rotacao'; expiresRound: number; season: number; kind?: 'compra' | 'emprestimo'; countered?: boolean }>;
 	/** objetivos pessoais da temporada */
 	goals: Array<{ kind: 'jogos' | 'gols' | 'nota' | 'titular'; label: string; target: number }>;
 	awards: Array<{ season: number; label: string }>;
 	agent: { name: string; style: 'agressivo' | 'equilibrado' | 'cauteloso' };
+	daily: PlayerDailyState;
+}
+
+export interface PlayerDailyState {
+	trust: number;
+	support: { squad: number; fans: number; agent: number };
+	condition: number;
+	injuryUntil: string | null;
+	drills: Array<{ date: string; focus: PlayerFocus }>;
+	gains: Partial<Record<AttributeKey, number>>;
+	form: number[];
+	progress: Array<{ date: string; overall: number }>;
+	earnings: number;
+	sponsor: { brand: string; monthly: number; until: number } | null;
+	press: { date: string; kind: 'destaque' | 'pressao' | 'espaco' } | null;
+	lastPress: string | null;
+	lastSearch: string | null;
+	renewal: { wage: number; years: number } | null;
+	loan: { parent: string; until: number } | null;
+	clubs: Array<{ clubId: string; date: string; kind: 'inicio' | 'compra' | 'emprestimo' | 'retorno' }>;
 }
 
 const AGENTS = ['Rogério Prates', 'Valéria Antunes', 'Marcelo Brito', 'Sílvia Torquato', 'Henrique Lessa'];
 
-export function initialPlayerCareer(seed: number, profile: PlayerProfile, division: string | null, season: number): PlayerCareerState {
+export function initialPlayerCareer(seed: number, profile: PlayerProfile, division: string | null, season: number, clubId?: string, date?: string): PlayerCareerState {
 	const rng = createRng(deriveSeed(seed, 'empresario'));
 	return {
-		contract: { wage: expectedWage(profile.overall, tierOfDivision(division), profile.age), until: season + 2, role: 'jovem' },
+		contract: { wage: expectedWage(profile.overall, tierOfDivision(division), profile.age), until: season + 2, role: profile.age <= 20 ? 'jovem' : 'rotacao' },
 		reputation: Math.max(1, profile.reputation),
 		offers: [],
 		goals: personalGoals(profile, season),
 		awards: [],
-		agent: { name: rng.pick(AGENTS), style: rng.pick(['agressivo', 'equilibrado', 'cauteloso'] as const) }
+		agent: { name: rng.pick(AGENTS), style: rng.pick(['agressivo', 'equilibrado', 'cauteloso'] as const) },
+		daily: {
+			trust: 48, support: { squad: 50, fans: 50, agent: 55 }, condition: 95, injuryUntil: null, drills: [],
+			gains: {}, form: [], progress: date ? [{ date, overall: profile.overall }] : [], earnings: 0, sponsor: null,
+			press: null, lastPress: null, lastSearch: null, renewal: null, loan: null,
+			clubs: clubId && date ? [{ clubId, date, kind: 'inicio' }] : []
+		}
 	};
 }
 
@@ -83,9 +103,9 @@ export function personalGoals(profile: PlayerProfile, _season: number): PlayerCa
 	];
 }
 
-export function sanitizePlayerCareer(raw: unknown, seed: number, profile: PlayerProfile | undefined, division: string | null, season: number): PlayerCareerState | null {
+export function sanitizePlayerCareer(raw: unknown, seed: number, profile: PlayerProfile | undefined, division: string | null, season: number, clubId?: string, date?: string): PlayerCareerState | null {
 	if (!profile) return null;
-	const base = initialPlayerCareer(seed, profile, division, season);
+	const base = initialPlayerCareer(seed, profile, division, season, clubId, date);
 	if (!raw || typeof raw !== 'object') return base;
 	const r = raw as Partial<PlayerCareerState>;
 	return {
@@ -94,7 +114,8 @@ export function sanitizePlayerCareer(raw: unknown, seed: number, profile: Player
 		offers: Array.isArray(r.offers) ? r.offers.slice(-3) : [],
 		goals: Array.isArray(r.goals) ? r.goals : base.goals,
 		awards: Array.isArray(r.awards) ? r.awards.slice(-40) : [],
-		agent: r.agent ?? base.agent
+		agent: r.agent ?? base.agent,
+		daily: { ...base.daily, ...r.daily }
 	};
 }
 
@@ -108,17 +129,24 @@ export interface SeasonPlayerStats {
 }
 
 /** Propostas que o empresário traz durante a janela, conforme desempenho e reputação. */
-export function playerOffers(seed: number, season: number, round: number, st: PlayerCareerState, profile: PlayerProfile, recentRating: number, clubId: string, divisions: Record<string, string[]>, divisionOf: (id: string) => string | null): PlayerCareerState['offers'] {
-	const rng = createRng(deriveSeed(seed, 'propostas-jogador', season, round));
-	const interest = (recentRating - 6.2) * 0.25 + st.reputation / 200 + (st.agent.style === 'agressivo' ? 0.08 : st.agent.style === 'cauteloso' ? -0.05 : 0);
-	if (!rng.chance(Math.max(0.03, Math.min(0.5, interest)))) return [];
+export function playerOffers(seed: number, season: number, round: number, st: PlayerCareerState, profile: PlayerProfile, recentRating: number, clubId: string, divisions: Record<string, string[]>, divisionOf: (id: string) => string | null, requested?: 'compra' | 'emprestimo'): PlayerCareerState['offers'] {
+	if (st.daily.loan) return [];
+	const rng = createRng(deriveSeed(seed, 'propostas-jogador', season, round, requested ?? 'espontanea'));
+	const interest = (recentRating - 6.2) * 0.25 + st.reputation / 200 + (st.daily.support.agent - 50) / 300 + (st.agent.style === 'agressivo' ? 0.08 : st.agent.style === 'cauteloso' ? -0.05 : 0);
+	if (!requested && !rng.chance(Math.max(0.03, Math.min(0.5, interest)))) return [];
 	const myRep = getClub(clubId)?.reputation ?? 1;
-	const all = Object.values(divisions).flat().filter((id) => id !== clubId && Math.abs((getClub(id)?.reputation ?? 1) - myRep - 0.5) <= 1.5);
+	const kind = requested ?? (st.daily.trust < 50 && profile.age <= 23 && st.contract.until > season && rng.chance(0.45) ? 'emprestimo' : 'compra');
+	if (kind === 'emprestimo' && st.contract.until <= season) return [];
+	const pendingClubs = new Set(st.offers.filter((o) => o.season === season && o.expiresRound >= round).map((o) => o.clubId));
+	const all = Object.values(divisions).flat().filter((id) => {
+		const reputation = getClub(id)?.reputation ?? 1;
+		return id !== clubId && !pendingClubs.has(id) && (kind === 'emprestimo' ? reputation <= myRep : Math.abs(reputation - myRep - 0.5) <= 1.5);
+	});
 	if (!all.length) return [];
 	const club = rng.pick(all);
 	const tier = tierOfDivision(divisionOf(club));
 	const role = profile.overall >= 60 + (getClub(club)?.reputation ?? 1) * 3 ? 'titular' : 'rotacao';
-	return [{ id: `${season}-${round}-${club}`, clubId: club, wage: roundMoney(expectedWage(profile.overall, tier, profile.age) * (1.05 + rng.next() * 0.25)), years: rng.int(2, 4), role, expiresRound: round + 3, season }];
+	return [{ id: `${season}-${round}-${club}-${kind}`, clubId: club, wage: kind === 'emprestimo' ? st.contract.wage : roundMoney(expectedWage(profile.overall, tier, profile.age) * (1.05 + rng.next() * 0.25)), years: kind === 'emprestimo' ? 1 : rng.int(2, 4), role, expiresRound: round + 3, season, kind }];
 }
 
 /** Fim de temporada do jogador: evolução por minutos, objetivos e prêmios. */
@@ -137,7 +165,7 @@ export function closePlayerSeason(st: PlayerCareerState, profile: PlayerProfile,
 	if (teamBest.scorer && stats.goals >= 5) awards.push({ season, label: 'Artilheiro do time' });
 	if (stats.games >= 10 && age <= 21 && stats.rating >= 6.8) awards.push({ season, label: 'Revelação do clube' });
 	for (const a of awards.slice(st.awards.length)) news.push({ subject: `Prêmio: ${a.label}`, body: `Reconhecimento pela temporada ${season}.`, important: true });
-	const reputation = Math.max(1, Math.min(100, Math.round(st.reputation + met.length * 3 + (awards.length - st.awards.length) * 6 + (stats.rating - 6.5) * 8)));
+	const reputation = Math.max(1, Math.min(100, Math.round(st.reputation + met.length * 3 + (awards.length - st.awards.length) * 6 + (stats.games ? (stats.rating - 6.5) * 8 : 0))));
 	news.push({ subject: `Temporada ${season}: ${met.length} de ${st.goals.length} objetivos cumpridos`, body: `${stats.games} jogos, ${stats.goals} gols, ${stats.assists} assistências, nota média ${stats.rating.toFixed(2)}. Geral ${profile.overall} → ${overall}.`, important: true });
 	const nextProfile = { ...profile, age: age + 1, overall, reputation: Math.round(reputation / 10) };
 	return { state: { ...st, reputation, awards, offers: [], goals: personalGoals(nextProfile, season + 1) }, profile: nextProfile, news };

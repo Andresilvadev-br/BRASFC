@@ -132,25 +132,43 @@ export interface Kit {
 
 export const COACH_KIT: Kit = { shirt: '#262E35', trim: '#E7EDF0', shorts: '#1A2026', socks: '#1A2026' };
 
-export function headGrid(style: HairStyle): string[] {
+export function headGrid(style: HairStyle, details?: Appearance): string[] {
 	const rows = [...HEAD_BASE];
 	for (const [i, row] of Object.entries(HAIR[style])) rows[Number(i)] = row;
+	if (details?.face === 'barba') {
+		rows[12] = rows[12].replace(/S/g, 'H');
+		rows[13] = rows[13].replace(/S/g, 'h');
+	} else if (details?.face === 'bigode') {
+		rows[10] = rows[10].slice(0, 6) + 'HHHHHH' + rows[10].slice(12);
+	}
+	if (details?.accessory === 'faixa') rows[5] = rows[5].replace(/[SHh]/g, 'K');
 	return rows;
 }
 
 /** Retrato 18×18: cabeça + ombros. */
-export function bustGrid(style: HairStyle): string[] {
-	return [...headGrid(style), ...BUST_SHOULDERS];
+export function bustGrid(style: HairStyle, details?: Appearance): string[] {
+	return [...headGrid(style, details), ...BUST_SHOULDERS];
 }
 
 /** Corpo inteiro 30×35. Sem bola para o treinador. */
-export function bodyGrid(style: HairStyle, { ball = true }: { ball?: boolean } = {}): string[] {
+export function bodyGrid(style: HairStyle, { ball = true, details }: { ball?: boolean; details?: Appearance } = {}): string[] {
 	const pad = '.'.repeat(HEAD_OFFSET);
 	const right = '.'.repeat(BODY[0].length - HEAD_W - HEAD_OFFSET);
-	const head = headGrid(style).map((r) => pad + r + right);
-	const body = BODY.map((row, i) =>
-		ball || i < BALL_ROWS[0] || i > BALL_ROWS[1] ? row : '.'.repeat(BALL_COLS) + row.slice(BALL_COLS)
-	);
+	const head = headGrid(style, details).map((r) => pad + r + right);
+	const body = BODY.map((row, i) => {
+		if (!ball && i >= BALL_ROWS[0] && i <= BALL_ROWS[1]) row = '.'.repeat(BALL_COLS) + row.slice(BALL_COLS);
+		if (details?.body === 'forte' && i >= 1 && i <= 3) {
+			const left = row.indexOf('O');
+			const right = row.lastIndexOf('O');
+			row = row.slice(0, left - 1) + 'OJ' + row.slice(left + 1, right) + 'JO' + row.slice(right + 2);
+		}
+		if (details?.body === 'esguio' && i >= 1 && i <= 7) row = '.' + row.slice(0, 14) + row.slice(16) + '.';
+		if (details?.sleeves === 'longa' && i >= 3 && i <= 5) row = row.replace(/S/g, 'J');
+		if (details?.accessory === 'munhequeira' && i === 6) row = row.replace('SSS', 'KKS');
+		if (details?.socks === 'alto' && i >= 12 && i <= 14) row = row.replace(/[Ss]/g, 'D');
+		if (details?.shirt === 'fora' && i === 8) row = row.replace(/P/g, 'j');
+		return row;
+	});
 	return [...head, ...body];
 }
 

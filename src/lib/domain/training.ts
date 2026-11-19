@@ -65,3 +65,7 @@ export function isTeamFocus(v: unknown): v is TeamFocus {
 export function isPlayerFocus(v: unknown): v is PlayerFocus {
 	return typeof v === 'string' && (PLAYER_FOCUS as readonly string[]).includes(v);
 }
+
+export function isPlayerFocusForPosition(focus: PlayerFocus, position: string): boolean {
+	return position === 'GOL' ? focus !== 'finalizacao' : focus !== 'goleiro';
+}
