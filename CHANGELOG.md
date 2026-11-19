@@ -1,5 +1,9 @@
 # Novidades
 
+## 0.7.1 — Menu principal
+
+- A prévia das opções mantém o menu e o rodapé na mesma posição durante a navegação.
+
 ## 0.7.0 — Connected World (desenvolvimento)
 
 - Universos privados persistentes com papéis, convites, rodada oficial, classificação, decisões e negociação entre clubes.

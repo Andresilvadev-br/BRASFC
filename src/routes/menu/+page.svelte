@@ -127,7 +127,7 @@
 	$effect(() => {
 		void current.id;
 		if (!stage) return;
-		for (const [i, el] of [...stage.querySelectorAll<HTMLElement>('[data-stage]')].entries()) {
+		for (const [i, el] of [...stage.querySelectorAll<HTMLElement>('.copy.active [data-stage]')].entries()) {
 			void animate(el, { opacity: 1, x: 0 }, { spring: 'page', delay: i * 40, from: { opacity: 0, x: 18 } });
 		}
 	});
@@ -136,8 +136,8 @@
 		selected = (i + items.length) % items.length;
 	}
 
-	function activate(i = selected) {
-		void goto(items[i].href);
+	function activate(item: Item) {
+		void goto(item.href);
 	}
 
 	function onKey(e: KeyboardEvent) {
@@ -145,16 +145,20 @@
 		if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'ArrowRight' || e.key === 'd') {
 			e.preventDefault();
 			select(selected + 1);
-			focusItem();
+			focusItem(true);
 		} else if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'ArrowLeft' || e.key === 'a') {
 			e.preventDefault();
 			select(selected - 1);
-			focusItem();
+			focusItem(true);
 		}
 	}
 
-	function focusItem() {
-		requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-menu-item="${selected}"]`)?.focus());
+	function focusItem(reveal = false) {
+		requestAnimationFrame(() => {
+			const item = document.querySelector<HTMLElement>(`[data-menu-item="${selected}"]`);
+			item?.focus({ preventScroll: true });
+			if (reveal) item?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+		});
 	}
 
 	onMount(() => {
@@ -210,23 +214,23 @@
 	</nav>
 
 	<section class="stage" bind:this={stage} aria-live="polite">
-		{#key current.id}
-			<div class="copy">
-				<span class="eyebrow" data-stage>{current.eyebrow}</span>
-				<h1 data-stage>{current.headline}</h1>
-				<p data-stage>{current.text}</p>
+		{#each items as item (item.id)}
+			<div class="copy" class:active={item.id === current.id} inert={item.id !== current.id}>
+				<span class="eyebrow" data-stage>{item.eyebrow}</span>
+				<h1 data-stage>{item.headline}</h1>
+				<p data-stage>{item.text}</p>
 				<ul class="chips" data-stage>
-					{#each current.chips as chip (chip)}<li>{chip}</li>{/each}
+					{#each item.chips as chip (chip)}<li>{chip}</li>{/each}
 				</ul>
 				<div class="cta" data-stage>
-					<Button variant="primary" size="lg" iconRight="arrowRight" onclick={() => activate()}>{current.cta}</Button>
-					{#if current.id === 'continuar' && data.careers.length > 1}
+					<Button variant="primary" size="lg" iconRight="arrowRight" onclick={() => activate(item)}>{item.cta}</Button>
+					{#if item.id === 'continuar' && data.careers.length > 1}
 						<Button variant="ghost" href="/continuar">Todas as carreiras</Button>
 					{/if}
 				</div>
-				{#if current.id === 'novidades'}<div class="desk" data-stage><DesktopDownload compact /></div>{/if}
+				{#if item.id === 'novidades'}<div class="desk" data-stage><DesktopDownload compact /></div>{/if}
 			</div>
-		{/key}
+		{/each}
 	</section>
 
 	<div class="hero" aria-hidden="true">
@@ -320,7 +324,7 @@
 		min-height: 128px;
 		padding: var(--sp-4);
 		outline: none;
-		transition: box-shadow 0.25s var(--ease-out), translate 0.3s var(--ease-out);
+		transition: box-shadow 0.25s var(--ease-out);
 	}
 	.item:focus-visible {
 		box-shadow: 0 0 0 2px var(--emerald-strong);
@@ -353,7 +357,6 @@
 		align-self: end;
 	}
 	.item[data-active='true'] {
-		translate: 0 -6px;
 		box-shadow: var(--glow-emerald);
 	}
 	.item[data-active='true'] .label {
@@ -366,16 +369,21 @@
 	.stage {
 		grid-area: stage;
 		position: relative;
-		display: flex;
-		align-items: center;
+		display: grid;
+		align-content: center;
 		min-width: 0;
 	}
 	.copy {
+		grid-area: 1 / 1;
 		display: flex;
 		flex-direction: column;
 		gap: var(--sp-4);
+		visibility: hidden;
 		max-width: 560px;
 		padding: var(--sp-6) 0;
+	}
+	.copy.active {
+		visibility: visible;
 	}
 	.copy h1 {
 		font-size: calc(clamp(2.5rem, 4vw, 3.75rem) * var(--text-scale));
@@ -407,6 +415,7 @@
 	}
 	.cta {
 		display: flex;
+		flex-wrap: wrap;
 		gap: var(--sp-3);
 		margin-top: var(--sp-2);
 	}
