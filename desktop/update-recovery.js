@@ -54,7 +54,8 @@ function updateRecovery(app) {
 			const script = path.join(dir, 'watch.ps1');
 			await fs.writeFile(script, await fs.readFile(path.join(__dirname, 'update-recovery.ps1')));
 			await fs.writeFile(stateFile, JSON.stringify(state), { flag: 'wx' });
-			const powershell = path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+			const system32 = path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32');
+			const powershell = path.join(system32, 'WindowsPowerShell', 'v1.0', 'powershell.exe');
 			const log = path.join(root, 'watch.log');
 			const launcher = `
 				$ErrorActionPreference = 'Stop'
@@ -67,19 +68,33 @@ function updateRecovery(app) {
 				}
 			`;
 			await fs.writeFile(log, '');
-			const child = spawn(powershell, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'RemoteSigned',
-				'-EncodedCommand', Buffer.from(launcher, 'utf16le').toString('base64')], {
-				detached: true, stdio: 'ignore', windowsHide: true, cwd: root,
-				env: { ...process.env, BRASFC_WATCH_LOG: log, BRASFC_WATCH_SCRIPT: script, BRASFC_WATCH_STATE: stateFile }
-			});
-			await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
+			const args = ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'RemoteSigned',
+				'-EncodedCommand', Buffer.from(launcher, 'utf16le').toString('base64')];
+			const env = { ...process.env, BRASFC_WATCH_LOG: log, BRASFC_WATCH_SCRIPT: script, BRASFC_WATCH_STATE: stateFile };
+			const options = { stdio: 'ignore', windowsHide: true, cwd: root, env };
+			const launch = async (file, parameters, extra) => {
+				const process = spawn(file, parameters, { ...options, ...extra });
+				await new Promise((resolve, reject) => { process.once('spawn', resolve); process.once('error', reject); });
+				return process;
+			};
 			const watching = path.join(dir, 'watching');
-			const deadline = Date.now() + 10_000;
-			let started = false;
-			while (child.exitCode === null && Date.now() < deadline) {
-				started = await fs.access(watching).then(() => true, () => false);
-				if (started) break;
-				await wait(150);
+			const ready = async (process, keepWaitingAfterExit = false) => {
+				const deadline = Date.now() + 10_000;
+				do {
+					if (await fs.access(watching).then(() => true, () => false)) return true;
+					if (process.exitCode !== null && !keepWaitingAfterExit) return false;
+					await wait(150);
+				} while (Date.now() < deadline);
+				return false;
+			};
+			const child = await launch(powershell, args, { detached: true });
+			let started = await ready(child);
+			if (!started && child.exitCode === 0 && !(await fs.readFile(log, 'utf8')).trim()) {
+				// Some Windows hosts exit the detached console before running PowerShell.
+				const shell = await launch(path.join(system32, 'cmd.exe'),
+					['/d', '/c', 'start', '""', '/min', `"${powershell}"`, ...args], { windowsVerbatimArguments: true });
+				started = await ready(shell, true);
+				shell.unref();
 			}
 			if (!started) {
 				child.kill();
