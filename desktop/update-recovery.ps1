@@ -14,10 +14,21 @@ function Write-Outcome([string]$status, [string]$reason) {
 
 function Test-Program([string]$directory) {
 	$files = Get-Content -LiteralPath (Join-Path $state.dir 'program-hashes.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-	foreach ($entry in $files.PSObject.Properties) {
-		$file = Join-Path $directory $entry.Name
-		if (!(Test-Path -LiteralPath $file -PathType Leaf)) { return $false }
-		if ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $entry.Value) { return $false }
+	$hash = [System.Security.Cryptography.SHA256]::Create()
+	try {
+		foreach ($entry in $files.PSObject.Properties) {
+			$file = Join-Path $directory $entry.Name
+			if (!(Test-Path -LiteralPath $file -PathType Leaf)) { return $false }
+			$stream = [System.IO.File]::OpenRead($file)
+			try {
+				$digest = [System.BitConverter]::ToString($hash.ComputeHash($stream)).Replace('-', '')
+				if ($digest -ne $entry.Value) { return $false }
+			} finally {
+				$stream.Dispose()
+			}
+		}
+	} finally {
+		$hash.Dispose()
 	}
 	return $true
 }
