@@ -1,4 +1,5 @@
 import type { MatchSummary } from '#lib/domain/matchday.ts';
+import type { MatchRow } from '#lib/domain/playerstats.ts';
 import type { MatchResult } from '#lib/domain/season.ts';
 import type { AppliedDecision } from '#lib/engine/types.ts';
 import type { Db } from '../db/index.ts';
@@ -52,6 +53,20 @@ export async function listUserMatches(db: Db, careerId: string, season?: number)
 		season === undefined ? [careerId] : [careerId, season]
 	);
 	return rows.map((r) => ({ ...map(r), summary: (typeof r.summary === 'string' ? JSON.parse(r.summary) : r.summary) as MatchSummary }));
+}
+
+/** Histórico estatístico sem transportar táticas, eventos e súmulas inteiras do banco. */
+export async function listStatMatches(db: Db, careerId: string, playerId?: string): Promise<MatchRow[]> {
+	const rows = await db.query<Row>(
+		`SELECT ${COLS}, jsonb_build_object(
+			'players', CASE WHEN $2::text IS NULL THEN COALESCE(summary->'players', '{}'::jsonb)
+				WHEN summary->'players'->($2::text) IS NULL THEN '{}'::jsonb
+				ELSE jsonb_build_object($2::text, summary->'players'->($2::text)) END,
+			'starters', summary->'starters', 'mySide', summary->'mySide') AS summary
+		FROM career_matches WHERE career_id = $1 AND is_user ORDER BY season, played_at, round`,
+		[careerId, playerId ?? null]
+	);
+	return rows.map((r) => ({ ...map(r), summary: (typeof r.summary === 'string' ? JSON.parse(r.summary) : r.summary) as MatchRow['summary'] }));
 }
 
 /** Últimas súmulas, em ordem cronológica, sem carregar a carreira inteira. */

@@ -17,7 +17,7 @@ import {
 	startUpgrade,
 	type ActionContext
 } from '#lib/domain/management.ts';
-import { askingPrice, emptyMarket, evolve, evolvedBase, freeAgents, marketValue, retires, rosterOf, wageDemand, type MarketState, type RosterContext } from '#lib/domain/market.ts';
+import { askingPrice, emptyMarket, evolve, formatExactMoney, evolvedBase, freeAgents, marketValue, retires, rosterOf, wageDemand, type MarketState, type RosterContext } from '#lib/domain/market.ts';
 
 const league = initialLeague('brasil', 2026);
 const SEED = 2468;
@@ -40,6 +40,22 @@ describe('valor de mercado e salários', () => {
 		const p = { overall: 72, age: 25 };
 		expect(wageDemand(p, 'A', 2, 'rotacao', 3)).toBeGreaterThan(wageDemand(p, 'A', 5, 'rotacao', 3));
 		expect(wageDemand(p, 'A', 3, 'reserva', 3)).toBeGreaterThan(wageDemand(p, 'A', 3, 'titular', 3));
+	});
+});
+
+describe('contratos na pré-temporada', () => {
+	it('bloqueia duração e salário inválidos e calcula o teto antes da primeira rodada', () => {
+		const market = emptyMarket();
+		const ctx = action(market);
+		const club = initialClubState(SEED, 'bahia', 'serie-a', 2026);
+		const player = rosterOf(ctx.roster, 'bahia').sort((a, b) => a.contract.wage - b.contract.wage)[0];
+		const wage = wageDemand(player, 'A', 3, 'titular', 2) + 1000;
+		expect(() => renewContract(club, market, ctx, player.id, NaN, 2, 'titular')).toThrow(/Salário/);
+		expect(() => renewContract(club, market, ctx, player.id, wage, 2.5, 'titular')).toThrow(/temporadas/);
+		const renewed = renewContract(club, market, ctx, player.id, wage, 2, 'titular');
+		expect(renewed.club.wageBudget).toBeGreaterThan(0);
+		expect(renewed.transfers[0]?.kind).toBe('renovacao');
+		expect(formatExactMoney(1_025_500)).toBe('R$ 1.025.500');
 	});
 });
 

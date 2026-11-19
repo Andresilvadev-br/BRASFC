@@ -62,7 +62,7 @@
 	function startMatch() {
 		walkout = false;
 		if (!fixture) return;
-		setup = fixtureSetup(c, fixture, v.tactic, ctx);
+		setup = preview;
 		playedFixture = fixture;
 		playerKickoff = c.mode === 'player' ? { version: c.version, step: v.step?.key } : null;
 		stage = 'live';

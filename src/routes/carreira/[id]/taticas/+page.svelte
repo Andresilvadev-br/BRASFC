@@ -40,10 +40,10 @@
 	import { formatLong } from '#lib/domain/dates.ts';
 	import { DIVISION_LABELS, type DivisionId } from '#lib/domain/league.ts';
 	import { SPONSOR_SLOTS, type SponsorSlot } from '#lib/domain/club.ts';
-	import { formatMoney } from '#lib/domain/market.ts';
+	import { formatExactMoney } from '#lib/domain/market.ts';
 	import { INSTRUCTION_KEYS, INSTRUCTION_LABELS, optionIndex, paramsFromInstructions } from '#lib/engine/instructions.ts';
 	import { STYLE_LABELS } from '#lib/domain/tactics.ts';
-	import { count } from '#lib/motion/actions.ts';
+	import { count, enter } from '#lib/motion/actions.ts';
 	import InstructionsEditor from '#lib/ui/tactics/InstructionsEditor.svelte';
 	import MasteryPanel from '#lib/ui/tactics/MasteryPanel.svelte';
 	import RolePicker from '#lib/ui/tactics/RolePicker.svelte';
@@ -53,6 +53,14 @@
 	const base = $derived(`/carreira/${data.career.id}`);
 	const v = $derived(data.view);
 	let behavior = $state(true);
+	let sidebar = $state<'banco' | 'estilo' | 'funcao'>('banco');
+	let showBench = $state(false);
+	let workspace = $state<'instrucoes' | 'dominio' | 'auxiliar' | 'partida' | 'comercial'>('instrucoes');
+	const workspaceOptions = [
+		{ value: 'instrucoes', label: 'Instruções' }, { value: 'dominio', label: 'Domínio tático' },
+		{ value: 'auxiliar', label: 'Auxiliar' }, { value: 'partida', label: 'Pré-jogo' },
+		{ value: 'comercial', label: 'Comercial' }
+	] as const;
 	const byId = $derived(new Map(v.squad.map((p) => [p.id, p])));
 	const DIRTY_KEY = 'tactic';
 
@@ -94,6 +102,11 @@
 	);
 	let selection = $state<{ kind: 'slot'; index: number } | { kind: 'bench'; id: string } | null>(null);
 	const selectedSlot = $derived(selection?.kind === 'slot' ? selection.index : null);
+	const sidebarOptions = $derived([
+		{ value: 'banco' as const, label: 'Banco' }, { value: 'estilo' as const, label: 'Estilo' },
+		...(selectedSlot !== null ? [{ value: 'funcao' as const, label: 'Função do titular' }] : [])
+	]);
+	const sidebarView = $derived(sidebar === 'funcao' && selectedSlot === null ? 'banco' : sidebar);
 	let saving = $state(false);
 	let leaveModal = $state(false);
 	let pendingHref: string | null = null;
@@ -117,7 +130,7 @@
 	beforeNavigate((nav) => {
 		if (!changed || saving || !nav.to || nav.willUnload) return;
 		nav.cancel();
-		pendingHref = nav.to.url.pathname;
+		pendingHref = nav.to.url.pathname + nav.to.url.search + nav.to.url.hash;
 		leaveModal = true;
 	});
 
@@ -182,10 +195,7 @@
 		// No modo simples sem ajustes, a tática segue o preset (motor usa o preset calibrado).
 		const sent: Tactic = mode === 'simples' && customCount === 0 ? { ...snap, instructions: undefined } : snap;
 		try {
-			// Se outra tela/aba gravou antes (409), busca a versão atual e grava de novo: vale a tática que o usuário salvou agora.
-			await withCareerVersion(data.career.id, data.career.version, (version) =>
-				api<{ career: Career }>(`/api/careers/${data.career.id}`, { method: 'PATCH', body: { version, tactic: sent } })
-			);
+			await api<{ career: Career }>(`/api/careers/${data.career.id}`, { method: 'PATCH', body: { version: data.career.version, tactic: sent } });
 			await invalidate('app:career');
 			// O indicador some sozinho quando o estado confirmado (servidor) bate com o editado.
 			if (tacticKey({ ...data.view.tactic, instructions: data.view.tactic.instructions }) !== tacticKey({ ...sent, roles: resolveRoles(sent.formation, sent.roles) })) throw new Error('O servidor não confirmou a tática enviada.');
@@ -363,16 +373,19 @@
 		</Panel>
 
 		<div class="side">
-			{#if selectedSlot !== null && byId.get(tactic.lineup[selectedSlot])}
+			<Segmented label="Escalação e estilo" options={sidebarOptions} value={sidebarView} onchange={(value) => (sidebar = value)} />
+			{#key sidebarView}
+			<div class="side-content" use:enter>
+			{#if sidebarView === 'funcao' && selectedSlot !== null && byId.get(tactic.lineup[selectedSlot])}
 				{@const sp = byId.get(tactic.lineup[selectedSlot])!}
 				<Panel title="Função de {sp.shortName}" icon="user" index={1}>
 					<p class="muted small">Funções que fazem sentido como {slots[selectedSlot].position}, da mais compatível para a menos. Ou clique em outro jogador para trocar de lugar.</p>
 					<RolePicker player={sp} position={slots[selectedSlot].position} value={tactic.roles[selectedSlot]} familiarity={v.tactical.roles[sp.id] ?? {}} onpick={(r) => setRole(selectedSlot, r)} />
 				</Panel>
-			{/if}
+			{:else if sidebarView === 'banco'}
 			<Panel title="Reservas" icon="squad" index={1} class="bench-panel">
 				<ul class="bench">
-					{#each bench as p (p.id)}
+					{#each (showBench ? bench : bench.slice(0, 6)) as p (p.id)}
 						<li>
 							<button
 								class:sel={isSel('bench', p.id)}
@@ -391,7 +404,11 @@
 						</li>
 					{/each}
 				</ul>
+				{#if bench.length > 6}
+					<Button size="sm" variant="ghost" aria-expanded={showBench} onclick={() => (showBench = !showBench)}>{showBench ? 'Recolher reservas' : `Ver todas as reservas (${bench.length})`}</Button>
+				{/if}
 			</Panel>
+			{:else}
 			<Panel title="Estilo" icon="field" index={2}>
 				<div class="style">
 					<span class="lbl">Mentalidade</span>
@@ -403,11 +420,21 @@
 					{/if}
 				</div>
 			</Panel>
+			{/if}
+			</div>
+			{/key}
+			<div class="side-summary">
+				<div><small>Condição dos titulares</small><strong>{avgCondition}%</strong></div>
+				<div><small>Execução do plano</small><strong>{Math.round(mastery.execution)}/100</strong></div>
+			</div>
 		</div>
 	</div>
 
-	<!-- ═══ Região abaixo da escalação ═══ -->
-	<div class="below">
+	<div class="workspace">
+		<Segmented label="Análise e preparação" options={[...workspaceOptions]} bind:value={workspace} />
+		{#key workspace}
+		<div class="below" class:plan-grid={workspace === 'instrucoes' || workspace === 'partida'} use:enter>
+		{#if workspace === 'instrucoes'}
 		<Panel title="Instruções" icon="tactics" index={3} class="m-instr">
 			{#if mode === 'avancada'}
 				<InstructionsEditor bind:value={tactic.instructions} {preset} />
@@ -427,7 +454,7 @@
 			{/if}
 		</Panel>
 
-		<div class="m-plan">
+
 			<Panel title="Plano ativo" icon="field" index={4}>
 				<div class="plan">
 					<div class="plan-id">
@@ -448,6 +475,7 @@
 				</div>
 			</Panel>
 
+		{:else if workspace === 'partida'}
 			<Panel title="Próxima partida" icon="whistle" index={5}>
 				{#if up && oppId}
 					<div class="next">
@@ -476,33 +504,45 @@
 				{/if}
 			</Panel>
 
-			{#if club}
+			<Panel title="Preparação individual" icon="squad">
+				{#if starters.length}
+					<p class="muted small">Titulares em ordem de condição física.</p>
+					<div class="fitness-list">
+						{#each [...starters].sort((a, b) => a.condition - b.condition) as athlete (athlete.id)}
+							<div><span>{athlete.shortName}</span><Meter value={athlete.condition} label={`Condição de ${athlete.shortName}`} /><b>{athlete.condition}%</b></div>
+						{/each}
+					</div>
+				{:else}<p class="muted">Selecione seus titulares para ver a condição física.</p>{/if}
+			</Panel>
+		{:else if workspace === 'comercial' && club}
 				<Panel title="Comercial" icon="briefcase" index={6}>
 					<div class="com">
 						<div class="comtop">
 							<div><span>Patrocínios ativos</span><b>{club.sponsors.length}/{Object.keys(SPONSOR_SLOTS).length}</b></div>
-							<div><span>Receita mensal</span><b class="money">{formatMoney(sponsorMonthly)}</b></div>
+							<div><span>Receita mensal</span><b class="money">{formatExactMoney(sponsorMonthly)}</b></div>
 						</div>
 						{#if bestOffers.length}
 							<ul class="offers">
 								{#each bestOffers as o (o.id)}
-									<li><span class="slotl">{SPONSOR_SLOTS[o.slot].label}</span><span class="brand">{o.brand}</span><b class="money">{formatMoney(o.monthly)}<small>/mês</small></b></li>
+									<li><span class="slotl">{SPONSOR_SLOTS[o.slot].label}</span><span class="brand">{o.brand}</span><b class="money">{formatExactMoney(o.monthly)}<small>/mês</small></b></li>
 								{/each}
 							</ul>
 						{/if}
 						<a class="more" href="{base}/financas">{bestOffers.length ? 'Comparar e assinar propostas' : 'Abrir finanças'} <Icon name="arrowRight" size={14} /></a>
 					</div>
 				</Panel>
-			{/if}
-		</div>
-
+		{:else if workspace === 'dominio'}
 		<Panel title="Domínio tático" icon="chart" index={7} class="m-mastery">
 			<MasteryPanel state={v.tactical} {mastery} formation={tactic.formation} style={tactic.style} lineup={tactic.lineup} roles={tactic.roles} {slots} squad={v.squad} instructions={tactic.instructions} onformation={changeFormation} />
 		</Panel>
 
+		{:else if workspace === 'auxiliar'}
 		<Panel title="Auxiliar técnico" icon="whistle" index={8} class="m-assist">
 			<AssistantPanel {tips} {opponent} prepHref="{base}/partida" onapply={applyTip} ondismiss={dismissTip} />
 		</Panel>
+		{/if}
+		</div>
+		{/key}
 	</div>
 {/if}
 
@@ -573,7 +613,7 @@
 	/* campo + lateral */
 	.center {
 		display: grid;
-		grid-template-columns: fit-content(780px) minmax(320px, 1fr);
+		grid-template-columns: minmax(0, 1.24fr) minmax(0, 1fr);
 		gap: var(--sp-4);
 		align-items: start;
 	}
@@ -608,8 +648,8 @@
 		container-type: inline-size;
 		/* proporção do campo sempre preservada; a altura cabe na tela */
 		/* cabe na altura da tela, mas nunca menor que 470px (acompanha a coluna de reservas e estilo) */
-		width: min(100%, clamp(470px, calc((var(--app-h, 100vh) - 230px) * 68 / 96), 600px));
-		aspect-ratio: 68 / 96;
+		width: min(100%, 560px);
+		aspect-ratio: 68 / 74;
 		border-radius: var(--radius-l);
 		background: repeating-linear-gradient(180deg, #123e2d 0 9%, #10372a 9% 18%);
 		overflow: hidden;
@@ -763,14 +803,16 @@
 		list-style: none;
 		margin: 0;
 		padding: 0;
-		max-height: clamp(220px, calc(var(--app-h, 100vh) - 640px), 420px);
-		overflow-y: auto;
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 175px), 1fr));
+		gap: 4px;
 	}
 	.bench button {
 		display: grid;
-		grid-template-columns: auto minmax(0, 1fr) auto 32px;
+		grid-template-columns: auto minmax(0, 1fr) auto auto;
 		align-items: center;
-		gap: var(--sp-3);
+		gap: 6px;
+		min-height: 44px;
 		width: 100%;
 		padding: 4px var(--sp-2);
 		border: 1px solid transparent;
@@ -791,9 +833,7 @@
 	.bn {
 		font-size: var(--fs-sm);
 		font-weight: 600;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		overflow-wrap: anywhere;
 	}
 	.bp {
 		font-size: var(--fs-xs);
@@ -836,34 +876,24 @@
 		margin: 0 0 8px;
 	}
 
-	/* região abaixo */
-	.below {
+	.workspace { margin-top: var(--sp-4); }
+	.below { display: grid; gap: var(--sp-4); margin-top: 12px; align-items: start; }
+	.below.plan-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 355px), 1fr)); }
+	.below > :global(.panel), .side-content { min-width: 0; }
+	.side-summary {
 		display: grid;
-		grid-template-columns: repeat(12, minmax(0, 1fr));
-		gap: var(--sp-4);
-		margin-top: var(--sp-4);
-		align-items: start;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 8px;
+		padding: 14px;
+		background: linear-gradient(135deg, var(--emerald-soft), var(--surface-sunken));
+		border: 1px solid var(--line);
+		border-radius: var(--radius-m);
 	}
-	.below {
-		grid-auto-flow: row dense;
-	}
-	.below > :global(.m-instr) {
-		grid-column: span 8;
-	}
-	.m-plan {
-		grid-column: span 4;
-		grid-row: span 2;
-		display: flex;
-		flex-direction: column;
-		gap: var(--sp-4);
-		min-width: 0;
-	}
-	.below > :global(.m-mastery) {
-		grid-column: span 8;
-	}
-	.below > :global(.m-assist) {
-		grid-column: span 12;
-	}
+	.side-summary small, .side-summary strong { display: block; }
+	.side-summary small { color: var(--text-2); }
+	.side-summary strong { color: var(--emerald-strong); font-size: var(--fs-xl); }
+	.fitness-list { display: grid; gap: 8px; }
+	.fitness-list > div { display: grid; grid-template-columns: minmax(80px, 1fr) minmax(60px, 2fr) 3em; gap: 10px; align-items: center; }
 	.simple {
 		display: flex;
 		flex-direction: column;
@@ -1036,7 +1066,7 @@
 		gap: 10px;
 	}
 	.money {
-		white-space: nowrap;
+		font-variant-numeric: tabular-nums;
 	}
 	.money small {
 		font-size: 0.6em;
@@ -1070,9 +1100,7 @@
 	.brand {
 		font-size: var(--fs-sm);
 		font-weight: 650;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		overflow-wrap: anywhere;
 	}
 	.offers b {
 		font-size: var(--fs-sm);
@@ -1091,41 +1119,12 @@
 		text-decoration: underline;
 	}
 
-	@media (max-width: 1280px) {
-		.below > :global(.m-instr) {
-			grid-column: span 12;
-		}
-		.m-plan {
-			grid-column: span 12;
-			grid-row: auto;
-			display: grid;
-			grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
-			align-items: start;
-		}
+	@media (max-width: 1020px) {
+		.center { grid-template-columns: minmax(0, 1fr); }
 	}
-	@media (max-width: 1280px) {
-		.below > :global(.m-mastery) {
-			grid-column: span 6;
-		}
-		.below > :global(.m-assist) {
-			grid-column: span 6;
-		}
-	}
-	@media (max-width: 1100px) {
-		.center {
-			grid-template-columns: 1fr;
-		}
-		.pitch {
-			width: min(100%, 560px);
-		}
-	}
-	@media (max-width: 900px) {
-		.below > :global(.m-mastery),
-		.below > :global(.m-assist) {
-			grid-column: span 12;
-		}
-		.save {
-			width: 100%;
-		}
+	@media (max-width: 650px) {
+		.save { width: 100%; }
+		.pitch { aspect-ratio: 68 / 88; }
+		.pitch-wrap { padding-inline: 6px; }
 	}
 </style>

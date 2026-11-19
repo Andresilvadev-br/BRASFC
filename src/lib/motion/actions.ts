@@ -35,6 +35,7 @@ export const pop: Action<HTMLElement, { delay?: number } | undefined> = (el, par
 export const indicator: Action<HTMLElement, { axis?: 'x' | 'y'; key?: unknown }> = (el, params) => {
 	type Liquid = ReturnType<NonNullable<ReturnType<typeof getMotion>>['indicator']>;
 	let liquid: Liquid | null = null;
+	let frame = 0;
 	const axis = params.axis ?? 'x';
 	const container = el.parentElement!;
 
@@ -66,9 +67,11 @@ export const indicator: Action<HTMLElement, { axis?: 'x' | 'y'; key?: unknown }>
 
 	return {
 		update() {
-			requestAnimationFrame(() => place());
+			if (frame) cancelAnimationFrame(frame);
+			frame = requestAnimationFrame(() => { frame = 0; place(); });
 		},
 		destroy() {
+			cancelAnimationFrame(frame);
 			ro.disconnect();
 			liquid?.destroy();
 		}

@@ -72,10 +72,10 @@ export function applyPlayerAction(c: Career, v: CareerView, body: Record<string,
 			if (!marketOpen || d.loan || !divisionOf(v.league, offer.clubId)) throw new ManagementError('Proposta indisponível nesta janela.');
 			if (action === 'jogador-contraproposta') {
 				if (offer.countered || offer.kind === 'emprestimo') throw new ManagementError('As condições desta proposta já estão definidas.');
-				offer.countered = true;
 				const increase = d.support.agent >= 65 && state.reputation >= 35 ? 0.10 : d.support.agent >= 45 ? 0.05 : 0;
-				offer.wage = roundMoney(offer.wage * (1 + increase));
-				message = increase ? 'O clube aceitou melhorar o salário.' : 'O clube manteve a proposta original.';
+				const wage = increase ? Math.max(offer.wage, roundMoney(offer.wage * (1 + increase))) : offer.wage;
+				state.offers = state.offers.map((item) => item.id === offer.id ? { ...item, wage, countered: true } : item);
+				message = wage > offer.wage ? 'O clube aceitou melhorar o salário.' : 'O clube manteve a proposta original.';
 				break;
 			}
 			clubId = offer.clubId;

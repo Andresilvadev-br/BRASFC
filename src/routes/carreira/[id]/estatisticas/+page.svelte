@@ -38,7 +38,7 @@
 	const record = $derived.by(() => {
 		let w = 0, d = 0, l = 0, gf = 0, ga = 0;
 		for (const m of filtered) {
-			const home = m.home === c.clubId;
+			const home = m.summary.mySide ? m.summary.mySide === 'home' : m.home === c.clubId;
 			const f = home ? m.homeGoals : m.awayGoals;
 			const a = home ? m.awayGoals : m.homeGoals;
 			gf += f;

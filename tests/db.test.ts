@@ -117,7 +117,9 @@ describe('partidas da carreira (Dev 0.2/0.3)', () => {
 		const v0 = careerView(career);
 		const tactic = { ...v0.tactic, mentality: 'ofensiva' as const, style: 'pressao' as const };
 		career = await patchCareerData(db, profile.id, career.id, { tactic }, career.version);
+		career = await patchCareerData(db, profile.id, career.id, { trainingPlan: { sessions: ['formacao', 'posse', 'descanso', 'defesa', 'funcoes'], intensity: 'normal' } }, career.version);
 		const reloaded = (await getCareer(db, profile.id, career.id))!;
+		expect(reloaded.data.trainingPlan?.sessions).toContain('funcoes');
 		const view = careerView(reloaded, await listResults(db, career.id, reloaded.season));
 		expect(view.tacticSaved).toBe(true);
 		expect(sameTactic(view.tactic, { ...tactic, roles: view.tactic.roles })).toBe(true);
@@ -220,6 +222,16 @@ describe('partidas da carreira (Dev 0.2/0.3)', () => {
 		// Dev 0.5: universo vivo, gabinete e comissão técnica persistidos e consistentes.
 		const { universeIssues } = await import('#lib/domain/universe.ts');
 		const u = res.career.data.universe!;
+		const { universePreview } = await import('#lib/domain/universe.ts');
+		const { universeCoach } = await import('#lib/domain/matchday.ts');
+		const { clubId } = res.career;
+		const opponent = Object.keys(u.clubs).find((id) => id !== clubId && u.clubs[id].coachId)!;
+		const preview = universePreview(u, [clubId, opponent])!;
+		expect(Buffer.byteLength(JSON.stringify(preview))).toBeLessThan(Buffer.byteLength(JSON.stringify(u)) / 10);
+		expect(universeCoach({ data: { universe: preview } }, opponent)).toEqual(universeCoach(res.career, opponent));
+		const reloaded = (await getCareer(db, profile.id, career.id))!;
+		expect(reloaded.data.universe).toEqual(u);
+		expect((await listCareers(db, profile.id, true))[0].data.universe).toBeUndefined();
 		expect(u.season).toBe(2027);
 		expect(universeIssues(u)).toEqual([]);
 		expect(u.news.length).toBeGreaterThan(0);

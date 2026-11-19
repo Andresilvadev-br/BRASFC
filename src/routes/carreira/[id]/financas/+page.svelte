@@ -2,7 +2,7 @@
 	import { onMount, untrack } from 'svelte';
 	import { SPONSOR_SLOTS, TICKET_REF } from '#lib/domain/club.ts';
 	import { LEDGER_LABELS } from '#lib/domain/management.ts';
-	import { formatMoney } from '#lib/domain/market.ts';
+	import { formatExactMoney, formatMoney } from '#lib/domain/market.ts';
 	import { count, reveal } from '#lib/motion/actions.ts';
 	import { clubAction, clubHistory } from '#lib/client/club.ts';
 	import Button from '#lib/ui/Button.svelte';
@@ -163,8 +163,8 @@
 					<div class="sponsor on">
 						<span class="slotl">{SPONSOR_SLOTS[s.slot].label}</span>
 						<strong>{s.brand}</strong>
-						<span class="money">{formatMoney(s.monthly)}<small>/mês</small></span>
-						<small class="muted">até {s.untilSeason}{s.bonus ? ` · bônus ${s.bonus.label}: +${formatMoney(s.bonus.amount)}` : ''}</small>
+						<span class="money">{formatExactMoney(s.monthly)}<small>/mês</small></span>
+						<small class="muted">até {s.untilSeason}{s.bonus ? ` · bônus ${s.bonus.label}: +${formatExactMoney(s.bonus.amount)}` : ''}</small>
 					</div>
 				{/each}
 			</div>
@@ -192,9 +192,9 @@
 					<div class="cmptable" style="--n:{compared.length}">
 						<span class="h"></span>{#each compared as o (o.id)}<strong class="h">{o.brand}</strong>{/each}
 						<span class="lb">Categoria</span>{#each compared as o (o.id)}<span>{SPONSOR_SLOTS[o.slot].label}</span>{/each}
-						<span class="lb">Mensal</span>{#each compared as o (o.id)}<b class="money">{formatMoney(o.monthly)}</b>{/each}
+						<span class="lb">Mensal</span>{#each compared as o (o.id)}<b class="money">{formatExactMoney(o.monthly)}</b>{/each}
 						<span class="lb">Duração</span>{#each compared as o (o.id)}<span>{o.seasons} temporada{o.seasons > 1 ? 's' : ''}</span>{/each}
-						<span class="lb">Bônus</span>{#each compared as o (o.id)}<span>{o.bonus ? `${o.bonus.label}: ${formatMoney(o.bonus.amount)}` : '—'}</span>{/each}
+						<span class="lb">Bônus</span>{#each compared as o (o.id)}<span>{o.bonus ? `${o.bonus.label}: ${formatExactMoney(o.bonus.amount)}` : '—'}</span>{/each}
 						<span class="lb">Exigência</span>{#each compared as o (o.id)}<span class:warn={!!o.requirement}>{o.requirement?.label ?? 'Nenhuma'}</span>{/each}
 					</div>
 				</div>
@@ -209,10 +209,10 @@
 							{#if best}<span class="tag">Maior valor</span>{/if}
 						</div>
 						<strong class="brand">{o.brand}</strong>
-						<span class="money big">{formatMoney(o.monthly)}<small>/mês</small></span>
+						<span class="money big">{formatExactMoney(o.monthly)}<small>/mês</small></span>
 						<div class="facts">
 							<span>{o.seasons} temporada{o.seasons > 1 ? 's' : ''}</span>
-							{#if o.bonus}<span class="bonus">Bônus {o.bonus.label}: {formatMoney(o.bonus.amount)}</span>{/if}
+							{#if o.bonus}<span class="bonus">Bônus {o.bonus.label}: {formatExactMoney(o.bonus.amount)}</span>{/if}
 							{#if o.requirement}<span class="warn">Exige: {o.requirement.label}</span>{/if}
 						</div>
 						<div class="det" class:open={openOffer === o.id}>

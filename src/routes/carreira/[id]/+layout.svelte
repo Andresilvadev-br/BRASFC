@@ -12,7 +12,7 @@
 	let { data, children } = $props();
 
 	const base = $derived(`/carreira/${data.career.id}`);
-	const unread = $derived(data.messages.filter((m) => !m.read).length);
+	const unread = $derived(data.career.unreadMessages ?? 0);
 	const coach = $derived(data.career.mode === 'coach');
 	const brasil = $derived(data.view.world === 'brasil');
 	type Item = { href: string; label: string; icon: IconName; badge?: number; alert?: boolean };
@@ -130,7 +130,7 @@
 	.shell {
 		min-height: var(--app-h, 100vh);
 		display: grid;
-		grid-template-columns: 248px 1fr;
+		grid-template-columns: 248px minmax(0, 1fr);
 		grid-template-rows: auto 1fr;
 		background:
 			radial-gradient(60% 40% at 10% -10%, color-mix(in srgb, var(--club) 16%, transparent), transparent 70%),

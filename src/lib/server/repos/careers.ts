@@ -79,9 +79,12 @@ export async function createCareer(db: Db, profileId: string, input: CreateCaree
 	});
 }
 
-export async function listCareers(db: Db, profileId: string): Promise<Career[]> {
+export async function listCareers(db: Db, profileId: string, compact = false): Promise<Career[]> {
+	const columns = compact
+		? COLUMNS.replace('c.data,', "jsonb_strip_nulls(jsonb_build_object('appearance', c.data->'appearance', 'position', c.data->'position')) AS data,")
+		: COLUMNS;
 	const rows = await db.query<CareerRow>(
-		`SELECT ${COLUMNS},
+		`SELECT ${columns},
 			(SELECT count(*) FROM career_messages m WHERE m.career_id = c.id AND m.read_at IS NULL) AS unread
 		 FROM careers c WHERE c.profile_id = $1 ORDER BY c.updated_at DESC`,
 		[profileId]
@@ -188,14 +191,14 @@ type MessageRow = {
 	read_at: Date | string | null;
 };
 
-export async function listMessages(db: Db, profileId: string, careerId: string): Promise<CareerMessage[]> {
+export async function listMessages(db: Db, profileId: string, careerId: string, limit: number | null = null): Promise<CareerMessage[]> {
 	if (!isUuid(careerId)) return [];
 	const rows = await db.query<MessageRow>(
 		`SELECT m.id, m.kind, m.sender, m.subject, m.body, m.game_date::text AS game_date, m.read_at
 		 FROM career_messages m JOIN careers c ON c.id = m.career_id
 		 WHERE m.career_id = $1 AND c.profile_id = $2
-		 ORDER BY m.game_date DESC, m.seq ASC`,
-		[careerId, profileId]
+		 ORDER BY CASE WHEN $3::int IS NOT NULL THEN m.read_at IS NOT NULL ELSE false END, m.game_date DESC, m.seq ASC LIMIT $3`,
+		[careerId, profileId, limit]
 	);
 	return rows.map((r) => ({
 		id: r.id,

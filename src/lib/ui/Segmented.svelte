@@ -28,8 +28,9 @@
 		} else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
 			e.preventDefault();
 			select(options[(i - 1 + options.length) % options.length].value);
-		}
-		requestAnimationFrame(() => (e.currentTarget as HTMLElement | null)?.querySelector<HTMLElement>('[aria-checked="true"]')?.focus());
+		} else return;
+		const group = e.currentTarget as HTMLElement;
+		requestAnimationFrame(() => group.querySelector<HTMLElement>('[aria-checked="true"]')?.focus());
 	}
 </script>
 

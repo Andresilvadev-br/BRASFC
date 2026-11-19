@@ -1,11 +1,25 @@
 # Novidades
 
+## 0.6.1 — 2026-11-19 · Carreira de Jogador e estabilidade
+
+- Central com comparação por posição, notas por adversário, atributos por grupo e evolução por temporada.
+- Confirmação de troca de clube, comparação salarial e contraproposta sem alterar os termos antigos.
+- Histórico detalhado carregado ao abrir a tela, com consultas limitadas aos dados estatísticos.
+- Inclui as correções da Dev 0.5.1.
+
 ## 0.6.0 — 2026-11-19 · Carreira de Jogador
 
 - Criação de jogador com dados pessoais, prévia em pixel art e uniforme configurável.
 - Central dedicada, treinos individuais no calendário, concorrência por posição, convocação, objetivos e avaliação pelo motor de partidas.
 - Evolução de atributos, condição física, lesões, entrevistas, empresário, contratos, transferências, empréstimos e patrocínio individual.
 - Estatísticas, recordes pessoais e trajetória profissional em saves independentes da carreira de treinador.
+
+## 0.5.1 — 2026-11-19 · Carreira de Treinador
+
+- Campo interativo com banco expansível e painéis de instruções, domínio, auxiliar, pré-jogo e comercial.
+- Valores exatos de patrocínio e teto salarial disponível na pré-temporada. Validação de renovações e missões.
+- Táticas e treinos usam a versão do save em que foram editados. A interface informa conflitos entre abas.
+- O universo completo carrega no explorador. As demais telas recebem o contexto do próximo jogo, e a simulação reaproveita a preparação da rodada.
 
 ## 0.5.0 — 2026-11-18 · Manager Update
 

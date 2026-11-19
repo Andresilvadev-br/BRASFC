@@ -19,6 +19,21 @@ export interface Release {
 
 export const RELEASES: Release[] = [
 	{
+		version: '0.6.1',
+		date: '2026-11-19',
+		title: 'Estabilidade e experiência das carreiras',
+		channel: 'desenvolvimento',
+		highlights: [
+			{ title: 'Central do treinador', text: 'Trabalhe com a escalação e alterne entre instruções, domínio, auxiliar, pré-jogo e comercial.', icon: 'tactics' },
+			{ title: 'Central do jogador', text: 'Compare seu nível no elenco, acompanhe as notas por adversário e confira os termos antes de aceitar uma oferta.', icon: 'user' },
+			{ title: 'Navegação mais leve', text: 'O explorador carrega o universo completo quando você o abre. A trajetória consulta o histórico ao ser selecionada.', icon: 'globe' }
+		],
+		added: ['Comparação de salário, confirmação de transferência e gráficos de evolução'],
+		fixed: ['Negociações de pré-temporada, conflitos de gravação e valores de patrocínio'],
+		compat: { database: 'mesmo esquema da Dev 0.6', saves: 'carreiras anteriores são compatíveis' },
+		next: []
+	},
+	{
 		version: '0.6.0',
 		date: '2026-11-19',
 		title: 'Carreira de Jogador',
@@ -30,6 +45,16 @@ export const RELEASES: Release[] = [
 		],
 		added: ['Criação e visualização do atleta em pixel art', 'Convocações, avaliações e objetivos individuais', 'Entrevistas, reputação e patrocínios individuais'],
 		compat: { database: 'mesmo esquema da Dev 0.5', saves: 'carreiras anteriores são carregadas com valores iniciais para os novos campos' },
+		next: []
+	},
+	{
+		version: '0.5.1',
+		date: '2026-11-19',
+		title: 'Polimento do treinador',
+		channel: 'desenvolvimento',
+		added: ['Painéis táticos adaptativos, banco expansível e condição individual no pré-jogo'],
+		fixed: ['Teto salarial na pré-temporada, validação de renovações e conflitos no save'],
+		compat: { database: 'mesmo esquema da Dev 0.5', saves: 'entregue em conjunto com a Dev 0.6.1' },
 		next: []
 	},
 	{

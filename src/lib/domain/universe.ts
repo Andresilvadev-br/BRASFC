@@ -212,7 +212,7 @@ export function initialUniverse(s: UniverseSetup): UniverseState {
 export function sanitizeUniverse(raw: unknown): UniverseState | null {
 	if (!raw || typeof raw !== 'object') return null;
 	const u = raw as UniverseState;
-	if (u.v !== UNIVERSE_VERSION || typeof u.clubs !== 'object' || typeof u.coaches !== 'object' || !Array.isArray(u.news)) return null;
+	if (u.v !== UNIVERSE_VERSION || !u.clubs || typeof u.clubs !== 'object' || !u.coaches || typeof u.coaches !== 'object' || !Array.isArray(u.news)) return null;
 	return {
 		...u,
 		news: u.news.slice(-NEWS_CAP),
@@ -220,6 +220,22 @@ export function sanitizeUniverse(raw: unknown): UniverseState | null {
 		streaks: u.streaks && typeof u.streaks === 'object' ? u.streaks : {},
 		records: u.records ?? { biggestWin: null, titles: {}, bestCampaign: null, longestStreak: null }
 	};
+}
+
+/** Estado necessário para a central e o próximo jogo. O explorador carrega o universo completo. */
+export function universePreview(raw: unknown, clubIds: string[]): UniverseState | undefined {
+	const universe = sanitizeUniverse(raw);
+	if (!universe) return undefined;
+	const clubs: UniverseState['clubs'] = {};
+	const coaches: UniverseState['coaches'] = {};
+	for (const id of clubIds) {
+		const club = universe.clubs[id];
+		if (!club) continue;
+		clubs[id] = club;
+		const coach = club.coachId ? universe.coaches[club.coachId] : null;
+		if (coach) coaches[coach.id] = { ...coach, history: [] };
+	}
+	return { ...universe, clubs, coaches, news: universe.news.slice(-3), log: [], streaks: {} };
 }
 
 /** Técnico do clube (nome e perfil) — `null` para o clube do usuário. */
