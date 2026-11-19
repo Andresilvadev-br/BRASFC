@@ -1,0 +1,13 @@
+{
+  "workflow_run": 44533969249,
+  "job_id": 135594411989,
+  "targetVersion": "1.4.0",
+  "tests": [
+    "1.3.0 instalado, perfil local e primeira partida oficial persistidos",
+    "Falha de download exibida no app",
+    "Download repetido, pacote verificado pelo updater e NSIS aplicado pelo app",
+    "Nova instância aberta automaticamente após o NSIS",
+    "Reabertura na versão nova com conta, carreira avançada e preferência preservadas"
+  ],
+  "passed": true
+}

@@ -22,6 +22,8 @@ kill "$game_pid"
 
 A aceleração só altera os prazos de apresentação e o ritmo solicitado de simulação no processo de teste. O motor, os limites de ticks por chamada, as rotas, o banco e as transações permanecem ativos. Os percentis usam tempo real medido pelo cliente. As métricas CPU e RSS cobrem o processo Node em Linux. O programa considera uma etapa concluída quando o servidor grava os confrontos sem duplicação e confirma o avanço. A passagem anual exige o incremento do ano e a preservação da carreira do atleta.
 
+Para comparar carga, defina `BRASFC_TEST_ROUNDS=1` e execute primeiro uma instância do cliente, depois duas instâncias em paralelo com arquivos de saída diferentes. Use a mesma instância do servidor e do banco. O cenário de duas salas ocupa oito conexões WebSocket. O alvo local de P95 de 500 ms para o relógio deixa folga antes da próxima consulta normal de 950 ms. As chamadas aceleradas geram carga mais concentrada que a cadência da interface.
+
 ## Atualizador Windows
 
 O workflow **App Windows** do PR faz o teste em runner descartável. Ele baixa o instalador estável 1.3.0, instala, cria um perfil offline, salva uma carreira e disputa a primeira rodada pelo aplicativo. O pacote candidato da execução é oferecido em um servidor HTTP de loopback, com o hash produzido pelo NSIS e lido pelo atualizador existente. O fluxo testa uma resposta de erro do servidor de download, a tentativa seguinte, a instalação pelo aplicativo e a continuidade da carreira depois de atualizar. O JSON de evidência é guardado como artefato, inclusive em falhas.

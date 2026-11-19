@@ -8,6 +8,9 @@ import WebSocket from 'ws';
 const base = process.env.BRASFC_TEST_URL ?? 'http://127.0.0.1:4151';
 assert(['127.0.0.1', 'localhost'].includes(new URL(base).hostname), 'Use um servidor descartável em loopback.');
 const output = process.argv[2] ?? '/tmp/brasfc-season.json';
+const limit = Number(process.env.BRASFC_TEST_ROUNDS ?? 0);
+assert(Number.isSafeInteger(limit) && limit >= 0 && limit <= 51);
+
 const started = performance.now();
 const report = { rounds: [], requests: {}, errors: {}, scenarios: [], maxRssBytes: 0, maxCpuPercent: 0 };
 const sessions = [];
@@ -69,7 +72,7 @@ try {
 	await command(3, 'assign', { role: 'player', club: 'flamengo', personName: 'Teste Temporada', position: 'ATA' });
 	await command(0, 'delegate', { target: (await state()).members.find((m) => m.assignment?.role === 'assistant').profileId, value: true });
 	const season = (await state()).season;
-	for (let round = 0; round < 70; round++) {
+	for (let round = 0; round < (limit || 70); round++) {
 		const prior = await state();
 		if (prior.season !== season) break;
 		for (const [i] of sessions.entries()) {
@@ -129,11 +132,12 @@ try {
 		if (round % 5 === 0) console.log(JSON.stringify(report.rounds.at(-1)));
 	}
 	const after = await state();
-	assert.equal(after.season, season + 1);
+	assert.equal(after.season, limit ? season : season + 1);
+	if (limit) assert.equal(report.rounds.length, limit);
 	const athlete = await state(3);
 	assert.equal(athlete.current.role, 'player');
 	assert(athlete.current.athlete.playerCareer);
-	report.completedSeason = { before: season, after: after.season };
+	if (!limit) report.completedSeason = { before: season, after: after.season };
 } catch (error) {
 	report.failure = String(error.stack ?? error);
 	process.exitCode = 1;
