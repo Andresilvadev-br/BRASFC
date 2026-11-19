@@ -190,3 +190,32 @@ describe('táticas salvas (regressão do Dev 0.2)', () => {
 		expect(t.style).toBe('bola-longa');
 	});
 });
+
+describe('comandos individuais e capitães', () => {
+	it('preserva a hierarquia e avança para o vice em substituição ou expulsão', () => {
+		const home = team(mid[0]);
+		const [captain, vice, next] = home.tactic.lineup.slice(1);
+		home.tactic.captains = [captain, vice, next];
+		const match = new Match({ home, away: team(mid[1]), seed: 7, ai: { home: false } });
+		expect(match.captain('home')).toBe(captain);
+		while (match.phase !== 'half_time') match.step();
+		expect(match.prepareInterval('home', { type: 'sub', outId: captain, inId: match.bench('home')[0].id })).toBeUndefined();
+		expect(match.captain('home')).toBe(vice);
+		match.states.get(vice)!.sentOff = true;
+		expect(match.captain('home')).toBe(next);
+		expect(home.tactic.captains).toEqual([captain, vice, next]);
+	});
+
+	it('aplica o posicionamento ao motor e recusa instruções de posição incompatível', () => {
+		const home = team(mid[0]);
+		const away = team(mid[1]);
+		const goalkeeper = home.tactic.lineup[0];
+		const baseline = new Match({ home, away, seed: 3, ai: { home: false } });
+		const trained = new Match({ home: { ...home, tactic: { ...home.tactic, playerOrders: { [goalkeeper]: 'adiantado' } } }, away, seed: 3, ai: { home: false } });
+		expect(trained.states.get(goalkeeper)!.x).toBeGreaterThan(baseline.states.get(goalkeeper)!.x);
+		while (trained.phase !== 'half_time') trained.step();
+		expect(trained.prepareInterval('home', { type: 'individual', playerId: goalkeeper, order: 'ultrapassar' })).toMatch(/incompatível/);
+		expect(trained.prepareInterval('home', { type: 'individual', playerId: goalkeeper, order: 'conservador' })).toBeUndefined();
+		expect(trained.teams.home.tactic.playerOrders?.[goalkeeper]).toBe('conservador');
+	});
+});

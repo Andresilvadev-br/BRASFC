@@ -243,6 +243,14 @@ export function sanitizeTactic(input: unknown, squad: SquadPlayer[]): Tactic | n
 	return out;
 }
 
+/** Repair only unavailable starters. Keep valid tactical preferences and succession. */
+export function recoverTactic(tactic: Tactic | undefined, squad: SquadPlayer[]): Tactic | null {
+	if (!tactic) return null;
+	const saved = sanitizeTactic(tactic, squad);
+	if (saved || !isFormation(tactic.formation)) return saved;
+	return sanitizeTactic({ ...tactic, lineup: autoLineup(tactic.formation, squad) }, squad);
+}
+
 /**
  * Chave canônica da tática (independe da ordem das propriedades do objeto).
  * O PostgreSQL (jsonb) reordena as chaves ao gravar; comparar JSON.stringify

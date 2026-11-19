@@ -270,7 +270,7 @@
 						<div class="lineup">{#each FORMATIONS[formation] as slot, i (i)}
 							<label>{slot.position}<select bind:value={savedLineup[i]}>{#each world.roster as p}<option value={p.id}>{p.name} · {p.overall}</option>{/each}</select></label>
 						{/each}</div>
-						<PlayerOrders squad={world.roster} lineup={savedLineup} order={captainDraft} instructions={orderDraft} oninstruction={setIndividual} oncaptains={(ids) => captainDraft = ids} />
+						<PlayerOrders squad={world.roster} lineup={savedLineup} slotPositions={FORMATIONS[formation].map((slot) => slot.position)} order={captainDraft} instructions={orderDraft} oninstruction={setIndividual} oncaptains={(ids) => captainDraft = ids} />
 						<Button disabled={saving} onclick={() => send('tactic', { tactic: { ...world.tactic, formation, style, lineup: savedLineup, mentality, captains: captainDraft, playerOrders: orderDraft } })}>Salvar escalação</Button>
 					{/if}
 				</article>

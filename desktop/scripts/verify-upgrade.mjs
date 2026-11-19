@@ -115,12 +115,19 @@ try {
 	const after = await evaluate(`(async () => {
 		const { profile } = await fetch('/api/session').then(r=>r.json());
 		const { career } = await fetch('/api/careers/${old.id}').then(r=>r.json());
-		return { profile:profile?.id, id:career?.id, version:career?.version, desktop:(await window.brasfcDesktop.getState()).version };
+		const matches = (await fetch('/api/careers/${old.id}/matches').then(r=>r.json())).matches;
+		const prior = matches?.find(m => m.round === 1);
+		const next = await fetch('/api/careers/${old.id}/matches', {method:'POST',headers:{'content-type':'application/json'},
+			body:JSON.stringify({version:career?.version,step:'league:2',decisions:[]})});
+		return { profile:profile?.id, id:career?.id, version:career?.version, desktop:(await window.brasfcDesktop.getState()).version,
+			score:prior ? [prior.homeGoals, prior.awayGoals] : null, continued:next.ok };
 	})()`);
 	assert.equal(after.profile, old.profile);
 	assert.equal(after.id, old.id);
 	assert(after.version > 0);
 	assert.equal(after.desktop, version);
+	assert.deepEqual(after.score, old.score);
+	assert(after.continued, 'A carreira precisa jogar a segunda rodada');
 	assert.equal(JSON.parse(readFileSync(preferences, 'utf8')).automatic, false);
 	result.tests.push('Reabertura na versão nova com conta, carreira avançada e preferência preservadas');
 	result.passed = true;

@@ -2,14 +2,15 @@
 	import { PLAYER_ORDERS, fitsOrder, isPlayerOrder, type PlayerOrder, type PlayerOrders as Orders } from '#lib/domain/player-orders.ts';
 	import type { Position } from '#lib/domain/positions.ts';
 	type Player = { id: string; name: string; position: Position };
-	let { squad, lineup, order = [], instructions = {}, selected = '', disabled = false, oncaptains, oninstruction }: {
-		squad: Player[]; lineup: string[]; order?: string[]; instructions?: Orders; selected?: string; disabled?: boolean;
+	let { squad, lineup, order = [], instructions = {}, selected = '', slotPositions, disabled = false, oncaptains, oninstruction }: {
+		squad: Player[]; lineup: string[]; order?: string[]; instructions?: Orders; selected?: string; slotPositions?: Position[]; disabled?: boolean;
 		oncaptains?: (ids: string[]) => void; oninstruction: (id: string, instruction: PlayerOrder | null) => void;
 	} = $props();
 	let pick = $state('');
 	let add = $state('');
 	const starters = $derived(lineup.flatMap((id) => squad.find((p) => p.id === id) ?? []));
 	const player = $derived(starters.find((p) => p.id === (selected || pick)) ?? starters[0]);
+	const assigned = $derived(player && slotPositions?.[lineup.indexOf(player.id)]);
 	const available = $derived(squad.filter((p) => !order.includes(p.id)));
 	function move(index: number, shift: number) {
 		const next = [...order];
@@ -30,7 +31,7 @@
 		}}>
 			<option value="">Seguir função e tática coletiva</option>
 			{#each Object.entries(PLAYER_ORDERS) as [id, item]}
-				{#if isPlayerOrder(id) && fitsOrder(id, player.position)}<option value={id}>{item.label}</option>{/if}
+				{#if isPlayerOrder(id) && fitsOrder(id, player.position) && (!assigned || fitsOrder(id, assigned))}<option value={id}>{item.label}</option>{/if}
 			{/each}
 		</select></label>
 	{/if}

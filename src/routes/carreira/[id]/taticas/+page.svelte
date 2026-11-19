@@ -382,7 +382,7 @@
 
 		<div class="side">
 			<Panel title="Comandos por atleta" icon="user">
-				<PlayerOrders squad={v.squad} lineup={tactic.lineup} order={tactic.captains} instructions={tactic.playerOrders}
+				<PlayerOrders squad={v.squad} lineup={tactic.lineup} slotPositions={slots.map((slot) => slot.position)} order={tactic.captains} instructions={tactic.playerOrders}
 					selected={selectedSlot === null ? '' : tactic.lineup[selectedSlot]} oninstruction={setIndividual} oncaptains={(ids) => tactic.captains = ids.length ? ids : undefined} />
 			</Panel>
 			<Segmented label="Escalação e estilo" options={sidebarOptions} value={sidebarView} onchange={(value) => (sidebar = value)} />

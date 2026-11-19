@@ -31,6 +31,8 @@
 	let priority = $state(0);
 	let speed = $state(1);
 	let enabled = $state(true);
+	let sound = $state(false);
+	let audio: AudioContext | undefined;
 	let seen = -1;
 	let timer: ReturnType<typeof setTimeout>;
 	let queue: Moment[] = [];
@@ -40,11 +42,38 @@
 	const decisive = $derived(active?.type === 'goal' && /^8[5-9]|^9[0-9]/.test(active.minute) &&
 		typeof active.data?.score === 'string' && Math.abs(Number(active.data.score.split('-')[0]) - Number(active.data.score.split('-')[1])) <= 1);
 
+	function cue(event: Moment) {
+		if (!sound || audio?.state !== 'running') return;
+		const notes = event.type === 'goal' ? [392, 523.25, 659.25] : ['kickoff', 'half_time', 'second_half', 'full_time', 'penalty'].includes(event.type) ? [330, 440] : [];
+		notes.forEach((tone, index) => {
+			if (!audio) return;
+			const oscillator = audio.createOscillator();
+			const gain = audio.createGain();
+			const at = audio.currentTime + index * 0.09;
+			oscillator.frequency.value = tone;
+			gain.gain.setValueAtTime(0, at);
+			gain.gain.linearRampToValueAtTime(0.045, at + 0.015);
+			gain.gain.exponentialRampToValueAtTime(0.001, at + 0.16);
+			oscillator.connect(gain).connect(audio.destination);
+			oscillator.start(at);
+			oscillator.stop(at + 0.17);
+		});
+	}
+
+	async function toggleSound() {
+		if (sound) { sound = false; return; }
+		try {
+			audio ??= new AudioContext();
+			await audio.resume();
+			sound = true;
+		} catch { sound = false; }
+	}
+
 	function showNext() {
 		clearTimeout(timer);
 		active = enabled ? queue.shift() ?? null : null;
 		priority = active ? catalog[active.type]!.priority : 0;
-		if (active) timer = setTimeout(showNext, catalog[active.type]!.duration / speed);
+		if (active) { cue(active); timer = setTimeout(showNext, catalog[active.type]!.duration / speed); }
 	}
 	$effect(() => {
 		const incoming = events.filter((event) => event.index > seen && catalog[event.type]);
@@ -58,11 +87,12 @@
 			showNext();
 		} else if (!active) showNext();
 	});
-	onDestroy(() => clearTimeout(timer));
+	onDestroy(() => { clearTimeout(timer); if (audio) void audio.close().catch(() => {}); });
 </script>
 
 <div class="moments">
 	<div class="toolbar">
+		<button type="button" aria-pressed={sound} onclick={toggleSound}>{sound ? 'Silenciar cenas' : 'Ativar som das cenas'}</button>
 		<button type="button" onclick={() => { enabled = !enabled; if (!enabled) { queue = []; showNext(); } }}>{enabled ? 'Ocultar cenas' : 'Exibir cenas'}</button>
 		{#if enabled}
 			<button type="button" aria-pressed={speed === 2} onclick={() => speed = speed === 1 ? 2 : 1}>Cenas {speed}×</button>

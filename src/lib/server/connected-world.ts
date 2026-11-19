@@ -10,7 +10,7 @@ import { initialLeague, divisionOf, effectiveRule, divisionStandings, prepareRou
 import { aiTeam, matchSeed, simulateOtherFixtures } from '#lib/domain/matchday.ts';
 import { currentClubOf, emptyMarket, tierOfDivision, rosterOf, transferWindow, type MarketState } from '#lib/domain/market.ts';
 import { hashString } from '#lib/domain/rng.ts';
-import { defaultTactic, sanitizeTactic, type Tactic } from '#lib/domain/tactics.ts';
+import { defaultTactic, recoverTactic, sanitizeTactic, type Tactic } from '#lib/domain/tactics.ts';
 import { rosterContext, strengthMemo, clubStateOf } from '#lib/domain/world.ts';
 import { engineFamiliarity, resolveRoles, sanitizeTacticalState, type TacticalState } from '#lib/domain/tactical.ts';
 import { closeClubSeason, processWeek, payroll, type ClubState } from '#lib/domain/management.ts';
@@ -142,7 +142,7 @@ export async function worldSnapshot(db: Db, room: Room, profile: string) {
 			.map((m) => [m.profile, roster(room, s, m.club).filter((p) => !p.id.startsWith('human-')).map((p) => ({ id: p.id, name: p.name }))]) : []),
 		vacancies: s.vacancies[profile] ? [s.vacancies[profile]] : [],
 		roster: current ? roster(room, s, current.club).map((p) => ({ id: p.id, name: p.name, position: p.position, overall: p.overall })) : [],
-		tactic: current ? s.tactics[current.club] ?? defaultTactic(roster(room, s, current.club)) : undefined, plan: current ? s.plans[current.club] : undefined,
+		tactic: current ? (recoverTactic(s.tactics[current.club], roster(room, s, current.club)) ?? defaultTactic(roster(room, s, current.club))) : undefined, plan: current ? s.plans[current.club] : undefined,
 		balance: ownClub?.balance,
 		sponsors: current?.role === 'coach' ? ownClub?.sponsorOffers : undefined,
 		staff: current?.role === 'coach' ? ownClub?.staff : undefined,
@@ -238,7 +238,7 @@ async function advance(tx: Db, room: Room, s: WorldState, run?: RoundRun) {
 		s.league = outcome.next;
 		s.cup = nextCup;
 		s.date = nextDate;
-		s.step = 0; s.tactics = {}; s.deals = []; s.athleteDeals = []; s.last = [];
+		s.step = 0; s.deals = []; s.athleteDeals = []; s.last = [];
 		return;
 	}
 	const season = s.league.season;
@@ -268,7 +268,7 @@ async function advance(tx: Db, room: Room, s: WorldState, run?: RoundRun) {
 			const projection = context(room, s, id);
 			const squad = roster(room, s, id);
 			const manager = active.find((p) => p.club === id && p.role === 'coach');
-			const saved = manager?.ready && s.tactics[id] ? sanitizeTactic(s.tactics[id], squad) : null;
+			const saved = manager?.ready && s.tactics[id] ? recoverTactic(s.tactics[id], squad) : null;
 			const ai = aiTeam(projection, id, { season, firstSeason: s.firstSeason }, round).setup;
 			const tactical = saved ?? { ...ai.tactic, lineup: [], formation: ai.tactic.formation };
 			const identity = getClub(id)!;
@@ -288,7 +288,7 @@ async function advance(tx: Db, room: Room, s: WorldState, run?: RoundRun) {
 		if (run?.prepare) {
 			replay.ai = { home: !active.some((p) => p.club === f.home && p.role === 'coach'),
 				away: !active.some((p) => p.club === f.away && p.role === 'coach') };
-			run.prepare.push({ competition: f.competition, replay });
+			run.prepare.push({ competition: f.competition, replay, venue: replay.neutral ? s.cup?.finalVenue : getClub(f.home)?.stadium });
 			continue;
 		}
 		if (run?.finished && (!official || home.id !== f.home || away.id !== f.away)) fail('Súmula divergente na rodada.', 409);
@@ -341,7 +341,7 @@ async function advance(tx: Db, room: Room, s: WorldState, run?: RoundRun) {
 		if (weekly) {
 			const plan = s.plans[club] ?? DEFAULT_PLAN;
 			const available = roster(room, s, club);
-			const tactic = sanitizeTactic(s.tactics[club], available) ?? defaultTactic(available);
+			const tactic = recoverTactic(s.tactics[club], available) ?? defaultTactic(available);
 			const trained = sanitizeTacticalState(mastery[club], available, tactic.formation, tactic.style);
 			mastery[club] = applyTrainingWeek(trained, plan, { ...tactic, roles: resolveRoles(tactic.formation, tactic.roles), squad: available });
 			fitness[club] = recoverFitness(fitness[club] ?? {}, squad, plan);
@@ -476,7 +476,6 @@ export async function applyWorldCommand(db: Db, room: Room, profile: string, bod
 					s.clubs[deal.to] = { ...buyer, balance: buyer.balance - deal.fee, transferBudget: buyer.transferBudget - deal.fee };
 					s.clubs[deal.from] = { ...seller, balance: seller.balance + deal.fee };
 					s.market.players[deal.player] = { club: deal.to, since: s.date, contract: target.contract };
-					delete s.tactics[deal.from];
 				}
 				s.deals = s.deals.filter((x) => action === 'accept-deal' ? x.player !== deal.player : x.id !== deal.id);
 			}
@@ -608,7 +607,7 @@ function viewLiveRound(round: LiveRound, player: Assignment, participants: World
 		waiting: round.required.filter((id) => !online.has(id)), suspended: round.suspended, tick: round.tick,
 		loaded: round.loaded, confirmed: round.confirmed, required: round.required,
 		relevant: fixture && side ? { ...fixture, match: matchView(matches[index]), shootout: round.shootouts?.[index], side,
-			stadium: getClub(fixture.replay.home.id)?.stadium,
+			stadium: fixture.venue ?? getClub(fixture.replay.home.id)?.stadium,
 			crew: Object.values(participants).filter((p) => p.role !== 'player' && [fixture.replay.home.id, fixture.replay.away.id].includes(p.club))
 				.map(({ club, role, name }) => ({ club, role, name })), canManage: player.role === 'coach' || (player.role === 'assistant' && !!player.matchDelegated) } : null,
 		suggestions: round.suggestions.filter((item) => item.club === player.club),
@@ -629,7 +628,7 @@ async function collectShootouts(tx: Db, room: Room, round: LiveRound) {
 		competition: fixture.competition, round: round.round, home: fixture.replay.home.id, away: fixture.replay.away.id,
 		homeGoals: matches[index].score.home, awayGoals: matches[index].score.away
 	}))];
-	const strength = strengthMemo(rosterContext(context(room, state, state.league.divisions['serie-a']![0]), state.league));
+	const strength = strengthMemo(rosterContext({ ...context(room, state, state.league.divisions['serie-a']![0]), mode: 'player' }, state.league));
 	const cup = prepareCup(state.cup, round.round, prior, seed, strength);
 	return Object.fromEntries(round.fixtures.flatMap(({ replay }, index) => {
 		const tie = cup.stages[phase.phase - 1]?.find((pair) => pair.includes(replay.home.id) && pair.includes(replay.away.id));

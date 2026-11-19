@@ -8,7 +8,7 @@ export type RoundReplay = {
 	ai?: Partial<Record<Side, boolean>>; decisions?: AppliedDecision[];
 };
 
-export type LiveFixture = { competition: string; replay: RoundReplay };
+export type LiveFixture = { competition: string; replay: RoundReplay; venue?: string };
 type Submission = { fixture: number; tick: number; side: Side; decision: Decision; id: string; secondHalf: boolean; atInterval: boolean };
 type Suggestion = { profile: string; club: string; decision: Decision; id: string };
 export type RoundPhase = 'LOADING' | 'PRESENTATION' | 'FIRST_HALF' | 'HALF_TIME' | 'SECOND_HALF' | 'FULL_TIME';
@@ -133,14 +133,16 @@ export function pulseRound(session: LiveRound, connected: ReadonlySet<string>, n
 }
 
 export function canCommitRound(session: LiveRound, now: number) {
-	return session.phase === 'FULL_TIME' && !session.suspended && now - session.since >= (Object.keys(session.shootouts ?? {}).length ? 11_000 : ENDED_MS);
+	const duration = Math.max(ENDED_MS, ...Object.values(session.shootouts ?? {}).map((shootout) => (shootout.kicks?.length ?? 0) * 700 + 2_000));
+	return session.phase === 'FULL_TIME' && !session.suspended && now - session.since >= duration;
 }
 
 export function matchView(match: Match) {
 	const { players, stats } = match.result();
-	return { tick: match.tick, minute: match.minuteLabel(match.tick), phase: match.phase, score: { ...match.score },
+	return { tick: match.tick, minute: match.minuteLabel(match.tick), phase: match.phase, added: [...match.added], score: { ...match.score },
 		players: [...match.states.values()].filter((p) => p.onPitch).map((p) => ({ ...p })), ball: { ...match.ball },
 		events: match.events.map((event, index) => ({ ...event, index })).filter((e) => featuredEvents.has(e.type)).slice(-36).map((event) => ({ ...event, minute: match.minuteLabel(event.tick) })),
+		goals: match.events.filter((e) => e.type === 'goal').map((e) => ({ ...e, minute: match.minuteLabel(e.tick) })),
 		decisions: match.applied.slice(-16), stats: { players, teams: stats },
 		teams: Object.fromEntries(sides.map((side) => [side, { tactic: { ...match.teams[side].tactic, instructions: match.teams[side].instructions },
 			bench: match.bench(side), gkId: match.teams[side].gkId, captain: match.captain(side), subs: match.subsLeft(side) }])) as Record<Side, {

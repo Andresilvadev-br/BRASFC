@@ -23,6 +23,7 @@
 	let now = $state(0);
 	let mode = $state<'classico' | 'pixel' | 'narracao'>('classico');
 	let outId = $state('');
+	let pickedPlayer = $state('');
 	let inId = $state('');
 	let latched = false;
 	let frameSet = $state.raw<NonNullable<Session['relevant']>['match'][]>([]);
@@ -130,7 +131,7 @@
 			{#if relevant && match}
 				<div class="clubs"><Crest clubId={relevant.replay.home.id} size={42} /><span>{relevant.replay.home.short}</span>
 					<strong>{match.score.home} × {match.score.away}</strong><span>{relevant.replay.away.short}</span><Crest clubId={relevant.replay.away.id} size={42} /></div>
-				<time>{match.minute}</time>
+				<time>{match.minute}{#if match.phase === 'first_half' && match.added[0]} <small>+{match.added[0]} min</small>{:else if match.phase === 'second_half' && match.added[1]} <small>+{match.added[1]} min</small>{/if}</time>
 			{/if}
 		</header>
 		{#if session.waiting.length || !online}
@@ -144,6 +145,15 @@
 							<div class="opening" use:enter><small>TRANSMISSÃO BRASFC</small>
 								<div class="clubs"><Crest clubId={relevant.replay.home.id} size={72} /><strong>{relevant.replay.home.name} × {relevant.replay.away.name}</strong><Crest clubId={relevant.replay.away.id} size={72} /></div>
 								<p>{relevant.stadium ?? 'Campo de jogo'} · {relevant.replay.neutral ? 'Campo neutro' : 'Mando da equipe mandante'}</p>
+								<div class="entry" aria-label="Entrada das equipes">
+									{#each sides as side}
+										<div class="tunnel" style:--team={relevant.replay[side].colors.primary}>
+											{#each relevant.replay[side].tactic.lineup as id, index (id)}
+												<div use:enter={{ index }} title={athletes.get(id)?.name}><span>{athletes.get(id)?.number}</span></div>
+											{/each}
+										</div>
+									{/each}
+								</div>
 							</div>
 						{:else}
 							{@const team = relevant.replay[scene]}
@@ -169,7 +179,7 @@
 							{#if frameSet.length > 1}<Button size="sm" onclick={replay} disabled={replayIndex !== null}>Rever trecho</Button>{/if}
 						</div>
 						{#if mode !== 'narracao' && canvas}
-							<PitchCanvas match={canvas} {mode} colors={{ home: relevant.replay.home.colors, away: relevant.replay.away.colors }} version={visual?.tick} />
+							<PitchCanvas match={canvas} {mode} colors={{ home: relevant.replay.home.colors, away: relevant.replay.away.colors }} version={visual?.tick} highlight={pickedPlayer || null} onpick={(id, side) => { if (side === relevant.side) pickedPlayer = id ?? ''; }} />
 						{/if}
 						{#if replayIndex !== null}<span class="film">Replay local</span>{/if}
 						{#if playerStats && !['HALF_TIME', 'FULL_TIME'].includes(session.phase)}
@@ -195,6 +205,13 @@
 					{/each}
 					{#if playerStats}<p>Sua atuação · {playerStats.minutes} min · Nota {playerStats.rating.toFixed(1)} · Condição {Math.round(playerStats.condition)}%</p>{/if}
 					{#if session.phase === 'FULL_TIME'}
+						{#if match.goals.length}
+							<div class="goals" aria-label="Autores dos gols">
+								{#each match.goals as goal, index (index)}
+									<p><strong>{goal.minute}</strong> · {goal.player ? athletes.get(goal.player)?.name : ''}{goal.other ? ' · Assistência de ' + (athletes.get(goal.other)?.name ?? '') : ''}</p>
+								{/each}
+							</div>
+						{/if}
 						{#if relevant.shootout}
 							<div class="shootout" use:enter>
 								<h3>Disputa de pênaltis</h3>
@@ -213,7 +230,7 @@
 				<div class="surface" use:enter>
 					<h3>{relevant.canManage ? 'Comando do time' : 'Sugestões ao treinador'}</h3>
 					<p>Capitão · {own.captain ? athletes.get(own.captain)?.name : 'Sem jogador elegível'}</p>
-					<PlayerOrders squad={relevant.replay[relevant.side].players} lineup={match.players.filter((p) => p.side === relevant.side).map((p) => p.id)}
+					<PlayerOrders squad={relevant.replay[relevant.side].players} lineup={own.tactic.lineup.filter((id) => match.players.some((state) => state.id === id))} selected={pickedPlayer} slotPositions={own.tactic.lineup.filter((id) => match.players.some((state) => state.id === id)).map((id) => FORMATIONS[own.tactic.formation][own.tactic.lineup.indexOf(id)].position)}
 						order={own.tactic.captains} instructions={own.tactic.playerOrders} disabled={pending} oncaptains={(order) => decision({ type: 'captains', order })}
 						oninstruction={(playerId, order) => decision({ type: 'individual', playerId, order })} />
 					<p>{own.subs} substituições · Familiaridade {Math.round(relevant.replay[relevant.side].familiarity?.execution ?? 60)}%</p>
@@ -265,6 +282,7 @@
 	.event{display:flex;gap:8px;margin:.5rem 0;padding:.3rem 0;border-bottom:1px solid var(--line)}.event small{color:var(--text-3)}
 	.shootout{background:#132b21;border:1px solid #386c53;border-radius:10px;padding:12px}.shootout span{display:inline-block;margin:3px;padding:4px 8px;border-radius:6px;background:#512828}.shootout span.scored{background:#245339}
 	.broadcast{background:radial-gradient(ellipse at 52% 15%,#23765e 0%,#10261f 35%,#101711 72%);color:#fff}.opening,.waiting{text-align:center}.opening{padding:clamp(24px,8vw,90px) 0}.opening .clubs{justify-content:center;margin:20px 0}
+	.entry{display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:600px;margin:12px auto 0}.tunnel{display:grid;grid-template-columns:repeat(6,1fr);gap:3px;align-items:center}.tunnel div{background:linear-gradient(145deg,var(--team),#162a22 70%);min-width:0;aspect-ratio:1.05;border:1px solid #c9e7d46b;border-radius:28% 28% 12% 12%;display:grid;place-items:center;font-size:clamp(.6rem,2.2vw,.88rem);font-weight:700}.goals p{margin:.3rem 0}.goals strong{color:var(--emerald-strong)}
 	.board{position:relative;aspect-ratio:1.9;background:repeating-linear-gradient(90deg,#164935 0 10%,#1b543e 10% 20%);border:1px solid #b6e7cf;border-radius:8px;margin:10px 0;overflow:hidden}.board div{position:absolute;transform:translate(-50%,-50%);display:grid;justify-items:center;white-space:nowrap}.board b{border-radius:50%;background:#07160f;color:#fff;padding:3px 6px}.board span{background:#07160fc9;border-radius:4px;padding:1px 3px;font-size:clamp(.48rem,1.8vw,.77rem)}
 	.fixture{border:1px solid var(--line);border-radius:9px;padding:6px;justify-content:center}.fixtures{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:5px}.film{color:#ebd78c}
 	@media(max-width:740px){.grid{grid-template-columns:1fr}.clubs{gap:5px}}
