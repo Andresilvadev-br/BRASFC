@@ -34,13 +34,23 @@
 	import { resolveRoles, teamMastery } from '#lib/domain/tactical.ts';
 	import { overridesOf, presetInstructions, type TacticalInstructions } from '#lib/engine/instructions.ts';
 	import { ROLES, type RoleId } from '#lib/engine/roles.ts';
-	import AssistantTips from '#lib/ui/AssistantTips.svelte';
+	import AssistantPanel from '#lib/ui/tactics/AssistantPanel.svelte';
+	import Crest from '#lib/ui/Crest.svelte';
+	import { getClub } from '#lib/domain/clubs.ts';
+	import { formatLong } from '#lib/domain/dates.ts';
+	import { DIVISION_LABELS, type DivisionId } from '#lib/domain/league.ts';
+	import { SPONSOR_SLOTS, type SponsorSlot } from '#lib/domain/club.ts';
+	import { formatMoney } from '#lib/domain/market.ts';
+	import { INSTRUCTION_KEYS, INSTRUCTION_LABELS, optionIndex, paramsFromInstructions } from '#lib/engine/instructions.ts';
+	import { STYLE_LABELS } from '#lib/domain/tactics.ts';
+	import { count } from '#lib/motion/actions.ts';
 	import InstructionsEditor from '#lib/ui/tactics/InstructionsEditor.svelte';
 	import MasteryPanel from '#lib/ui/tactics/MasteryPanel.svelte';
 	import RolePicker from '#lib/ui/tactics/RolePicker.svelte';
 	import TacticalOverlay from '#lib/ui/tactics/TacticalOverlay.svelte';
 
 	let { data } = $props();
+	const base = $derived(`/carreira/${data.career.id}`);
 	const v = $derived(data.view);
 	let behavior = $state(true);
 	const byId = $derived(new Map(v.squad.map((p) => [p.id, p])));
@@ -230,6 +240,51 @@
 		if (!selection || selection.kind !== kind) return false;
 		return selection.kind === 'slot' ? selection.index === key : selection.id === key;
 	}
+
+
+
+	// ── Plano ativo: o que o motor vai usar (mesmos parâmetros do desenho no campo)
+	const engine = $derived(paramsFromInstructions(tactic.mentality, tactic.style, tactic.instructions));
+	const behaviour = $derived(
+		[
+			{ k: 'Linha defensiva', v: `${Math.round(engine.defLine)} m do gol` },
+			{ k: 'Comprimento do bloco', v: `${Math.round(engine.blockLength)} m` },
+			{ k: 'Pressão', v: `${engine.pressers} atleta${engine.pressers > 1 ? 's' : ''} a ${Math.round(engine.pressDistance)} m` },
+			{ k: 'Marcação', v: engine.manMarking ? 'Individual' : 'Por zona' },
+			engine.counterPress ? { k: 'Após perder', v: 'Contrapressão' } : null
+		].filter((x): x is { k: string; v: string } => !!x)
+	);
+	const overrides = $derived(
+		INSTRUCTION_KEYS.filter((k) => tactic.instructions[k] !== preset[k]).map((k) => ({
+			k,
+			label: INSTRUCTION_LABELS[k].label,
+			now: INSTRUCTION_LABELS[k].options[optionIndex(k, tactic.instructions[k])],
+			was: INSTRUCTION_LABELS[k].options[optionIndex(k, preset[k])]
+		}))
+	);
+
+	// ── Próxima partida (dados do calendário real da carreira)
+	const up = $derived(v.upcoming);
+	const oppId = $derived(up ? (up.home === data.career.clubId ? up.away : up.home) : null);
+	const compLabel = (c: string) => (c === 'copa-do-brasil' ? 'Copa do Brasil' : (DIVISION_LABELS[c as DivisionId] ?? c));
+	const daysTo = $derived(up ? Math.round((Date.parse(up.date) - Date.parse(data.career.gameDate)) / 86_400_000) : null);
+	const starters = $derived(tactic.lineup.map((id) => byId.get(id)).filter((p): p is SquadPlayer => !!p));
+	const avgCondition = $derived(starters.length ? Math.round(starters.reduce((s, p) => s + p.condition, 0) / starters.length) : 0);
+	const tired = $derived(starters.filter((p) => p.condition < 75).length);
+	const opponent = $derived(
+		up && oppId ? { clubId: oppId, date: up.date, time: up.time, home: up.home === data.career.clubId, competition: compLabel(up.competition), coach: universeCoach(data.career, oppId) } : null
+	);
+
+	// ── Comercial (resumo; a negociação completa fica em Finanças)
+	const club = $derived(data.manage?.club);
+	const sponsorMonthly = $derived(club ? club.sponsors.reduce((s, x) => s + x.monthly, 0) : 0);
+	const bestOffers = $derived(
+		club
+			? (Object.keys(SPONSOR_SLOTS) as SponsorSlot[])
+					.map((slot) => club.sponsorOffers.filter((o) => o.slot === slot).sort((a, b) => b.monthly - a.monthly)[0])
+					.filter((o) => !!o)
+			: []
+	);
 </script>
 
 <svelte:head><title>Táticas · {v.club.name} · BRASFC</title></svelte:head>
@@ -240,70 +295,82 @@
 	</Panel>
 {:else}
 	<div class="head" data-umx-enter>
-		<div>
-			<span class="eyebrow">Central tática · {v.club.name}</span>
+		<div class="intro">
+			<span class="eyebrow">Central do treinador · {v.club.name}</span>
 			<h1>Táticas</h1>
 			<p class="muted">Clique em um jogador e depois em outro para trocar — ou arraste. Clique uma vez para escolher a função dele. O time aprende o sistema aos poucos: mantê-lo rende mais do que trocar toda semana.</p>
 		</div>
-		<div class="save">
-		<Segmented label="Nível de detalhe" bind:value={mode} options={[{ value: 'simples', label: 'Simples' }, { value: 'avancada', label: 'Avançada' }]} />
+		<div class="save" class:dirty={changed}>
+			<Segmented label="Nível de detalhe" bind:value={mode} options={[{ value: 'simples', label: 'Simples' }, { value: 'avancada', label: 'Avançada' }]} />
 			{#if changed}<span class="pending"><Icon name="dot" size={12} /> Alterações não salvas</span>{/if}
 			<Button variant="ghost" onclick={reset} disabled={!changed || saving}>Desfazer</Button>
 			<Button variant="primary" icon="save" loading={saving} disabled={!dirty} onclick={save}>Salvar tática</Button>
 		</div>
 	</div>
 
-	<div class="layout">
+	<!-- ═══ Campo + elenco/estilo ═══ -->
+	<div class="center">
 		<Panel pad={false} index={0} class="pitch-panel">
 			<div class="pitch-tools">
 				<Segmented label="Formação" value={tactic.formation} onchange={changeFormation} options={FORMATION_IDS.map((f) => ({ value: f, label: f }))} />
-				<div class="fam"><span>Familiaridade</span><Meter value={familiarity} label="Familiaridade tática" /></div>
-				<button class="chip" aria-pressed={behavior} onclick={() => (behavior = !behavior)} title="Mostra linha, bloco, pressão e corridas que o motor vai usar">Comportamento</button>
+				<div class="tools-r">
+					<div class="fam" title="Quanto os titulares estão nas posições de origem"><span>Familiaridade</span><Meter value={familiarity} label="Familiaridade tática" /></div>
+					<button class="chip" aria-pressed={behavior} onclick={() => (behavior = !behavior)} title="Mostra linha, bloco, pressão e corridas que o motor vai usar">Comportamento</button>
+				</div>
 			</div>
-			<div class="pitch" role="group" aria-label="Campo com titulares">
-				<svg class="lines" viewBox="0 0 68 105" preserveAspectRatio="none" aria-hidden="true">
-					<rect x="1" y="1" width="66" height="103" />
-					<line x1="1" y1="52.5" x2="67" y2="52.5" />
-					<circle cx="34" cy="52.5" r="9.15" />
-					<rect x="13.85" y="1" width="40.3" height="16.5" />
-					<rect x="13.85" y="87.5" width="40.3" height="16.5" />
-					<rect x="24.85" y="1" width="18.3" height="5.5" />
-					<rect x="24.85" y="98.5" width="18.3" height="5.5" />
-				</svg>
-				{#if behavior}<TacticalOverlay formation={tactic.formation} mentality={tactic.mentality} style={tactic.style} instructions={tactic.instructions} roles={tactic.roles} />{/if}
-				{#each slots as slot, i (i)}
-					{@const p = byId.get(tactic.lineup[i])}
-					<button
-						class="slot {fitTone(p, i)}"
-						class:sel={isSel('slot', i)}
-						data-slot={i}
-						style="left:{slot.x}%; top:{slot.y}%"
-						draggable="true"
-						ondragstart={(e) => onDragStart(e, { kind: 'slot', index: i })}
-						ondragover={(e) => e.preventDefault()}
-						ondrop={(e) => onDrop(e, { kind: 'slot', index: i })}
-						onclick={() => clickSlot(i)}
-						aria-pressed={isSel('slot', i)}
-						aria-label="{slot.position}: {p?.name ?? 'vazio'}"
-					>
-						{#if p}<Pixel appearance={p.appearance} kit={playerKit(data.career.clubId, p.position)} size={40} />{/if}
-						<span class="role">{slot.position}</span>
-						<span class="pname">{p?.shortName ?? '—'}</span>
-						<span class="fn">{ROLES[tactic.roles[i]]?.label ?? ''}</span>
-					</button>
-				{/each}
+			<div class="pitch-wrap">
+				<div class="pitch" role="group" aria-label="Campo com titulares">
+					<svg class="lines" viewBox="0 0 68 105" preserveAspectRatio="none" aria-hidden="true">
+						<rect x="1" y="1" width="66" height="103" />
+						<line x1="1" y1="52.5" x2="67" y2="52.5" />
+						<circle cx="34" cy="52.5" r="9.15" />
+						<rect x="13.85" y="1" width="40.3" height="16.5" />
+						<rect x="13.85" y="87.5" width="40.3" height="16.5" />
+						<rect x="24.85" y="1" width="18.3" height="5.5" />
+						<rect x="24.85" y="98.5" width="18.3" height="5.5" />
+					</svg>
+					{#if behavior}<TacticalOverlay formation={tactic.formation} mentality={tactic.mentality} style={tactic.style} instructions={tactic.instructions} roles={tactic.roles} legend={false} />{/if}
+					{#each slots as slot, i (i)}
+						{@const p = byId.get(tactic.lineup[i])}
+						<button
+							class="slot {fitTone(p, i)}"
+							class:sel={isSel('slot', i)}
+							data-slot={i}
+							style="left:{slot.x}%; top:{slot.y}%"
+							draggable="true"
+							ondragstart={(e) => onDragStart(e, { kind: 'slot', index: i })}
+							ondragover={(e) => e.preventDefault()}
+							ondrop={(e) => onDrop(e, { kind: 'slot', index: i })}
+							onclick={() => clickSlot(i)}
+							aria-pressed={isSel('slot', i)}
+							aria-label="{slot.position}: {p?.name ?? 'vazio'}"
+						>
+							{#if p}<Pixel appearance={p.appearance} kit={playerKit(data.career.clubId, p.position)} size={40} />{/if}
+							<span class="role">{slot.position}</span>
+							<span class="pname">{p?.shortName ?? '—'}</span>
+							<span class="fn">{ROLES[tactic.roles[i]]?.label ?? ''}</span>
+							{#if p && p.condition < 75}<span class="cond" title="Condição física: {p.condition}%">{p.condition}%</span>{/if}
+						</button>
+					{/each}
+				</div>
 			</div>
+			{#if behavior}
+				<div class="legend" aria-label="Leitura do comportamento">
+					{#each behaviour as b (b.k)}<span><em>{b.k}</em> {b.v}</span>{/each}
+					<span class="k"><i class="run"></i>corrida</span><span class="k"><i class="sup"></i>apoio/amplitude</span><span class="k"><i class="box"></i>chegada à área</span>
+				</div>
+			{/if}
 		</Panel>
 
 		<div class="side">
-		{#if selectedSlot !== null && byId.get(tactic.lineup[selectedSlot])}
-			{@const sp = byId.get(tactic.lineup[selectedSlot])!}
-			<Panel title="Função de {sp.shortName}" icon="user" index={1}>
-				<p class="muted small">Funções que fazem sentido como {slots[selectedSlot].position}, da mais compatível para a menos. Ou clique em outro jogador para trocar de lugar.</p>
-				<RolePicker player={sp} position={slots[selectedSlot].position} value={tactic.roles[selectedSlot]} familiarity={v.tactical.roles[sp.id] ?? {}} onpick={(r) => setRole(selectedSlot, r)} />
-			</Panel>
-		{/if}
-		<Panel title="Reservas" icon="squad" index={1}>
+			{#if selectedSlot !== null && byId.get(tactic.lineup[selectedSlot])}
+				{@const sp = byId.get(tactic.lineup[selectedSlot])!}
+				<Panel title="Função de {sp.shortName}" icon="user" index={1}>
+					<p class="muted small">Funções que fazem sentido como {slots[selectedSlot].position}, da mais compatível para a menos. Ou clique em outro jogador para trocar de lugar.</p>
+					<RolePicker player={sp} position={slots[selectedSlot].position} value={tactic.roles[selectedSlot]} familiarity={v.tactical.roles[sp.id] ?? {}} onpick={(r) => setRole(selectedSlot, r)} />
+				</Panel>
+			{/if}
+			<Panel title="Reservas" icon="squad" index={1} class="bench-panel">
 				<ul class="bench">
 					{#each bench as p (p.id)}
 						<li>
@@ -326,28 +393,116 @@
 				</ul>
 			</Panel>
 			<Panel title="Estilo" icon="field" index={2}>
-			<div class="style">
-			<span class="lbl">Mentalidade</span>
-			<MentalityScale bind:value={tactic.mentality} />
-			<span class="lbl">Estilo de jogo</span>
-			<StylePicker bind:value={tactic.style} />
-			{#if customCount}
-			<p class="custom"><Icon name="info" size={14} /> {customCount} ajuste(s) avançado(s) mantido(s) sobre o padrão do estilo. <button class="link" onclick={restorePreset}>Restaurar padrão</button></p>
-			{/if}
-			</div>
-			</Panel>
-			{#if mode === 'avancada'}
-			<Panel title="Instruções" icon="tactics" index={3}>
-			<InstructionsEditor bind:value={tactic.instructions} {preset} />
-			</Panel>
-			{/if}
-			<Panel title="Domínio tático" icon="chart" index={4}>
-			<MasteryPanel state={v.tactical} {mastery} formation={tactic.formation} style={tactic.style} onformation={changeFormation} />
-			</Panel>
-			<Panel title="Auxiliar técnico" icon="whistle" index={5}>
-			<AssistantTips {tips} onapply={applyTip} ondismiss={dismissTip} />
+				<div class="style">
+					<span class="lbl">Mentalidade</span>
+					<MentalityScale bind:value={tactic.mentality} />
+					<span class="lbl">Estilo de jogo</span>
+					<StylePicker bind:value={tactic.style} />
+					{#if customCount}
+						<p class="custom"><Icon name="info" size={14} /> {customCount} ajuste(s) avançado(s) mantido(s) sobre o padrão do estilo. <button class="link" onclick={restorePreset}>Restaurar padrão</button></p>
+					{/if}
+				</div>
 			</Panel>
 		</div>
+	</div>
+
+	<!-- ═══ Região abaixo da escalação ═══ -->
+	<div class="below">
+		<Panel title="Instruções" icon="tactics" index={3} class="m-instr">
+			{#if mode === 'avancada'}
+				<InstructionsEditor bind:value={tactic.instructions} {preset} />
+			{:else}
+				<div class="simple">
+					<p class="muted">
+						No modo simples o time segue as instruções calibradas para <strong>{MENTALITY_LABELS[tactic.mentality]}</strong> + <strong>{STYLE_LABELS[tactic.style]}</strong>.
+						{#if customCount}Há {customCount} ajuste(s) seu(s) mantido(s).{/if}
+					</p>
+					<div class="presets">
+						{#each INSTRUCTION_KEYS as k (k)}
+							<span class="pi" class:mod={tactic.instructions[k] !== preset[k]}><em>{INSTRUCTION_LABELS[k].label}</em>{INSTRUCTION_LABELS[k].options[optionIndex(k, tactic.instructions[k])]}</span>
+						{/each}
+					</div>
+					<Button variant="secondary" icon="tactics" onclick={() => (mode = 'avancada')}>Personalizar instruções</Button>
+				</div>
+			{/if}
+		</Panel>
+
+		<div class="m-plan">
+			<Panel title="Plano ativo" icon="field" index={4}>
+				<div class="plan">
+					<div class="plan-id">
+						<span class="formation">{tactic.formation}</span>
+						<span>{MENTALITY_LABELS[tactic.mentality]} · {STYLE_LABELS[tactic.style]}</span>
+					</div>
+					<dl class="kv">
+						{#each behaviour as b (b.k)}<div><dt>{b.k}</dt><dd>{b.v}</dd></div>{/each}
+					</dl>
+					{#if overrides.length}
+						<h4>Seus ajustes ({overrides.length})</h4>
+						<ul class="ovr">
+							{#each overrides as o (o.k)}<li><span>{o.label}</span><b>{o.now}</b><small>padrão: {o.was}</small></li>{/each}
+						</ul>
+					{:else}
+						<p class="muted small">Sem ajustes sobre o padrão do estilo.</p>
+					{/if}
+				</div>
+			</Panel>
+
+			<Panel title="Próxima partida" icon="whistle" index={5}>
+				{#if up && oppId}
+					<div class="next">
+						<div class="vs">
+							<Crest clubId={up.home} size={36} />
+							<span class="x">×</span>
+							<Crest clubId={up.away} size={36} />
+							<div class="vsi">
+								<strong>{getClub(oppId)?.name}</strong>
+								<small>{formatLong(up.date)} · {up.time} · {compLabel(up.competition)}{daysTo !== null && daysTo >= 0 ? ` · ${daysTo === 0 ? 'hoje' : `em ${daysTo} dia(s)`}` : ''}</small>
+							</div>
+						</div>
+						<div class="stats">
+							<div><span>Condição dos titulares</span><b use:count={{ value: avgCondition, format: (x) => `${Math.round(x)}%` }}>{avgCondition}%</b></div>
+							<div><span>Abaixo de 75%</span><b class:warn={tired > 0}>{tired}</b></div>
+							<div><span>Execução do plano</span><b>{Math.round(mastery.execution)}</b></div>
+						</div>
+						<div class="links">
+							<Button variant="primary" size="sm" icon="whistle" href="{base}/partida">Preparar partida</Button>
+							<Button variant="secondary" size="sm" icon="training" href="{base}/treinos">Treinos</Button>
+							<Button variant="ghost" size="sm" icon="squad" href="{base}/elenco">Elenco</Button>
+						</div>
+					</div>
+				{:else}
+					<p class="muted small">Nenhum jogo do seu time no calendário desta temporada.</p>
+				{/if}
+			</Panel>
+
+			{#if club}
+				<Panel title="Comercial" icon="briefcase" index={6}>
+					<div class="com">
+						<div class="comtop">
+							<div><span>Patrocínios ativos</span><b>{club.sponsors.length}/{Object.keys(SPONSOR_SLOTS).length}</b></div>
+							<div><span>Receita mensal</span><b class="money">{formatMoney(sponsorMonthly)}</b></div>
+						</div>
+						{#if bestOffers.length}
+							<ul class="offers">
+								{#each bestOffers as o (o.id)}
+									<li><span class="slotl">{SPONSOR_SLOTS[o.slot].label}</span><span class="brand">{o.brand}</span><b class="money">{formatMoney(o.monthly)}<small>/mês</small></b></li>
+								{/each}
+							</ul>
+						{/if}
+						<a class="more" href="{base}/financas">{bestOffers.length ? 'Comparar e assinar propostas' : 'Abrir finanças'} <Icon name="arrowRight" size={14} /></a>
+					</div>
+				</Panel>
+			{/if}
+		</div>
+
+		<Panel title="Domínio tático" icon="chart" index={7} class="m-mastery">
+			<MasteryPanel state={v.tactical} {mastery} formation={tactic.formation} style={tactic.style} lineup={tactic.lineup} roles={tactic.roles} {slots} squad={v.squad} instructions={tactic.instructions} onformation={changeFormation} />
+		</Panel>
+
+		<Panel title="Auxiliar técnico" icon="whistle" index={8} class="m-assist">
+			<AssistantPanel {tips} {opponent} prepHref="{base}/partida" onapply={applyTip} ondismiss={dismissTip} />
+		</Panel>
 	</div>
 {/if}
 
@@ -375,7 +530,7 @@
 		flex-wrap: wrap;
 		margin-bottom: var(--sp-5);
 	}
-	.head p {
+	.intro p {
 		max-width: 62ch;
 		font-size: var(--fs-sm);
 	}
@@ -385,9 +540,26 @@
 		font-weight: 800;
 	}
 	.save {
+		z-index: 20;
 		display: flex;
 		align-items: center;
+		flex-wrap: wrap;
 		gap: var(--sp-2);
+		padding: 6px;
+		border-radius: 14px;
+		transition: background 0.2s, box-shadow 0.2s;
+	}
+	@media (min-width: 961px) {
+		/* fica à mão ao rolar: logo abaixo da barra fixa da carreira */
+		.save {
+			position: sticky;
+			top: calc(var(--desk-bar, 0px) + 74px);
+		}
+	}
+	.save.dirty {
+		background: color-mix(in srgb, var(--surface) 88%, transparent);
+		backdrop-filter: blur(8px);
+		box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
 	}
 	.pending {
 		display: inline-flex;
@@ -397,9 +569,11 @@
 		font-size: var(--fs-sm);
 		font-weight: 600;
 	}
-	.layout {
+
+	/* campo + lateral */
+	.center {
 		display: grid;
-		grid-template-columns: auto minmax(340px, 1fr);
+		grid-template-columns: fit-content(780px) minmax(320px, 1fr);
 		gap: var(--sp-4);
 		align-items: start;
 	}
@@ -411,6 +585,12 @@
 		flex-wrap: wrap;
 		padding: var(--sp-4) var(--sp-4) 0;
 	}
+	.tools-r {
+		display: flex;
+		align-items: center;
+		gap: var(--sp-3);
+		flex-wrap: wrap;
+	}
 	.fam {
 		display: flex;
 		align-items: center;
@@ -418,11 +598,18 @@
 		font-size: var(--fs-sm);
 		color: var(--text-2);
 	}
+	.pitch-wrap {
+		display: flex;
+		justify-content: center;
+		padding: var(--sp-4) var(--sp-4) 0;
+	}
 	.pitch {
 		position: relative;
-		margin: var(--sp-4);
+		container-type: inline-size;
+		/* proporção do campo sempre preservada; a altura cabe na tela */
+		/* cabe na altura da tela, mas nunca menor que 470px (acompanha a coluna de reservas e estilo) */
+		width: min(100%, clamp(470px, calc((var(--app-h, 100vh) - 230px) * 68 / 96), 600px));
 		aspect-ratio: 68 / 96;
-		height: clamp(560px, calc(var(--app-h, 100vh) - 230px), 820px);
 		border-radius: var(--radius-l);
 		background: repeating-linear-gradient(180deg, #123e2d 0 9%, #10372a 9% 18%);
 		overflow: hidden;
@@ -441,30 +628,31 @@
 		position: absolute;
 		z-index: 2;
 		translate: -50% -50%;
-		transition:
-			left 0.55s cubic-bezier(0.2, 0.8, 0.2, 1),
-			top 0.55s cubic-bezier(0.2, 0.8, 0.2, 1);
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		gap: 2px;
-		width: 96px;
+		width: clamp(64px, 17cqw, 100px);
 		padding: 4px 4px 6px;
 		border: 1px solid transparent;
 		border-radius: var(--radius-m);
 		background: rgb(10 13 16 / 0.55);
 		cursor: grab;
 		transition:
+			left 0.55s cubic-bezier(0.2, 0.8, 0.2, 1),
+			top 0.55s cubic-bezier(0.2, 0.8, 0.2, 1),
 			background 0.15s,
-			border-color 0.15s;
+			border-color 0.15s,
+			box-shadow 0.15s;
 	}
 	.slot:hover {
-		background: rgb(10 13 16 / 0.8);
+		background: rgb(10 13 16 / 0.82);
 		border-color: var(--line-strong);
 	}
 	.slot.sel {
 		border-color: var(--emerald);
-		box-shadow: 0 0 0 3px var(--emerald-soft);
+		box-shadow: 0 0 0 3px var(--emerald-soft), 0 10px 26px rgb(0 0 0 / 0.4);
+		z-index: 3;
 	}
 	.role {
 		font-size: 11px;
@@ -485,35 +673,6 @@
 		background: var(--danger-soft);
 		color: var(--danger);
 	}
-	.fn {
-		font-size: 9.5px;
-		color: var(--gold);
-		max-width: 100%;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.small {
-		font-size: var(--fs-xs);
-		margin: 0 0 8px;
-	}
-	.custom {
-		display: flex;
-		gap: 6px;
-		align-items: center;
-		flex-wrap: wrap;
-		margin: 0;
-		font-size: var(--fs-xs);
-		color: var(--gold);
-	}
-	.link {
-		border: 0;
-		background: none;
-		color: var(--emerald-strong);
-		font: inherit;
-		text-decoration: underline;
-		cursor: pointer;
-	}
 	.pname {
 		font-size: var(--fs-xs);
 		font-weight: 600;
@@ -522,21 +681,94 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
+	.fn {
+		font-size: 9.5px;
+		color: var(--gold);
+		max-width: 100%;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.cond {
+		position: absolute;
+		top: -6px;
+		right: -6px;
+		font-size: 9.5px;
+		font-weight: 800;
+		padding: 0 4px;
+		border-radius: 6px;
+		background: var(--danger);
+		color: #fff;
+	}
+	@container (max-width: 520px) {
+		.slot {
+			scale: 0.84;
+		}
+		.fn {
+			display: none;
+		}
+	}
+	@container (max-width: 400px) {
+		.slot {
+			scale: 0.7;
+			padding: 2px 2px 4px;
+		}
+		.role {
+			font-size: 10px;
+		}
+	}
+	.legend {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		padding: var(--sp-3) var(--sp-4) var(--sp-4);
+	}
+	.legend span {
+		font-size: 11px;
+		font-weight: 700;
+		padding: 4px 9px;
+		border-radius: 999px;
+		background: var(--surface-2);
+		color: var(--text-2);
+	}
+	.legend em {
+		font-style: normal;
+		color: var(--text-3);
+		font-weight: 600;
+	}
+	.k i {
+		display: inline-block;
+		width: 12px;
+		height: 3px;
+		border-radius: 2px;
+		margin-right: 5px;
+		vertical-align: 2px;
+	}
+	i.run {
+		background: #e8b86a;
+	}
+	i.sup {
+		background: #60a5fa;
+	}
+	i.box {
+		background: #f472b6;
+	}
 	.side {
 		display: flex;
 		flex-direction: column;
 		gap: var(--sp-4);
+		min-width: 0;
 	}
 	.bench {
 		list-style: none;
 		margin: 0;
 		padding: 0;
-		max-height: 300px;
+		max-height: clamp(220px, calc(var(--app-h, 100vh) - 640px), 420px);
 		overflow-y: auto;
 	}
 	.bench button {
 		display: grid;
-		grid-template-columns: auto 1fr auto 32px;
+		grid-template-columns: auto minmax(0, 1fr) auto 32px;
 		align-items: center;
 		gap: var(--sp-3);
 		width: 100%;
@@ -546,9 +778,11 @@
 		background: transparent;
 		text-align: left;
 		cursor: grab;
+		transition: background 0.15s, transform 0.15s;
 	}
 	.bench button:hover {
 		background: var(--surface-2);
+		transform: translateX(2px);
 	}
 	.bench button.sel {
 		border-color: var(--emerald);
@@ -580,16 +814,318 @@
 		font-weight: 600;
 		color: var(--text-2);
 	}
+	.custom {
+		display: flex;
+		gap: 6px;
+		align-items: center;
+		flex-wrap: wrap;
+		margin: 0;
+		font-size: var(--fs-xs);
+		color: var(--gold);
+	}
+	.link {
+		border: 0;
+		background: none;
+		color: var(--emerald-strong);
+		font: inherit;
+		text-decoration: underline;
+		cursor: pointer;
+	}
+	.small {
+		font-size: var(--fs-xs);
+		margin: 0 0 8px;
+	}
+
+	/* região abaixo */
+	.below {
+		display: grid;
+		grid-template-columns: repeat(12, minmax(0, 1fr));
+		gap: var(--sp-4);
+		margin-top: var(--sp-4);
+		align-items: start;
+	}
+	.below {
+		grid-auto-flow: row dense;
+	}
+	.below > :global(.m-instr) {
+		grid-column: span 8;
+	}
+	.m-plan {
+		grid-column: span 4;
+		grid-row: span 2;
+		display: flex;
+		flex-direction: column;
+		gap: var(--sp-4);
+		min-width: 0;
+	}
+	.below > :global(.m-mastery) {
+		grid-column: span 8;
+	}
+	.below > :global(.m-assist) {
+		grid-column: span 12;
+	}
+	.simple {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: var(--sp-3);
+	}
+	.simple p {
+		margin: 0;
+		font-size: var(--fs-sm);
+	}
+	.presets {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr));
+		gap: 6px;
+		width: 100%;
+	}
+	.pi {
+		display: flex;
+		flex-direction: column;
+		padding: 7px 10px;
+		border-radius: 10px;
+		background: var(--surface-2);
+		font-size: var(--fs-sm);
+		font-weight: 700;
+	}
+	.pi em {
+		font-style: normal;
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--text-3);
+	}
+	.pi.mod {
+		box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold) 50%, transparent);
+		color: var(--gold);
+	}
+	.plan {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+	.plan-id {
+		display: flex;
+		align-items: baseline;
+		gap: 10px;
+		flex-wrap: wrap;
+		font-size: var(--fs-sm);
+		color: var(--text-2);
+	}
+	.formation {
+		font-family: var(--font-display);
+		font-size: 30px;
+		font-weight: 800;
+		color: var(--text);
+		line-height: 1;
+	}
+	.kv {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 6px;
+		margin: 0;
+	}
+	.kv div {
+		padding: 7px 9px;
+		border-radius: 9px;
+		background: var(--surface-2);
+	}
+	.kv dt {
+		font-size: 11px;
+		color: var(--text-3);
+	}
+	.kv dd {
+		margin: 0;
+		font-size: var(--fs-sm);
+		font-weight: 700;
+	}
+	h4 {
+		margin: 4px 0 0;
+		font-size: var(--fs-xs);
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		color: var(--text-3);
+	}
+	.ovr {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		gap: 4px;
+	}
+	.ovr li {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		gap: 0 8px;
+		padding: 6px 9px;
+		border-radius: 9px;
+		background: color-mix(in srgb, var(--gold) 9%, var(--surface-2));
+		font-size: var(--fs-xs);
+	}
+	.ovr b {
+		color: var(--gold);
+		text-align: right;
+	}
+	.ovr small {
+		grid-column: 1 / -1;
+		color: var(--text-3);
+	}
+	.next {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+	}
+	.vs {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.x {
+		color: var(--text-3);
+		font-weight: 800;
+	}
+	.vsi {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+		margin-left: 4px;
+	}
+	.vsi strong {
+		font-size: var(--fs-sm);
+	}
+	.vsi small {
+		font-size: var(--fs-xs);
+		color: var(--text-3);
+	}
+	.stats,
+	.comtop {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+		gap: 6px;
+	}
+	.stats div,
+	.comtop div {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		padding: 7px 9px;
+		border-radius: 9px;
+		background: var(--surface-2);
+	}
+	.stats span,
+	.comtop span {
+		font-size: 11px;
+		color: var(--text-3);
+	}
+	.stats b,
+	.comtop b {
+		font-family: var(--font-display);
+		font-size: 20px;
+	}
+	.warn {
+		color: var(--danger);
+	}
+	.links {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+	.com {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+	.money {
+		white-space: nowrap;
+	}
+	.money small {
+		font-size: 0.6em;
+		color: var(--text-3);
+		font-family: var(--font-body, inherit);
+	}
+	.offers {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		gap: 4px;
+	}
+	.offers li {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		gap: 0 8px;
+		align-items: center;
+		padding: 7px 9px;
+		border-radius: 9px;
+		background: var(--surface-2);
+	}
+	.slotl {
+		grid-column: 1 / -1;
+		font-size: 10.5px;
+		font-weight: 800;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--text-3);
+	}
+	.brand {
+		font-size: var(--fs-sm);
+		font-weight: 650;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.offers b {
+		font-size: var(--fs-sm);
+	}
+	.more {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		align-self: flex-start;
+		color: var(--emerald-strong);
+		font-size: var(--fs-sm);
+		font-weight: 700;
+		text-decoration: none;
+	}
+	.more:hover {
+		text-decoration: underline;
+	}
+
+	@media (max-width: 1280px) {
+		.below > :global(.m-instr) {
+			grid-column: span 12;
+		}
+		.m-plan {
+			grid-column: span 12;
+			grid-row: auto;
+			display: grid;
+			grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+			align-items: start;
+		}
+	}
+	@media (max-width: 1280px) {
+		.below > :global(.m-mastery) {
+			grid-column: span 6;
+		}
+		.below > :global(.m-assist) {
+			grid-column: span 6;
+		}
+	}
 	@media (max-width: 1100px) {
-		.layout {
+		.center {
 			grid-template-columns: 1fr;
 		}
 		.pitch {
-			height: auto;
-			width: calc(100% - 32px);
+			width: min(100%, 560px);
 		}
-		.slot {
-			width: 78px;
+	}
+	@media (max-width: 900px) {
+		.below > :global(.m-mastery),
+		.below > :global(.m-assist) {
+			grid-column: span 12;
+		}
+		.save {
+			width: 100%;
 		}
 	}
 </style>

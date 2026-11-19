@@ -9,7 +9,7 @@
 	 * corridas típicas de cada função. Nada é decorativo: mudar uma instrução muda o desenho.
 	 * Campo em pé (viewBox 68×105): ataque no topo, próprio gol embaixo.
 	 */
-	let { formation, mentality, style, instructions, roles }: { formation: FormationId; mentality: Mentality; style: PlayStyle; instructions: TacticalInstructions; roles: RoleId[] } = $props();
+	let { formation, mentality, style, instructions, roles, legend = true }: { formation: FormationId; mentality: Mentality; style: PlayStyle; instructions: TacticalInstructions; roles: RoleId[]; legend?: boolean } = $props();
 	const p = $derived(paramsFromInstructions(mentality, style, instructions));
 	const shape = $derived(FORMATIONS[formation]);
 	const defY = $derived(105 - p.defLine);
@@ -68,10 +68,12 @@
 		<line class="arr {a.kind}" x1={a.x1} y1={a.y1} x2={a.x2} y2={a.y2} marker-end={a.kind === 'run' ? 'url(#ov-run)' : a.kind === 'support' ? 'url(#ov-sup)' : 'url(#ov-box)'} />
 	{/each}
 </svg>
-<div class="legend" aria-label="Leitura do comportamento">
-	{#each labels as l (l)}<span>{l}</span>{/each}
-	<span class="k"><i class="run"></i>corrida</span><span class="k"><i class="sup"></i>apoio/amplitude</span><span class="k"><i class="box"></i>chegada à área</span>
-</div>
+{#if legend}
+	<div class="legend" aria-label="Leitura do comportamento">
+		{#each labels as l (l)}<span>{l}</span>{/each}
+		<span class="k"><i class="run"></i>corrida</span><span class="k"><i class="sup"></i>apoio/amplitude</span><span class="k"><i class="box"></i>chegada à área</span>
+	</div>
+{/if}
 
 <style>
 	.overlay {

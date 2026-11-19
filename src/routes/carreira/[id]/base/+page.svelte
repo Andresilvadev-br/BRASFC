@@ -184,7 +184,17 @@
 		color: var(--text-3);
 		margin: 6px 0;
 	}
+	/* o texto do plano é longo: o cartão não pode crescer além da coluna da grade */
+	.youth {
+		min-width: 0;
+	}
+	.youth .small b {
+		white-space: nowrap;
+	}
 	.plan select {
+		width: 100%;
+		min-width: 0;
+		text-overflow: ellipsis;
 		padding: 6px;
 		border-radius: 8px;
 		background: #1c252b;

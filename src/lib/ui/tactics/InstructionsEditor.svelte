@@ -95,7 +95,7 @@
 						style="--p:{idx / (n - 1)}; --d:{pIdx / (n - 1)}"
 					>
 						<span class="rail"><span class="fill"></span></span>
-						<span class="def" title="Padrão do estilo: {def.options[pIdx]}"></span>
+						<span class="defmark" title="Padrão do estilo: {def.options[pIdx]}"></span>
 						{#each def.options as opt, i (opt)}
 							<button type="button" tabindex="-1" class="notch" class:on={i <= idx} class:cur={i === idx} style="--i:{i / (n - 1)}" aria-label={opt} title={opt} onclick={(e) => set(k, i, e.currentTarget)}></button>
 						{/each}
@@ -104,7 +104,6 @@
 				{:else}
 					<!-- escolha: seletor segmentado, rótulos completos -->
 					<div class="seg" role="radiogroup" aria-label={def.label} style="--n:{n}">
-						<span class="ind" use:indicator={{ axis: 'x', key: idx }}></span>
 						{#each def.options as opt, i (opt)}
 							<button type="button" role="radio" aria-checked={i === idx} data-active={i === idx} class:def={i === pIdx} onclick={(e) => set(k, i, e.currentTarget)}>{opt}</button>
 						{/each}
@@ -282,7 +281,7 @@
 	.mod .fill {
 		background: linear-gradient(90deg, color-mix(in srgb, var(--gold) 50%, transparent), var(--gold));
 	}
-	.def {
+	.defmark {
 		position: absolute;
 		top: -3px;
 		left: calc(var(--d) * 100%);
@@ -350,18 +349,6 @@
 		border-radius: 10px;
 		background: var(--surface-sunken);
 	}
-	.seg .ind {
-		position: absolute;
-		top: 3px;
-		bottom: 3px;
-		left: 0;
-		border-radius: 8px;
-		background: var(--emerald);
-		pointer-events: none;
-	}
-	.mod .seg .ind {
-		background: var(--gold);
-	}
 	.seg button {
 		position: relative;
 		z-index: 1;
@@ -377,14 +364,18 @@
 		line-height: 1.2;
 		text-align: center;
 		cursor: pointer;
-		transition: color 0.2s;
+		transition: color 0.2s, background 0.25s, box-shadow 0.25s;
 	}
 	.seg button[aria-checked='true'] {
+		background: var(--emerald);
 		color: #06281c;
 		font-weight: 800;
+		box-shadow: 0 4px 12px rgb(16 185 129 / 0.25);
 	}
 	.mod .seg button[aria-checked='true'] {
+		background: var(--gold);
 		color: #2a1d06;
+		box-shadow: 0 4px 12px rgb(232 184 106 / 0.25);
 	}
 	.seg button.def:not([aria-checked='true'])::after {
 		content: '';
