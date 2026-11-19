@@ -52,18 +52,27 @@ function updateRecovery(app) {
 				catch (error) { if (error.code !== 'ENOENT') throw error; }
 			}
 			const script = path.join(dir, 'watch.ps1');
-			await fs.copyFile(path.join(__dirname, 'update-recovery.ps1'), script);
+			await fs.writeFile(script, await fs.readFile(path.join(__dirname, 'update-recovery.ps1')));
 			await fs.writeFile(stateFile, JSON.stringify(state), { flag: 'wx' });
 			const powershell = path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-			const log = await fs.open(path.join(root, 'watch.log'), 'w');
-			let child;
-			try {
-				child = spawn(powershell, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'RemoteSigned',
-					'-File', script, '-StateFile', stateFile], { detached: true, stdio: ['ignore', log.fd, log.fd], windowsHide: true, cwd: root });
-				await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
-			} finally {
-				await log.close();
-			}
+			const log = path.join(root, 'watch.log');
+			const launcher = `
+				$ErrorActionPreference = 'Stop'
+				[IO.File]::WriteAllText($env:BRASFC_WATCH_LOG, "Monitor iniciado." + [Environment]::NewLine)
+				try {
+					& $env:BRASFC_WATCH_SCRIPT -StateFile $env:BRASFC_WATCH_STATE
+				} catch {
+					[IO.File]::AppendAllText($env:BRASFC_WATCH_LOG, ($_ | Out-String))
+					exit 1
+				}
+			`;
+			await fs.writeFile(log, '');
+			const child = spawn(powershell, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'RemoteSigned',
+				'-EncodedCommand', Buffer.from(launcher, 'utf16le').toString('base64')], {
+				detached: true, stdio: 'ignore', windowsHide: true, cwd: root,
+				env: { ...process.env, BRASFC_WATCH_LOG: log, BRASFC_WATCH_SCRIPT: script, BRASFC_WATCH_STATE: stateFile }
+			});
+			await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
 			const watching = path.join(dir, 'watching');
 			const deadline = Date.now() + 10_000;
 			let started = false;
@@ -74,8 +83,8 @@ function updateRecovery(app) {
 			}
 			if (!started) {
 				child.kill();
-				const diagnostic = await fs.readFile(path.join(root, 'watch.log'), 'utf8').catch(() => '');
-				if (diagnostic.trim()) console.error('Falha ao iniciar recuperação Windows:', diagnostic.trim());
+				const diagnostic = await fs.readFile(log, 'utf8').catch(() => '');
+				console.error('Falha ao iniciar recuperação Windows:', child.exitCode, diagnostic.trim());
 				throw Error('O monitor de recuperação da atualização não iniciou. A instalação atual foi preservada.');
 			}
 			child.unref();
@@ -83,7 +92,7 @@ function updateRecovery(app) {
 		} catch (error) {
 			const stateOnDisk = await readJson(stateFile);
 			if (stateOnDisk?.dir === dir) await fs.rm(stateFile, { force: true });
-			await fs.rm(dir, { recursive: true, force: true });
+			await physical.promises.rm(dir, { recursive: true, force: true, maxRetries: 3 }).catch(console.error);
 			throw error;
 		}
 	}
