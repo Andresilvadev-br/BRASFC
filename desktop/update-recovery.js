@@ -3,6 +3,7 @@ const { createHash } = require('node:crypto');
 const physical = require('original-fs');
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const { setTimeout: wait } = require('node:timers/promises');
 
 // Electron normally treats app.asar as a virtual directory. Recovery must copy and hash the physical archive.
 async function manifest(directory, relative = '') {
@@ -62,6 +63,20 @@ function updateRecovery(app) {
 				await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
 			} finally {
 				await log.close();
+			}
+			const watching = path.join(dir, 'watching');
+			const deadline = Date.now() + 10_000;
+			let started = false;
+			while (child.exitCode === null && Date.now() < deadline) {
+				started = await fs.access(watching).then(() => true, () => false);
+				if (started) break;
+				await wait(150);
+			}
+			if (!started) {
+				child.kill();
+				const diagnostic = await fs.readFile(path.join(root, 'watch.log'), 'utf8').catch(() => '');
+				if (diagnostic.trim()) console.error('Falha ao iniciar recuperação Windows:', diagnostic.trim());
+				throw Error('O monitor de recuperação da atualização não iniciou. A instalação atual foi preservada.');
 			}
 			child.unref();
 			current = state;

@@ -16,14 +16,15 @@ function Test-Program([string]$directory) {
 	$files = Get-Content -LiteralPath (Join-Path $state.dir 'program-hashes.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 	foreach ($entry in $files.PSObject.Properties) {
 		$file = Join-Path $directory $entry.Name
-		if (!(Test-Path -LiteralPath $file -PathType Leaf)
-			-or (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $entry.Value) { return $false }
+		if (!(Test-Path -LiteralPath $file -PathType Leaf)) { return $false }
+		if ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $entry.Value) { return $false }
 	}
 	return $true
 }
 
 $clean = $false
 try {
+	Set-Content -LiteralPath (Join-Path $state.dir 'watching') -Value $PID -Encoding ASCII
 	Write-Output 'Recovery watcher started.'
 	$old = Get-Process -Id $state.oldPid -ErrorAction SilentlyContinue
 	while ($old -and !$old.HasExited -and !(Test-Path -LiteralPath $cancelled)) {
