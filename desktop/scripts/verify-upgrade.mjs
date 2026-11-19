@@ -4,6 +4,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { createReadStream, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { resolve, join, basename } from 'node:path';
+import { Transform } from 'node:stream';
 import { setTimeout as wait } from 'node:timers/promises';
 import WebSocket from 'ws';
 
@@ -13,24 +14,39 @@ assert(exe && dist && evidence);
 const feed = 'http://127.0.0.1:4187';
 const metadata = join(dist, 'latest.yml');
 const version = readFileSync(metadata, 'utf8').match(/^version: (.+)$/m)[1].trim();
-let rejectDownloads = true;
-let denied = 0;
-let served = 0;
+let feedMode = 'missing';
+const served = { missing: 0, truncated: 0, corrupt: 0, healthy: 0 };
 const server = createServer((request, response) => {
 	const name = basename(new URL(request.url, feed).pathname);
 	if (!['latest.yml', 'BRASFC-Setup.exe', 'BRASFC-Setup.exe.blockmap'].includes(name)) {
 		response.writeHead(404).end();
 		return;
 	}
-	if (name !== 'latest.yml' && rejectDownloads) {
-		denied++;
+	if (name !== 'latest.yml' && (feedMode === 'missing' || (name.endsWith('.blockmap') && feedMode !== 'healthy'))) {
+		if (name.endsWith('.exe')) served[feedMode]++;
 		response.writeHead(404).end();
 		return;
 	}
 	const file = join(dist, name);
-	response.setHeader('Content-Length', statSync(file).size);
-	if (name.endsWith('.exe')) served++;
-	createReadStream(file).pipe(response);
+	const size = statSync(file).size;
+	response.setHeader('Content-Length', size);
+	if (!name.endsWith('.exe')) {
+		createReadStream(file).pipe(response);
+		return;
+	}
+	served[feedMode]++;
+	if (feedMode === 'truncated') {
+		const stream = createReadStream(file, { end: Math.min(65_535, size - 2) });
+		stream.once('end', () => response.destroy());
+		stream.pipe(response, { end: false });
+	} else if (feedMode === 'corrupt') {
+		let first = true;
+		const changed = new Transform({ transform(chunk, _encoding, done) {
+			if (first) { chunk[0] ^= 0xff; first = false; }
+			done(null, chunk);
+		} });
+		createReadStream(file).pipe(changed).pipe(response);
+	} else createReadStream(file).pipe(response);
 });
 await new Promise((resolve) => server.listen(4187, '127.0.0.1', resolve));
 const result = { targetVersion: version, tests: [] };
@@ -113,14 +129,33 @@ try {
 	await evaluate("window.brasfcDesktop.update('auto', false)");
 	await evaluate("window.brasfcDesktop.update('check', true)");
 	await until(async () => (await evaluate("window.brasfcDesktop.update('state')"))?.version === version);
-	await evaluate("window.brasfcDesktop.update('download')");
-	await until(async () => (await evaluate("window.brasfcDesktop.update('state')"))?.status === 'error');
-	assert(denied > 0);
-	result.tests.push('Falha de download exibida no app');
-	rejectDownloads = false;
+	for (const failure of ['missing', 'truncated', 'corrupt']) {
+		feedMode = failure;
+		await evaluate("window.brasfcDesktop.update('download')");
+		const state = await until(async () => {
+			const state = await evaluate("window.brasfcDesktop.update('state')");
+			return state?.status === 'error' && state;
+		}, 120_000);
+		assert(served[failure] > 0);
+		if (failure === 'corrupt') assert.match(state.error, /sha512|checksum|integrity/i);
+		assert.equal(await evaluate("window.brasfcDesktop.update('install')"), false);
+		assert.match(installedVersion(), /^1\.3\.0\b/);
+		const preserved = await evaluate(`Promise.all([
+			fetch('/api/session').then(r => r.json()).then(data => data.profile?.id),
+			fetch('/api/careers/${old.id}/matches').then(r => r.json()).then(data => {
+				const prior = data.matches?.find(m => m.round === 1);
+				return prior && [prior.homeGoals, prior.awayGoals];
+			})
+		])`);
+		assert.deepEqual(preserved, [old.profile, old.score]);
+		assert.equal(JSON.parse(readFileSync(preferences, 'utf8')).automatic, false);
+		(result.faults ??= []).push({ stage: 'download', fault: failure, rejected: true, previousVersionUsable: true, error: state.error });
+	}
+	result.tests.push('Download ausente, incompleto e corrompido rejeitados com a instalação, autenticação e save intactos');
+	feedMode = 'healthy';
 	await evaluate("window.brasfcDesktop.update('download')");
 	await until(async () => (await evaluate("window.brasfcDesktop.update('state')"))?.status === 'ready', 120_000);
-	assert(served > 0);
+	assert(served.healthy > 0);
 	assert.equal(await evaluate("window.brasfcDesktop.update('install')"), true);
 	const oldPid = app.pid;
 	// A connected main-process inspector keeps Node alive at shutdown and can retain Electron's instance lock.
