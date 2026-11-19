@@ -134,10 +134,11 @@ export function rate(s: PlayerStats, position: Parameters<typeof roleGroup>[0]):
 	r += s.assists * 0.7;
 	r += s.keyPasses * 0.12;
 	r += (s.shotsOnTarget - s.goals) * 0.08 - (s.shots - s.shotsOnTarget) * 0.04;
-	r += s.passesCompleted * (g === 'MC' || g === 'MEI' || g === 'VOL' ? 0.007 : 0.005);
-	r -= (s.passes - s.passesCompleted) * (g === 'MEI' ? 0.02 : 0.03);
+	r += s.passesCompleted * (g === 'MC' || g === 'MEI' || g === 'VOL' ? 0.004 : 0.003);
+	r -= (s.passes - s.passesCompleted) * (g === 'MEI' ? 0.015 : 0.02);
 	r += s.dribbles * 0.08 - s.dribblesFailed * 0.04;
-	r += s.tackles * (def ? 0.11 : 0.07) + s.interceptions * (def ? 0.09 : 0.06) + s.clearances * (def ? 0.05 : 0.02);
+	// O motor registra muitas disputas curtas (roubadas): cada uma vale pouco na nota.
+	r += s.tackles * (def ? 0.03 : 0.02) + s.interceptions * (def ? 0.025 : 0.015) + s.clearances * (def ? 0.03 : 0.01);
 	r += s.aerialsWon * 0.04;
 	r += s.foulsWon * 0.03 - s.foulsCommitted * 0.07;
 	r -= s.yellow * 0.3 + s.red * 1.6 + s.offsides * 0.03 + s.errorsLeadingToGoal * 0.6;

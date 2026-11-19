@@ -87,7 +87,7 @@ html {
 
 body {
 	margin: 0;
-	min-height: 100vh;
+	min-height: var(--app-h, 100vh);
 	background: var(--bg);
 	color: var(--text);
 	font-family: var(--font-ui);
@@ -212,4 +212,172 @@ svg {
 		animation-iteration-count: 1 !important;
 		transition-duration: 0.001ms !important;
 	}
+}
+
+/* ==========================================================================
+   BRASFC Experience (Dev 0.4) — superfícies com profundidade, luz e movimento
+   ========================================================================== */
+:root {
+	--glass: linear-gradient(160deg, rgb(34 44 51 / 0.86), rgb(22 29 34 / 0.92));
+	--glass-hi: linear-gradient(160deg, rgb(42 54 62 / 0.92), rgb(24 31 37 / 0.95));
+	--edge: linear-gradient(140deg, rgb(255 255 255 / 0.16), rgb(255 255 255 / 0.02) 40%, rgb(16 185 129 / 0.18));
+	--edge-gold: linear-gradient(140deg, rgb(232 184 106 / 0.7), rgb(232 184 106 / 0.05) 45%, rgb(232 184 106 / 0.45));
+	--glow-emerald: 0 0 0 1px rgb(16 185 129 / 0.25), 0 18px 60px -18px rgb(16 185 129 / 0.45);
+	--glow-gold: 0 0 0 1px rgb(232 184 106 / 0.35), 0 18px 60px -18px rgb(232 184 106 / 0.5);
+	--ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+	--good: #34d399;
+	--bad: #f87171;
+}
+
+/* Cartão de vidro com borda em gradiente (máscara: sem caixas genéricas) */
+.glass {
+	position: relative;
+	background: var(--glass);
+	border-radius: var(--radius-l);
+	box-shadow: var(--shadow-1);
+	isolation: isolate;
+}
+.glass::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	padding: 1px;
+	background: var(--edge);
+	-webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+	-webkit-mask-composite: xor;
+	mask-composite: exclude;
+	pointer-events: none;
+	z-index: -1;
+}
+.glass.gold::before {
+	background: var(--edge-gold);
+}
+.glass.gold {
+	box-shadow: var(--glow-gold);
+}
+
+/* Luz especular e inclinação 2.5D da Ultra Motion X (variáveis escritas pelo SurfaceMaterial) */
+[data-umx-surface] {
+	transform: perspective(900px) rotateX(var(--umx-rx, 0deg)) rotateY(var(--umx-ry, 0deg));
+	transform-style: preserve-3d;
+	will-change: transform;
+}
+[data-umx-surface]::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	pointer-events: none;
+	background: radial-gradient(420px circle at var(--umx-lx, 50%) var(--umx-ly, -40%), rgb(255 255 255 / 0.07), transparent 45%);
+	opacity: var(--umx-lo, 0);
+	transition: opacity 0.4s var(--ease-out);
+}
+:root[data-motion='reduced'] [data-umx-surface],
+:root[data-quality='leve'] [data-umx-surface] {
+	transform: none;
+}
+
+.eyebrow-gold {
+	font-size: var(--fs-xs);
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+	font-weight: 700;
+	color: var(--gold);
+}
+.display {
+	font-family: var(--font-display);
+	text-transform: uppercase;
+	letter-spacing: 0.02em;
+	line-height: 0.95;
+}
+.num-xl {
+	font-family: var(--font-display);
+	font-weight: 800;
+	font-size: clamp(2rem, 4vw, 3.25rem);
+	line-height: 1;
+	font-variant-numeric: tabular-nums;
+}
+.pos {
+	color: var(--good);
+}
+.neg {
+	color: var(--bad);
+}
+.chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 10px;
+	border-radius: var(--radius-pill);
+	background: rgb(231 237 240 / 0.06);
+	border: 1px solid var(--line);
+	font-size: var(--fs-xs);
+	font-weight: 600;
+	color: var(--text-2);
+	white-space: nowrap;
+}
+.chip[aria-pressed='true'],
+.chip.on {
+	background: var(--emerald-soft);
+	border-color: var(--emerald-line);
+	color: var(--emerald-strong);
+}
+button.chip {
+	cursor: pointer;
+	transition: background 0.2s var(--ease-out), border-color 0.2s var(--ease-out);
+}
+.grid-auto {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(var(--min, 240px), 1fr));
+	gap: var(--gap, var(--sp-4));
+}
+.stack {
+	display: flex;
+	flex-direction: column;
+	gap: var(--gap, var(--sp-3));
+}
+.row {
+	display: flex;
+	align-items: center;
+	gap: var(--gap, var(--sp-3));
+	flex-wrap: wrap;
+}
+.spread {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--sp-3);
+}
+@keyframes shimmer {
+	from {
+		background-position: -200% 0;
+	}
+	to {
+		background-position: 200% 0;
+	}
+}
+.shimmer-gold {
+	background: linear-gradient(100deg, var(--gold) 20%, #fff3d6 40%, var(--gold) 60%) 0 0 / 200% 100%;
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+	animation: shimmer 4s linear infinite;
+}
+:root[data-motion='reduced'] .shimmer-gold {
+	animation: none;
+}
+
+/* ===== Aplicativo do Windows: barra de título integrada (36px) ===== */
+html.desktop-app:not(.desktop-full) {
+	--desk-bar: 36px;
+	--app-h: calc(100vh - 36px);
+}
+html.desktop-app:not(.desktop-full) body {
+	padding-top: var(--desk-bar);
+}
+
+/* Dev 0.5: espaçamento padrão de painéis de vidro */
+.glass.pad {
+	padding: var(--sp-5);
 }

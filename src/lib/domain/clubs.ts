@@ -15,6 +15,10 @@ export interface Club {
 	colors: { primary: string; secondary: string; shorts: string; socks: string };
 	crest: { shape: CrestShape; pattern: CrestPattern };
 	stadium: string;
+	/** ajuste de força do elenco gerado por nível (Série D/estaduais); ausente = 0 */
+	tier?: number;
+	/** cores geradas pelo BRASFC (não conferidas em fonte) */
+	colorsProvisional?: boolean;
 }
 
 export const CLUBS: readonly Club[] = [
@@ -40,7 +44,15 @@ export const CLUBS: readonly Club[] = [
 	{ id: 'araras', name: 'Araras EC', short: 'ARA', city: 'Palmeiral', reputation: 1, colors: { primary: '#BE123C', secondary: '#2563EB', shorts: '#FFFFFF', socks: '#BE123C' }, crest: { shape: 'circulo', pattern: 'faixa' }, stadium: 'Estádio das Araras' }
 ];
 
-const BY_ID = new Map(CLUBS.map((c) => [c.id, c]));
+const BY_ID = new Map<string, Club>(CLUBS.map((c) => [c.id, c]));
+
+/**
+ * Clubes reais (base Brasil 2026) entram no mesmo registro por id — os ids não colidem
+ * com os fictícios. Registrados por `registerClubs` (feito em src/lib/data/brasil.ts).
+ */
+export function registerClubs(clubs: Club[]) {
+	for (const c of clubs) if (!BY_ID.has(c.id)) BY_ID.set(c.id, c);
+}
 
 export function getClub(id: string): Club | undefined {
 	return BY_ID.get(id);

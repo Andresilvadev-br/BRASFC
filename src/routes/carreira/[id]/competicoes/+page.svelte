@@ -1,149 +1,445 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { getClub, LEAGUE } from '#lib/domain/clubs.ts';
+	import { getClub } from '#lib/domain/clubs.ts';
 	import { formatShort } from '#lib/domain/dates.ts';
-	import StandingsTable from '#lib/ui/career/StandingsTable.svelte';
-	import Button from '#lib/ui/Button.svelte';
+	import { D_STAGE_NAMES, DIVISION_LABELS, dStageRounds, effectiveRule, groupStandings, phaseOneLength, phaseOneTables, resolveTie, type BrasilDivision, type DivisionId, type Tie } from '#lib/domain/league.ts';
+	import { computeStandings } from '#lib/domain/season.ts';
+	import { strengthMemo } from '#lib/domain/world.ts';
+	import { reveal } from '#lib/motion/actions.ts';
 	import Crest from '#lib/ui/Crest.svelte';
-	import Panel from '#lib/ui/Panel.svelte';
-	import Unavailable from '#lib/ui/Unavailable.svelte';
+	import Icon from '#lib/ui/Icon.svelte';
+	import Segmented from '#lib/ui/Segmented.svelte';
 
 	let { data } = $props();
 	const c = $derived(data.career);
 	const v = $derived(data.view);
-	const TOTAL = 38;
+	const st = $derived(strengthMemo(data.manage.ctx));
 
-	let round = $state(untrack(() => data.view.next?.round ?? 1));
-	const games = $derived(v.fixtures.filter((f) => f.round === round));
+	let div = $state<DivisionId>(untrack(() => data.view.division));
+	const divisions = $derived((Object.keys(v.league.divisions) as DivisionId[]).filter((d) => v.league.divisions[d]?.length));
+	const brasil = $derived(v.world === 'brasil' && div !== 'liga-brasfc');
+	const rule = $derived(brasil ? effectiveRule(v.league, div as BrasilDivision) : null);
+	const p1 = $derived(div === 'liga-brasfc' ? 38 : phaseOneLength(v.league, div));
+	const tables = $derived(phaseOneTables(v.league, div, v.results));
+	const divResults = $derived(v.results.filter((r) => (r.competition ?? 'liga-brasfc') === div));
+	const lastRound = $derived(Math.max(0, ...divResults.filter((r) => r.round <= p1).map((r) => r.round)));
+	/** Posição na rodada anterior (setas de movimento). */
+	const prevPos = $derived.by(() => {
+		const map = new Map<string, number>();
+		if (lastRound < 2) return map;
+		const prev = divResults.filter((r) => r.round < lastRound);
+		for (const g of tables) for (const r of computeStandings(g.map((x) => x.clubId), prev)) map.set(r.clubId, r.position);
+		return map;
+	});
+	const zone = (pos: number, size: number): 'up' | 'qual' | 'down' | '' => {
+		if (!rule) return pos <= 4 ? 'up' : pos > size - 4 ? 'down' : '';
+		if (div === 'serie-d') return pos <= 4 ? 'qual' : '';
+		if (div === 'serie-c') {
+			const per = rule.phase2?.kind === 'quadrangulares' ? rule.phase2.qualifiers : 8;
+			if (pos <= per) return 'qual';
+			const down = rule.relegatedPerGroup ?? rule.relegated;
+			return pos > size - down ? 'down' : '';
+		}
+		if (pos <= rule.promoted) return 'up';
+		return pos > size - rule.relegated ? 'down' : '';
+	};
+	const fixtures = $derived(v.fixtures.filter((f) => f.competition === div));
+	const maxRound = $derived(Math.max(1, ...fixtures.map((f) => f.round)));
+	let round = $state(untrack(() => Math.max(1, Math.min(data.view.nextRound, 38))));
+	const shown = $derived(Math.min(Math.max(1, round), maxRound));
+	const games = $derived(fixtures.filter((f) => f.round === shown));
+	const resultOf = (home: string, rd: number) => divResults.find((r) => r.round === rd && r.home === home);
+	const quads = $derived(div === 'serie-c' ? groupStandings(v.league, v.results) : []);
+	const dRounds = (k: number) => dStageRounds(v.league, k);
+	const tieOut = (t: Tie, rounds: number[], byCampaign = false) => resolveTie(t, v.results, 'serie-d', rounds, c.seed, st, { byCampaign });
+	const name = (id: string) => getClub(id)?.name ?? id;
+	const ruleText = $derived(!rule ? 'Liga fictícia: 20 clubes em turno e returno.' : `${rule.size} clubes · ${rule.status === 'oficial' ? 'regra oficial' : rule.status === 'anunciado' ? 'regra anunciada pela CBF' : 'regra projetada pelo BRASFC'}. ${rule.nota ?? ''}`);
 </script>
 
 <svelte:head><title>Competições · {v.club.name} · BRASFC</title></svelte:head>
 
-<div class="head" data-umx-enter>
-	<span class="eyebrow">Temporada {c.season}</span>
-	<h1>{LEAGUE.name}</h1>
-	<p class="muted">20 clubes · turno e returno · os 4 primeiros em destaque verde, os 4 últimos em vermelho. {data.view.results.length ? `Calculada a partir de ${new Set(data.view.results.map((r) => r.round)).size} rodada(s) disputada(s).` : 'A tabela começa zerada: nenhuma rodada foi disputada.'}</p>
-</div>
-
-<div class="layout">
-	<Panel title="Classificação" icon="trophy" demo index={0}>
-		<StandingsTable rows={v.standings} highlight={c.clubId} />
-	</Panel>
-
-	<div class="side">
-		<Panel title="Rodadas" icon="calendar" index={1}>
-			<div class="stepper">
-				<Button variant="secondary" size="sm" icon="chevronLeft" disabled={round <= 1} onclick={() => round--} aria-label="Rodada anterior" />
-				<div class="rlabel">
-					<strong>Rodada {round}</strong>
-					<small class="muted">{formatShort(games[0].date)}</small>
-				</div>
-				<Button variant="secondary" size="sm" icon="chevronRight" disabled={round >= TOTAL} onclick={() => round++} aria-label="Próxima rodada" />
-			</div>
-			<div class="progress" aria-hidden="true"><span style="width:{(round / TOTAL) * 100}%"></span></div>
-			<ul class="games">
-				{#each games as g (g.home)}
-					<li class:mine={g.home === c.clubId || g.away === c.clubId}>
-						<span class="t h">{getClub(g.home)?.short}<Crest clubId={g.home} size={26} /></span>
-						<span class="x">{g.time}</span>
-						<span class="t a"><Crest clubId={g.away} size={26} />{getClub(g.away)?.short}</span>
-					</li>
-				{/each}
-			</ul>
-		</Panel>
-		<Unavailable title="Copa BRASFC" detail="Mata-mata com clubes de todas as divisões" icon="trophy" />
-		<Unavailable title="Artilharia e estatísticas" detail="Disponíveis quando as partidas forem simuladas" icon="chart" />
+<div class="head" use:reveal>
+	<div>
+		<span class="eyebrow">Temporada {c.season}{v.world === 'brasil' && c.season > 2026 ? ' · projeção do BRASFC a partir da base 2026' : ''}</span>
+		<h1 class="display">{DIVISION_LABELS[div]}</h1>
+		<p class="muted rule">{ruleText}</p>
 	</div>
+	{#if divisions.length > 1}<Segmented label="Divisão" bind:value={div} options={divisions.map((d) => ({ value: d, label: DIVISION_LABELS[d] }))} />{/if}
 </div>
+
+{#if tables.length === 1}
+	{@const t = tables[0]}
+	<div class="layout">
+		<section class="glass table" use:reveal>
+			<table>
+				<thead><tr><th></th><th>#</th><th>Clube</th><th>J</th><th>V</th><th>E</th><th>D</th><th>SG</th><th class="pts">Pts</th></tr></thead>
+				<tbody>
+					{#each t as r (r.clubId)}
+						{@const z = zone(r.position, t.length)}
+						{@const prev = prevPos.get(r.clubId)}
+						<tr class:me={r.clubId === c.clubId} data-z={z}>
+							<td class="mv">{#if prev && prev > r.position}<span class="upa">▲</span>{:else if prev && prev < r.position}<span class="dna">▼</span>{/if}</td>
+							<td class="num">{r.position}</td>
+							<td><span class="club"><Crest clubId={r.clubId} size={22} /><span>{name(r.clubId)}</span>{#if r.clubId === c.clubId}<span class="you">Você</span>{/if}</span></td>
+							<td class="num">{r.played}</td><td class="num">{r.won}</td><td class="num">{r.drawn}</td><td class="num">{r.lost}</td><td class="num">{r.goalDiff > 0 ? '+' : ''}{r.goalDiff}</td><td class="num pts">{r.points}</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+			<div class="legend">
+				{#if rule && rule.promoted && div !== 'serie-c'}<span><i data-z="up"></i>Acesso</span>{/if}
+				{#if div === 'serie-c'}<span><i data-z="qual"></i>2ª fase (quadrangulares)</span>{/if}
+				{#if !rule}<span><i data-z="up"></i>Topo</span>{/if}
+				<span><i data-z="down"></i>Rebaixamento</span>
+			</div>
+		</section>
+		<section class="rounds glass" use:reveal={{ index: 1 }}>
+			<div class="spread">
+				<button class="nav" onclick={() => (round = shown - 1)} disabled={shown <= 1} aria-label="Rodada anterior"><Icon name="chevronLeft" /></button>
+				<h2 class="display">Rodada {shown}</h2>
+				<button class="nav" onclick={() => (round = shown + 1)} disabled={shown >= maxRound} aria-label="Próxima rodada"><Icon name="chevronRight" /></button>
+			</div>
+			<div class="games">
+				{#each games as f (f.home)}
+					{@const r = resultOf(f.home, f.round)}
+					<div class="game" class:me={f.home === c.clubId || f.away === c.clubId}>
+						<span class="t h">{getClub(f.home)?.short}<Crest clubId={f.home} size={20} /></span>
+						<span class="sc">{r ? `${r.homeGoals} × ${r.awayGoals}` : formatShort(f.date)}</span>
+						<span class="t a"><Crest clubId={f.away} size={20} />{getClub(f.away)?.short}</span>
+					</div>
+				{:else}
+					<p class="muted">Sem jogos nesta rodada{shown > p1 ? ' (fase final ainda não definida)' : ''}.</p>
+				{/each}
+			</div>
+		</section>
+	</div>
+{:else}
+	<h2 class="display section">1ª fase · {tables.length} grupos</h2>
+	<div class="groups">
+		{#each tables as t, gi (gi)}
+			<section class="glass group" class:mine={t.some((r) => r.clubId === c.clubId)} use:reveal={{ index: gi % 8 }}>
+				<h3>Grupo {div === 'serie-d' ? `A${gi + 1}` : gi + 1}</h3>
+				{#each t as r (r.clubId)}
+					<div class="grow" data-z={zone(r.position, t.length)} class:me={r.clubId === c.clubId}>
+						<span class="num">{r.position}</span><Crest clubId={r.clubId} size={18} /><span class="nm">{name(r.clubId)}</span><b>{r.points}</b>
+					</div>
+				{/each}
+			</section>
+		{/each}
+	</div>
+{/if}
+
+{#if div === 'serie-c' && quads.length}
+	<h2 class="display section">Quadrangulares{v.league.cFinal ? ' e final' : ''}</h2>
+	<div class="quads">
+		{#each quads as q, qi (qi)}
+			<section class="glass group" use:reveal={{ index: qi }}>
+				<h3>Grupo {qi + 1} · dois primeiros sobem</h3>
+				{#each q as r (r.clubId)}
+					<div class="grow" data-z={r.position <= 2 ? 'up' : ''} class:me={r.clubId === c.clubId}><span class="num">{r.position}</span><Crest clubId={r.clubId} size={18} /><span class="nm">{name(r.clubId)}</span><b>{r.points}</b></div>
+				{/each}
+			</section>
+		{/each}
+		{#if v.league.cFinal}
+			{@const f = v.league.cFinal}
+			{@const out = resolveTie(f, v.results, 'serie-c', [p1 + 7, p1 + 8], c.seed, st)}
+			<section class="glass gold final">
+				<h3>Final (ida e volta)</h3>
+				{#each f as id, s (id)}<div class="grow" class:win={out?.winner === id}><span></span><Crest clubId={id} size={22} /><span class="nm">{name(id)}</span><b>{out ? out.aggregate[s] : ''}</b></div>{/each}
+				{#if out?.penalties}<small class="pens">pênaltis {out.penalties.home}–{out.penalties.away}</small>{/if}
+			</section>
+		{/if}
+	</div>
+{/if}
+
+{#if div === 'serie-d' && v.league.dBracket}
+	{@const br = v.league.dBracket}
+	<h2 class="display section">Mata-mata · sobem os semifinalistas e os vencedores dos playoffs</h2>
+	<div class="bracket">
+		{#each br.stages as ties, k (k)}
+			<section class="col">
+				<h3>{D_STAGE_NAMES[k]}</h3>
+				{#each ties as t (t.join('-'))}
+					{@const o = tieOut(t, dRounds(k))}
+					<div class="tie glass" class:me={t.includes(c.clubId)}>
+						{#each t as id, s (id)}<div class="tm" class:win={o?.winner === id} class:out={o && o.winner !== id}><Crest clubId={id} size={18} /><span>{getClub(id)?.short}</span><b>{o ? o.aggregate[s] : ''}</b></div>{/each}
+						{#if o?.penalties}<small class="pens">pên. {o.penalties.home}–{o.penalties.away}</small>{/if}
+					</div>
+				{/each}
+			</section>
+		{/each}
+		{#if br.playoff}
+			<section class="col">
+				<h3>Playoffs de acesso</h3>
+				{#each br.playoff as t (t.join('-'))}
+					{@const o = tieOut(t, dRounds(4), true)}
+					<div class="tie glass gold">{#each t as id, s (id)}<div class="tm" class:win={o?.winner === id}><Crest clubId={id} size={18} /><span>{getClub(id)?.short}</span><b>{o ? o.aggregate[s] : ''}</b></div>{/each}</div>
+				{/each}
+			</section>
+		{/if}
+	</div>
+{/if}
 
 <style>
 	.head {
-		margin-bottom: var(--sp-5);
-	}
-	.head p {
-		font-size: var(--fs-sm);
-		max-width: 75ch;
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-end;
+		gap: var(--sp-4);
+		flex-wrap: wrap;
+		margin-bottom: var(--sp-4);
 	}
 	h1 {
 		font-size: var(--fs-3xl);
-		text-transform: uppercase;
-		font-weight: 800;
+		margin: 4px 0;
+	}
+	.rule {
+		max-width: 80ch;
+		margin: 0;
 	}
 	.layout {
 		display: grid;
-		grid-template-columns: minmax(0, 1.4fr) minmax(320px, 1fr);
+		grid-template-columns: 1.4fr 1fr;
 		gap: var(--sp-4);
 		align-items: start;
 	}
-	.side {
-		display: flex;
-		flex-direction: column;
-		gap: var(--sp-3);
+	.table {
+		padding: var(--sp-3);
+		overflow: auto;
 	}
-	.stepper {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-	}
-	.rlabel {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-	}
-	.rlabel strong {
-		font-family: var(--font-display);
-		font-size: var(--fs-xl);
-		text-transform: uppercase;
-	}
-	.progress {
-		height: 4px;
-		border-radius: 2px;
-		background: var(--surface-3);
-		margin: var(--sp-3) 0;
-		overflow: hidden;
-	}
-	.progress span {
-		display: block;
-		height: 100%;
-		background: var(--emerald);
-		transition: width 0.3s;
-	}
-	.games {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: grid;
-		gap: 4px;
-	}
-	.games li {
-		display: grid;
-		grid-template-columns: 1fr 64px 1fr;
-		align-items: center;
-		padding: 6px var(--sp-2);
-		border-radius: var(--radius-s);
-		background: var(--surface-sunken);
-		font-weight: 700;
+	table {
+		width: 100%;
+		border-collapse: collapse;
 		font-size: var(--fs-sm);
 	}
-	.games li.mine {
+	th {
+		text-align: left;
+		color: var(--text-3);
+		font-size: 11px;
+		letter-spacing: 0.1em;
+		padding: 8px 6px;
+	}
+	td {
+		padding: 7px 6px;
+		border-top: 1px solid var(--line);
+	}
+	tr[data-z='up'] td:nth-child(2) {
+		box-shadow: inset 3px 0 0 var(--emerald);
+	}
+	tr[data-z='qual'] td:nth-child(2) {
+		box-shadow: inset 3px 0 0 var(--gold);
+	}
+	tr[data-z='down'] td:nth-child(2) {
+		box-shadow: inset 3px 0 0 var(--danger);
+	}
+	tr.me {
+		background: linear-gradient(90deg, rgb(16 185 129 / 0.14), transparent);
+	}
+	.mv {
+		width: 16px;
+		font-size: 10px;
+	}
+	.upa {
+		color: var(--emerald-strong);
+	}
+	.dna {
+		color: var(--danger);
+	}
+	.club {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.you {
+		font-size: 10px;
+		font-weight: 800;
+		padding: 2px 6px;
+		border-radius: 6px;
 		background: var(--emerald-soft);
+		color: var(--emerald-strong);
+	}
+	.pts {
+		font-weight: 800;
+		text-align: right;
+	}
+	.legend {
+		display: flex;
+		gap: var(--sp-4);
+		padding: var(--sp-3) var(--sp-2) 0;
+		font-size: var(--fs-xs);
+		color: var(--text-2);
+	}
+	.legend i {
+		display: inline-block;
+		width: 10px;
+		height: 10px;
+		border-radius: 3px;
+		margin-right: 6px;
+		vertical-align: -1px;
+	}
+	i[data-z='up'] {
+		background: var(--emerald);
+	}
+	i[data-z='qual'] {
+		background: var(--gold);
+	}
+	i[data-z='down'] {
+		background: var(--danger);
+	}
+	.rounds {
+		padding: var(--sp-4);
+		display: grid;
+		gap: var(--sp-3);
+	}
+	.rounds h2 {
+		margin: 0;
+		font-size: var(--fs-xl);
+	}
+	.nav {
+		width: 36px;
+		height: 36px;
+		border-radius: 50%;
+		border: 1px solid var(--line-strong);
+		background: none;
+		color: var(--text);
+		display: grid;
+		place-items: center;
+		cursor: pointer;
+	}
+	.nav:disabled {
+		opacity: 0.3;
+	}
+	.games {
+		display: grid;
+		gap: 6px;
+	}
+	.game {
+		display: grid;
+		grid-template-columns: 1fr auto 1fr;
+		gap: 10px;
+		align-items: center;
+		padding: 8px 10px;
+		border-radius: var(--radius-m);
+		background: rgb(10 13 16 / 0.4);
+		font-size: var(--fs-sm);
+	}
+	.game.me {
 		box-shadow: inset 0 0 0 1px var(--emerald-line);
 	}
 	.t {
-		display: flex;
+		display: inline-flex;
 		align-items: center;
-		gap: var(--sp-2);
-	}
-	.h {
-		justify-content: flex-end;
-	}
-	.x {
-		text-align: center;
-		font-size: var(--fs-xs);
-		color: var(--text-3);
+		gap: 6px;
 		font-weight: 600;
 	}
-	@media (max-width: 1100px) {
+	.t.h {
+		justify-content: flex-end;
+	}
+	.sc {
+		font-family: var(--font-display);
+		font-weight: 800;
+		min-width: 64px;
+		text-align: center;
+	}
+	.section {
+		margin: var(--sp-6) 0 var(--sp-3);
+		font-size: var(--fs-xl);
+	}
+	.groups {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+		gap: var(--sp-3);
+	}
+	.quads {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+		gap: var(--sp-3);
+	}
+	.group {
+		padding: var(--sp-3);
+		display: grid;
+		gap: 3px;
+		align-content: start;
+	}
+	.group.mine {
+		box-shadow: 0 0 0 1px var(--emerald-line);
+	}
+	.group h3,
+	.col h3,
+	.final h3 {
+		margin: 0 0 6px;
+		font-size: 11px;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--text-3);
+	}
+	.grow {
+		display: grid;
+		grid-template-columns: 18px 20px 1fr auto;
+		gap: 6px;
+		align-items: center;
+		font-size: var(--fs-xs);
+		padding: 4px 6px;
+		border-radius: 6px;
+	}
+	.grow[data-z='qual'],
+	.grow[data-z='up'] {
+		background: rgb(16 185 129 / 0.08);
+	}
+	.grow.me {
+		box-shadow: inset 0 0 0 1px var(--emerald-line);
+	}
+	.grow.win {
+		font-weight: 800;
+		color: var(--gold);
+	}
+	.nm {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.final {
+		padding: var(--sp-4);
+	}
+	.pens {
+		color: var(--gold);
+		font-size: 11px;
+	}
+	.bracket {
+		display: grid;
+		grid-auto-flow: column;
+		grid-auto-columns: minmax(160px, 1fr);
+		gap: var(--sp-3);
+		overflow-x: auto;
+		padding-bottom: var(--sp-3);
+	}
+	.col {
+		display: grid;
+		gap: 6px;
+		align-content: start;
+	}
+	.tie {
+		padding: 6px 8px;
+		display: grid;
+		gap: 2px;
+	}
+	.tie.me {
+		box-shadow: 0 0 0 1px var(--gold);
+	}
+	.tm {
+		display: grid;
+		grid-template-columns: 18px 1fr auto;
+		gap: 6px;
+		align-items: center;
+		font-size: var(--fs-xs);
+	}
+	.tm.win {
+		font-weight: 800;
+	}
+	.tm.out {
+		opacity: 0.45;
+	}
+	@media (max-width: 1000px) {
 		.layout {
 			grid-template-columns: 1fr;
 		}

@@ -1,6 +1,6 @@
 import { randomUUID, randomInt } from 'node:crypto';
 import {
-	CAREER_START,
+	careerStart,
 	initialCareerData,
 	welcomeMessages,
 	type Career,
@@ -65,7 +65,7 @@ export async function createCareer(db: Db, profileId: string, input: CreateCaree
 			`INSERT INTO careers (id, profile_id, mode, person_name, club_id, seed, season, game_date, data)
 			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8::date, $9::jsonb)
 			 RETURNING ${COLUMNS.replaceAll('c.', '')}`,
-			[id, profileId, input.mode, input.personName, input.clubId, seed, CAREER_START.season, CAREER_START.date, JSON.stringify(data)]
+			[id, profileId, input.mode, input.personName, input.clubId, seed, careerStart(input.world ?? 'brasfc').season, careerStart(input.world ?? 'brasfc').date, JSON.stringify(data)]
 		);
 		const messages = welcomeMessages(input);
 		for (const [seq, m] of messages.entries()) {
@@ -122,6 +122,27 @@ export async function patchCareerData(
 		if (!exists) throw new Error('Carreira não encontrada');
 		throw new VersionConflictError('A carreira foi alterada em outra janela. Recarregue para continuar.');
 	}
+	return mapCareer(rows[0]);
+}
+
+/**
+ * Atualiza data, temporada e campos de `data` numa única gravação com controle de versão
+ * (usado ao fechar rodadas e temporadas).
+ */
+export async function saveCareerProgress(
+	db: Db,
+	profileId: string,
+	id: string,
+	change: { gameDate: string; season?: number; data: Partial<CareerData> },
+	expectedVersion: number
+): Promise<Career> {
+	const rows = await db.query<CareerRow>(
+		`UPDATE careers c SET game_date = $3::date, season = COALESCE($4, c.season), data = c.data || $5::jsonb, version = c.version + 1, updated_at = now()
+		 WHERE c.id = $1 AND c.profile_id = $2 AND c.version = $6
+		 RETURNING ${COLUMNS}`,
+		[id, profileId, change.gameDate, change.season ?? null, JSON.stringify(change.data), expectedVersion]
+	);
+	if (!rows[0]) throw new VersionConflictError('A carreira foi alterada em outra janela. Recarregue para continuar.');
 	return mapCareer(rows[0]);
 }
 

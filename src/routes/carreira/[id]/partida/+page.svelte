@@ -1,12 +1,13 @@
 <script lang="ts">
-	import { invalidate } from '$app/navigation';
-	import { beforeNavigate } from '$app/navigation';
+	import Walkout from '#lib/ui/v4/Walkout.svelte';
+	import { beforeNavigate, invalidate } from '$app/navigation';
 	import { ApiError, api } from '#lib/api.ts';
 	import type { Career } from '#lib/domain/career.ts';
-	import { getClub, LEAGUE } from '#lib/domain/clubs.ts';
+	import { getClub } from '#lib/domain/clubs.ts';
 	import { formatLong } from '#lib/domain/dates.ts';
-	import { CAREER_PLAYER_ID, fixtureSetup, type MatchSummary } from '#lib/domain/matchday.ts';
-	import type { MatchResult as RoundResult } from '#lib/domain/season.ts';
+	import { DIVISION_LABELS, type DivisionId, type SeasonSummary } from '#lib/domain/league.ts';
+	import { CAREER_PLAYER_ID, fixtureSetup, type MatchdayContext, type MatchSummary } from '#lib/domain/matchday.ts';
+	import { MASTERY_LABEL } from '#lib/domain/tactical.ts';
 	import { MENTALITY_LABELS, STYLE_LABELS } from '#lib/domain/tactics.ts';
 	import type { MatchResult } from '#lib/engine/types.ts';
 	import { notify, setIslandContext } from '#lib/stores/island.svelte.ts';
@@ -15,6 +16,7 @@
 	import Crest from '#lib/ui/Crest.svelte';
 	import Icon from '#lib/ui/Icon.svelte';
 	import MatchCenter from '#lib/ui/match/MatchCenter.svelte';
+	import Meter from '#lib/ui/Meter.svelte';
 
 	let { data } = $props();
 	const c = $derived(data.career);
@@ -23,25 +25,42 @@
 	$effect(() => setIslandContext('Dia de jogo'));
 
 	type Stage = 'pre' | 'live' | 'saving' | 'saved' | 'error';
+	type RoundResponse = {
+		career: Career;
+		round: number;
+		match: { homeGoals: number; awayGoals: number; summary: MatchSummary } | null;
+		results: Array<{ home: string; away: string; homeGoals: number; awayGoals: number; competition: string }>;
+	};
 	let stage = $state<Stage>('pre');
 	let errorMsg = $state('');
+	let busy = $state(false);
 	// A partida é montada uma vez, quando o usuário entra em campo (tática congelada).
 	let setup = $state.raw<ReturnType<typeof fixtureSetup> | null>(null);
+	let playedFixture = $state.raw<typeof v.next>(null);
 	let local = $state.raw<MatchResult | null>(null);
-	let saved = $state.raw<{ match: { homeGoals: number; awayGoals: number; summary: MatchSummary }; round: RoundResult[] } | null>(null);
+	let saved = $state.raw<RoundResponse | null>(null);
+	let seasonEnd = $state.raw<{ summary: SeasonSummary; moves: Array<{ clubId: string; from: DivisionId; to: DivisionId; reason: string }> } | null>(null);
 
+	const ctx = $derived<MatchdayContext>({ season: c.season, firstSeason: v.firstSeason, tactical: v.tactical, fitness: c.data.fitness, observed: data.observed });
 	const fixture = $derived(v.next);
-	const opp = $derived(fixture ? getClub(fixture.home === c.clubId ? fixture.away : fixture.home) : undefined);
+	const preview = $derived(fixture ? fixtureSetup(c, fixture, v.tactic, ctx) : null);
+	const myTeam = $derived(preview ? (preview.mySide === 'home' ? preview.home : preview.away) : null);
 	const meInLineup = $derived.by(() => {
-		if (c.mode !== 'player' || !fixture) return null;
-		const s = fixtureSetup(c, fixture, v.tactic);
-		const t = s.mySide === 'home' ? s.home : s.away;
-		return t.tactic.lineup.includes(CAREER_PLAYER_ID) ? 'titular' : t.tactic.bench.includes(CAREER_PLAYER_ID) ? 'reserva' : 'fora';
+		if (c.mode !== 'player' || !myTeam) return null;
+		const i = myTeam.tactic.lineup.indexOf(CAREER_PLAYER_ID);
+		return i >= 0 ? 'titular' : myTeam.tactic.bench.includes(CAREER_PLAYER_ID) ? 'reserva' : 'fora';
 	});
 
+	let walkout = $state(false);
 	function kickOff() {
 		if (!fixture) return;
-		setup = fixtureSetup(c, fixture, v.tactic);
+		walkout = true;
+	}
+	function startMatch() {
+		walkout = false;
+		if (!fixture) return;
+		setup = fixtureSetup(c, fixture, v.tactic, ctx);
+		playedFixture = fixture;
 		stage = 'live';
 		markDirty('partida', 'Partida em andamento (o resultado só vale quando for registrado)');
 	}
@@ -52,33 +71,49 @@
 	}
 
 	async function save() {
-		if (!fixture || !local || !setup) return;
 		stage = 'saving';
 		try {
-			const res = await api<{ career: Career; match: { homeGoals: number; awayGoals: number; summary: MatchSummary }; round: RoundResult[] }>(
-				`/api/careers/${c.id}/matches`,
-				{ body: { version: c.version, round: fixture.round, decisions: local.decisions.filter((d) => d.side === setup!.control) } }
-			);
+			const res = await api<RoundResponse>(`/api/careers/${c.id}/matches`, {
+				body: { version: c.version, step: v.step?.key, decisions: local && setup ? local.decisions.filter((d) => d.side === setup!.control) : [] }
+			});
 			saved = res;
 			stage = 'saved';
 			markClean('partida');
-			if (res.match.homeGoals !== local.homeGoals || res.match.awayGoals !== local.awayGoals) {
+			if (local && res.match && (res.match.homeGoals !== local.homeGoals || res.match.awayGoals !== local.awayGoals)) {
 				notify({ icon: 'alert', tone: 'warning', title: 'Resultado conferido pelo servidor', detail: 'O placar oficial difere do exibido; vale o do servidor.' });
-			} else {
-				notify({ icon: 'check', tone: 'success', title: 'Resultado registrado', detail: `Rodada ${fixture.round} salva na sua carreira.` });
-			}
+			} else notify({ icon: 'check', tone: 'success', title: 'Rodada registrada', detail: `Rodada ${res.round} salva na sua carreira.` });
 		} catch (e) {
 			stage = 'error';
-			errorMsg = e instanceof ApiError ? e.message : 'Não foi possível registrar o resultado.';
+			errorMsg = e instanceof ApiError ? e.message : 'Não foi possível registrar a rodada.';
 		}
 	}
 
-	async function backToClub() {
+	async function skipWeek() {
+		busy = true;
+		await save();
+		busy = false;
+	}
+
+	async function closeSeason() {
+		busy = true;
+		try {
+			const res = await api<{ summary: SeasonSummary; moves: Array<{ clubId: string; from: DivisionId; to: DivisionId; reason: string }> }>(`/api/careers/${c.id}/season`, { body: { version: c.version } });
+			seasonEnd = res;
+			notify({ icon: 'trophy', tone: 'gold', title: `Temporada ${res.summary.season} encerrada`, detail: `${res.summary.position}º lugar na ${DIVISION_LABELS[res.summary.division]}` });
+		} catch (e) {
+			notify({ icon: 'alert', tone: 'error', title: 'Não foi possível encerrar', detail: e instanceof ApiError ? e.message : 'Tente de novo.' });
+		}
+		busy = false;
+	}
+
+	async function next() {
 		await invalidate('app:career');
 		stage = 'pre';
 		setup = null;
 		saved = null;
 		local = null;
+		seasonEnd = null;
+		playedFixture = null;
 	}
 
 	beforeNavigate((nav) => {
@@ -87,108 +122,158 @@
 	});
 
 	const name = (id: string) => setup?.home.players.find((p) => p.id === id)?.shortName ?? setup?.away.players.find((p) => p.id === id)?.shortName ?? id;
-	const myStats = $derived(saved?.match.summary.me ?? null);
+	const OUTCOME: Record<string, string> = { campeao: 'Campeão!', acesso: 'Acesso garantido', rebaixado: 'Rebaixado', permanece: 'Permanência' };
+	const myResults = $derived(saved ? saved.results.filter((r) => r.competition === v.division) : []);
+	const otherCount = $derived(saved ? saved.results.length - myResults.length : 0);
 </script>
+
+{#if walkout && fixture}<Walkout home={fixture.home} away={fixture.away} label={fixture.competition === 'copa-do-brasil' ? `Copa do Brasil · ${fixture.phase ?? ''}` : `${DIVISION_LABELS[fixture.competition as DivisionId] ?? ''} · Rodada ${fixture.round}`} ondone={startMatch} />{/if}
 
 <svelte:head><title>Dia de jogo · {v.club.name} · BRASFC</title></svelte:head>
 
-{#if !fixture}
-	<section class="empty">
+{#if seasonEnd}
+	<section class="card post" data-umx-enter>
 		<Icon name="trophy" />
-		<h1>Temporada concluída</h1>
-		<p>Todas as rodadas do {LEAGUE.name} foram disputadas. Confira a classificação final em Competições.</p>
-		<Button variant="primary" href="{base}/competicoes">Ver classificação</Button>
-	</section>
-{:else if stage === 'pre' && opp}
-	<section class="pre" data-umx-enter>
-		<span class="eyebrow">{LEAGUE.name} · Rodada {fixture.round} · {formatLong(fixture.date)} · {fixture.time}</span>
-		<div class="vs">
-			<div class="side"><Crest clubId={fixture.home} size={96} /><strong>{getClub(fixture.home)?.name}</strong></div>
-			<span class="x">×</span>
-			<div class="side"><Crest clubId={fixture.away} size={96} /><strong>{getClub(fixture.away)?.name}</strong></div>
-		</div>
-		{#if c.mode === 'coach'}
-			<p class="plan">
-				Sua tática salva: <strong>{v.tactic.formation}</strong> · {MENTALITY_LABELS[v.tactic.mentality]} · {STYLE_LABELS[v.tactic.style]}
-				{#if !v.tacticSaved}<em>(padrão — ainda não salva)</em>{/if}
-			</p>
-			<p class="hint">Durante o jogo você pode mudar mentalidade, estilo e formação e fazer até 5 substituições em 3 paradas.</p>
-		{:else}
-			<p class="plan">
-				{#if meInLineup === 'titular'}O técnico escalou você como <strong>titular</strong>.
-				{:else if meInLineup === 'reserva'}Você começa no <strong>banco de reservas</strong> — pode entrar durante o jogo.
-				{:else}Você não foi relacionado para esta partida. Treine para ganhar espaço.{/if}
-			</p>
+		<h1>Temporada {seasonEnd.summary.season} encerrada</h1>
+		<p class="big">{seasonEnd.summary.position}º lugar · {seasonEnd.summary.points} pontos · {DIVISION_LABELS[seasonEnd.summary.division]}</p>
+		<p class="outcome" data-o={seasonEnd.summary.outcome}>{OUTCOME[seasonEnd.summary.outcome]}</p>
+		{#if seasonEnd.moves.length}
+			<div class="moves">
+				{#each seasonEnd.moves as m (m.clubId)}
+					<span class:me={m.clubId === c.clubId} data-r={m.reason}><Crest clubId={m.clubId} size={22} /> {getClub(m.clubId)?.short} {m.reason === 'acesso' ? '↑' : '↓'} {DIVISION_LABELS[m.to]}</span>
+				{/each}
+			</div>
 		{/if}
+		<Button variant="primary" icon="arrowRight" onclick={next}>Começar a temporada {seasonEnd.summary.season + 1}</Button>
+	</section>
+{:else if v.seasonOver}
+	<section class="card empty" data-umx-enter>
+		<Icon name="trophy" />
+		<h1>Todas as rodadas de {c.season} foram disputadas</h1>
+		<p>Encerre a temporada para ver a classificação final, os acessos e os rebaixamentos.</p>
+		<Button variant="primary" icon="check" loading={busy} onclick={closeSeason}>Encerrar temporada</Button>
+	</section>
+{:else if stage === 'pre' && !fixture}
+	<section class="card empty" data-umx-enter>
+		<Icon name="calendar" />
+		<h1>{v.step?.kind === 'cup' ? 'Quarta de Copa do Brasil' : `Rodada ${v.nextRound}`}: seu time não joga</h1>
+		<p>
+			As outras partidas acontecem normalmente. Use a semana para treinar
+			{#if v.upcoming}— o próximo jogo é em {formatLong(v.upcoming.date).toLowerCase()}{v.upcoming.competition === 'copa-do-brasil' ? ' (Copa do Brasil)' : ''}{/if}.
+		</p>
+		<div class="actions">
+			<Button variant="primary" icon="arrowRight" loading={busy} onclick={skipWeek}>Avançar a semana</Button>
+			<Button href="{base}/treinos" icon="training">Treinos</Button>
+		</div>
+	</section>
+{:else if stage === 'pre' && fixture && preview}
+	<section class="card pre" data-umx-enter>
+		<span class="eyebrow">{fixture.competition === 'copa-do-brasil' ? `Copa do Brasil · ${fixture.phase ?? ''}` : `${DIVISION_LABELS[fixture.competition as DivisionId] ?? fixture.competition} · Rodada ${fixture.round}`} · {formatLong(fixture.date)} · {fixture.time}</span>
+		<div class="vs">
+			<div class="side"><Crest clubId={fixture.home} size={88} /><strong>{getClub(fixture.home)?.name}</strong></div>
+			<span class="x">×</span>
+			<div class="side"><Crest clubId={fixture.away} size={88} /><strong>{getClub(fixture.away)?.name}</strong></div>
+		</div>
+		<div class="intel">
+			<div>
+				<h3>Seu plano</h3>
+				{#if c.mode === 'coach'}
+					<p><strong>{v.tactic.formation}</strong> · {MENTALITY_LABELS[v.tactic.mentality]} · {STYLE_LABELS[v.tactic.style]}{#if !v.tacticSaved}<em> (padrão — ainda não salva)</em>{/if}</p>
+				{:else}
+					<p>
+						{#if meInLineup === 'titular'}O técnico escalou você como <strong>titular</strong>.
+						{:else if meInLineup === 'reserva'}Você começa no <strong>banco</strong> e pode entrar durante o jogo.
+						{:else}Você não foi relacionado. Treine para ganhar espaço.{/if}
+					</p>
+				{/if}
+				<div class="m"><span>Domínio tático</span><Meter value={Math.round(v.mastery.execution)} label="Domínio tático" /><b>{Math.round(v.mastery.execution)} · {MASTERY_LABEL(v.mastery.execution)}</b></div>
+			</div>
+			<div>
+				<h3>Adversário</h3>
+				<p>Técnico de perfil <strong>{preview.opponentCoach}</strong> (perfil de jogo; o técnico real ainda não está na base).</p>
+				{#if preview.opponentPlan.length}
+					{#each preview.opponentPlan as r (r)}<p class="warn"><Icon name="eye" /> {r}</p>{/each}
+				{:else}
+					<p class="muted">Sem ajustes específicos contra você — joga o próprio estilo.</p>
+				{/if}
+			</div>
+		</div>
 		<div class="actions">
 			<Button variant="primary" size="lg" icon="whistle" onclick={kickOff}>Entrar em campo</Button>
 			{#if c.mode === 'coach'}<Button href="{base}/taticas" icon="tactics">Ajustar tática</Button>{/if}
 		</div>
 	</section>
-{:else if setup}
+{:else}
 	{#if stage === 'saving'}
-		<p class="status"><Icon name="refresh" /> Registrando o resultado: o servidor está conferindo a partida…</p>
+		<p class="status"><Icon name="refresh" /> Registrando: o servidor confere a partida e simula a rodada nas outras séries…</p>
 	{:else if stage === 'error'}
-		<div class="status err">
-			<Icon name="alert" /> {errorMsg}
-			<Button size="sm" onclick={save}>Tentar de novo</Button>
-		</div>
-	{:else if stage === 'saved' && saved && fixture}
-		<section class="post" aria-label="Resultado registrado">
-			<div class="score">
-				<Crest clubId={fixture.home} size={56} />
-				<strong>{saved.match.homeGoals} × {saved.match.awayGoals}</strong>
-				<Crest clubId={fixture.away} size={56} />
-			</div>
-			{#if saved.match.summary.goals.length}
-				<ul class="goals">
-					{#each saved.match.summary.goals as g (g.tick)}
-						<li data-side={g.side}><span>{g.minute}</span> ⚽ {name(g.player)}{g.assist ? ` (assist. ${name(g.assist)})` : ''}</li>
-					{/each}
-				</ul>
-			{/if}
-			{#if myStats}
-				<p class="me">
-					Sua atuação: nota <strong>{myStats.rating.toFixed(1)}</strong> · {myStats.minutes} min · {myStats.goals} gol(s) · {myStats.assists} assistência(s) ·
-					{myStats.passesCompleted}/{myStats.passes} passes
-				</p>
-			{:else if c.mode === 'player'}
-				<p class="me">Você não entrou em campo nesta partida.</p>
+		<div class="status err"><Icon name="alert" /> {errorMsg} <Button size="sm" onclick={save}>Tentar de novo</Button></div>
+	{:else if stage === 'saved' && saved}
+		<section class="card post" aria-label="Rodada registrada">
+			{#if saved.match && playedFixture}
+				<div class="score">
+					<Crest clubId={playedFixture.home} size={56} />
+					<strong>{saved.match.homeGoals} × {saved.match.awayGoals}</strong>
+					<Crest clubId={playedFixture.away} size={56} />
+				</div>
+				{#if saved.match.summary.goals.length}
+					<ul class="goals">
+						{#each saved.match.summary.goals as g (g.tick)}<li><span>{g.minute}</span> ⚽ {name(g.player)}{g.assist ? ` (assist. ${name(g.assist)})` : ''}</li>{/each}
+					</ul>
+				{/if}
+				{#if saved.match.summary.me}
+					{@const me = saved.match.summary.me}
+					<p class="me">Sua atuação: nota <strong>{me.rating.toFixed(1)}</strong> · {me.minutes} min · {me.goals} gol(s) · {me.assists} assist. · {me.passesCompleted}/{me.passes} passes</p>
+				{:else if c.mode === 'player'}
+					<p class="me">Você não entrou em campo nesta partida.</p>
+				{/if}
+			{:else}
+				<h2>Rodada {saved.round} disputada</h2>
 			{/if}
 			<div class="round">
-				<h3>Outros jogos da rodada</h3>
+				<h3>{v.divisionLabel} · rodada {saved.round}</h3>
 				<ul>
-					{#each saved.round as r (r.home)}
+					{#each myResults as r (r.home)}
 						<li><span class="t">{getClub(r.home)?.short}</span><b>{r.homeGoals} × {r.awayGoals}</b><span class="t">{getClub(r.away)?.short}</span></li>
 					{/each}
 				</ul>
+				{#if otherCount}<p class="muted">+ {otherCount} jogos nas outras séries.</p>{/if}
 			</div>
 			<div class="actions">
-				<Button variant="primary" icon="arrowRight" onclick={backToClub}>Próxima rodada</Button>
+				<Button variant="primary" icon="arrowRight" onclick={next}>Continuar</Button>
 				<Button href="{base}/competicoes" icon="trophy">Classificação</Button>
 			</div>
 		</section>
 	{/if}
-	<MatchCenter home={setup.home} away={setup.away} seed={setup.seed} control={setup.control} onfinish={finished} />
+	{#if setup && stage !== 'pre'}
+		<MatchCenter home={setup.home} away={setup.away} seed={setup.seed} control={setup.control} onfinish={finished} />
+	{/if}
 {/if}
 
 <style>
-	.pre,
-	.empty,
-	.post {
+	.card {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		gap: 14px;
-		padding: 28px 16px;
+		padding: 26px 16px;
 		border-radius: 18px;
 		background: linear-gradient(180deg, var(--surface-2), var(--surface));
 		box-shadow: inset 0 0 0 1px var(--line);
 		text-align: center;
+		margin-bottom: 14px;
+	}
+	.card :global(> svg) {
+		width: 36px;
+		height: 36px;
+		color: var(--gold);
 	}
 	.post {
-		margin-bottom: 14px;
 		box-shadow: inset 0 0 0 1px var(--emerald-line);
+	}
+	h1 {
+		font-family: var(--font-display);
+		margin: 0;
 	}
 	.eyebrow {
 		color: var(--gold);
@@ -212,18 +297,50 @@
 		font-size: var(--fs-3xl);
 		color: var(--text-3);
 	}
-	.plan,
-	.hint,
-	.me {
-		margin: 0;
+	.intel {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 16px;
+		width: min(860px, 100%);
+		text-align: left;
 	}
-	.hint {
+	.intel > div {
+		padding: 12px 14px;
+		border-radius: 12px;
+		background: var(--surface);
+		box-shadow: inset 0 0 0 1px var(--line);
+	}
+	.intel h3 {
+		margin: 0 0 6px;
+		font-size: var(--fs-xs);
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
 		color: var(--text-3);
+	}
+	.intel p {
+		margin: 4px 0;
 		font-size: var(--fs-sm);
 	}
-	.plan em {
+	.intel em {
 		color: var(--warning);
 		font-style: normal;
+	}
+	.warn {
+		display: flex;
+		gap: 6px;
+		color: var(--gold);
+	}
+	.m {
+		display: grid;
+		grid-template-columns: auto 1fr auto;
+		gap: 8px;
+		align-items: center;
+		font-size: var(--fs-xs);
+		color: var(--text-3);
+		margin-top: 8px;
+	}
+	.m b {
+		color: var(--text);
 	}
 	.actions {
 		display: flex;
@@ -248,9 +365,51 @@
 		align-items: center;
 		gap: 18px;
 	}
-	.score strong {
+	.score strong,
+	.big {
 		font-family: var(--font-display);
 		font-size: var(--fs-3xl);
+		margin: 0;
+	}
+	.big {
+		font-size: var(--fs-xl);
+	}
+	.outcome {
+		margin: 0;
+		font-weight: 700;
+		font-size: var(--fs-lg);
+	}
+	.outcome[data-o='campeao'],
+	.outcome[data-o='acesso'] {
+		color: var(--emerald-strong);
+	}
+	.outcome[data-o='rebaixado'] {
+		color: var(--danger);
+	}
+	.moves {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		justify-content: center;
+		max-width: 760px;
+	}
+	.moves span {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 3px 8px;
+		border-radius: 999px;
+		background: var(--surface);
+		font-size: var(--fs-xs);
+	}
+	.moves span[data-r='acesso'] {
+		color: var(--emerald-strong);
+	}
+	.moves span[data-r='rebaixamento'] {
+		color: var(--danger);
+	}
+	.moves span.me {
+		box-shadow: inset 0 0 0 1px var(--gold);
 	}
 	.goals {
 		list-style: none;
@@ -290,18 +449,17 @@
 	.round .t:first-child {
 		text-align: right;
 	}
-	.round b {
-		font-variant-numeric: tabular-nums;
+	.muted {
+		color: var(--text-3);
 	}
-	.empty :global(svg) {
-		width: 40px;
-		height: 40px;
-		color: var(--gold);
+	.me {
+		margin: 0;
 	}
-	@media (max-width: 560px) {
+	@media (max-width: 640px) {
 		.vs {
 			gap: 12px;
 		}
+		.intel,
 		.round ul {
 			grid-template-columns: 1fr;
 		}

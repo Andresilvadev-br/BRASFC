@@ -9,7 +9,7 @@ import type { AnimateOptions, Props, UltraMotionX } from 'ultra-motion-x';
  *   microinterações — a Ultra Motion X 1.3.0 não trata prefers-reduced-motion.
  * • Mantém um único ponto de acesso para telas, componentes e transições.
  */
-export type MotionPreference = 'auto' | 'completo' | 'reduzido';
+export type MotionPreference = 'auto' | 'completo' | 'leve' | 'reduzido';
 export type MotionProfileId = 'ultra' | 'balanced' | 'performance';
 
 export const motion = $state({
@@ -22,6 +22,7 @@ export const motion = $state({
 let engine: UltraMotionX | null = null;
 let loading: Promise<UltraMotionX | null> | null = null;
 let unbindMicro: (() => void) | null = null;
+let unbindRich: Array<() => void> = [];
 let preference: MotionPreference = 'auto';
 let mediaQuery: MediaQueryList | null = null;
 
@@ -40,9 +41,18 @@ function applyReduced() {
 	if (motion.reduced && unbindMicro) {
 		unbindMicro();
 		unbindMicro = null;
+		for (const off of unbindRich) off();
+		unbindRich = [];
 	} else if (!motion.reduced && !unbindMicro) {
 		unbindMicro = engine.bind(document);
+		// Material reativo (luz + inclinação 2.5D) e atração magnética: a própria Ultra Motion X
+		// só os ativa nos perfis que permitem efeitos de cursor (Ultra/Balanced).
+		unbindRich = [engine.surface({ selector: '[data-umx-surface]', tilt: 3.5 }).bind(document), engine.magnetic({ selector: '[data-umx-magnet]', strength: 0.2, max: 6 }).bind(document)];
 	}
+	// Qualidade: "leve" usa o perfil de desempenho; "completo", o Ultra; "auto", o que o orçamento medir.
+	if (preference === 'leve') void engine.budget.setProfile('performance', { persist: false, source: 'user' });
+	else if (preference === 'completo') void engine.budget.setProfile('ultra', { persist: false, source: 'user' });
+	document.documentElement.dataset.quality = preference === 'leve' ? 'leve' : preference === 'completo' ? 'completo' : 'auto';
 }
 
 export function setMotionPreference(pref: MotionPreference) {
@@ -131,4 +141,14 @@ export function celebrate(x: number, y: number, color = '#E8B86A') {
 	if (motion.reduced || !engine?.effects || !engine.budget.allowDecor()) return;
 	engine.effects.burst({ x, y, color, count: 28, speed: 280 });
 	engine.effects.wave({ x, y, color: '#10B981', radius: 180 });
+}
+
+/** Número que anima até o valor (gráficos, saldo, notas). Sem motor/movimento: aplica direto. */
+export function countTo(el: Element | null | undefined, value: number, format: (v: number) => string = (v) => Math.round(v).toLocaleString('pt-BR')) {
+	if (!el) return;
+	if (motion.reduced || !engine) {
+		el.textContent = format(value);
+		return;
+	}
+	void engine.number(el, value, { format, spring: 'gentle' });
 }

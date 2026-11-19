@@ -1,5 +1,85 @@
 # Novidades
 
+## 0.5.0 — 2026-11-18 · Manager Update
+
+### Novo
+- **Futebol brasileiro vivo** (`careers.data.universe`): cada clube da IA tem filosofia, projeto (título, crescimento, estabilidade, reconstrução, crise), diretoria, técnico fictício com reputação e histórico, formação e domínio dela. Diretorias perdem a confiança com maus resultados (pelo perfil) e demitem; técnicos livres são contratados conforme o porte; entre temporadas, clubes grandes buscam técnicos em alta, rebaixados se reconstroem e promovidos crescem. Em 10 temporadas simuladas: ~19 demissões e ~12 trocas de comando por temporada, sem nenhuma inconsistência.
+- **Notícias** geradas pelos fatos: demissões, contratações, sequências, lideranças, títulos, recordes e mudanças de projeto; as relevantes chegam à caixa de mensagens (no máximo duas por passo).
+- **Gabinete do treinador**: reuniões com a diretoria (orçamento, advertência com ultimato, avaliação do meio da temporada, renovação) e coletivas de imprensa em momentos relevantes, com efeitos proporcionais em torcida, diretoria e reputação; contrato, reputação, marcos, decisões e linha do tempo da carreira; propostas de emprego vindas de clubes com vaga ou insatisfeitos, com salário e duração.
+- **Comissão técnica**: auxiliar, preparador físico, treinador de goleiros, analista, fisioterapeuta, coordenador da base e chefe de observação, com competência, salário, contrato, rescisão e efeito medido; recomendações contextuais.
+- **Treinos**: preparação específica para o próximo adversário (vale um jogo, teto de +6 de execução) e planejamento delegado ao auxiliar.
+- **Base e olheiros**: plano de desenvolvimento por jovem, estagnação após os 19 anos, missões com prazo, precisão dos relatórios e comparação de prospectos.
+- **Legado**: comparação interativa entre temporadas, revelados pela base e recordes do universo.
+
+### Medições
+- Passo de domingo: ~1,9–2,0 s (0.4: ~1,9 s); primeiro passo de saves antigos: ~2,5 s (cria o universo).
+- Navegação interna: 42–104 ms; memória da página: ~108 MB (0.4: ~96 MB).
+
+## 0.4.1 — 2026-11-18 · Stability Update
+
+### Novo
+- App para Windows (Electron, pasta `desktop/`): janela sempre centralizada no monitor do cursor, tamanho lembrado, tela cheia por F11/Alt+Enter ou botão, barra de título integrada, tela própria sem conexão, atualização automática do aplicativo; instalador gerado e publicado pelo GitHub Actions; botão de download no menu, na Central de Atualizações e nas Configurações (só aparece quando o instalador existe).
+
+### Corrigido / auditado
+- Grupos A11–A16 da Série D 2026 conferidos clube a clube com a lista do sorteio da CBF (TNH1, 06/03/2026).
+- 5-3-2: diagnóstico com 400 jogos por configuração. Com posse de bola rende 1,07 ponto por jogo contra o 4-3-3 (o 4-4-2 rende 1,10); com mentalidade defensiva e contra-ataque, 1,27. Cinco ajustes no motor foram testados e descartados (pioravam ou ficavam dentro do ruído); o auxiliar agora recomenda o uso medido.
+- Dez temporadas seguidas conferidas: acessos, quedas e tamanhos das divisões fecham todo ano.
+
+## 0.4.0 — 2026-11-18 · Evolution Update
+
+### Novo
+- Copa do Brasil 2026 com os 126 participantes reais, nove fases, jogo único (fases 1–4), ida e volta (5ª à semifinal), final única em campo neutro, pênaltis, premiação e chaveamento interativo.
+- Série D 2026 real (96 clubes, 16 grupos, mata-mata, playoffs de acesso) e Série C por edição: 20 (2026), 24 (2027) e 28 em dois grupos (2028+), com contas de acesso/rebaixamento conferidas até 2040.
+- Mercado de transferências: compra, venda, empréstimo, jogadores livres, renovação, rescisão, propostas recebidas, lista de venda, observados; clube e atleta respondem separadamente; IA compra por carência de elenco e orçamento.
+- Contratos persistentes, valor de mercado, salários por nível, evolução e aposentadoria dos atletas, jovens que repõem elencos da IA.
+- Finanças: caixa, TV/comercial, patrocínio, bilheteria, premiações, salários, estrutura, base e olheiros; orçamento e teto salarial da diretoria; extrato idempotente.
+- Diretoria com 6 personalidades, objetivos, confiança e demissão; propostas de emprego; patrocínios fictícios com bônus e exigências; obras com custo e prazo; torcida e público.
+- Categorias de base (turmas limitadas, evolução semanal, promoção) e olheiros com relatórios imprecisos por região e posição.
+- Carreira de jogador com contrato, empresário, propostas, objetivos, prêmios e evolução por minutos.
+- História: campeões de todas as competições, artilharia, transferências marcantes e sala de troféus.
+- Redesign: navegação lateral, painel, mercado, finanças, clube, base, Copa, história, elenco (campo/cartões/lista), competições, comportamento tático desenhado no campo, entrada em campo cinematográfica, menu em deck.
+- Ultra Motion X: material com luz e inclinação, atração magnética, números animados, entrada sob demanda; qualidade Automático/Completo/Leve.
+- PWA instalável e Central de Atualizações (verificar, ver novidades, atualizar com proteção de alterações não salvas, confirmação da versão carregada, aviso entre abas, "O que há de novo").
+
+### Pendente
+- Elencos reais e técnicos (sem fonte verificável); 2ª fase da Série C 2028 sem regulamento publicado (projeção).
+- Esquemas 5-3-2 ainda abaixo da média em confronto neutro.
+
+## 0.3.1 — 2026-11-18 · Refinamento do motor
+
+### Corrigido
+- Excesso de gols entre IAs (Série A 3,66 → 2,7 por jogo): calibração pela população real de clubes e técnicos da IA, nível relativo da partida, goleiros, mentalidade ofensiva, pressão e jogo vertical.
+- Motor 22% mais rápido sem mudar nenhum resultado (impressão digital idêntica).
+- Formações: alas como pontas com três zagueiros, meia que chega à área sem pontas (4-2-2-2: 0,75 → 1,03 ponto por jogo contra o 4-3-3).
+- Implantação: a pasta de dados era ignorada pelo Git, o que quebrava o CI e a VPS; a VPS agora baixa a imagem pronta e avisa falhas.
+
+## 0.3.0 — 2026-11-18 · Inteligência tática avançada
+
+### Corrigido da Dev 0.2
+- Impedimentos excessivos (6,8 → ~2,9 por jogo) corrigidos na lógica de desmarcação, leitura da linha e leitura do passe.
+- Faltas, cartões, gols, escanteios e mando recalibrados com referências do Brasileirão (`docs/MOTOR.md`).
+- Estilos rebalanceados (amplitude de 1,13–1,84 para ~1,27–1,61 ponto por jogo no confronto cruzado).
+- Formações além do 4-3-3 corrigidas (meias abertos, alas, zagueiros centrais, dupla de ataque).
+- Modo Pixel completo; estatísticas acumuladas do jogador; base 2026 com cidades, UF e estádios conferidos.
+- Notas individuais recalibradas; uniformes parecidos não se confundem mais.
+
+### Novo (Dev 0.3)
+- Carreira com os 60 clubes reais (Séries A, B e C), calendário, 2ª fase da Série C, acesso, rebaixamento e temporadas seguintes; a liga fictícia continua para saves antigos.
+- Tática simples (formação, mentalidade, estilo) ou avançada (18 instruções em 3 seções), preservando ajustes ao trocar o preset.
+- 20 funções individuais com compatibilidade, recomendação explicada e domínio próprio.
+- Domínio tático progressivo e persistente (formação, estilo, instruções, entrosamento, funções).
+- Centro de treinamento semanal (11 treinos, intensidade, carga física, recuperação e previsão).
+- Auxiliar técnico com recomendações baseadas em dados (aplicar ou ignorar).
+- Técnicos da IA com 7 perfis, plano contra o usuário por observação e ajustes durante o jogo.
+- Instruções avançadas também durante a partida (decisões reproduzíveis pelo servidor).
+- Migração `0003` (temporada e competição nos resultados, com script de reversão).
+
+### Pendente
+- Elencos reais, técnicos com data de referência, nomes oficiais e cores de 23 clubes.
+- Regras de acesso/rebaixamento das Séries A e B a confirmar em fonte oficial; Série D não simulada.
+- Copa do Brasil e mercado de transferências.
+- Esquemas com três zagueiros e dupla de ataque ainda um pouco abaixo do 4-3-3 no motor.
+
 ## 0.2.0 — 2026-11-17 · Motor de futebol e partidas em 2D
 
 ### Funcionando

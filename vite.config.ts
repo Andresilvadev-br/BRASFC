@@ -56,6 +56,8 @@ export default defineConfig({
 		realtimeDevPlugin(),
 		sveltekit({
 			adapter: adapter({ out: 'build', precompress: true }),
+			// O service worker é registrado pelo app (só na versão publicada) — ver src/lib/stores/updates.svelte.ts.
+			serviceWorker: { register: false },
 			version: {
 				name: `${APP_VERSION}+${GIT_SHA}`,
 				pollInterval: 60_000
@@ -89,7 +91,8 @@ export default defineConfig({
 	test: {
 		include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
 		environment: 'node',
-		testTimeout: 20_000,
+		// Testes estatísticos simulam centenas de partidas.
+		testTimeout: 180_000,
 		hookTimeout: 30_000
 	}
 });

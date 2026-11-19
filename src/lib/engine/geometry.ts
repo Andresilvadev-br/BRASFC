@@ -11,7 +11,9 @@ export function toRel(side: Side, x: number, y: number): [number, number] {
 export const toAbs = toRel; // a transformação é a própria inversa
 
 export function dist(ax: number, ay: number, bx: number, by: number): number {
-	return Math.hypot(ax - bx, ay - by);
+	const dx = ax - bx;
+	const dy = ay - by;
+	return Math.sqrt(dx * dx + dy * dy); // Math.hypot é ~10× mais lento e este é o laço mais quente
 }
 
 /** Distância do ponto P ao segmento AB e a fração t ao longo do segmento. */
@@ -21,7 +23,9 @@ export function segmentDistance(px: number, py: number, ax: number, ay: number, 
 	const len2 = vx * vx + vy * vy || 1;
 	let t = ((px - ax) * vx + (py - ay) * vy) / len2;
 	t = Math.max(0, Math.min(1, t));
-	return { d: Math.hypot(px - (ax + t * vx), py - (ay + t * vy)), t };
+	const ex = px - (ax + t * vx);
+	const ey = py - (ay + t * vy);
+	return { d: Math.sqrt(ex * ex + ey * ey), t };
 }
 
 /**

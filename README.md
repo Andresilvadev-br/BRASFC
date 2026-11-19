@@ -2,7 +2,7 @@
 
 Simulador brasileiro de futebol com **Carreira de Treinador** e **Carreira de Jogador**, multiplayer e identidade visual premium — a simplicidade do Brasfoot com a apresentação de um jogo moderno.
 
-> Versão atual: **Dev 0.2 (motor de futebol e partidas 2D)**. Relatórios: [Dev 0.2](RELATORIO-DEV-0.2.md) · [Etapa 1](RELATORIO-ETAPA-1.md).
+> Versão atual: **Dev 0.3 (inteligência tática avançada)**. Relatórios: [Dev 0.3](RELATORIO-DEV-0.3.md) · [Dev 0.2](RELATORIO-DEV-0.2.md) · [Etapa 1](RELATORIO-ETAPA-1.md).
 
 ## Rodar localmente (com HMR)
 
@@ -40,7 +40,13 @@ Calibração do motor (estatísticas de muitas partidas):
 
 ```bash
 node scripts/engine-stats.ts 200 --taticas
+node scripts/engine-balance.ts 30      # estilos × estilos
+node scripts/engine-formations.ts 40   # formações × 4-3-3
+node scripts/engine-mastery.ts 160     # efeito do domínio tático
+node scripts/season-sim.ts             # temporada completa A/B/C
 ```
+
+Capturas reais das telas (com o servidor rodando): `node scripts/capturas.mjs http://localhost:5173 docs/capturas`.
 
 ## Documentação
 

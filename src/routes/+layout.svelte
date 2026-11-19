@@ -1,4 +1,5 @@
 <script lang="ts">
+	import '#lib/data/brasil.ts'; // registra os clubes reais (escudos/nomes em qualquer tela)
 	import '@fontsource-variable/inter';
 	import '@fontsource/barlow-condensed/600.css';
 	import '@fontsource/barlow-condensed/700.css';
@@ -16,38 +17,52 @@
 	import Button from '#lib/ui/Button.svelte';
 	import Island from '#lib/ui/Island.svelte';
 	import Modal from '#lib/ui/Modal.svelte';
+	import WhatsNew from '#lib/ui/v4/WhatsNew.svelte';
+	import DesktopBar from '#lib/ui/desktop/DesktopBar.svelte';
+	import { initDesktop } from '#lib/stores/desktop.svelte.ts';
+	import { goto } from '$app/navigation';
+	import { applyUpdate, initUpdates, shouldShowWhatsNew, updates } from '#lib/stores/updates.svelte.ts';
 
 	let { children } = $props();
 
 	let updateModal = $state(false);
+	let whatsNew = $state(false);
 	const onSplash = $derived(page.url.pathname === '/');
 
 	onMount(() => {
 		loadPrefs();
 		void loadMotion();
+		const stopUpdates = initUpdates({ registerWorker: !import.meta.env.DEV });
+		const stopDesktop = initDesktop();
+		// Depois de uma atualização confirmada: "O que há de novo" (uma vez por versão).
+		setTimeout(() => (whatsNew = !onSplash && shouldShowWhatsNew()), 600);
 		void tick().then(() => requestAnimationFrame(markHydrated));
 		const warn = (e: BeforeUnloadEvent) => {
 			if (hasUnsaved()) e.preventDefault();
 		};
 		window.addEventListener('beforeunload', warn);
-		return () => window.removeEventListener('beforeunload', warn);
+		return () => {
+			window.removeEventListener('beforeunload', warn);
+			stopUpdates();
+			stopDesktop();
+		};
 	});
 
-	// Nova versão publicada: avisa na Dynamic Island, sem interromper nada.
+	// Nova versão publicada: aviso discreto e contextual, sem interromper nada.
 	$effect(() => {
-		if (!updated.current) return;
+		if (!updated.current && updates.status !== 'disponivel') return;
 		setPersistent('update', {
 			icon: 'sparkle',
 			tone: 'gold',
-			title: 'Nova versão do BRASFC',
-			detail: 'Atualize quando quiser',
-			action: { label: 'Atualizar', run: requestUpdate }
+			title: updates.required ? 'Atualização necessária' : 'Nova versão do BRASFC',
+			detail: updates.remote ? `Versão ${updates.remote.version}` : 'Atualize quando quiser',
+			action: { label: 'Ver novidades', run: () => goto('/novidades') }
 		});
 	});
 
-	function requestUpdate() {
-		if (hasUnsaved()) updateModal = true;
-		else location.reload();
+	async function requestUpdate() {
+		const r = await applyUpdate();
+		if (!r.ok && 'blocked' in r) updateModal = true;
 	}
 
 	// Com versão nova e nada pendente, a próxima navegação recarrega a página
@@ -73,7 +88,9 @@
 	});
 </script>
 
+<DesktopBar />
 <Island hidden={onSplash} />
+<WhatsNew bind:open={whatsNew} />
 
 <div id="page">
 	{@render children()}
@@ -87,13 +104,13 @@
 	<p class="muted">Salve antes de atualizar para não perder nada.</p>
 	{#snippet footer()}
 		<Button variant="ghost" onclick={() => (updateModal = false)}>Voltar e salvar</Button>
-		<Button variant="danger" onclick={() => location.reload()}>Atualizar mesmo assim</Button>
+		<Button variant="danger" onclick={() => applyUpdate({ force: true })}>Atualizar mesmo assim</Button>
 	{/snippet}
 </Modal>
 
 <style>
 	#page {
-		min-height: 100vh;
+		min-height: var(--app-h, 100vh);
 	}
 	.pending {
 		margin: var(--sp-3) 0;

@@ -1,0 +1,41 @@
+{
+  "name": "brasfc-desktop",
+  "productName": "BRASFC",
+  "version": "1.0.0",
+  "description": "BRASFC para Windows — janela própria, tela cheia e atualização automática.",
+  "author": "BRASFC",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "selftest": "electron . --selftest",
+    "dist": "electron-builder --win --x64 --publish never",
+    "release": "electron-builder --win --x64 --publish always"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.11"
+  },
+  "devDependencies": {
+    "electron": "45.3.4",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "br.brasfc.desktop",
+    "productName": "BRASFC",
+    "artifactName": "BRASFC-Setup.${ext}",
+    "directories": { "output": "dist", "buildResources": "assets" },
+    "files": ["main.js", "preload.js", "pages/**", "assets/icon.png"],
+    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "icon": "assets/icon.png" },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "BRASFC",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": [{ "provider": "github", "owner": "Andresilvadev-br", "repo": "BRASFC", "releaseType": "release" }]
+  }
+}

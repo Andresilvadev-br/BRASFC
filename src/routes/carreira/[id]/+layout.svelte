@@ -2,7 +2,8 @@
 	import { page } from '$app/state';
 	import { MODE_LABELS } from '#lib/domain/career.ts';
 	import { formatShort } from '#lib/domain/dates.ts';
-	import { indicator } from '#lib/motion/actions.ts';
+	import { formatMoney } from '#lib/domain/market.ts';
+	import { count, indicator } from '#lib/motion/actions.ts';
 	import { setIslandContext } from '#lib/stores/island.svelte.ts';
 	import Crest from '#lib/ui/Crest.svelte';
 	import Icon from '#lib/ui/Icon.svelte';
@@ -12,26 +13,57 @@
 
 	const base = $derived(`/carreira/${data.career.id}`);
 	const unread = $derived(data.messages.filter((m) => !m.read).length);
-	const tabs = $derived<Array<{ href: string; label: string; icon: IconName; badge?: number }>>(
-		data.career.mode === 'coach'
+	const coach = $derived(data.career.mode === 'coach');
+	const brasil = $derived(data.view.world === 'brasil');
+	type Item = { href: string; label: string; icon: IconName; badge?: number; alert?: boolean };
+	const groups = $derived<Array<{ label: string; items: Item[] }>>([
+		{
+			label: 'Jogo',
+			items: [
+				{ href: base, label: 'Painel', icon: 'home' },
+				{ href: `${base}/partida`, label: 'Dia de jogo', icon: 'play' }
+			]
+		},
+		{
+			label: 'Time',
+			items: [
+				{ href: `${base}/elenco`, label: 'Elenco', icon: 'squad' },
+				...(coach ? [{ href: `${base}/taticas`, label: 'Táticas', icon: 'tactics' as IconName }] : []),
+				{ href: `${base}/treinos`, label: 'Treinos', icon: 'training' }
+			]
+		},
+		...(coach
 			? [
-					{ href: base, label: 'Painel', icon: 'home' },
-					{ href: `${base}/elenco`, label: 'Elenco', icon: 'squad' },
-					{ href: `${base}/taticas`, label: 'Táticas', icon: 'tactics' },
-					{ href: `${base}/treinos`, label: 'Treinos', icon: 'training' },
-					{ href: `${base}/calendario`, label: 'Calendário', icon: 'calendar' },
-					{ href: `${base}/competicoes`, label: 'Competições', icon: 'trophy' },
-					{ href: `${base}/mensagens`, label: 'Mensagens', icon: 'mail', badge: unread }
+					{
+						label: 'Clube',
+						items: [
+							{ href: `${base}/mercado`, label: 'Mercado', icon: 'briefcase' as IconName, badge: data.manage.club.incoming.length || undefined },
+							{ href: `${base}/financas`, label: 'Finanças', icon: 'chart' as IconName },
+							{ href: `${base}/clube`, label: 'Clube', icon: 'crown' as IconName, alert: data.manage.club.board.dismissed || data.manage.club.board.confidence < 30 },
+							{ href: `${base}/base`, label: 'Base e olheiros', icon: 'sparkle' as IconName },
+							{ href: `${base}/comissao`, label: 'Comissão técnica', icon: 'whistle' as IconName, alert: data.office.vacant.length >= 4 },
+							{ href: `${base}/gabinete`, label: 'Gabinete', icon: 'user' as IconName, badge: data.office.pending || undefined }
+						]
+					}
 				]
-			: [
-					{ href: base, label: 'Painel', icon: 'home' },
-					{ href: `${base}/treinos`, label: 'Treinos', icon: 'training' },
-					{ href: `${base}/elenco`, label: 'Elenco', icon: 'squad' },
-					{ href: `${base}/calendario`, label: 'Calendário', icon: 'calendar' },
-					{ href: `${base}/competicoes`, label: 'Competições', icon: 'trophy' },
-					{ href: `${base}/mensagens`, label: 'Mensagens', icon: 'mail', badge: unread }
-				]
-	);
+			: [{ label: 'Carreira', items: [{ href: `${base}/clube`, label: 'Minha carreira', icon: 'user' as IconName, badge: data.career.data.playerCareer?.offers?.length || undefined }] }]),
+		{
+			label: 'Mundo',
+			items: [
+				{ href: `${base}/mundo`, label: 'Notícias e mundo', icon: 'globe' },
+				{ href: `${base}/competicoes`, label: 'Competições', icon: 'trophy' },
+				...(brasil ? [{ href: `${base}/copa`, label: 'Copa do Brasil', icon: 'star' as IconName }] : []),
+				{ href: `${base}/calendario`, label: 'Calendário', icon: 'calendar' },
+				{ href: `${base}/estatisticas`, label: 'Estatísticas', icon: 'field' },
+				{ href: `${base}/historia`, label: 'História', icon: 'news' },
+				{ href: `${base}/mensagens`, label: 'Mensagens', icon: 'mail', badge: unread || undefined }
+			]
+		}
+	]);
+	const items = $derived(groups.flatMap((g) => g.items));
+	const current = $derived(items.find((i) => i.href === page.url.pathname)?.href ?? (page.url.pathname.startsWith(`${base}/`) ? null : base));
+	const step = $derived(data.view.step);
+	const stepLabel = $derived(!step ? 'Fim da temporada' : step.kind === 'cup' ? 'Copa do Brasil' : `Rodada ${step.round}`);
 
 	$effect(() => {
 		setIslandContext(`${formatShort(data.career.gameDate)} · ${data.view.club.short}`);
@@ -39,37 +71,53 @@
 </script>
 
 <div class="shell" style="--club:{data.view.club.colors.primary}">
-	<header class="bar">
+	<aside class="rail" aria-label="Navegação da carreira">
 		<a class="club" href={base} data-umx-shared="career-crest">
-			<Crest clubId={data.career.clubId} size={44} />
+			<Crest clubId={data.career.clubId} size={42} />
 			<span class="names">
 				<strong>{data.view.club.name}</strong>
 				<small>{MODE_LABELS[data.career.mode]} · {data.career.personName}</small>
 			</span>
 		</a>
 
-		<nav class="tabs" aria-label="Seções da carreira">
-			<span class="ind" use:indicator={{ axis: 'x', key: page.url.pathname }}></span>
-			{#each tabs as t (t.href)}
-				<a href={t.href} aria-current={page.url.pathname === t.href ? 'page' : undefined}>
-					<Icon name={t.icon} size={18} />
-					<span>{t.label}</span>
-					{#if t.badge}<span class="count" aria-label="{t.badge} não lidas">{t.badge}</span>{/if}
-				</a>
+		<nav>
+			<span class="ind" use:indicator={{ axis: 'y', key: page.url.pathname }}></span>
+			{#each groups as g (g.label)}
+				<p class="group">{g.label}</p>
+				{#each g.items as t (t.href)}
+					<a href={t.href} aria-current={current === t.href ? 'page' : undefined} data-sveltekit-preload-data="hover">
+						<Icon name={t.icon} size={18} />
+						<span>{t.label}</span>
+						{#if t.badge}<span class="count" aria-label="{t.badge} pendentes">{t.badge}</span>{/if}
+						{#if t.alert}<span class="alert" aria-label="Atenção"></span>{/if}
+					</a>
+				{/each}
 			{/each}
 		</nav>
 
-		<div class="right">
-			<span class="date" title="Data atual no jogo">
-				<Icon name="calendar" size={16} />
-				<span class="num">{formatShort(data.career.gameDate)} {data.career.season}</span>
-			</span>
-			<button class="advance" disabled aria-describedby="advance-hint">
-				Avançar <Icon name="chevronRight" size={18} />
-			</button>
-			<span id="advance-hint" class="hint">O avanço do calendário chega com o motor de partidas (Etapa 2).</span>
-			<a class="exit" href="/menu" aria-label="Voltar ao menu principal" title="Menu principal" data-umx-press><Icon name="exit" /></a>
+		<div class="foot">
+			{#if coach}
+				<div class="cash" title="Caixa do clube">
+					<span>Caixa</span>
+					<strong class:neg={data.manage.club.balance < 0} use:count={{ value: data.manage.club.balance, format: formatMoney }}>{formatMoney(data.manage.club.balance)}</strong>
+				</div>
+			{/if}
+			<a class="exit" href="/menu" title="Menu principal" data-umx-press><Icon name="exit" size={18} /> Menu</a>
 		</div>
+	</aside>
+
+	<header class="top">
+		<div class="when">
+			<Icon name="calendar" size={16} />
+			<span class="num">{formatShort(data.career.gameDate)} {data.career.season}</span>
+			<span class="sep"></span>
+			<span class="step" class:cup={step?.kind === 'cup'}>{stepLabel}</span>
+		</div>
+		<a class="advance" href="{base}/partida" data-umx-press data-umx-magnet="0.25" aria-describedby="advance-hint">
+			{data.view.next ? 'Ir para o jogo' : data.view.seasonOver ? 'Encerrar temporada' : 'Avançar'}
+			<Icon name="chevronRight" size={18} />
+		</a>
+		<span id="advance-hint" class="hint">Abre o próximo passo do calendário: jogo, semana sem jogo ou fim de temporada.</span>
 	</header>
 
 	<main class="content">
@@ -79,29 +127,33 @@
 
 <style>
 	.shell {
-		min-height: 100vh;
+		min-height: var(--app-h, 100vh);
+		display: grid;
+		grid-template-columns: 248px 1fr;
+		grid-template-rows: auto 1fr;
 		background:
-			radial-gradient(70% 40% at 15% -10%, color-mix(in srgb, var(--club) 14%, transparent), transparent 70%),
+			radial-gradient(60% 40% at 10% -10%, color-mix(in srgb, var(--club) 16%, transparent), transparent 70%),
+			radial-gradient(50% 35% at 100% 0%, rgb(16 185 129 / 0.06), transparent 70%),
 			var(--bg);
 	}
-	.bar {
+	.rail {
+		grid-row: 1 / -1;
 		position: sticky;
-		top: 0;
-		z-index: 30;
-		display: grid;
-		grid-template-columns: 1fr auto;
-		align-items: center;
-		column-gap: var(--sp-5);
-		padding: 60px clamp(16px, 2.5vw, 36px) 0;
-		background: linear-gradient(180deg, var(--bg) 70%, rgb(16 20 24 / 0.92));
-		border-bottom: 1px solid var(--line);
-		backdrop-filter: blur(8px);
+		top: var(--desk-bar, 0px);
+		height: var(--app-h, 100vh);
+		display: flex;
+		flex-direction: column;
+		gap: var(--sp-3);
+		padding: var(--sp-5) var(--sp-3) var(--sp-4);
+		border-right: 1px solid var(--line);
+		background: linear-gradient(180deg, rgb(20 26 31 / 0.96), rgb(14 18 22 / 0.98));
 	}
 	.club {
 		display: flex;
 		align-items: center;
 		gap: var(--sp-3);
-		padding-bottom: var(--sp-2);
+		padding: 0 var(--sp-2) var(--sp-3);
+		border-bottom: 1px solid var(--line);
 		min-width: 0;
 	}
 	.names {
@@ -111,10 +163,12 @@
 	}
 	.names strong {
 		font-family: var(--font-display);
-		font-size: var(--fs-xl);
+		font-size: var(--fs-lg);
 		text-transform: uppercase;
 		line-height: 1.05;
 		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.names small {
 		color: var(--text-3);
@@ -123,49 +177,58 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
-	.tabs {
-		grid-column: 1 / -1;
-		grid-row: 2;
-		margin: 0 calc(-1 * var(--sp-2));
+	nav {
 		position: relative;
+		flex: 1;
+		overflow-y: auto;
+		scrollbar-width: thin;
 		display: flex;
-		align-self: end;
+		flex-direction: column;
 		gap: 2px;
-		overflow-x: auto;
-		scrollbar-width: none;
+	}
+	.group {
+		margin: var(--sp-3) var(--sp-3) 4px;
+		font-size: 10px;
+		letter-spacing: 0.18em;
+		text-transform: uppercase;
+		color: var(--text-3);
+		font-weight: 800;
 	}
 	.ind {
 		position: absolute;
-		bottom: 0;
 		left: 0;
-		height: 3px;
-		border-radius: 3px 3px 0 0;
-		background: var(--emerald);
+		top: 0;
+		width: 100%;
+		height: 40px;
+		border-radius: var(--radius-m);
+		background: linear-gradient(90deg, rgb(16 185 129 / 0.18), rgb(16 185 129 / 0.04));
+		box-shadow: inset 3px 0 0 var(--emerald);
+		pointer-events: none;
 	}
-	.tabs a {
+	nav a {
 		position: relative;
-		display: inline-flex;
+		display: flex;
 		align-items: center;
-		gap: var(--sp-2);
-		height: 52px;
-		padding: 0 14px;
+		gap: var(--sp-3);
+		height: 40px;
+		padding: 0 var(--sp-3);
+		border-radius: var(--radius-m);
 		color: var(--text-2);
 		font-weight: 600;
 		font-size: var(--fs-sm);
-		white-space: nowrap;
-		border-radius: var(--radius-s) var(--radius-s) 0 0;
+		transition: color 0.2s;
 	}
-	.tabs a:hover {
-		color: var(--text);
-		background: rgb(231 237 240 / 0.03);
-	}
-	.tabs a[aria-current='page'] {
+	nav a:hover {
 		color: var(--text);
 	}
-	.tabs a[aria-current='page'] :global(.icon) {
+	nav a[aria-current='page'] {
+		color: var(--text);
+	}
+	nav a[aria-current='page'] :global(.icon) {
 		color: var(--emerald-strong);
 	}
 	.count {
+		margin-left: auto;
 		min-width: 20px;
 		height: 20px;
 		padding: 0 6px;
@@ -177,92 +240,152 @@
 		display: grid;
 		place-items: center;
 	}
-	.right {
-		position: relative;
+	.alert {
+		margin-left: auto;
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--danger);
+		box-shadow: 0 0 0 4px var(--danger-soft);
+	}
+	.foot {
+		display: grid;
+		gap: var(--sp-2);
+		padding-top: var(--sp-3);
+		border-top: 1px solid var(--line);
+	}
+	.cash {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+		padding: 0 var(--sp-2);
+		font-size: var(--fs-xs);
+		color: var(--text-3);
+	}
+	.cash strong {
+		font-family: var(--font-display);
+		font-size: var(--fs-lg);
+		color: var(--text);
+	}
+	.cash strong.neg {
+		color: var(--danger);
+	}
+	.exit {
 		display: flex;
 		align-items: center;
 		gap: var(--sp-2);
-		padding-bottom: var(--sp-2);
-	}
-	.date {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		height: 40px;
-		padding: 0 12px;
+		padding: 8px var(--sp-3);
 		border-radius: var(--radius-m);
-		background: var(--surface);
-		border: 1px solid var(--line);
+		color: var(--text-3);
 		font-size: var(--fs-sm);
 		font-weight: 600;
-		white-space: nowrap;
+	}
+	.exit:hover {
+		color: var(--text);
+		background: rgb(231 237 240 / 0.04);
+	}
+	.top {
+		position: sticky;
+		top: var(--desk-bar, 0px);
+		z-index: 30;
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: var(--sp-4);
+		padding: var(--sp-3) clamp(16px, 2.5vw, 36px);
+		background: linear-gradient(180deg, rgb(16 20 24 / 0.94), rgb(16 20 24 / 0.75));
+		backdrop-filter: blur(10px);
+		border-bottom: 1px solid var(--line);
+	}
+	.when {
+		display: flex;
+		align-items: center;
+		gap: var(--sp-2);
+		color: var(--text-2);
+		font-size: var(--fs-sm);
+		margin-right: auto;
+	}
+	.sep {
+		width: 4px;
+		height: 4px;
+		border-radius: 50%;
+		background: var(--text-3);
+	}
+	.step {
+		font-weight: 700;
+		color: var(--text);
+	}
+	.step.cup {
+		color: var(--gold);
 	}
 	.advance {
 		display: inline-flex;
 		align-items: center;
-		gap: 4px;
-		height: 40px;
-		padding: 0 12px 0 16px;
-		border-radius: var(--radius-m);
-		border: 0;
-		background: var(--emerald);
-		color: #04140e;
-		font-family: var(--font-display);
-		font-weight: 700;
-		font-size: var(--fs-md);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-	}
-	.advance:disabled {
-		opacity: 0.4;
-		cursor: not-allowed;
+		gap: var(--sp-2);
+		height: 42px;
+		padding: 0 18px 0 22px;
+		border-radius: var(--radius-pill);
+		background: linear-gradient(180deg, var(--emerald-strong), var(--emerald));
+		color: #03130d;
+		font-weight: 800;
+		letter-spacing: 0.01em;
+		box-shadow: var(--glow-emerald);
 	}
 	.hint {
 		position: absolute;
-		top: calc(100% + 2px);
-		right: 0;
-		width: 260px;
-		padding: var(--sp-2) var(--sp-3);
-		border-radius: var(--radius-s);
-		background: var(--surface-3);
-		font-size: var(--fs-xs);
-		color: var(--text-2);
-		opacity: 0;
-		pointer-events: none;
-		transition: opacity 0.15s;
-	}
-	.right:has(.advance:hover) .hint {
-		opacity: 1;
-	}
-	.exit {
-		display: grid;
-		place-items: center;
-		width: 40px;
-		height: 40px;
-		border-radius: var(--radius-m);
-		color: var(--text-2);
-		border: 1px solid var(--line);
-	}
-	.exit:hover {
-		color: var(--text);
-		background: var(--surface);
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
 	}
 	.content {
+		min-width: 0;
+		padding: var(--sp-5) clamp(16px, 2.5vw, 36px) var(--sp-8);
 		max-width: var(--content-max);
-		margin: 0 auto;
-		padding: var(--sp-6) clamp(16px, 2.5vw, 36px) var(--sp-8);
+		width: 100%;
 	}
-	@media (max-width: 900px) {
+	@media (max-width: 960px) {
+		.shell {
+			grid-template-columns: 1fr;
+			grid-template-rows: auto auto 1fr;
+		}
+		.rail {
+			position: sticky;
+			top: var(--desk-bar, 0px);
+			z-index: 31;
+			height: auto;
+			flex-direction: row;
+			align-items: center;
+			padding: var(--sp-2) var(--sp-3);
+			border-right: 0;
+			border-bottom: 1px solid var(--line);
+			overflow-x: auto;
+		}
+		.club {
+			border: 0;
+			padding: 0;
+			flex: none;
+		}
 		.names small {
 			display: none;
 		}
-	}
-	@media (max-width: 720px) {
-		.tabs a span:not(.count) {
+		nav {
+			flex-direction: row;
+			overflow: visible;
+		}
+		.group,
+		.ind,
+		.foot {
 			display: none;
 		}
-		.date span {
-			display: none;
+		nav a {
+			white-space: nowrap;
+		}
+		nav a[aria-current='page'] {
+			background: var(--emerald-soft);
+		}
+		.top {
+			top: 58px;
 		}
 	}
 </style>

@@ -75,7 +75,7 @@
 		background: transparent;
 		color: inherit;
 		max-width: calc(100vw - 32px);
-		max-height: calc(100vh - 32px);
+		max-height: calc(var(--app-h, 100vh) - 32px);
 		overflow: visible;
 	}
 	dialog::backdrop {

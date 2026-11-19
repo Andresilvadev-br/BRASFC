@@ -5,18 +5,19 @@
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { formatShort } from '#lib/domain/dates.ts';
 	import { DEFAULT_APPEARANCE } from '#lib/domain/appearance.ts';
-	import { indicator } from '#lib/motion/actions.ts';
 	import { animate } from '#lib/motion/motion.svelte.ts';
 	import { clubKit, coachKit } from '#lib/pixel/kits.ts';
 	import { setIslandContext } from '#lib/stores/island.svelte.ts';
 	import Badge from '#lib/ui/Badge.svelte';
 	import Button from '#lib/ui/Button.svelte';
 	import Crest from '#lib/ui/Crest.svelte';
+	import DesktopDownload from '#lib/ui/desktop/DesktopDownload.svelte';
 	import Icon from '#lib/ui/Icon.svelte';
 	import type { IconName } from '#lib/ui/icons.ts';
 	import Logo from '#lib/ui/Logo.svelte';
 	import Pixel from '#lib/ui/Pixel.svelte';
 	import Stadium from '#lib/ui/Stadium.svelte';
+	import { updates } from '#lib/stores/updates.svelte.ts';
 
 	let { data } = $props();
 
@@ -74,7 +75,7 @@
 			href: '/laboratorio',
 			eyebrow: 'Partida rápida',
 			headline: 'Teste qualquer confronto',
-			text: 'Escolha dois clubes das Séries A, B ou C de 2026, defina as táticas e acompanhe a partida em 2D, com substituições e mudanças em tempo real.',
+			text: 'Escolha dois clubes das Séries A a D de 2026, defina as táticas e acompanhe a partida em 2D, com substituições e mudanças em tempo real.',
 			chips: ['Motor 2D determinístico', 'Clubes reais 2026', 'Elencos ainda pendentes'],
 			cta: 'Abrir laboratório',
 			badge: 'Novo'
@@ -106,15 +107,16 @@
 		},
 		{
 			id: 'novidades',
-			label: 'Novidades',
-			hint: `Versão ${data.build.version}`,
+			label: 'Atualizações',
+			hint: updates.status === 'disponivel' ? `Nova versão ${updates.remote?.version}` : `Versão ${data.build.version}`,
 			icon: 'sparkle',
 			href: '/novidades',
 			eyebrow: `BRASFC Dev ${data.build.version}`,
-			headline: 'O que há de novo',
-			text: 'Acompanhe cada atualização: o que já funciona e o que vem por aí.',
+			headline: updates.status === 'disponivel' ? 'Há uma versão nova' : 'Central de atualizações',
+			text: 'Veja o que mudou, confira a versão em uso, atualize o jogo com um clique e baixe o BRASFC para Windows.',
 			chips: [`Versão ${data.build.version}`, `Commit ${data.build.commit}`],
-			cta: 'Ver novidades'
+			cta: 'Abrir central',
+			...(updates.status === 'disponivel' ? { badge: 'Nova' } : {})
 		}
 	]);
 
@@ -140,11 +142,11 @@
 
 	function onKey(e: KeyboardEvent) {
 		if (e.target instanceof HTMLInputElement) return;
-		if (e.key === 'ArrowDown' || e.key === 's') {
+		if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'ArrowRight' || e.key === 'd') {
 			e.preventDefault();
 			select(selected + 1);
 			focusItem();
-		} else if (e.key === 'ArrowUp' || e.key === 'w') {
+		} else if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'ArrowLeft' || e.key === 'a') {
 			e.preventDefault();
 			select(selected - 1);
 			focusItem();
@@ -184,18 +186,20 @@
 	</header>
 
 	<nav class="items" aria-label="Menu principal">
-		<span class="bar" use:indicator={{ axis: 'y', key: selected }}></span>
 		{#each items as item, i (item.id)}
 			<a
 				href={item.href}
-				class="item"
+				class="item glass"
 				data-menu-item={i}
 				data-active={i === selected}
 				aria-current={i === selected ? 'true' : undefined}
 				onpointerenter={() => select(i)}
 				onfocus={() => select(i)}
-				data-umx-enter
+				data-umx-surface
+				data-umx-press
+				style="--i:{i}"
 			>
+				<span class="ic"><Icon name={item.icon} size={22} /></span>
 				<span class="label">
 					{item.label}
 					{#if item.badge}<Badge tone="gold">{item.badge}</Badge>{/if}
@@ -220,6 +224,7 @@
 						<Button variant="ghost" href="/continuar">Todas as carreiras</Button>
 					{/if}
 				</div>
+				{#if current.id === 'novidades'}<div class="desk" data-stage><DesktopDownload compact /></div>{/if}
 			</div>
 		{/key}
 	</section>
@@ -242,23 +247,28 @@
 	</div>
 
 	<footer class="keys">
-		<span><kbd>↑</kbd><kbd>↓</kbd> Navegar</span>
+		<span><kbd>←</kbd><kbd>→</kbd> Navegar</span>
 		<span><kbd>Enter</kbd> Selecionar</span>
-		<span class="subtle">Dados de clubes e atletas são fictícios nesta versão.</span>
+		<span class="subtle">Clubes reais das Séries A–D 2026 (fontes públicas); elencos e atletas do universo BRASFC são fictícios.</span>
 	</footer>
 </div>
 
 <style>
+	.desk {
+		margin-top: var(--sp-4);
+		max-width: 620px;
+	}
 	.menu-screen {
 		position: relative;
-		min-height: 100vh;
+		min-height: var(--app-h, 100vh);
 		display: grid;
-		grid-template-columns: minmax(280px, 360px) minmax(0, 1fr) minmax(220px, 28vw);
-		grid-template-rows: auto 1fr auto;
+		grid-template-columns: minmax(0, 1fr) minmax(220px, 30vw);
+		grid-template-rows: auto 1fr auto auto;
 		grid-template-areas:
-			'top top top'
-			'items stage hero'
-			'keys keys keys';
+			'top top'
+			'stage hero'
+			'items items'
+			'keys keys';
 		padding: var(--sp-6) clamp(24px, 4vw, 64px);
 		gap: var(--sp-6);
 		overflow: hidden;
@@ -299,64 +309,59 @@
 	.items {
 		grid-area: items;
 		position: relative;
-		display: flex;
-		flex-direction: column;
-		justify-content: center;
-		gap: var(--sp-1);
-		padding-left: var(--sp-5);
-	}
-	.bar {
-		position: absolute;
-		left: 0;
-		top: 0;
-		width: 4px;
-		border-radius: 4px;
-		background: var(--emerald);
-		box-shadow: 0 0 18px rgb(16 185 129 / 0.55);
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+		gap: var(--sp-3);
 	}
 	.item {
-		display: flex;
-		flex-direction: column;
-		padding: 10px 14px;
-		border-radius: var(--radius-m);
+		display: grid;
+		grid-template-rows: auto auto 1fr;
+		gap: 6px;
+		min-height: 128px;
+		padding: var(--sp-4);
 		outline: none;
+		transition: box-shadow 0.25s var(--ease-out), translate 0.3s var(--ease-out);
 	}
 	.item:focus-visible {
-		box-shadow: inset 0 0 0 2px var(--emerald-line);
+		box-shadow: 0 0 0 2px var(--emerald-strong);
+	}
+	.ic {
+		width: 40px;
+		height: 40px;
+		border-radius: 12px;
+		display: grid;
+		place-items: center;
+		background: rgb(231 237 240 / 0.06);
+		color: var(--text-2);
+		transition: background 0.25s, color 0.25s;
 	}
 	.label {
 		display: inline-flex;
 		align-items: center;
-		gap: var(--sp-3);
+		gap: var(--sp-2);
 		font-family: var(--font-display);
 		font-weight: 700;
-		font-size: calc(2rem * var(--text-scale));
+		font-size: calc(1.35rem * var(--text-scale));
 		line-height: 1.05;
 		text-transform: uppercase;
 		letter-spacing: 0.03em;
-		color: rgb(231 237 240 / 0.5);
-		transition:
-			color 0.18s,
-			translate 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+		color: rgb(231 237 240 / 0.72);
 	}
 	.hint {
-		font-size: var(--fs-sm);
+		font-size: var(--fs-xs);
 		color: var(--text-3);
-		max-height: 0;
-		opacity: 0;
-		overflow: hidden;
-		transition:
-			max-height 0.25s,
-			opacity 0.2s;
+		align-self: end;
+	}
+	.item[data-active='true'] {
+		translate: 0 -6px;
+		box-shadow: var(--glow-emerald);
 	}
 	.item[data-active='true'] .label {
 		color: var(--text);
-		translate: 6px 0;
 	}
-	.item[data-active='true'] .hint {
-		max-height: 24px;
-		opacity: 1;
-		translate: 6px 0;
+	.item[data-active='true'] .ic {
+		background: var(--emerald-soft);
+		color: var(--emerald-strong);
 	}
 	.stage {
 		grid-area: stage;
@@ -476,11 +481,12 @@
 	}
 	@media (max-width: 1100px) {
 		.menu-screen {
-			grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+			grid-template-columns: 1fr;
 			grid-template-areas:
-				'top top'
-				'items stage'
-				'keys keys';
+				'top'
+				'stage'
+				'items'
+				'keys';
 		}
 		.hero {
 			display: none;
@@ -489,7 +495,7 @@
 	@media (max-width: 760px) {
 		.menu-screen {
 			grid-template-columns: 1fr;
-			grid-template-areas: 'top' 'items' 'stage' 'keys';
+			grid-template-areas: 'top' 'stage' 'items' 'keys';
 			padding: var(--sp-4);
 		}
 		.top {

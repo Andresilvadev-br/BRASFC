@@ -1,3 +1,5 @@
+import { presetInstructions, sanitizeInstructions, INSTRUCTION_KEYS, type TacticalInstructions } from '#lib/engine/instructions.ts';
+import { DEFAULT_ROLE, isRoleId, ROLES, type RoleId } from '#lib/engine/roles.ts';
 import { positionFit, type Position } from './positions.ts';
 import type { SquadPlayer } from './squad.ts';
 
@@ -20,7 +22,7 @@ export const FORMATIONS = {
 		{ position: 'GOL', x: 50, y: 92 },
 		{ position: 'LD', x: 84, y: 72 }, { position: 'ZAG', x: 62, y: 76 }, { position: 'ZAG', x: 38, y: 76 }, { position: 'LE', x: 16, y: 72 },
 		{ position: 'PD', x: 84, y: 44 }, { position: 'MC', x: 61, y: 50 }, { position: 'MC', x: 39, y: 50 }, { position: 'PE', x: 16, y: 44 },
-		{ position: 'ATA', x: 62, y: 18 }, { position: 'ATA', x: 38, y: 18 }
+		{ position: 'ATA', x: 58, y: 17 }, { position: 'ATA', x: 42, y: 27 }
 	],
 	'4-2-3-1': [
 		{ position: 'GOL', x: 50, y: 92 },
@@ -33,20 +35,20 @@ export const FORMATIONS = {
 		{ position: 'GOL', x: 50, y: 92 },
 		{ position: 'ZAG', x: 72, y: 75 }, { position: 'ZAG', x: 50, y: 78 }, { position: 'ZAG', x: 28, y: 75 },
 		{ position: 'LD', x: 88, y: 48 }, { position: 'VOL', x: 50, y: 58 }, { position: 'MC', x: 67, y: 44 }, { position: 'MC', x: 33, y: 44 }, { position: 'LE', x: 12, y: 48 },
-		{ position: 'ATA', x: 62, y: 18 }, { position: 'ATA', x: 38, y: 18 }
+		{ position: 'ATA', x: 58, y: 17 }, { position: 'ATA', x: 42, y: 27 }
 	],
 	'5-3-2': [
 		{ position: 'GOL', x: 50, y: 92 },
 		{ position: 'LD', x: 88, y: 66 }, { position: 'ZAG', x: 69, y: 76 }, { position: 'ZAG', x: 50, y: 78 }, { position: 'ZAG', x: 31, y: 76 }, { position: 'LE', x: 12, y: 66 },
 		{ position: 'MC', x: 70, y: 46 }, { position: 'VOL', x: 50, y: 52 }, { position: 'MC', x: 30, y: 46 },
-		{ position: 'ATA', x: 62, y: 18 }, { position: 'ATA', x: 38, y: 18 }
+		{ position: 'ATA', x: 58, y: 17 }, { position: 'ATA', x: 42, y: 27 }
 	],
 	'4-2-2-2': [
 		{ position: 'GOL', x: 50, y: 92 },
 		{ position: 'LD', x: 84, y: 72 }, { position: 'ZAG', x: 62, y: 76 }, { position: 'ZAG', x: 38, y: 76 }, { position: 'LE', x: 16, y: 72 },
 		{ position: 'VOL', x: 62, y: 57 }, { position: 'VOL', x: 38, y: 57 },
 		{ position: 'MEI', x: 74, y: 36 }, { position: 'MEI', x: 26, y: 36 },
-		{ position: 'ATA', x: 60, y: 17 }, { position: 'ATA', x: 40, y: 17 }
+		{ position: 'ATA', x: 58, y: 17 }, { position: 'ATA', x: 42, y: 27 }
 	],
 	'3-4-3': [
 		{ position: 'GOL', x: 50, y: 92 },
@@ -96,11 +98,15 @@ export function normalizeStyle(v: unknown): PlayStyle | null {
 }
 
 export interface Tactic {
-	formation: FormationId;
-	/** ids dos 11 titulares, na ordem dos slots da formação */
-	lineup: string[];
-	mentality: Mentality;
-	style: PlayStyle;
+formation: FormationId;
+/** ids dos 11 titulares, na ordem dos slots da formação */
+lineup: string[];
+mentality: Mentality;
+style: PlayStyle;
+/** instruções avançadas (Dev 0.3); ausente = preset de mentalidade + estilo */
+instructions?: TacticalInstructions;
+/** função de cada slot (Dev 0.3); ausente = função padrão da posição */
+roles?: RoleId[];
 }
 
 export function isFormation(value: unknown): value is FormationId {
@@ -211,12 +217,21 @@ export function sanitizeTactic(input: unknown, squad: SquadPlayer[]): Tactic | n
 		if (typeof id !== 'string' || !ids.has(id) || seen.has(id)) return null;
 		seen.add(id);
 	}
-	return {
-		formation: t.formation,
-		lineup: [...(t.lineup as string[])],
-		mentality,
-		style
+	const out: Tactic = {
+	formation: t.formation,
+	lineup: [...(t.lineup as string[])],
+	mentality,
+	style
 	};
+	if (t.instructions && typeof t.instructions === 'object') out.instructions = sanitizeInstructions(t.instructions, presetInstructions(mentality, style));
+	if (Array.isArray(t.roles) && t.roles.length === FORMATIONS[t.formation].length) {
+	const slots = FORMATIONS[t.formation];
+	out.roles = slots.map((slot, i) => {
+	const r = (t.roles as unknown[])[i];
+	return isRoleId(r) && ROLES[r].positions.includes(slot.position) ? r : DEFAULT_ROLE[slot.position];
+	});
+	}
+	return out;
 }
 
 /**
@@ -225,7 +240,7 @@ export function sanitizeTactic(input: unknown, squad: SquadPlayer[]): Tactic | n
  * do objeto inteiro fazia a tela achar que a tática salva ainda tinha alterações.
  */
 export function tacticKey(t: Tactic): string {
-	return JSON.stringify([t.formation, [...t.lineup], t.mentality, t.style]);
+	return JSON.stringify([t.formation, [...t.lineup], t.mentality, t.style, t.instructions ? INSTRUCTION_KEYS.map((k) => t.instructions![k]) : null, t.roles ?? null]);
 }
 
 export function sameTactic(a: Tactic, b: Tactic): boolean {

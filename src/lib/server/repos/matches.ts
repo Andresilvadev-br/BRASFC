@@ -1,10 +1,12 @@
-import type { MatchResult } from '#lib/domain/season.ts';
 import type { MatchSummary } from '#lib/domain/matchday.ts';
+import type { MatchResult } from '#lib/domain/season.ts';
 import type { AppliedDecision } from '#lib/engine/types.ts';
 import type { Db } from '../db/index.ts';
 
 export interface StoredResult extends MatchResult {
+	season: number;
 	round: number;
+	competition: string;
 	isUser: boolean;
 }
 
@@ -12,10 +14,22 @@ export interface UserMatch extends StoredResult {
 	summary: MatchSummary;
 }
 
-type Row = { round: number; home: string; away: string; home_goals: number; away_goals: number; is_user: boolean; summary?: unknown };
+type Row = {
+	season: number;
+	round: number;
+	competition: string;
+	home: string;
+	away: string;
+	home_goals: number;
+	away_goals: number;
+	is_user: boolean;
+	summary?: unknown;
+};
 
 const map = (r: Row): StoredResult => ({
+	season: Number(r.season),
 	round: Number(r.round),
+	competition: r.competition,
 	home: r.home,
 	away: r.away,
 	homeGoals: Number(r.home_goals),
@@ -23,24 +37,27 @@ const map = (r: Row): StoredResult => ({
 	isUser: !!r.is_user
 });
 
-export async function listResults(db: Db, careerId: string): Promise<StoredResult[]> {
-	const rows = await db.query<Row>(
-		'SELECT round, home, away, home_goals, away_goals, is_user FROM career_matches WHERE career_id = $1 ORDER BY round, home',
-		[careerId]
-	);
+const COLS = 'season, round, competition, home, away, home_goals, away_goals, is_user';
+
+/** Resultados de uma temporada (todas as competições). */
+export async function listResults(db: Db, careerId: string, season: number): Promise<StoredResult[]> {
+	const rows = await db.query<Row>(`SELECT ${COLS} FROM career_matches WHERE career_id = $1 AND season = $2 ORDER BY round, home`, [careerId, season]);
 	return rows.map(map);
 }
 
-export async function listUserMatches(db: Db, careerId: string): Promise<UserMatch[]> {
+/** Partidas do usuário (com resumo), de todas as temporadas ou de uma. */
+export async function listUserMatches(db: Db, careerId: string, season?: number): Promise<UserMatch[]> {
 	const rows = await db.query<Row>(
-		'SELECT round, home, away, home_goals, away_goals, is_user, summary FROM career_matches WHERE career_id = $1 AND is_user ORDER BY round',
-		[careerId]
+		`SELECT ${COLS}, summary FROM career_matches WHERE career_id = $1 AND is_user ${season === undefined ? '' : 'AND season = $2'} ORDER BY season, round`,
+		season === undefined ? [careerId] : [careerId, season]
 	);
 	return rows.map((r) => ({ ...map(r), summary: (typeof r.summary === 'string' ? JSON.parse(r.summary) : r.summary) as MatchSummary }));
 }
 
 export interface RoundInsert {
+	season: number;
 	round: number;
+	competition: string;
 	home: string;
 	away: string;
 	homeGoals: number;
@@ -51,13 +68,35 @@ export interface RoundInsert {
 	summary?: MatchSummary;
 }
 
-/** Grava uma rodada inteira; falha (sem gravar nada) se a rodada já existir. */
+/**
+ * Grava um passo inteiro em lotes (uma instrução por até 100 partidas); falha sem gravar nada
+ * (dentro da transação) se alguma partida já existir — a chave impede rodadas duplicadas.
+ */
 export async function insertRound(tx: Db, careerId: string, rows: RoundInsert[], engineVersion: string): Promise<void> {
-	for (const r of rows) {
+	const COLS = 13;
+	for (let i = 0; i < rows.length; i += 100) {
+		const chunk = rows.slice(i, i + 100);
+		const params: unknown[] = [];
+		const values = chunk.map((r, k) => {
+			params.push(careerId, r.season, r.round, r.competition, r.home, r.away, r.homeGoals, r.awayGoals, r.seed, r.isUser, r.decisions ? JSON.stringify(r.decisions) : null, r.summary ? JSON.stringify(r.summary) : null, engineVersion);
+			const p = (n: number) => '$' + (k * COLS + n);
+			return `(${p(1)}, ${p(2)}, ${p(3)}, ${p(4)}, ${p(5)}, ${p(6)}, ${p(7)}, ${p(8)}, ${p(9)}, ${p(10)}, ${p(11)}::jsonb, ${p(12)}::jsonb, ${p(13)})`;
+		});
 		await tx.query(
-			`INSERT INTO career_matches (career_id, round, home, away, home_goals, away_goals, seed, is_user, decisions, summary, engine_version)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11)`,
-			[careerId, r.round, r.home, r.away, r.homeGoals, r.awayGoals, r.seed, r.isUser, r.decisions ? JSON.stringify(r.decisions) : null, r.summary ? JSON.stringify(r.summary) : null, engineVersion]
+			`INSERT INTO career_matches (career_id, season, round, competition, home, away, home_goals, away_goals, seed, is_user, decisions, summary, engine_version) VALUES ${values.join(', ')}`,
+			params
 		);
 	}
+}
+
+/** Gols com autor de todas as partidas com súmula da temporada (usuário + motor completo). */
+export async function listSeasonGoals(db: Db, careerId: string, season: number): Promise<Array<{ competition: string; home: string; away: string; goals: Array<{ side: 'home' | 'away'; player: string }> }>> {
+	const rows = await db.query<{ competition: string; home: string; away: string; summary: { goals?: Array<{ side: 'home' | 'away'; player: string }> } | string | null }>(
+		`SELECT competition, home, away, summary FROM career_matches WHERE career_id = $1 AND season = $2 AND summary IS NOT NULL`,
+		[careerId, season]
+	);
+	return rows.map((r) => {
+		const s = typeof r.summary === 'string' ? JSON.parse(r.summary) : r.summary;
+		return { competition: r.competition, home: r.home, away: r.away, goals: (s?.goals ?? []).map((g: { side: 'home' | 'away'; player: string }) => ({ side: g.side, player: g.player })) };
+	});
 }

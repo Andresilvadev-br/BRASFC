@@ -47,7 +47,11 @@ export const ICONS = {
 	shirt: 'M8 3 3 6l2 5 3-1v11h8V10l3 1 2-5-5-3a4 4 0 0 1-8 0z',
 	chart: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
 	briefcase: 'M3 8h18v12H3zM8 8V5h8v3M3 13h18',
-	eye: 'M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z'
+	eye: 'M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
+	download: 'M12 3v12M7 10l5 5 5-5M4 17v3h16v-3',
+	expand: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
+	shrink: 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5',
+	windows: 'M3 5.5 10.5 4.5v7H3zM13 4.2 21 3v8.5h-8zM3 13h7.5v6.5L3 18.5zM13 13h8v8l-8-1.2z'
 } as const;
 
 export type IconName = keyof typeof ICONS;

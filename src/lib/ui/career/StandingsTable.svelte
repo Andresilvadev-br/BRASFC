@@ -3,7 +3,7 @@
 	import type { StandingRow } from '#lib/domain/season.ts';
 	import Crest from '../Crest.svelte';
 
-	let { rows, highlight, compact = false, limit }: { rows: StandingRow[]; highlight: string; compact?: boolean; limit?: number } = $props();
+	let { rows, highlight, compact = false, limit, up = 4, down = 4 }: { rows: StandingRow[]; highlight: string; compact?: boolean; limit?: number; up?: number; down?: number } = $props();
 
 	/** No modo compacto mostra o topo e garante a linha do seu clube. */
 	const visible = $derived.by(() => {
@@ -13,7 +13,7 @@
 		const mine = rows.find((r) => r.clubId === highlight);
 		return mine ? [...rows.slice(0, limit - 1), mine] : top;
 	});
-	const zone = (pos: number) => (pos <= 4 ? 'top' : pos > rows.length - 4 ? 'down' : '');
+	const zone = (pos: number) => (pos <= up ? 'top' : pos > rows.length - down ? 'down' : '');
 </script>
 
 <table class:compact>

@@ -126,3 +126,21 @@ docker logs --tail 200 brasfc-producao-app-1
 ## Uso de memória previsto (VPS 4 GB)
 
 App ≤ 512 MB (heap Node 384 MB), PostgreSQL ≤ 512 MB, Caddy ≤ 128 MB por ambiente. Produção + staging ficam em ~2,3 GB no pior caso.
+
+
+## Atualização automática (Dev 0.4)
+
+- **Por que o site parou na 0.1.0:** a regra `data/` do `.gitignore` também ignorava `src/lib/data/` (base Brasil 2026). O CI falhava na verificação de tipos e a VPS não conseguia montar a imagem. Corrigido para `/data/`.
+- A VPS verifica a branch a cada minuto, **baixa a imagem pronta do GitHub** (registro público, verificada pelo digest, que vai para o log) e só monta localmente se a imagem não existir após 15 minutos.
+- Antes de publicar: backup do banco (`deploy.sh`); depois: verificação de saúde e retorno automático à versão anterior se falhar.
+- Uma versão que falhou não é tentada de novo a cada minuto (`.failed-tag`); um commit novo libera.
+- Estado da última implantação: `/opt/brasfc/backups/deploy-status.json`. Aviso opcional: crie `/opt/brasfc/deploy/.env.notify` com `DEPLOY_WEBHOOK_URL=...` (Discord, Slack, ntfy) — nada disso vai para o repositório.
+- O botão **Atualizar agora** da Central de Atualizações troca só o cliente (navegador/PWA) para a versão já publicada; ele nunca executa comandos na VPS.
+
+## Aplicativo para Windows (Dev 0.4.1)
+
+- Código em `desktop/` (Electron). O app abre o site oficial (`BRASFC_URL` para testar outro endereço), então o JOGO se atualiza pelo servidor como sempre; a casca se atualiza sozinha pelo GitHub Releases (`electron-updater`).
+- Workflow `.github/workflows/desktop.yml`: em push que altere `desktop/`, roda o autoteste da janela (centralização e tela cheia) num Windows do GitHub e publica `BRASFC-Setup.exe` como release `v<versão>` — só se essa versão ainda não existir. Para lançar outra versão do app, aumente `version` em `desktop/package.json`.
+- O botão de download consulta `/api/desktop`, que só devolve link quando a release tem o instalador.
+- Teste local: `cd desktop && npm ci && npx electron . --selftest` (imprime `SELFTEST {...}` e sai com 0 se a janela abriu centralizada e entrou/saiu da tela cheia). Instalador local: `npm run dist`.
+- O instalador ainda não tem assinatura digital paga: o SmartScreen pode pedir confirmação na primeira execução.

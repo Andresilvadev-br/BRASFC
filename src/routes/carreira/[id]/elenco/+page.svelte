@@ -1,125 +1,216 @@
 <script lang="ts">
+	import { ATTRIBUTE_LABELS, GOALKEEPING, MENTAL, PHYSICAL, TECHNICAL, type AttributeKey } from '#lib/engine/attributes.ts';
+	import { getClub } from '#lib/domain/clubs.ts';
+	import { formatMoney, ROLE_LABELS, wageDemand, type ContractRole, type RosterPlayer } from '#lib/domain/market.ts';
 	import { POSITION_INFO, SECTOR_LABELS, type Sector } from '#lib/domain/positions.ts';
-	import { MORALE_LABELS, sectorOf, type SquadPlayer } from '#lib/domain/squad.ts';
+	import { MORALE_LABELS, sectorOf } from '#lib/domain/squad.ts';
+	import { FORMATIONS } from '#lib/domain/tactics.ts';
+	import { reveal } from '#lib/motion/actions.ts';
 	import { playerKit } from '#lib/pixel/kits.ts';
-	import { animate } from '#lib/motion/motion.svelte.ts';
-	import Badge from '#lib/ui/Badge.svelte';
-	import DemoTag from '#lib/ui/DemoTag.svelte';
-	import Icon from '#lib/ui/Icon.svelte';
-	import Meter from '#lib/ui/Meter.svelte';
-	import Panel from '#lib/ui/Panel.svelte';
+	import { clubAction } from '#lib/client/club.ts';
+	import Button from '#lib/ui/Button.svelte';
 	import Pixel from '#lib/ui/Pixel.svelte';
 	import Segmented from '#lib/ui/Segmented.svelte';
-	import Unavailable from '#lib/ui/Unavailable.svelte';
+	import PlayerCard from '#lib/ui/v4/PlayerCard.svelte';
+	import Sheet from '#lib/ui/v4/Sheet.svelte';
 
 	let { data } = $props();
+	const c = $derived(data.career);
 	const v = $derived(data.view);
-	const starters = $derived(new Set(v.tactic.lineup));
-
+	const m = $derived(data.manage);
+	const coach = $derived(c.mode === 'coach');
+	const fit = $derived(new Map(v.squad.map((p) => [p.id, p.condition])));
+	/** Elenco com contrato (gestão) + condição física (semana). */
+	const players = $derived(
+		v.squad.map((p) => {
+			const r = m.roster.find((x) => x.id === p.id);
+			return { ...p, contract: r?.contract ?? null, value: r?.value ?? 0, loan: r?.loan } as typeof p & { contract: RosterPlayer['contract'] | null; value: number; loan?: RosterPlayer['loan'] };
+		})
+	);
+	let view = $state<'campo' | 'cartoes' | 'lista'>('campo');
 	let filter = $state<'todos' | Sector>('todos');
 	let selectedId = $state<string | null>(null);
-	let sortKey = $state<'position' | 'overall' | 'age' | 'condition'>('position');
-	let detail: HTMLElement | undefined = $state();
-
+	let sheet = $state(false);
 	const ORDER = ['GOL', 'LD', 'ZAG', 'LE', 'VOL', 'MC', 'MEI', 'PD', 'PE', 'ATA'];
-	const list = $derived(
-		v.squad
-			.filter((p) => filter === 'todos' || sectorOf(p.position) === filter)
-			.sort((a, b) =>
-				sortKey === 'position'
-					? ORDER.indexOf(a.position) - ORDER.indexOf(b.position) || b.overall - a.overall
-					: sortKey === 'age'
-						? a.age - b.age
-						: b[sortKey] - a[sortKey]
-			)
-	);
-	const selected = $derived<SquadPlayer>(v.squad.find((p) => p.id === selectedId) ?? list[0] ?? v.squad[0]);
+	const list = $derived(players.filter((p) => filter === 'todos' || sectorOf(p.position) === filter).sort((a, b) => ORDER.indexOf(a.position) - ORDER.indexOf(b.position) || b.overall - a.overall));
+	const shape = $derived(FORMATIONS[v.tactic.formation]);
+	const slots = $derived(v.tactic.lineup.map((id, i) => ({ id, p: players.find((x) => x.id === id), x: shape[i]?.x ?? 50, y: shape[i]?.y ?? 50, pos: shape[i]?.position })));
+	const bench = $derived(players.filter((p) => !v.tactic.lineup.includes(p.id)).sort((a, b) => ORDER.indexOf(a.position) - ORDER.indexOf(b.position) || b.overall - a.overall));
+	const sel = $derived(players.find((p) => p.id === selectedId) ?? null);
+	const avg = (k: 'age' | 'overall') => Math.round(players.reduce((s, p) => s + p[k], 0) / Math.max(1, players.length));
+	const wages = $derived(players.reduce((s, p) => s + (p.contract?.wage ?? 0), 0));
 
-	function pick(id: string) {
+	// renovação
+	let wage = $state(0);
+	let years = $state(3);
+	let role = $state<ContractRole>('rotacao');
+	let busy = $state(false);
+	let msg = $state('');
+	let confirmRelease = $state(false);
+	function open(id: string) {
 		selectedId = id;
-		if (detail) void animate(detail, { opacity: 1, x: 0 }, { spring: 'snappy', from: { opacity: 0.4, x: 10 } });
+		const p = players.find((x) => x.id === id);
+		if (p?.contract) {
+			role = p.contract.role;
+			years = p.age >= 31 ? 2 : 3;
+			wage = wageDemand(p, m.tier, v.club.reputation, role, years);
+		}
+		msg = '';
+		confirmRelease = false;
+		sheet = true;
 	}
-	const avg = (k: 'age' | 'overall') => Math.round(v.squad.reduce((s, p) => s + p[k], 0) / v.squad.length);
+	async function act(body: Record<string, unknown>) {
+		busy = true;
+		msg = '';
+		try {
+			msg = (await clubAction(c.id, c.version, body)).message;
+			if (body.action === 'rescindir') sheet = false;
+		} catch (e) {
+			msg = (e as Error).message;
+		} finally {
+			busy = false;
+		}
+	}
+	const groups: Array<[string, readonly AttributeKey[]]> = [
+		['Técnica', TECHNICAL],
+		['Físico', PHYSICAL],
+		['Mental', MENTAL],
+		['Goleiro', GOALKEEPING]
+	];
+	const contractLabel = (p: (typeof players)[number]) => (p.loan ? `Emprestado pelo ${getClub(p.loan.from)?.short ?? p.loan.from} até ${p.loan.until}` : p.contract ? `${ROLE_LABELS[p.contract.role]} · até ${p.contract.until}` : '');
 </script>
 
 <svelte:head><title>Elenco · {v.club.name} · BRASFC</title></svelte:head>
 
-<div class="head" data-umx-enter>
+<div class="head" use:reveal>
 	<div>
 		<span class="eyebrow">{v.club.name}</span>
-		<h1>Elenco</h1>
-		<p class="muted">{v.squad.length} atletas · idade média {avg('age')} · nota média {avg('overall')}</p>
+		<h1 class="display">Elenco</h1>
+		<p class="muted">{players.length} atletas · idade média {avg('age')} · nível médio {avg('overall')}{coach ? ` · folha ${formatMoney(wages)}/mês` : ''} · nomes fictícios do universo BRASFC</p>
 	</div>
 	<div class="tools">
-		<DemoTag label="Elenco fictício" />
-		<Segmented
-			label="Filtrar por setor"
-			bind:value={filter}
-			options={[{ value: 'todos', label: 'Todos' }, ...(['goleiro', 'defesa', 'meio', 'ataque'] as const).map((s) => ({ value: s, label: SECTOR_LABELS[s] }))]}
-		/>
+		<Segmented label="Visão" bind:value={view} options={[{ value: 'campo', label: 'Campo' }, { value: 'cartoes', label: 'Cartões' }, { value: 'lista', label: 'Lista' }]} />
+		{#if view !== 'campo'}
+			<Segmented label="Setor" bind:value={filter} options={[{ value: 'todos', label: 'Todos' }, ...(['goleiro', 'defesa', 'meio', 'ataque'] as const).map((s) => ({ value: s, label: SECTOR_LABELS[s] }))]} />
+		{/if}
 	</div>
 </div>
 
-<div class="layout">
-	<Panel pad={false} index={0}>
+{#if view === 'campo'}
+	<div class="campo">
+		<div class="pitch glass" aria-label="Titulares no {v.tactic.formation}">
+			<div class="lines"><i class="mid"></i><i class="circle"></i><i class="box top"></i><i class="box bottom"></i></div>
+			{#each slots as s (s.id)}
+				{#if s.p}
+					<button class="chip-p" style="left:{s.x}%;top:{s.y}%" onclick={() => open(s.id)} data-umx-press>
+						<span class="o">{s.p.overall}</span>
+						<span class="n">{s.p.shortName}</span>
+						<span class="ps">{s.pos}</span>
+						<i class="cond" style="--c:{fit.get(s.id) ?? 95}%" class:low={(fit.get(s.id) ?? 95) < 75}></i>
+					</button>
+				{/if}
+			{/each}
+			<span class="form display">{v.tactic.formation}</span>
+		</div>
+		<aside class="bench">
+			<h2 class="display">Reservas</h2>
+			<div class="blist">
+				{#each bench as p (p.id)}
+					<button class="brow" onclick={() => open(p.id)}>
+						<span class="ps">{p.position}</span><span class="nm">{p.name}</span><b>{p.overall}</b>
+						{#if p.contract && p.contract.until <= c.season}<span class="warn" title="Contrato termina nesta temporada">●</span>{/if}
+					</button>
+				{/each}
+			</div>
+			{#if coach}<a class="link" href="/carreira/{c.id}/taticas">Mudar escalação e esquema →</a>{/if}
+		</aside>
+	</div>
+{:else if view === 'cartoes'}
+	<div class="grid-auto" style="--min:220px">
+		{#each list as p, i (p.id)}
+			<div use:reveal={{ index: i % 12 }}>
+				<PlayerCard
+					name={p.name}
+					position={p.position}
+					age={p.age}
+					overall={p.overall}
+					potential={p.age <= 23 ? p.potential : null}
+					value={coach ? p.value : null}
+					contract={contractLabel(p)}
+					selected={sheet && selectedId === p.id}
+					tags={[...(v.tactic.lineup.includes(p.id) ? ['Titular'] : []), ...(p.contract && p.contract.until <= c.season ? ['Contrato acaba'] : []), ...(m.market.listed.includes(p.id) ? ['À venda'] : []), ...((fit.get(p.id) ?? 95) < 75 ? ['Cansado'] : [])]}
+					onclick={() => open(p.id)}
+				/>
+			</div>
+		{/each}
+	</div>
+{:else}
+	<div class="glass tablewrap">
 		<table>
-			<thead>
-				<tr>
-					<th class="n">Nº</th>
-					<th class="who">Jogador</th>
-					<th><button class:on={sortKey === 'position'} onclick={() => (sortKey = 'position')}>Pos.</button></th>
-					<th><button class:on={sortKey === 'age'} onclick={() => (sortKey = 'age')}>Idade</button></th>
-					<th><button class:on={sortKey === 'overall'} onclick={() => (sortKey = 'overall')}>Nota</button></th>
-					<th><button class:on={sortKey === 'condition'} onclick={() => (sortKey = 'condition')}>Condição</button></th>
-					<th>Moral</th>
-				</tr>
-			</thead>
+			<thead><tr><th>Nº</th><th>Atleta</th><th>Pos.</th><th>Idade</th><th>Nível</th><th>Condição</th><th>Moral</th>{#if coach}<th>Salário</th><th>Contrato</th><th class="r">Valor</th>{/if}</tr></thead>
 			<tbody>
 				{#each list as p (p.id)}
-					<tr class:sel={p.id === selected.id} onclick={() => pick(p.id)}>
-						<td class="n num">{p.number}</td>
-						<td class="who">
-							<button class="rowbtn" onclick={() => pick(p.id)} aria-pressed={p.id === selected.id}>
-								<Pixel appearance={p.appearance} kit={playerKit(data.career.clubId, p.position)} size={34} />
-								<span>{p.name}</span>
-								{#if starters.has(p.id)}<span class="tit" title="Titular na tática atual">T</span>{/if}
-							</button>
-						</td>
-						<td><span class="pos" data-sector={sectorOf(p.position)}>{p.position}</span></td>
-						<td class="num">{p.age}</td>
-						<td class="num ovr">{p.overall}</td>
-						<td><Meter value={p.condition} compact label="Condição física" /></td>
-						<td class="mor" data-m={p.morale}>{MORALE_LABELS[p.morale]}</td>
+					<tr onclick={() => open(p.id)} class:starter={v.tactic.lineup.includes(p.id)}>
+						<td class="num">{p.number}</td><td><strong>{p.name}</strong></td><td>{p.position}</td><td class="num">{p.age}</td><td class="num"><b>{p.overall}</b></td>
+						<td><i class="bar" style="--c:{fit.get(p.id) ?? 95}%" class:low={(fit.get(p.id) ?? 95) < 75}></i></td>
+						<td>{MORALE_LABELS[p.morale]}</td>
+						{#if coach}<td class="num">{p.contract ? formatMoney(p.contract.wage) : '—'}</td><td class:warn={!!p.contract && p.contract.until <= c.season}>{p.contract?.until ?? '—'}</td><td class="r num">{formatMoney(p.value)}</td>{/if}
 					</tr>
 				{/each}
 			</tbody>
 		</table>
-	</Panel>
+	</div>
+{/if}
 
-	<aside class="detail" bind:this={detail}>
-		<Panel tone="raised" index={1}>
-			<div class="card">
-				<div class="art"><Pixel variant="full" appearance={selected.appearance} kit={playerKit(data.career.clubId, selected.position)} size={210} /></div>
-				<span class="eyebrow">#{selected.number} · {POSITION_INFO[selected.position].label}</span>
-				<h2>{selected.name}</h2>
-				<div class="nums">
-					<div><small>Nota</small><strong class="num">{selected.overall}</strong></div>
-					<div><small>Potencial</small><strong class="num">{selected.potential}</strong></div>
-					<div><small>Idade</small><strong class="num">{selected.age}</strong></div>
-				</div>
-				<div class="line"><span>Condição física</span><Meter value={selected.condition} label="Condição física" /></div>
-				<div class="line"><span>Moral</span><Badge tone={selected.morale === 'regular' ? 'warning' : 'emerald'}>{MORALE_LABELS[selected.morale]}</Badge></div>
-				<div class="line"><span>Situação</span><span>{starters.has(selected.id) ? 'Titular' : 'Reserva'}</span></div>
+<Sheet bind:open={sheet} title={sel?.name ?? ''} subtitle={sel ? `#${sel.number} · ${POSITION_INFO[sel.position].label} · ${sel.age} anos${sel.archetype ? ` · ${sel.archetype}` : ''}` : ''} width={520}>
+	{#if sel}
+		<div class="top">
+			<Pixel variant="full" appearance={sel.appearance} kit={playerKit(c.clubId, sel.position)} size={120} />
+			<dl class="facts">
+				<div><dt>Nível</dt><dd>{sel.overall}</dd></div>
+				<div><dt>Potencial</dt><dd>{sel.potential}</dd></div>
+				<div><dt>Condição</dt><dd>{fit.get(sel.id) ?? 95}%</dd></div>
+				<div><dt>Moral</dt><dd>{MORALE_LABELS[sel.morale]}</dd></div>
+				{#if coach}<div><dt>Valor</dt><dd>{formatMoney(sel.value)}</dd></div>{/if}
+				{#if sel.contract}<div><dt>Salário</dt><dd>{formatMoney(sel.contract.wage)}</dd></div>{/if}
+			</dl>
+		</div>
+		{#if sel.contract || sel.loan}<p class="contract">{contractLabel(sel)}</p>{/if}
+		<div class="attrs">
+			{#each groups as [label, keys] (label)}
+				{#if label !== 'Goleiro' || sel.position === 'GOL'}
+					<div class="ag">
+						<h3>{label}</h3>
+						{#each keys as k (k)}
+							<div class="at"><span>{ATTRIBUTE_LABELS[k]}</span><i style="--v:{sel.attributes[k]}%" class:hi={sel.attributes[k] >= 75} class:lo={sel.attributes[k] < 50}></i><b>{Math.round(sel.attributes[k])}</b></div>
+						{/each}
+					</div>
+				{/if}
+			{/each}
+		</div>
+		{#if coach && sel.contract && !sel.loan && sel.id !== 'eu'}
+			<div class="renew glass">
+				<h3>Renovar contrato</h3>
+				<p class="muted small">O atleta pede cerca de <b>{formatMoney(wageDemand(sel, m.tier, v.club.reputation, role, years))}</b>/mês nestas condições.</p>
+				<label>Salário <span class="out">{formatMoney(wage)}</span><input type="range" min={Math.round(sel.contract.wage * 0.6)} max={Math.round(Math.max(sel.contract.wage, 5000) * 2.5)} step="500" bind:value={wage} /></label>
+				<label>Duração <span class="out">{years} temporada{years > 1 ? 's' : ''}</span><input type="range" min="1" max="5" bind:value={years} /></label>
+				<label>Participação <select bind:value={role}>{#each Object.entries(ROLE_LABELS) as [k, l] (k)}<option value={k}>{l}</option>{/each}</select></label>
+				<Button variant="primary" loading={busy} onclick={() => act({ action: 'renovar', playerId: sel.id, wage, years, role })}>Propor renovação</Button>
 			</div>
-			<div class="soon">
-				<Unavailable title="Atributos detalhados" detail="Técnica, físico e mental" icon="chart" />
-				<Unavailable title="Contrato e salário" icon="briefcase" />
-			</div>
-		</Panel>
-	</aside>
-</div>
-
-<p class="footnote subtle"><Icon name="info" size={14} /> Atletas gerados para demonstração; nomes são combinações aleatórias e não representam pessoas reais.</p>
+		{/if}
+		{#if msg}<p class="msg" role="status">{msg}</p>{/if}
+	{/if}
+	{#snippet footer()}
+		{#if coach && sel && sel.id !== 'eu'}
+			<Button variant="ghost" disabled={busy} onclick={() => act({ action: 'listar', playerId: sel.id })}>{m.market.listed.includes(sel.id) ? 'Retirar da venda' : 'Pôr à venda'}</Button>
+			{#if confirmRelease}
+				<Button variant="danger" loading={busy} onclick={() => act({ action: 'rescindir', playerId: sel.id })}>{sel.loan ? 'Confirmar devolução' : 'Confirmar rescisão'}</Button>
+			{:else}
+				<Button variant="ghost" disabled={busy} onclick={() => (confirmRelease = true)}>{sel.loan ? 'Devolver empréstimo' : 'Rescindir'}</Button>
+			{/if}
+		{/if}
+	{/snippet}
+</Sheet>
 
 <style>
 	.head {
@@ -128,24 +219,180 @@
 		align-items: flex-end;
 		gap: var(--sp-4);
 		flex-wrap: wrap;
-		margin-bottom: var(--sp-5);
+		margin-bottom: var(--sp-4);
 	}
 	h1 {
 		font-size: var(--fs-3xl);
-		text-transform: uppercase;
-		font-weight: 800;
+		margin: 4px 0;
 	}
 	.tools {
 		display: flex;
-		align-items: center;
 		gap: var(--sp-3);
 		flex-wrap: wrap;
 	}
-	.layout {
+	.campo {
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) 340px;
+		grid-template-columns: minmax(0, 1.5fr) minmax(260px, 1fr);
 		gap: var(--sp-4);
-		align-items: start;
+	}
+	.pitch {
+		position: relative;
+		aspect-ratio: 68 / 80;
+		max-height: 74vh;
+		overflow: hidden;
+		background:
+			repeating-linear-gradient(180deg, rgb(255 255 255 / 0.025) 0 10%, transparent 10% 20%),
+			radial-gradient(80% 60% at 50% 40%, #1d5a3c, #123a28 70%, #0e2c1f);
+	}
+	.lines i {
+		position: absolute;
+		border: 2px solid rgb(255 255 255 / 0.14);
+	}
+	.lines .mid {
+		left: 4%;
+		right: 4%;
+		top: 50%;
+		border-width: 2px 0 0;
+	}
+	.lines .circle {
+		left: 50%;
+		top: 50%;
+		width: 22%;
+		aspect-ratio: 1;
+		border-radius: 50%;
+		translate: -50% -50%;
+	}
+	.lines .box {
+		left: 25%;
+		right: 25%;
+		height: 14%;
+	}
+	.lines .top {
+		top: 2%;
+		border-top: 0;
+	}
+	.lines .bottom {
+		bottom: 2%;
+		border-bottom: 0;
+	}
+	.chip-p {
+		position: absolute;
+		translate: -50% -50%;
+		display: grid;
+		grid-template-columns: auto auto;
+		grid-template-rows: auto auto auto;
+		column-gap: 6px;
+		align-items: center;
+		padding: 6px 10px 5px;
+		min-width: 92px;
+		border-radius: 12px;
+		border: 1px solid rgb(255 255 255 / 0.14);
+		background: rgb(10 14 17 / 0.78);
+		backdrop-filter: blur(4px);
+		color: var(--text);
+		cursor: pointer;
+		transition: left 0.6s var(--ease-out), top 0.6s var(--ease-out), box-shadow 0.2s;
+		font: inherit;
+	}
+	.chip-p:hover {
+		box-shadow: var(--glow-emerald);
+	}
+	.chip-p .o {
+		grid-row: 1 / 3;
+		font-family: var(--font-display);
+		font-weight: 800;
+		font-size: 1.35rem;
+	}
+	.chip-p .n {
+		font-weight: 700;
+		font-size: var(--fs-xs);
+		white-space: nowrap;
+		max-width: 90px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		text-align: left;
+	}
+	.chip-p .ps {
+		font-size: 10px;
+		font-weight: 800;
+		color: var(--emerald-strong);
+		text-align: left;
+	}
+	.cond,
+	.bar {
+		grid-column: 1 / -1;
+		display: block;
+		height: 3px;
+		margin-top: 4px;
+		border-radius: 3px;
+		background: linear-gradient(90deg, var(--emerald) var(--c), rgb(255 255 255 / 0.1) var(--c));
+	}
+	.cond.low,
+	.bar.low {
+		background: linear-gradient(90deg, var(--gold) var(--c), rgb(255 255 255 / 0.1) var(--c));
+	}
+	.bar {
+		width: 80px;
+	}
+	.form {
+		position: absolute;
+		right: 14px;
+		bottom: 10px;
+		font-size: var(--fs-xl);
+		color: rgb(255 255 255 / 0.3);
+	}
+	.bench {
+		display: grid;
+		gap: var(--sp-3);
+		align-content: start;
+	}
+	.bench h2 {
+		margin: 0;
+		font-size: var(--fs-xl);
+	}
+	.blist {
+		display: grid;
+		gap: 4px;
+		max-height: 64vh;
+		overflow: auto;
+	}
+	.brow {
+		display: grid;
+		grid-template-columns: 44px 1fr auto auto;
+		gap: 8px;
+		align-items: center;
+		padding: 8px 10px;
+		border-radius: var(--radius-m);
+		border: 1px solid var(--line);
+		background: rgb(231 237 240 / 0.03);
+		color: var(--text);
+		font: inherit;
+		text-align: left;
+		cursor: pointer;
+	}
+	.brow:hover {
+		border-color: var(--emerald-line);
+	}
+	.brow .ps {
+		font-size: 11px;
+		font-weight: 800;
+		color: var(--emerald-strong);
+	}
+	.nm {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.warn {
+		color: var(--gold);
+	}
+	.link {
+		color: var(--emerald-strong);
+		font-weight: 600;
+		font-size: var(--fs-sm);
+	}
+	.tablewrap {
+		overflow: auto;
 	}
 	table {
 		width: 100%;
@@ -154,167 +401,137 @@
 	}
 	th {
 		text-align: left;
-		padding: var(--sp-3) var(--sp-3);
-		font-size: var(--fs-xs);
+		padding: 10px;
 		color: var(--text-3);
+		font-size: 11px;
+		letter-spacing: 0.1em;
 		text-transform: uppercase;
-		letter-spacing: 0.06em;
-		font-weight: 600;
-		border-bottom: 1px solid var(--line-strong);
-		position: sticky;
-		top: 0;
-		background: var(--surface);
-	}
-	th button {
-		all: unset;
-		cursor: pointer;
-	}
-	th button.on {
-		color: var(--emerald-strong);
 	}
 	td {
-		padding: 6px var(--sp-3);
-		border-bottom: 1px solid var(--line);
-		color: var(--text-2);
+		padding: 9px 10px;
+		border-top: 1px solid var(--line);
 	}
 	tr {
 		cursor: pointer;
 	}
-	tbody tr:hover td {
-		background: rgb(231 237 240 / 0.025);
+	tbody tr:hover {
+		background: rgb(231 237 240 / 0.03);
 	}
-	tr.sel td {
-		background: var(--emerald-soft) !important;
+	tr.starter td:first-child {
+		box-shadow: inset 3px 0 0 var(--emerald);
 	}
-	.n {
-		width: 44px;
-		text-align: center;
+	.r {
+		text-align: right;
 	}
-	.rowbtn {
-		all: unset;
-		display: flex;
+	.top {
+		display: grid;
+		grid-template-columns: auto 1fr;
+		gap: var(--sp-4);
 		align-items: center;
-		gap: var(--sp-3);
-		color: var(--text);
-		font-weight: 600;
-		cursor: pointer;
 	}
-	.rowbtn:focus-visible {
-		box-shadow: var(--focus);
-		border-radius: 6px;
-	}
-	.tit {
-		font-size: 10px;
-		font-weight: 800;
-		padding: 1px 5px;
-		border-radius: 4px;
-		background: var(--surface-3);
-		color: var(--text-2);
-	}
-	.pos {
-		display: inline-block;
-		min-width: 40px;
-		text-align: center;
-		padding: 2px 6px;
-		border-radius: 6px;
-		font-weight: 700;
-		font-size: var(--fs-xs);
-	}
-	.pos[data-sector='goleiro'] {
-		background: var(--gold-soft);
-		color: var(--gold);
-	}
-	.pos[data-sector='defesa'] {
-		background: var(--info-soft);
-		color: var(--info);
-	}
-	.pos[data-sector='meio'] {
-		background: var(--emerald-soft);
-		color: var(--emerald-strong);
-	}
-	.pos[data-sector='ataque'] {
-		background: var(--danger-soft);
-		color: var(--danger);
-	}
-	.ovr {
-		font-weight: 700;
-		color: var(--text);
-	}
-	.mor[data-m='excelente'] {
-		color: var(--emerald-strong);
-	}
-	.mor[data-m='regular'] {
-		color: var(--warning);
-	}
-	.detail {
-		position: sticky;
-		top: 150px;
-	}
-	.card {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		text-align: center;
-		gap: var(--sp-2);
-	}
-	.art {
-		padding: var(--sp-3) var(--sp-5) 0;
-		background: radial-gradient(60% 16% at 50% 96%, rgb(0 0 0 / 0.5), transparent 70%);
-	}
-	.art :global(svg) {
-		height: 210px;
-		width: auto;
-	}
-	.card h2 {
-		font-size: var(--fs-2xl);
-		text-transform: uppercase;
-	}
-	.nums {
+	.facts {
 		display: grid;
 		grid-template-columns: repeat(3, 1fr);
-		width: 100%;
-		margin: var(--sp-2) 0;
+		gap: 8px;
+		margin: 0;
 	}
-	.nums div {
-		display: flex;
-		flex-direction: column;
+	.facts div {
+		padding: 8px;
+		border-radius: var(--radius-s);
+		background: rgb(10 13 16 / 0.4);
 	}
-	.nums small {
-		font-size: var(--fs-xs);
+	dt {
+		font-size: 10px;
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+		color: var(--text-3);
+		font-weight: 700;
+	}
+	dd {
+		margin: 0;
+		font-weight: 700;
+	}
+	.contract {
+		margin: var(--sp-3) 0;
+		color: var(--text-2);
+	}
+	.attrs {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: var(--sp-4);
+		margin: var(--sp-4) 0;
+	}
+	.ag h3,
+	.renew h3 {
+		margin: 0 0 6px;
+		font-size: 11px;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
 		color: var(--text-3);
 	}
-	.nums strong {
-		font-family: var(--font-display);
-		font-size: var(--fs-3xl);
-		line-height: 1;
-	}
-	.line {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		width: 100%;
-		padding: var(--sp-2) 0;
-		border-top: 1px solid var(--line);
-		font-size: var(--fs-sm);
-	}
-	.soon {
+	.at {
 		display: grid;
-		gap: var(--sp-2);
-		margin-top: var(--sp-4);
-	}
-	.footnote {
-		display: flex;
+		grid-template-columns: 1fr 70px 26px;
+		gap: 6px;
 		align-items: center;
-		gap: var(--sp-2);
-		margin-top: var(--sp-4);
+		font-size: var(--fs-xs);
+		color: var(--text-2);
+		padding: 2px 0;
+	}
+	.at i {
+		height: 5px;
+		border-radius: 5px;
+		background: linear-gradient(90deg, var(--emerald) var(--v), rgb(255 255 255 / 0.08) var(--v));
+	}
+	.at i.hi {
+		background: linear-gradient(90deg, var(--gold) var(--v), rgb(255 255 255 / 0.08) var(--v));
+	}
+	.at i.lo {
+		background: linear-gradient(90deg, var(--danger) var(--v), rgb(255 255 255 / 0.08) var(--v));
+	}
+	.at b {
+		text-align: right;
+		color: var(--text);
+	}
+	.renew {
+		padding: var(--sp-4);
+		display: grid;
+		gap: 10px;
+	}
+	.renew label {
+		display: grid;
+		gap: 4px;
+		font-size: var(--fs-sm);
+		color: var(--text-2);
+	}
+	.out {
+		float: right;
+		color: var(--text);
+		font-weight: 700;
+	}
+	input[type='range'] {
+		accent-color: var(--emerald);
+	}
+	select {
+		background: var(--surface-sunken);
+		color: var(--text);
+		border: 1px solid var(--line-strong);
+		border-radius: var(--radius-s);
+		padding: 6px 8px;
+	}
+	.small {
 		font-size: var(--fs-xs);
 	}
-	@media (max-width: 1100px) {
-		.layout {
+	.msg {
+		margin-top: var(--sp-3);
+		color: var(--text-2);
+	}
+	@media (max-width: 1000px) {
+		.campo {
 			grid-template-columns: 1fr;
 		}
-		.detail {
-			position: static;
+		.attrs {
+			grid-template-columns: 1fr;
 		}
 	}
 </style>

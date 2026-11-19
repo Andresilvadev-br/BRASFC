@@ -1,6 +1,6 @@
 import type { Action } from 'svelte/action';
 import type { AnimateOptions } from 'ultra-motion-x';
-import { animate, enterIn, getMotion, loadMotion, motion, staggerDelay } from './motion.svelte.ts';
+import { animate, countTo, enterIn, getMotion, loadMotion, motion, staggerDelay } from './motion.svelte.ts';
 
 /**
  * Durante a hidratação o HTML do servidor já está na tela: animar a entrada
@@ -83,4 +83,33 @@ export const spring: Action<HTMLElement, { props: Parameters<typeof animate>[1];
 			void animate(el, next.props, next.opts);
 		}
 	};
+};
+
+/** use:count — número que interpola até o valor quando ele muda (saldo, notas, públicos). */
+export const count: Action<HTMLElement, { value: number; format?: (v: number) => string }> = (el, params) => {
+	el.textContent = (params.format ?? ((v: number) => Math.round(v).toLocaleString('pt-BR')))(canAnimate() ? 0 : params.value);
+	countTo(el, params.value, params.format);
+	return {
+		update(p) {
+			countTo(el, p.value, p.format);
+		}
+	};
+};
+
+/** use:reveal — entra quando aparece na tela (painéis longos não animam fora da área visível). */
+export const reveal: Action<HTMLElement, { index?: number; y?: number } | undefined> = (el, params = {}) => {
+	if (!canAnimate() || typeof IntersectionObserver === 'undefined') return;
+	el.style.opacity = '0';
+	const io = new IntersectionObserver(
+		(entries) => {
+			for (const e of entries) {
+				if (!e.isIntersecting) continue;
+				io.disconnect();
+				void enterIn(el, { delay: staggerDelay(params.index ?? 0), y: params.y ?? 16 });
+			}
+		},
+		{ rootMargin: '40px' }
+	);
+	io.observe(el);
+	return { destroy: () => io.disconnect() };
 };

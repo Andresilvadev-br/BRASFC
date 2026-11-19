@@ -13,6 +13,8 @@
 	} from '#lib/domain/appearance.ts';
 	import { boardExpectation, MODE_LABELS, type Career, type CareerMode } from '#lib/domain/career.ts';
 	import { CLUBS, getClub } from '#lib/domain/clubs.ts';
+	import Segmented from '#lib/ui/Segmented.svelte';
+	import { CLUBES_2026, toGameClub } from '#lib/data/brasil.ts';
 	import { POSITION_INFO, type Position } from '#lib/domain/positions.ts';
 	import { enter } from '#lib/motion/actions.ts';
 	import { clubKit, coachKit, playerKit } from '#lib/pixel/kits.ts';
@@ -51,7 +53,19 @@
 	const previewKit = $derived(
 		mode === 'coach' ? coachKit(clubId ?? undefined) : clubId ? playerKit(clubId, position) : position === 'GOL' ? { shirt: '#E8B86A', trim: '#15110E', shorts: '#15110E', socks: '#E8B86A' } : NEUTRAL_KIT
 	);
-	const sortedClubs = [...CLUBS].sort((a, b) => b.reputation - a.reputation || a.name.localeCompare(b.name, 'pt-BR'));
+	// Mundo: clubes reais (base 2026, Séries A/B/C) ou a liga fictícia da Dev 0.1/0.2.
+	let world = $state<'brasil' | 'brasfc'>('brasil');
+	let serie = $state<'A' | 'B' | 'C' | 'D'>('A');
+	const realClubs = CLUBES_2026.map((c) => ({ real: c, game: toGameClub(c) }));
+	const sortedClubs = $derived(
+		world === 'brasil'
+			? realClubs.filter((c) => c.real.serie === serie).map((c) => c.game).sort((a, b) => b.reputation - a.reputation || a.name.localeCompare(b.name, 'pt-BR'))
+			: [...CLUBS].sort((a, b) => b.reputation - a.reputation || a.name.localeCompare(b.name, 'pt-BR'))
+	);
+	const competitionOf = (id: string) => {
+		const r = realClubs.find((c) => c.real.id === id);
+		return r ? `Série ${r.real.serie}` : 'Liga BRASFC';
+	};
 
 	onMount(() => setIslandContext('Nova carreira'));
 
@@ -84,7 +98,7 @@
 		errors = {};
 		try {
 			const res = await api<{ career: Career }>('/api/careers', {
-				body: { mode, personName, clubId, appearance, ...(mode === 'player' ? { position } : {}) }
+				body: { mode, personName, clubId, appearance, world, ...(mode === 'player' ? { position } : {}) }
 			});
 			created = res.career;
 		} catch (e) {
@@ -241,7 +255,17 @@
 				<div>
 					<span class="eyebrow">Passo 3 de 3</span>
 					<h1>Escolha seu clube</h1>
-					<p class="muted">Clubes fictícios da Liga BRASFC. A reputação define a expectativa da diretoria.</p>
+					<p class="muted">
+						{world === 'brasil'
+							? 'Clubes reais das Séries A, B, C e D de 2026 (fontes públicas), com Copa do Brasil, acesso, rebaixamento e expansão da Série C. Elencos reais ainda não foram importados: os jogadores têm nomes fictícios.'
+							: 'Clubes fictícios da Liga BRASFC. A reputação define a expectativa da diretoria.'}
+					</p>
+					<div class="worldpick">
+						<Segmented label="Mundo" bind:value={world} onchange={() => (clubId = null)} options={[{ value: 'brasil', label: 'Brasil 2026' }, { value: 'brasfc', label: 'Liga fictícia' }]} />
+						{#if world === 'brasil'}
+							<Segmented label="Série" bind:value={serie} options={[{ value: 'A', label: 'Série A' }, { value: 'B', label: 'Série B' }, { value: 'C', label: 'Série C' }, { value: 'D', label: 'Série D' }]} />
+						{/if}
+					</div>
 				</div>
 				<div class="confirm">
 					{#if club}
@@ -249,7 +273,7 @@
 							<Crest clubId={club.id} size={44} />
 							<div>
 								<strong>{club.name}</strong>
-								<small class="muted">Meta: {boardExpectation(club)}</small>
+								<small class="muted">{competitionOf(club.id)} · Meta: {boardExpectation(club, competitionOf(club.id))}</small>
 							</div>
 						</div>
 					{/if}
@@ -269,7 +293,7 @@
 						data-umx-hover
 						style="--c:{c.colors.primary}"
 					>
-						<Crest clubId={c.id} size={48} />
+						<Crest club={c} size={48} />
 						<span class="cname">{c.name}</span>
 						<span class="ccity muted">{c.city}</span>
 						<Stars value={c.reputation} />
@@ -294,9 +318,15 @@
 {/if}
 
 <style>
+	.worldpick {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		margin-top: 10px;
+	}
 	.screen {
 		position: relative;
-		min-height: 100vh;
+		min-height: var(--app-h, 100vh);
 		display: flex;
 		flex-direction: column;
 	}
