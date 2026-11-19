@@ -3,12 +3,13 @@ import { validateCreateCareer } from '#lib/domain/career.ts';
 import { addDays } from '#lib/domain/dates.ts';
 import { CAREER_PLAYER_ID, fixtureSetup, selectionOf } from '#lib/domain/matchday.ts';
 import { adjustedOverall, advancePlayerDays, playerState, trainBlock } from '#lib/domain/player-development.ts';
+import { playerHistory } from '#lib/domain/playerstats.ts';
 import { careerView } from '#lib/domain/view.ts';
 import { createPgliteDb, type Db } from '#lib/server/db/index.ts';
 import { runMigrations } from '#lib/server/db/migrate.ts';
 import { applyPlayerAction } from '#lib/server/player-actions.ts';
 import { createCareer, getCareer, saveCareerProgress, VersionConflictError } from '#lib/server/repos/careers.ts';
-import { listResults, listUserMatches } from '#lib/server/repos/matches.ts';
+import { listResults, listStatMatches, listUserMatches } from '#lib/server/repos/matches.ts';
 import { createGuestProfile } from '#lib/server/repos/profiles.ts';
 import { finishSeason, matchdayContext, playRound } from '#lib/server/rounds.ts';
 
@@ -57,7 +58,11 @@ describe('Dev 0.6 · Carreira de Jogador', () => {
 		expect(adjustedOverall(c, projected)).toBeGreaterThanOrEqual(adjustedOverall(c, initial));
 		const round = await playRound(db, profile.id, c, { version: c.version, step: v0.step!.key });
 		expect(round.match?.summary.assessment?.selection).toBe(selectionOf(setup[setup.mySide]));
-		expect((await listUserMatches(db, c.id))[0]?.summary.assessment?.objective).toMatch(/defesas/);
+		const matches = await listUserMatches(db, c.id);
+		expect(matches[0]?.summary.assessment?.objective).toMatch(/defesas/);
+		const stats = await listStatMatches(db, c.id, CAREER_PLAYER_ID);
+		expect(playerHistory(stats, CAREER_PLAYER_ID)).toEqual(playerHistory(matches, CAREER_PLAYER_ID));
+		expect(Object.keys(stats[0].summary.players).every((id) => id === CAREER_PLAYER_ID)).toBe(true);
 		c = round.career;
 		expect(c.data.playerCareer!.daily.earnings).toBeGreaterThan(0);
 
@@ -67,6 +72,8 @@ describe('Dev 0.6 · Carreira de Jogador', () => {
 		const oldWage = offer.wage;
 		await act({ action: 'jogador-contraproposta', offerId: offer.id });
 		expect(c.data.playerCareer!.offers.find((o) => o.id === offer.id)?.wage).toBeGreaterThan(oldWage);
+		expect(offer.wage).toBe(oldWage);
+		expect(offer.countered).toBeUndefined();
 		await act({ action: 'jogador-aceitar', offerId: offer.id });
 		expect(c.clubId).not.toBe(origin);
 		expect(c.clubId).toBe(offer.clubId);
@@ -74,6 +81,32 @@ describe('Dev 0.6 · Carreira de Jogador', () => {
 		expect(loaded?.data.playerCareer?.daily.clubs.at(-1)).toMatchObject({ clubId: c.clubId, kind: 'compra' });
 		expect(loaded?.data.playerCareer?.daily.gains.reflexos).toBeGreaterThan(0);
 		expect(await getCareer(db, profile.id, coach.id)).toMatchObject({ clubId: origin, mode: 'coach', version: coach.version });
+	});
+
+	it('persiste a resposta da imprensa e o patrocínio e recusa ações duplicadas', async () => {
+		const { profile } = await createGuestProfile(db);
+		const parsed = validateCreateCareer(input);
+		if (!parsed.ok) throw new Error('Perfil inválido.');
+		const c = await createCareer(db, profile.id, parsed.value);
+		const v = careerView(c);
+		const state = playerState(c, v.division)!;
+		state.reputation = 50;
+		state.daily.support.fans = 60;
+		state.daily.press = { date: c.gameDate, kind: 'espaco' };
+		const initial = await saveCareerProgress(db, profile.id, c.id, { gameDate: c.gameDate, data: { playerCareer: state } }, c.version);
+		const response = applyPlayerAction(initial, v, { action: 'jogador-entrevista', date: c.gameDate, choice: 'ambicao' });
+		expect(response.state.reputation).toBeGreaterThan(state.reputation);
+		expect(response.state.daily.press).toBeNull();
+		const interviewed = await saveCareerProgress(db, profile.id, c.id, { gameDate: c.gameDate, data: { playerCareer: response.state } }, initial.version);
+		expect(() => applyPlayerAction(interviewed, v, { action: 'jogador-entrevista', date: c.gameDate, choice: 'ambicao' })).toThrow(/indisponível/);
+		const branded = applyPlayerAction(interviewed, v, { action: 'jogador-patrocinio' });
+		await saveCareerProgress(db, profile.id, c.id, { gameDate: c.gameDate, data: { playerCareer: branded.state } }, interviewed.version);
+		const loaded = (await getCareer(db, profile.id, c.id))!;
+		expect(loaded.data.playerCareer?.daily.sponsor?.monthly).toBeGreaterThan(0);
+		expect(() => applyPlayerAction(loaded, v, { action: 'jogador-patrocinio' })).toThrow(/Nenhuma proposta/);
+		const tomorrow = addDays(c.gameDate, 1);
+		expect(advancePlayerDays(loaded, branded.state, tomorrow, []).daily.earnings)
+			.toBeGreaterThan(advancePlayerDays(interviewed, response.state, tomorrow, []).daily.earnings);
 	});
 
 	it('usa os dados do save antigo e afasta o jogador lesionado da convocação', async () => {

@@ -4,5 +4,5 @@ import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals, depends }) => {
 	depends('app:careers');
-	return { careers: locals.profile ? await listCareers(await getDb(), locals.profile.id) : [] };
+	return { careers: locals.profile ? await listCareers(await getDb(), locals.profile.id, true) : [] };
 };

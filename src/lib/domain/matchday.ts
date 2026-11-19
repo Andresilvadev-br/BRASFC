@@ -162,7 +162,10 @@ export function selectionOf(team: TeamSetup): PlayerSelection {
 }
 
 export function newFixtureMatch(career: Career, fixture: Fixture, myTactic: Tactic, ctx: MatchdayContext, replay?: AppliedDecision[]): Match {
-	const s = fixtureSetup(career, fixture, myTactic, ctx);
+	return matchFromSetup(fixtureSetup(career, fixture, myTactic, ctx), replay);
+}
+
+export function matchFromSetup(s: ReturnType<typeof fixtureSetup>, replay?: AppliedDecision[]): Match {
 	return new Match({
 		home: s.home,
 		away: s.away,

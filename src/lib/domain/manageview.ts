@@ -1,6 +1,6 @@
 import type { Career } from './career.ts';
 import { clubEconomy, stadiumCapacity } from './club.ts';
-import { payroll } from './management.ts';
+import { initialWageBudget, payroll } from './management.ts';
 import { freeAgents, rosterOf, tierOfDivision, transferWindow } from './market.ts';
 import type { CareerView } from './view.ts';
 import { clubStateOf, rosterContext } from './world.ts';
@@ -8,11 +8,12 @@ import { clubStateOf, rosterContext } from './world.ts';
 /** Visão de gestão do clube (navegador e servidor calculam igual a partir do estado salvo). */
 export function manageView(career: Career, view: CareerView) {
 	const ctx = rosterContext(career, view.league);
-	const club = clubStateOf(career, view.league);
+	const savedClub = clubStateOf(career, view.league);
 	const roster = rosterOf(ctx, career.clubId);
 	const tier = tierOfDivision(view.division);
 	const eco = clubEconomy(career.clubId, tier);
 	const wages = payroll(roster);
+	const club = savedClub.wageBudget ? savedClub : { ...savedClub, wageBudget: initialWageBudget(wages, eco.tvAnnual) };
 	const sponsorsMonthly = club.sponsors.reduce((s, x) => s + x.monthly, 0);
 	const monthlyIncome = eco.tvAnnual / 12 + sponsorsMonthly;
 	return {

@@ -259,6 +259,10 @@ export function payroll(roster: RosterPlayer[]): number {
 	return roster.reduce((s, p) => s + Math.round(p.contract.wage * (p.loan ? p.loan.wageShare : 1)), 0);
 }
 
+export function initialWageBudget(wages: number, annualIncome: number): number {
+	return roundMoney(Math.max(wages * 1.08, annualIncome / 24));
+}
+
 /**
  * Uma semana (ou quarta de Copa) da gestão: receitas, despesas, obras, base, olheiros,
  * torcida e diretoria. Tudo derivado do estado real da carreira.
@@ -274,7 +278,7 @@ export function processWeek(prev: ClubState, w: WeekInput): WeekOutcome {
 	};
 	let att: number | null = null;
 	const wageBill = payroll(w.roster);
-	if (!st.wageBudget) st.wageBudget = roundMoney(Math.max(wageBill * 1.08, (eco.tvAnnual / 12) * 0.5));
+	if (!st.wageBudget) st.wageBudget = initialWageBudget(wageBill, eco.tvAnnual);
 
 	if (w.fullWeek) {
 		st.week++;
@@ -514,11 +518,14 @@ export function makeOffer(club: ClubState, market: MarketState, ctx: ActionConte
 		return { club: st, market: mk, ledger: [], transfers: [], message: pAns.reason, negotiation: log };
 	}
 	const wage = offer.kind === 'emprestimo' ? player.contract.wage : Math.round(offer.wage);
-	const myCost = offer.kind === 'emprestimo' ? Math.round(wage * (offer.wageShare ?? 1)) : wage;
-	if (payroll(myRoster) + myCost > st.wageBudget) throw new ManagementError(`A folha passaria do teto mensal da diretoria (${formatMoney(st.wageBudget)}).`);
+	const wageShare = Math.max(0.5, Math.min(1, offer.wageShare ?? 1));
+	const myCost = offer.kind === 'emprestimo' ? Math.round(wage * wageShare) : wage;
+	const wages = payroll(myRoster);
+	if (!st.wageBudget) st.wageBudget = initialWageBudget(wages, clubEconomy(ctx.clubId, ctx.tier).tvAnnual);
+	if (wages + myCost > st.wageBudget) throw new ManagementError(`A folha passaria do teto mensal da diretoria (${formatMoney(st.wageBudget)}).`);
 	const ledger: LedgerLine[] = [];
 	if (offer.kind === 'emprestimo') {
-		setOverride(mk, player.id, ctx.clubId, player.contract, ctx.gameDate, { from: seller!, until: ctx.season, wageShare: Math.max(0.5, Math.min(1, offer.wageShare ?? 1)) });
+		setOverride(mk, player.id, ctx.clubId, player.contract, ctx.gameDate, { from: seller!, until: ctx.season, wageShare });
 	} else {
 		const contract: Contract = { wage, until: ctx.season + Math.max(1, Math.min(5, Math.round(offer.years))) - 1, role: offer.role };
 		setOverride(mk, player.id, ctx.clubId, contract, ctx.gameDate);
@@ -576,10 +583,13 @@ export function renewContract(club: ClubState, market: MarketState, ctx: ActionC
 	const p = roster.find((x) => x.id === playerId);
 	if (!p) throw new ManagementError('Atleta não está no elenco.');
 	if (p.loan) throw new ManagementError('Atleta emprestado: renove com o clube dono.');
-	if (years < 1 || years > 5) throw new ManagementError('Contratos vão de 1 a 5 temporadas.');
+	if (!Number.isInteger(years) || years < 1 || years > 5) throw new ManagementError('Contratos vão de 1 a 5 temporadas.');
+	if (!Number.isFinite(wage) || wage < 500 || wage > 1e8) throw new ManagementError('Salário inválido.');
 	const demand = wageDemand(p, ctx.tier, getClub(ctx.clubId)?.reputation ?? 3, role, years);
 	if (wage < demand) return { club: st, market: mk, ledger: [], transfers: [], message: `${p.name} pede ${formatMoney(demand)} por mês para renovar.` };
-	if (payroll(roster) - p.contract.wage + wage > st.wageBudget) throw new ManagementError(`A folha passaria do teto (${formatMoney(st.wageBudget)}).`);
+	const wages = payroll(roster);
+	if (!st.wageBudget) st.wageBudget = initialWageBudget(wages, clubEconomy(ctx.clubId, ctx.tier).tvAnnual);
+	if (wages - p.contract.wage + wage > st.wageBudget) throw new ManagementError(`A folha passaria do teto (${formatMoney(st.wageBudget)}).`);
 	const contract: Contract = { wage: Math.round(wage), until: ctx.season + years, role };
 	setOverride(mk, p.id, ctx.clubId, contract, ctx.gameDate);
 	return { club: st, market: mk, ledger: [], transfers: [{ playerId: p.id, playerName: p.name, from: ctx.clubId, to: ctx.clubId, kind: 'renovacao', fee: 0, wage: contract.wage }], message: `${p.name} renovou até ${contract.until}.` };
@@ -647,6 +657,7 @@ export function assignScout(club: ClubState, scoutId: string, region: Region, po
 	const s = st.scouts.find((x) => x.id === scoutId);
 	if (!s) throw new ManagementError('Olheiro não encontrado.');
 	if (!(region in REGIONS)) throw new ManagementError('Região inválida.');
+	if (!Number.isFinite(maxAge)) throw new ManagementError('Idade máxima inválida.');
 	s.region = region;
 	s.position = position;
 	s.maxAge = Math.max(17, Math.min(35, Math.round(maxAge)));

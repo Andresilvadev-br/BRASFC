@@ -1,13 +1,13 @@
 import { CAREER_PLAYER_ID } from '#lib/domain/matchday.ts';
 import { playerHistory } from '#lib/domain/playerstats.ts';
 import { getDb } from '#lib/server/db/index.ts';
-import { listUserMatches } from '#lib/server/repos/matches.ts';
+import { listStatMatches } from '#lib/server/repos/matches.ts';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ parent }) => {
+export const load: PageServerLoad = async ({ parent, url }) => {
 	const { career } = await parent();
-	if (career.mode !== 'player') return { playerHistory: null };
-	const history = playerHistory(await listUserMatches(await getDb(), career.id), CAREER_PLAYER_ID);
+	if (career.mode !== 'player' || url.searchParams.get('secao') !== 'historico') return { playerHistory: null };
+	const history = playerHistory(await listStatMatches(await getDb(), career.id, CAREER_PLAYER_ID), CAREER_PLAYER_ID);
 	return {
 		playerHistory: {
 			all: history.all,

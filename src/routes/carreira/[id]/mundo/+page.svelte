@@ -10,7 +10,7 @@
 	import Gauge from '#lib/ui/v4/Gauge.svelte';
 
 	let { data } = $props();
-	const u = $derived(data.office.universe);
+	const u = $derived(data.universe);
 	type Filter = 'tudo' | 'tecnicos' | 'titulos' | 'recordes' | 'projetos' | 'voce';
 	let filter = $state<Filter>('tudo');
 	let query = $state('');

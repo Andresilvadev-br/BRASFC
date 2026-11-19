@@ -37,7 +37,8 @@ export function playerAttributes(seed: number, position: Position, profile: Play
 	for (const [key, bonus] of Object.entries(daily?.gains ?? {}) as Array<[AttributeKey, number]>) {
 		generated.attributes[key] = Math.max(20, Math.min(99, Math.round(generated.attributes[key] + bonus)));
 	}
-	while (computeOverall(generated.attributes, position) > profile.potential) {
+	const ceiling = Math.max(20, profile.potential);
+	while (computeOverall(generated.attributes, position) > ceiling) {
 		for (const key of Object.keys(generated.attributes) as AttributeKey[]) {
 			generated.attributes[key] = Math.max(20, generated.attributes[key] - 1);
 		}
@@ -80,7 +81,7 @@ export function advancePlayerDays(c: Career, state: PlayerCareerState, until: st
 		const session = d.drills.find((drill) => drill.date === date);
 		const recovering = !!d.injuryUntil && date < d.injuryUntil;
 		if (d.injuryUntil && !recovering) d.injuryUntil = null;
-		const matchPrep = gameDates.includes(date) || gameDates.includes(addDays(date, 1));
+		const matchPrep = session && (gameDates.includes(date) || gameDates.includes(addDays(date, 1)));
 		if (session && !recovering && !matchPrep && d.condition >= 35) {
 			develop(d, session.focus, (d.condition >= 70 ? 0.8 : 0.4) * ageFactor);
 			d.condition = bounded(d.condition - (session.focus === 'fisico' ? 12 : 8));

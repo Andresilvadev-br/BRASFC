@@ -19,7 +19,7 @@ import { playerTotals } from '#lib/domain/playerstats.ts';
 import { insertLedger, insertMessages, insertTransfers, upsertHistory } from './repos/management.ts';
 import { strengthFor } from '#lib/domain/strength.ts';
 import type { Fixture } from '#lib/domain/season.ts';
-import { CAREER_PLAYER_ID, careerSquad, fixtureSetup, newFixtureMatch, observedFrom, selectionOf, simulateOtherFixtures, summarize, type MatchdayContext } from '#lib/domain/matchday.ts';
+import { CAREER_PLAYER_ID, fixtureSetup, matchFromSetup, observedFrom, selectionOf, simulateOtherFixtures, summarize, type MatchdayContext } from '#lib/domain/matchday.ts';
 import { learnFromMatch, teamMastery } from '#lib/domain/tactical.ts';
 import { careerView } from '#lib/domain/view.ts';
 import { ENGINE_VERSION, type AppliedDecision } from '#lib/engine/types.ts';
@@ -72,7 +72,7 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 	let fixtures: Fixture[];
 	if (step.kind === 'league') {
 		league = prepareRound(league, step.round, results, career.seed, strengthOf);
-		fixtures = seasonFixtures(league, career.seed).filter((f) => f.round === step.round);
+		fixtures = (league === view.league ? view.fixtures : seasonFixtures(league, career.seed)).filter((f) => f.round === step.round);
 	} else {
 		cup = prepareCup(cup!, step.matchday, results, career.seed, strengthOf);
 		fixtures = cupFixtures(cup).filter((f) => f.round === step.matchday);
@@ -84,7 +84,7 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 	let userMatch: { fixture: Fixture; homeGoals: number; awayGoals: number; summary: ReturnType<typeof summarize> } | null = null;
 	let tactical = view.tactical;
 	let fitness = { ...(career.data.fitness ?? {}) };
-	const squad = careerSquad(career);
+	const squad = view.squad;
 	const originalPlayer = career.mode === 'player' ? playerState(career, view.division) : null;
 	const gameDates = view.clubFixtures.map((f) => f.date);
 	let playerCareer = originalPlayer ? advancePlayerDays(career, originalPlayer, step.date, gameDates) : null;
@@ -92,7 +92,7 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 	if (mine) {
 		const setup = fixtureSetup(career, mine, view.tactic, ctx);
 		const decisions = sanitizeDecisions(body.decisions, setup.control);
-		const match = newFixtureMatch(career, mine, view.tactic, ctx, decisions);
+		const match = matchFromSetup(setup, decisions);
 		const result = match.runToEnd();
 		const t = setup.myTactic;
 		const mastery = teamMastery(view.tactical, t.formation, t.style, t.lineup, t.instructions);

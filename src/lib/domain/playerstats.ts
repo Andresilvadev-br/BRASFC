@@ -59,7 +59,7 @@ export interface MatchRow {
 	away: string;
 	homeGoals: number;
 	awayGoals: number;
-	summary: MatchSummary;
+	summary: Pick<MatchSummary, 'players' | 'starters' | 'mySide'>;
 }
 
 /** Totais por atleta numa lista de partidas. */

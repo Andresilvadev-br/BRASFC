@@ -376,11 +376,15 @@ export function playerResponse(offer: NegotiationOffer, player: RosterPlayer, bu
 }
 
 export function formatMoney(v: number): string {
-	const abs = Math.abs(v);
-	const sign = v < 0 ? '−' : '';
+	const abs = Math.round(Math.abs(Number.isFinite(v) ? v : 0));
+	const sign = v < 0 && abs > 0 ? '−' : '';
 	if (abs >= 1_000_000) return `${sign}R$ ${(abs / 1_000_000).toLocaleString('pt-BR', { maximumFractionDigits: abs >= 10_000_000 ? 0 : 1 })} mi`;
 	if (abs >= 1_000) return `${sign}R$ ${(abs / 1_000).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} mil`;
 	return `${sign}R$ ${abs.toLocaleString('pt-BR')}`;
+}
+
+export function formatExactMoney(value: number): string {
+	return `R$ ${Math.round(value).toLocaleString('pt-BR')}`;
 }
 
 /** Janelas de transferência do BRASFC (aproximação das janelas brasileiras): pré-temporada e meio do ano. */
