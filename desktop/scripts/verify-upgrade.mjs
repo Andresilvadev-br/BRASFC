@@ -36,6 +36,8 @@ await new Promise((resolve) => server.listen(4187, '127.0.0.1', resolve));
 const result = { targetVersion: version, tests: [] };
 let app;
 let socket;
+let inspector = false;
+let diagnostics = '';
 async function until(fn, timeout = 45_000) {
 	const deadline = Date.now() + timeout;
 	while (Date.now() < deadline) {
@@ -45,12 +47,23 @@ async function until(fn, timeout = 45_000) {
 	throw Error('Etapa do upgrade excedeu o tempo de espera.');
 }
 async function attach() {
-	const page = await until(async () => (await fetch('http://127.0.0.1:4190/json').then(r => r.json())).find(p => p.type === 'page'));
+	const page = await until(async () => {
+		const [web, main] = await Promise.all([4190, 4191].map(async (port) => {
+			try { return await fetch(`http://127.0.0.1:${port}/json`, { signal: AbortSignal.timeout(600) }).then(r => r.json()); }
+			catch { return []; }
+		}));
+		const page = web.find(p => p.type === 'page');
+		if (page) { inspector = false; return page; }
+		const runtime = main.find(p => p.type === 'node');
+		if (runtime) { inspector = true; return runtime; }
+		return false;
+	}, 65_000);
 	socket = new WebSocket(page.webSocketDebuggerUrl);
 	await new Promise((resolve, reject) => { socket.once('open', resolve); socket.once('error', reject); });
 }
 let id = 0;
 function evaluate(expression) {
+	if (inspector) expression = `process.mainModule.require('electron').BrowserWindow.getAllWindows()[0]?.webContents.executeJavaScript(${JSON.stringify(expression)}, true)`;
 	return new Promise((resolve, reject) => {
 		const messageId = ++id;
 		const timer = setTimeout(() => { socket.off('message', handler); reject(Error('CDP sem resposta')); }, 15_000);
@@ -66,7 +79,12 @@ function evaluate(expression) {
 	});
 }
 function launch() {
-	app = spawn(exe, ['--remote-debugging-port=4190'], { stdio: 'ignore' });
+	app = spawn(exe, ['--remote-debugging-port=4190', '--remote-debugging-address=127.0.0.1', '--inspect=127.0.0.1:4191'], {
+		env: { ...process.env, ELECTRON_ENABLE_LOGGING: '1' }, stdio: ['ignore', 'ignore', 'pipe']
+	});
+	app.stderr.on('data', (data) => diagnostics = (diagnostics + String(data)).slice(-4500));
+	app.on('exit', (code) => diagnostics += `
+Processo saiu com código ${code}`);
 	return attach();
 }
 const installedVersion = () => execFileSync('powershell.exe', ['-NoProfile', '-Command', '(Get-Item -LiteralPath $env:BRASFC_UPGRADE_EXE).VersionInfo.ProductVersion'], {
@@ -133,6 +151,7 @@ try {
 	result.passed = true;
 } catch (error) {
 	result.error = String(error.stack ?? error);
+	result.diagnostics = diagnostics;
 	process.exitCode = 1;
 } finally {
 	socket?.close();
