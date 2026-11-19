@@ -128,6 +128,7 @@
 					</button>
 				{/each}
 			</div>
+			<Button href="/?rever=1" size="sm">Reproduzir abertura</Button>
 		</Panel>
 
 		<Panel title="Janela e aplicativo" icon="windows" index={4} class="wide">

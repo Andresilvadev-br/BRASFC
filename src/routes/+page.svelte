@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { goto, preloadCode, preloadData } from '$app/navigation';
 	import { api } from '#lib/api.ts';
-	import { animate, loadMotion, motion } from '#lib/motion/motion.svelte.ts';
+	import { loadMotion, motion } from '#lib/motion/motion.svelte.ts';
 	import { markIntroSeen, shouldPlayIntro } from '#lib/stores/prefs.svelte.ts';
 	import Icon from '#lib/ui/Icon.svelte';
 	import Logo from '#lib/ui/Logo.svelte';
@@ -36,60 +36,62 @@
 	let showIntro = $state(false);
 	let mounted = $state(false);
 
-	let mark: HTMLDivElement;
-	let word: HTMLDivElement;
-	let tagline: HTMLParagraphElement;
 	let bar: HTMLDivElement | undefined = $state();
+	let finished = false;
+	let releaseIntro: (() => void) | undefined;
+	let introTimer: ReturnType<typeof setTimeout> | undefined;
 
 	async function load() {
 		failed = null;
 		progress = 0;
-		for (const [i, step] of steps.entries()) {
-			current = step.label;
-			try {
-				await step.run();
-			} catch (e) {
-				failed = e instanceof Error ? e.message : 'Falha ao carregar.';
-				return false;
-			}
-			progress = (i + 1) / steps.length;
+		let complete = 0;
+		const count = async (step: Step) => {
+			await step.run();
+			progress = ++complete / steps.length;
+		};
+		try {
+			current = 'Preparando o BRASFC';
+			await Promise.all([
+				count(steps[0]), count(steps[1]),
+				count(steps[2]).then(() => count(steps[3]))
+			]);
+			current = 'Pronto';
+			loaded = true;
+			return true;
+		} catch (e) {
+			failed = e instanceof Error ? e.message : 'Falha ao carregar.';
+			return false;
 		}
-		current = 'Pronto';
-		loaded = true;
-		return true;
-	}
-
-	async function intro() {
-		if (motion.reduced) return;
-		const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
-		await animate(mark, { opacity: 1, scale: 1, rotate: 0 }, { spring: 'expressive', from: { opacity: 0, scale: 0.6, rotate: -8 } });
-		void animate(word, { opacity: 1, x: 0 }, { spring: 'page', from: { opacity: 0, x: -24 } });
-		await wait(260);
-		void animate(tagline, { opacity: 1, y: 0 }, { spring: 'gentle', from: { opacity: 0, y: 10 } });
-		await wait(900);
 	}
 
 	async function finish() {
+		if (finished) return;
+		finished = true;
 		markIntroSeen();
-		await goto('/menu', { replaceState: true, invalidateAll: true });
+		await goto(new URLSearchParams(location.search).has('rever') ? '/configuracoes' : '/menu', { replaceState: true });
 	}
 
 	function skip() {
 		if (skipping) return;
 		skipping = true;
+		releaseIntro?.();
 		if (loaded) void finish();
 	}
 
 	onMount(() => {
-		showIntro = shouldPlayIntro();
+		showIntro = !motion.reduced && !matchMedia('(prefers-reduced-motion: reduce)').matches && (new URLSearchParams(location.search).has('rever') || shouldPlayIntro());
 		mounted = true;
 		void (async () => {
-			const introPromise = showIntro ? loadMotion().then(intro) : Promise.resolve();
+			const introPromise = showIntro ? new Promise<void>((resolve) => {
+				releaseIntro = resolve;
+				introTimer = setTimeout(resolve, 4700);
+			}) : Promise.resolve();
 			const ok = await load();
 			if (!ok) return;
 			if (!skipping) await introPromise;
 			await finish();
 		})();
+		return () => { clearTimeout(introTimer); releaseIntro?.(); };
 	});
 
 	function onKey(e: KeyboardEvent) {
@@ -109,12 +111,27 @@
 
 <main class="splash" onclick={skip} role="presentation">
 	<div class="glow" aria-hidden="true"></div>
-	<div class="brand" class:static={mounted && (!showIntro || motion.reduced)}>
-		<div class="mark" bind:this={mark}><Logo size={120} wordmark={false} /></div>
-		<div class="word" bind:this={word}>BRAS<span>FC</span></div>
-		<p class="tagline" bind:this={tagline}>Seu clube. Sua carreira. Seu futebol.</p>
+	{#if showIntro && !skipping}
+	<div class="stadium" aria-hidden="true">
+		<div class="flood left"></div><div class="flood right"></div>
+		<div class="turf"></div><div class="trail"></div>
+		<svg class="ball" viewBox="0 0 120 120" aria-hidden="true">
+			<defs><radialGradient id="ball-light" cx="31%" cy="24%" r="68%"><stop stop-color="#fff9e7"/><stop offset=".57" stop-color="#b8cabf"/><stop offset="1" stop-color="#1a2f27"/></radialGradient>
+			<clipPath id="ball-edge"><circle cx="60" cy="60" r="56"/></clipPath></defs>
+			<circle cx="60" cy="60" r="56" fill="url(#ball-light)"/>
+			<g clip-path="url(#ball-edge)" stroke="#243934" stroke-width="2" stroke-linejoin="round">
+				<path fill="#0c1714" d="M60 32 83 47 75 74 47 76 37 50Z M10 27 32 14 34 32 19 51 2 46Z M94 15 111 30 119 54 98 53 89 32Z M27 96 46 91 60 116 33 119Z M83 88 104 79 116 90 96 112 77 110Z"/>
+				<path fill="none" d="M60 32 58 4 M83 47 98 53 M75 74 83 88 M47 76 46 91 M37 50 19 51 M19 51 12 69 27 96 M98 53 104 79 M60 116 77 110 M34 32 60 32 89 32"/>
+			</g>
+		</svg>
+		<div class="converge"></div>
 	</div>
-
+	{/if}
+	<div class="brand" class:cinematic={mounted && showIntro && !skipping}>
+		<div class="mark"><Logo size={120} wordmark={false} /></div>
+		<div class="word">BRAS<span>FC</span></div>
+		<p class="tagline">Seu clube. Sua carreira. Seu futebol.</p>
+	</div>
 	<div class="loader" aria-live="polite">
 		{#if failed}
 			<div class="error" role="alert">
@@ -160,13 +177,32 @@
 		align-items: center;
 		gap: var(--sp-4);
 	}
-	.brand:not(.static) > * {
-		opacity: 0;
+	.stadium { position: absolute; inset: 0; overflow: hidden; pointer-events: none; perspective: 650px; }
+	.flood { position: absolute; width: 68vw; height: 80vh; top: -18vh; background: radial-gradient(ellipse at 12% 10%, #ffedd3 0, #ded7aa4a 8%, #10b98118 26%, transparent 62%); transform-origin: top left; animation: lights 4.6s both; }
+	.left { left: 4vw; rotate: 24deg; }
+	.right { right: 4vw; transform: scaleX(-1); rotate: -24deg; transform-origin: top center; }
+	.turf { position: absolute; inset: 55% -24% -50%; transform: rotateX(62deg); background: repeating-linear-gradient(90deg, #0c2b22 0 12%, #143a30 12% 24%); mask-image: radial-gradient(ellipse, #000, transparent 65%); animation: lights 4.6s both; }
+	.ball { position: absolute; width: clamp(100px, 20vw, 220px); left: 50%; top: 46%; transform-origin: center; filter: drop-shadow(0 16px 18px #000b); animation: flight 4.6s cubic-bezier(.32,.02,.25,1) both; }
+	.trail, .converge { position: absolute; left: 50%; top: 45%; translate: -50% -50%; width: min(75vw, 650px); aspect-ratio: 1; border: 1px solid #57ffd2; border-radius: 45%; box-shadow: 0 0 18px #10b981; animation: converge 4.6s both; }
+	.trail { border-radius: 15%; animation-delay: 80ms; }
+	.cinematic { animation: signature 4.7s cubic-bezier(.16,.8,.21,1) both; }
+	.cinematic .word { animation: typography 4.7s both; }
+	@keyframes lights { 0% { opacity: 0; } 23%,58% { opacity: .8; } 100% { opacity: .16; } }
+	@keyframes flight {
+		0% { opacity: 0; transform: translate(-75%,-35%) scale(.4) rotate(-40deg); }
+		27% { opacity: 1; transform: translate(-50%,-45%) scale(.96) rotate(0deg); }
+		52% { transform: translate(-15%,-65%) scale(1.25) rotate(130deg); }
+		68% { opacity: 1; transform: translate(-50%,-50%) scale(.45) rotate(285deg); }
+		76%,100% { opacity: 0; transform: translate(-50%,-50%) scale(.02) rotate(340deg); }
 	}
+	@keyframes converge { 0%,37%,100% { opacity: 0; } 49% { opacity: .8; transform: scale(1.4) rotate(22deg); } 73% { transform: scale(.16) rotate(135deg); opacity: .8; } 82% { opacity: 0; } }
+	@keyframes signature { 0%,64% { opacity: 0; transform: scale(.72); } 84%,100% { opacity: 1; transform: scale(1); } }
+	@keyframes typography { 0%,72% { opacity: 0; translate: 0 12px; letter-spacing: .2em; } 96%,100% { opacity: 1; translate: 0 0; letter-spacing: .08em; } }
+	@media (prefers-reduced-motion: reduce) { .splash * { animation: none !important; } }
 	.word {
 		font-family: var(--font-display);
 		font-weight: 800;
-		font-size: calc(4.5rem * var(--text-scale));
+		font-size: min(calc(4.5rem * var(--text-scale)), 16vw);
 		letter-spacing: 0.08em;
 		line-height: 1;
 	}
