@@ -54,7 +54,7 @@
 		if (pending) return;
 		pending = true;
 		try {
-			const data = await api<{ session: Session | null }>(`${path}?live`, { body: action === 'pulse' ? { action } : {
+			const data = await api<{ session: Session | null }>(`${path}?live${action === 'pulse' ? '=pulse' : ''}`, { body: action === 'pulse' ? { action } : {
 				action, session: session?.id, sequence: session?.sequence, op: crypto.randomUUID(), ...extra
 			} });
 			if (!data.session) {

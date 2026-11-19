@@ -8,7 +8,7 @@ import { ManagementError } from '#lib/domain/management.ts';
 import type { RequestHandler } from './$types';
 
 const limiter = new RateLimiter(90, 60_000);
-const liveLimiter = new RateLimiter(180, 60_000);
+const pulseLimiter = new RateLimiter(100, 60_000);
 
 async function roomOf(db: Awaited<ReturnType<typeof getDb>>, raw: string) {
 	const code = normalizeCode(raw);
@@ -34,12 +34,14 @@ export const GET: RequestHandler = async (event) => {
 export const POST: RequestHandler = async (event) => {
 	const profile = requireProfile(event);
 	const live = event.url.searchParams.has('live');
-	if (!(live ? liveLimiter : limiter).take(profile.id)) error(429, 'Muitas ações. Aguarde alguns instantes.');
+	const pulse = event.url.searchParams.get('live') === 'pulse';
+	if (!(pulse ? pulseLimiter : limiter).take(profile.id)) error(429, 'Muitas ações. Aguarde alguns instantes.');
 	const db = await getDb();
 	const room = await roomOf(db, event.params.code);
 	try {
 		const t = performance.now();
 		const command = await readJson(event.request);
+		if (live && pulse !== (command.action === 'pulse')) error(400, 'Use o canal apropriado para o comando da rodada.');
 		const hub = getRealtimeHub();
 		const connection = { online: () => hub.onlineProfiles(room.id) };
 		if (live) {

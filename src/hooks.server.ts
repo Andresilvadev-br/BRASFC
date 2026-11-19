@@ -6,6 +6,7 @@ import { getRealtimeHub } from '#lib/server/realtime/hub.ts';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const mutationLimiter = new RateLimiter(90, 60_000);
+const livePulseLimiter = new RateLimiter(900, 60_000);
 
 /** Executado uma vez ao iniciar o servidor: migrações + hub de tempo real. */
 export const init: ServerInit = async () => {
@@ -43,7 +44,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 		} catch {
 			/* ambiente sem endereço (testes) */
 		}
-		if (!mutationLimiter.take(ip)) {
+		// A sala pode reunir vários perfis atrás do mesmo NAT. Pulsos têm orçamento próprio.
+		const pulse = event.request.method === 'POST' && /^\/api\/rooms\/[^/]+\/world$/.test(pathname) && event.url.searchParams.get('live') === 'pulse';
+		if (!(pulse ? livePulseLimiter : mutationLimiter).take(ip)) {
 			return new Response(JSON.stringify({ message: 'Muitas requisições. Aguarde um instante.' }), {
 				status: 429,
 				headers: { 'content-type': 'application/json', 'retry-after': '30' }
