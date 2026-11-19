@@ -19,6 +19,20 @@ export interface Release {
 
 export const RELEASES: Release[] = [
 	{
+		version: '0.6.0',
+		date: '2026-11-19',
+		title: 'Carreira de Jogador',
+		channel: 'desenvolvimento',
+		highlights: [
+			{ title: 'Central do jogador', text: 'Personalize seu atleta, acompanhe o calendário e dispute espaço no elenco.', icon: 'user' },
+			{ title: 'Desenvolvimento', text: 'Planeje treinos, cuide da condição física e receba avaliações nas partidas simuladas.', icon: 'training' },
+			{ title: 'Trajetória profissional', text: 'Negocie contratos, empréstimos e transferências e acompanhe as conquistas da carreira.', icon: 'briefcase' }
+		],
+		added: ['Criação e visualização do atleta em pixel art', 'Convocações, avaliações e objetivos individuais', 'Entrevistas, reputação e patrocínios individuais'],
+		compat: { database: 'mesmo esquema da Dev 0.5', saves: 'carreiras anteriores são carregadas com valores iniciais para os novos campos' },
+		next: []
+	},
+	{
 		version: '0.5.0',
 		date: '2026-11-18',
 		title: 'Manager Update',

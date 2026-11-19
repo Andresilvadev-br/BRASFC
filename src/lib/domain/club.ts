@@ -158,6 +158,10 @@ export const DISMISSAL_THRESHOLD = 18;
 const BRAND_A = ['Vértice', 'Aurora', 'Maré Alta', 'Cerrado', 'Ipê', 'Horizonte', 'Pampa', 'Litoral', 'Serra Azul', 'Brisa', 'Jangada', 'Coqueiral', 'Mandacaru', 'Araucária', 'Buriti'];
 const BRAND_B = ['Energia', 'Seguros', 'Telecom', 'Bebidas', 'Logística', 'Banco Digital', 'Construtora', 'Farmácias', 'Agro', 'Móveis', 'Calçados', 'Turismo'];
 
+export function sponsorBrand(rng: ReturnType<typeof createRng>): string {
+	return `${rng.pick(BRAND_A)} ${rng.pick(BRAND_B)}`;
+}
+
 export type SponsorSlot = 'master' | 'manga' | 'material';
 export const SPONSOR_SLOTS: Record<SponsorSlot, { label: string; share: number }> = {
 	master: { label: 'Patrocínio master', share: 1 },
@@ -191,7 +195,7 @@ export function sponsorOffers(seed: number, clubId: string, season: number, tier
 	for (const slot of Object.keys(SPONSOR_SLOTS) as SponsorSlot[]) {
 		if (taken.includes(slot)) continue;
 		for (let k = 0; k < 3; k++) {
-			const brand = `${rng.pick(BRAND_A)} ${rng.pick(BRAND_B)}`;
+			const brand = sponsorBrand(rng);
 			const style = k; // 0 = valor fixo alto e exigente; 1 = equilibrado; 2 = bônus por metas
 			const monthly = roundMoney(base * SPONSOR_SLOTS[slot].share * (style === 0 ? 1.15 : style === 1 ? 1 : 0.8) * (0.9 + rng.next() * 0.2));
 			const seasons = style === 2 ? 3 : rng.int(1, 2);

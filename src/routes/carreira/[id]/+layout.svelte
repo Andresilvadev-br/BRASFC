@@ -20,7 +20,7 @@
 		{
 			label: 'Jogo',
 			items: [
-				{ href: base, label: 'Painel', icon: 'home' },
+				{ href: base, label: coach ? 'Painel' : 'Central do jogador', icon: 'home' },
 				{ href: `${base}/partida`, label: 'Dia de jogo', icon: 'play' }
 			]
 		},
@@ -29,7 +29,7 @@
 			items: [
 				{ href: `${base}/elenco`, label: 'Elenco', icon: 'squad' },
 				...(coach ? [{ href: `${base}/taticas`, label: 'Táticas', icon: 'tactics' as IconName }] : []),
-				{ href: `${base}/treinos`, label: 'Treinos', icon: 'training' }
+				{ href: coach ? `${base}/treinos` : `${base}?secao=treino`, label: 'Treinos', icon: 'training' }
 			]
 		},
 		...(coach
@@ -46,7 +46,7 @@
 						]
 					}
 				]
-			: [{ label: 'Carreira', items: [{ href: `${base}/clube`, label: 'Minha carreira', icon: 'user' as IconName, badge: data.career.data.playerCareer?.offers?.length || undefined }] }]),
+			: [{ label: 'Carreira', items: [{ href: `${base}?secao=mercado`, label: 'Contratos e mercado', icon: 'user' as IconName, badge: data.career.data.playerCareer?.offers?.length || undefined }] }]),
 		{
 			label: 'Mundo',
 			items: [
@@ -61,7 +61,8 @@
 		}
 	]);
 	const items = $derived(groups.flatMap((g) => g.items));
-	const current = $derived(items.find((i) => i.href === page.url.pathname)?.href ?? (page.url.pathname.startsWith(`${base}/`) ? null : base));
+	const current = $derived(items.find((i) => i.href === page.url.pathname + page.url.search)?.href ??
+		items.find((i) => i.href === page.url.pathname)?.href ?? (page.url.pathname.startsWith(`${base}/`) ? null : base));
 	const step = $derived(data.view.step);
 	const stepLabel = $derived(!step ? 'Fim da temporada' : step.kind === 'cup' ? 'Copa do Brasil' : `Rodada ${step.round}`);
 

@@ -4,6 +4,8 @@
 	import { page } from '$app/state';
 	import { api, ApiError } from '#lib/api.ts';
 	import {
+		APPEARANCE_FIELDS,
+		APPEARANCE_OPTIONS,
 		DEFAULT_APPEARANCE,
 		HAIR_COLORS,
 		HAIR_STYLE_LABELS,
@@ -11,7 +13,7 @@
 		SKIN_TONES,
 		type Appearance
 	} from '#lib/domain/appearance.ts';
-	import { boardExpectation, MODE_LABELS, type Career, type CareerMode } from '#lib/domain/career.ts';
+	import { boardExpectation, MODE_LABELS, type Career, type CareerMode, type DominantFoot } from '#lib/domain/career.ts';
 	import { CLUBS, getClub } from '#lib/domain/clubs.ts';
 	import Segmented from '#lib/ui/Segmented.svelte';
 	import { CLUBES_2026, toGameClub } from '#lib/data/brasil.ts';
@@ -40,6 +42,11 @@
 	let mode = $state<CareerMode | null>(initialMode === 'coach' || initialMode === 'player' ? initialMode : null);
 	let step = $state<Step>(initialMode === 'coach' || initialMode === 'player' ? 'perfil' : 'modo');
 	let personName = $state('');
+	let age = $state<number | undefined>(18);
+	let nationality = $state('Brasil');
+	let foot = $state<DominantFoot>('direito');
+	let turned = $state(false);
+	const appearanceFields = Object.keys(APPEARANCE_OPTIONS) as Array<keyof typeof APPEARANCE_OPTIONS>;
 	let position = $state<Position>('ATA');
 	let appearance = $state<Appearance>({ ...DEFAULT_APPEARANCE });
 	let clubId = $state<string | null>(null);
@@ -79,7 +86,11 @@
 		errors = {};
 		if (name.length < 2) errors.personName = 'Digite seu nome (pelo menos 2 letras).';
 		else if (name.length > 40) errors.personName = 'Use no máximo 40 caracteres.';
-		return !errors.personName;
+		if (mode === 'player') {
+			if (age === undefined || !Number.isInteger(age) || age < 16 || age > 35) errors.age = 'Escolha uma idade entre 16 e 35 anos.';
+			if (nationality.trim().length < 2) errors.nationality = 'Informe sua nacionalidade.';
+		}
+		return Object.keys(errors).length === 0;
 	}
 
 	function next() {
@@ -98,13 +109,13 @@
 		errors = {};
 		try {
 			const res = await api<{ career: Career }>('/api/careers', {
-				body: { mode, personName, clubId, appearance, world, ...(mode === 'player' ? { position } : {}) }
+				body: { mode, personName, clubId, appearance, world, ...(mode === 'player' ? { position, age, nationality, foot } : {}) }
 			});
 			created = res.career;
 		} catch (e) {
 			if (e instanceof ApiError && e.errors) {
 				errors = e.errors;
-				if (e.errors.personName) step = 'perfil';
+				if (['personName', 'appearance', 'position', 'age', 'nationality', 'foot'].some((field) => e.errors?.[field])) step = 'perfil';
 			}
 			notify({ icon: 'alert', tone: 'error', title: e instanceof Error ? e.message : 'Não foi possível criar a carreira.' });
 		} finally {
@@ -158,7 +169,7 @@
 				<p class="muted">Você pode ter várias carreiras salvas, dos dois tipos.</p>
 			</div>
 			<div class="modes">
-				{#each [{ id: 'coach' as const, title: 'Treinador', tagline: 'Comande o clube inteiro', items: ['Escalação e tática do time', 'Plano semanal de treinos', 'Elenco, comissão e diretoria', 'Finanças, base e olheiros (em breve)'], appearance: { skin: 3, hairColor: 0, hairStyle: 'curto' as const }, kit: coachKit(), ball: false }, { id: 'player' as const, title: 'Jogador', tagline: 'Viva a carreira de um atleta', items: ['Crie seu jogador e escolha a posição', 'Treino individual e evolução', 'Lute pela titularidade', 'Contratos, empresário e imprensa (em breve)'], appearance: DEFAULT_APPEARANCE, kit: { shirt: '#10B981', trim: '#E7EDF0', shorts: '#101418', socks: '#10B981' }, ball: true }] as m, i (m.id)}
+				{#each [{ id: 'coach' as const, title: 'Treinador', tagline: 'Comande o clube inteiro', items: ['Escalação e tática do time', 'Plano semanal de treinos', 'Elenco, comissão e diretoria', 'Finanças, base e olheiros'], appearance: { skin: 3, hairColor: 0, hairStyle: 'curto' as const }, kit: coachKit(), ball: false }, { id: 'player' as const, title: 'Jogador', tagline: 'Viva a carreira de um atleta', items: ['Crie seu jogador e escolha a posição', 'Treino individual e evolução', 'Lute pela titularidade', 'Contratos, empresário e imprensa'], appearance: DEFAULT_APPEARANCE, kit: { shirt: '#10B981', trim: '#E7EDF0', shorts: '#101418', socks: '#10B981' }, ball: true }] as m, i (m.id)}
 					<button class="mode" onclick={() => chooseMode(m.id)} use:enter={{ index: i + 1 }} data-umx-press="0.98">
 						<div class="mode-art">
 							<Pixel variant="full" appearance={m.appearance} kit={m.kit} size={230} ball={m.ball} idle />
@@ -169,8 +180,8 @@
 							<p>{m.tagline}</p>
 							<ul>
 								{#each m.items as item (item)}
-									<li class:soon={item.includes('em breve')}>
-										<Icon name={item.includes('em breve') ? 'lock' : 'check'} size={16} stroke={2.2} />{item}
+									<li>
+										<Icon name="check" size={16} stroke={2.2} />{item}
 									</li>
 								{/each}
 							</ul>
@@ -199,6 +210,15 @@
 					</label>
 
 					{#if mode === 'player'}
+						<div class="profile-options">
+							<label class="field">Nacionalidade <input bind:value={nationality} maxlength="40" aria-invalid={!!errors.nationality} />
+								{#if errors.nationality}<small class="err" role="alert">{errors.nationality}</small>{/if}
+							</label>
+							<label class="field">Idade <input type="number" min="16" max="35" bind:value={age} aria-invalid={!!errors.age} />
+								{#if errors.age}<small class="err" role="alert">{errors.age}</small>{/if}
+							</label>
+							<label class="field">Pé dominante <select bind:value={foot}><option value="direito">Direito</option><option value="esquerdo">Esquerdo</option></select></label>
+						</div>
 						<fieldset class="field">
 							<legend>Onde você joga? <span class="muted">Toque na posição no campo</span></legend>
 							<PositionPicker bind:value={position} />
@@ -236,7 +256,20 @@
 							{/each}
 						</div>
 					</fieldset>
-					<p class="subtle note"><Icon name="info" size={16} /> Rosto, acessórios, mangas e meiões personalizáveis chegam em uma próxima etapa.</p>
+					{#if mode === 'player'}
+						<div class="profile-options">
+							{#each appearanceFields as key (key)}
+								<label class="field">
+									{APPEARANCE_FIELDS[key]}
+									<select aria-label={APPEARANCE_FIELDS[key]} value={appearance[key] ?? Object.keys(APPEARANCE_OPTIONS[key])[0]} onchange={(e) => (appearance = { ...appearance, [key]: e.currentTarget.value })}>
+										{#each Object.entries(APPEARANCE_OPTIONS[key]) as [value, label] (value)}
+											<option {value}>{label}</option>
+										{/each}
+									</select>
+								</label>
+							{/each}
+						</div>
+					{/if}
 
 					<div class="actions">
 						<Button variant="primary" size="lg" iconRight="arrowRight" onclick={next}>Escolher clube</Button>
@@ -244,8 +277,11 @@
 				</div>
 				<div class="preview" aria-label="Pré-visualização do personagem" data-umx-enter>
 					<div class="podium">
-						<Pixel variant="full" {appearance} kit={previewKit} size={380} ball={mode === 'player'} idle label="Seu personagem" />
+						<div class:turned><Pixel variant="full" {appearance} kit={previewKit} size={380} ball={mode === 'player'} idle label="Seu personagem" /></div>
 					</div>
+					{#if mode === 'player'}
+						<Button size="sm" onclick={() => (turned = !turned)} aria-pressed={turned}>Espelhar prévia</Button>
+					{/if}
 					<strong class="pname">{personName.trim() || (mode === 'coach' ? 'Treinador' : 'Jogador')}</strong>
 					<span class="muted">{mode === 'player' ? POSITION_INFO[position].label : 'Treinador principal'}</span>
 				</div>
@@ -273,7 +309,7 @@
 							<Crest clubId={club.id} size={44} />
 							<div>
 								<strong>{club.name}</strong>
-								<small class="muted">{competitionOf(club.id)} · Meta: {boardExpectation(club, competitionOf(club.id))}</small>
+								<small class="muted">{competitionOf(club.id)}{#if mode === 'coach'} · Meta: {boardExpectation(club, competitionOf(club.id))}{/if}</small>
 							</div>
 						</div>
 					{/if}
@@ -318,6 +354,10 @@
 {/if}
 
 <style>
+	.profile-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr)); gap: 10px; }
+	.profile-options :is(input, select) { width: 100%; min-width: 0; padding: .65rem; color: var(--text); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; }
+	.turned { transform: scaleX(-1); }
+
 	.worldpick {
 		display: flex;
 		flex-wrap: wrap;
@@ -484,12 +524,6 @@
 	.mode li :global(.icon) {
 		color: var(--emerald-strong);
 	}
-	.mode li.soon {
-		color: var(--text-3);
-	}
-	.mode li.soon :global(.icon) {
-		color: var(--text-3);
-	}
 	.go {
 		display: inline-flex;
 		align-items: center;
@@ -599,12 +633,6 @@
 	.swatch.on {
 		border-color: var(--text);
 		box-shadow: 0 0 0 3px var(--emerald);
-	}
-	.note {
-		display: flex;
-		align-items: center;
-		gap: var(--sp-2);
-		font-size: var(--fs-sm);
 	}
 	.actions {
 		display: flex;

@@ -4,12 +4,12 @@ import { isAppearance, type Appearance } from './appearance.ts';
 import { CLUBES_2026, TEMPORADA_2026 } from '#lib/data/brasil.ts';
 import { CLUBS, getClub, LEAGUE, type Club } from './clubs.ts';
 import type { TrainingPlan } from './drills.ts';
-import { DIVISION_LABELS, firstRoundDate, initialLeague, seasonStartDate, type LeagueState, type SeasonSummary, type World } from './league.ts';
+import { DIVISION_LABELS, divisionOf, firstRoundDate, initialLeague, seasonStartDate, type LeagueState, type SeasonSummary, type World } from './league.ts';
 import type { TacticalState } from './tactical.ts';
 import { initialCup, type CupState } from './cup.ts';
 import type { ClubState } from './management.ts';
 import type { MarketState } from './market.ts';
-import type { PlayerCareerState } from './careerlife.ts';
+import { initialPlayerCareer, type PlayerCareerState } from './careerlife.ts';
 import { formatLong } from './dates.ts';
 import { isPosition, POSITION_INFO, type Position } from './positions.ts';
 import { createRng, deriveSeed } from './rng.ts';
@@ -25,7 +25,11 @@ export const MODE_LABELS: Record<CareerMode, string> = {
 	player: 'Carreira de Jogador'
 };
 
+export type DominantFoot = 'direito' | 'esquerdo';
+
 export interface PlayerProfile {
+	nationality?: string;
+	foot?: DominantFoot;
 	age: number;
 	overall: number;
 	potential: number;
@@ -48,7 +52,7 @@ league?: LeagueState;
 /** primeira temporada da carreira */
 firstSeason?: number;
 /** domínio tático progressivo do clube */
-tactical?: TacticalState;
+tactical?: TacticalState | null;
 /** plano semanal de treinos */
 trainingPlan?: TrainingPlan;
 /** condição física persistente de cada atleta do clube */
@@ -94,6 +98,9 @@ personName: string;
 clubId: string;
 appearance?: Appearance;
 position?: Position;
+age?: number;
+nationality?: string;
+foot?: DominantFoot;
 /** 'brasil' = clubes reais (Séries A/B/C 2026); padrão: liga fictícia */
 world?: World;
 }
@@ -130,14 +137,21 @@ export function validateCreateCareer(input: unknown): ValidationResult<CreateCar
 	}
 
 	let position: Position | undefined;
+	const age = v.age === undefined ? 18 : Number.isInteger(v.age) ? Number(v.age) : 0;
+	const nationality = v.nationality === undefined ? 'Brasil' : typeof v.nationality === 'string' ? normalizeName(v.nationality) : '';
+	const foot = v.foot === undefined ? 'direito' : v.foot;
+
 	if (mode === 'player') {
+		if (age < 16 || age > 35) errors.age = 'Escolha uma idade entre 16 e 35 anos.';
+		if (nationality.length < 2 || nationality.length > 40 || !NAME_PATTERN.test(nationality)) errors.nationality = 'Informe sua nacionalidade.';
+		if (foot !== 'esquerdo' && foot !== 'direito') errors.foot = 'Escolha o pé dominante.';
 		if (isPosition(v.position)) position = v.position;
 		else errors.position = 'Escolha a posição do seu jogador.';
 		if (!appearance) errors.appearance ??= 'Defina a aparência do seu jogador.';
 	}
 
 	if (Object.keys(errors).length) return { ok: false, errors };
-	return { ok: true, value: { mode: mode as CareerMode, personName, clubId, appearance, position, world } };
+	return { ok: true, value: { mode: mode as CareerMode, personName, clubId, appearance, position, world, ...(mode === 'player' ? { age, nationality, foot: foot as DominantFoot } : {}) } };
 }
 
 /** Dados iniciais persistidos de uma carreira nova. */
@@ -147,15 +161,19 @@ export function initialCareerData(input: CreateCareerInput, seed: number): Caree
 	const data: CareerData = { appearance: input.appearance, world, firstSeason: start.season, league: initialLeague(world, start.season), ...(world === 'brasil' ? { cup: initialCup(start.season) } : {}) };
 	if (input.mode === 'player' && input.position) {
 		const rng = createRng(deriveSeed(seed, 'player'));
-		const overall = rng.int(54, 60);
+		const age = input.age ?? 18;
+		const overall = rng.int(54, 60) + Math.min(12, Math.max(0, (age - 18) * 2));
 		data.position = input.position;
 		data.player = {
-			age: 18,
+			age,
+			nationality: input.nationality ?? 'Brasil',
+			foot: input.foot ?? 'direito',
 			overall,
-			potential: Math.min(92, overall + rng.int(18, 28)),
+			potential: Math.min(92, overall + Math.max(3, rng.int(18, 28) - Math.max(0, age - 20) * 2)),
 			number: input.position === 'GOL' ? 31 : rng.int(26, 39),
 			reputation: 1
 		};
+		data.playerCareer = initialPlayerCareer(seed, data.player, divisionOf(data.league!, input.clubId), start.season, input.clubId, start.date);
 		data.playerFocus = input.position === 'GOL' ? 'goleiro' : 'fisico';
 	} else {
 		data.trainingFocus = 'equilibrado';
@@ -213,7 +231,7 @@ export function welcomeMessages(input: CreateCareerInput): NewMessage[] {
 	const disclaimer: NewMessage = {
 		kind: 'normal',
 		sender: 'Equipe BRASFC',
-		subject: 'Sobre esta versão (Dev 0.4)',
+		subject: 'Sobre os dados deste universo',
 		body:
 			world === 'brasil'
 				? 'Clubes e cidades das Séries A, B, C e D de 2026 e os participantes da Copa do Brasil 2026 foram conferidos em fontes públicas. Elencos reais e técnicos ainda não foram importados: os jogadores têm nomes fictícios e a força de cada clube é uma estimativa do BRASFC. Temporadas a partir de 2027 seguem as regras anunciadas pela CBF (Série C com 24 e 28 clubes) e projeções do BRASFC quando não há regulamento.'
@@ -259,7 +277,7 @@ export function welcomeMessages(input: CreateCareerInput): NewMessage[] {
 			kind: 'normal',
 			sender: 'Preparador físico',
 			subject: 'Avaliação inicial concluída',
-			body: 'Sua avaliação física foi registrada. Escolha seu foco de treino individual na área de treinamentos.',
+			body: 'Sua avaliação física foi registrada. Agende sessões individuais em Desenvolvimento, na central do jogador.',
 			gameDate: date
 		},
 		disclaimer

@@ -56,7 +56,9 @@
 		void (async () => {
 			void animate(sweep, { x: 0, opacity: 1 }, { spring: 'page', from: { x: -window.innerWidth, opacity: 1 } });
 			await wait(180);
+			if (cancelled) return;
 			await animate(crest, { scale: 1, opacity: 1, rotate: 0 }, { spring: 'expressive', from: { scale: 0.4, opacity: 0, rotate: -12 } });
+			if (cancelled) return;
 			const r = crest.getBoundingClientRect();
 			celebrate(r.left + r.width / 2, r.top + r.height / 2);
 			void animate(figure, { x: 0, opacity: 1 }, { spring: 'page', from: { x: 80, opacity: 0 } });

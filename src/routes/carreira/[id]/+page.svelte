@@ -13,6 +13,7 @@
 	import { playerKit } from '#lib/pixel/kits.ts';
 	import AssistantTips from '#lib/ui/AssistantTips.svelte';
 	import Button from '#lib/ui/Button.svelte';
+	import PlayerHub from '#lib/ui/career/PlayerHub.svelte';
 	import StandingsTable from '#lib/ui/career/StandingsTable.svelte';
 	import Crest from '#lib/ui/Crest.svelte';
 	import Icon from '#lib/ui/Icon.svelte';
@@ -100,6 +101,9 @@
 
 <svelte:head><title>Painel · {v.club.name} · BRASFC</title></svelte:head>
 
+{#if c.mode === 'player' && c.data.player && c.data.position}
+	<PlayerHub career={c} view={v} recent={data.recent} history={data.playerHistory} />
+{:else}
 <div class="greet" use:reveal>
 	<span class="eyebrow">{formatLong(c.gameDate)}</span>
 	<h1 class="display">Olá, {c.personName.split(' ')[0]}</h1>
@@ -237,6 +241,8 @@
 		</ul>
 	</section>
 </div>
+
+{/if}
 
 <style>
 	.greet {
