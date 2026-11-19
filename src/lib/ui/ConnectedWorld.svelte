@@ -193,21 +193,21 @@
 				<article><h3>{current ? 'Mudar de função' : 'Escolher clube e função'}</h3>
 					<form onsubmit={roleForm}>
 						<label>Clube<select aria-label="Clube" bind:value={club} required><option value="">Selecione</option>{#each world.clubs as c}<option value={c.id}>{c.name}</option>{/each}</select></label>
-						<label>Função<select bind:value={role}><option value="coach">Treinador</option><option value="assistant">Auxiliar</option>{#if !current}<option value="player">Jogador</option>{/if}</select></label>
+						<label>Função<select aria-label="Função" bind:value={role}><option value="coach">Treinador</option><option value="assistant">Auxiliar</option>{#if !current}<option value="player">Jogador</option>{/if}</select></label>
 						{#if role === 'player'}
 							<div class="lineup">
 								<label>Nome<input bind:value={name} required maxlength="40" /></label>
-								<label>Posição<select bind:value={position}>{#each POSITIONS as p}<option value={p}>{POSITION_INFO[p].label}</option>{/each}</select></label>
+								<label>Posição<select aria-label="Posição" bind:value={position}>{#each POSITIONS as p}<option value={p}>{POSITION_INFO[p].label}</option>{/each}</select></label>
 								<label>Idade<input type="number" bind:value={age} min="16" max="35" required /></label>
 								<label>Nacionalidade<input bind:value={nationality} required maxlength="40" /></label>
-								<label>Pé dominante<select bind:value={foot}><option value="direito">Direito</option><option value="esquerdo">Esquerdo</option></select></label>
+								<label>Pé dominante<select aria-label="Pé dominante" bind:value={foot}><option value="direito">Direito</option><option value="esquerdo">Esquerdo</option></select></label>
 							</div>
 							<details><summary>Personalizar aparência</summary>
 								<div class="avatar"><Pixel variant="full" {appearance} kit={playerKit(club, position)} size={136} ball={false} /></div>
 								<div class="lineup">
 									<label>Pele<select bind:value={appearance.skin}>{#each SKIN_TONES as _, i}<option value={i}>Tom {i + 1}</option>{/each}</select></label>
 									<label>Cor do cabelo<select bind:value={appearance.hairColor}>{#each HAIR_COLORS as _, i}<option value={i}>Cor {i + 1}</option>{/each}</select></label>
-									<label>Cabelo<select bind:value={appearance.hairStyle}>{#each HAIR_STYLES as hair}<option value={hair}>{HAIR_STYLE_LABELS[hair]}</option>{/each}</select></label>
+									<label>Cabelo<select aria-label="Cabelo" bind:value={appearance.hairStyle}>{#each HAIR_STYLES as hair}<option value={hair}>{HAIR_STYLE_LABELS[hair]}</option>{/each}</select></label>
 									{#each appearanceFields as field}
 										<label>{APPEARANCE_FIELDS[field]}<select value={appearance[field] ?? Object.keys(APPEARANCE_OPTIONS[field])[0]} onchange={(event) => Object.assign(appearance, { [field]: event.currentTarget.value })}>
 											{#each Object.entries(APPEARANCE_OPTIONS[field]) as [value, label]}<option {value}>{label}</option>{/each}
