@@ -14,6 +14,8 @@
 	p{color:#aab6bd;line-height:1.5}
 	button{margin-top:14px;padding:11px 22px;border-radius:999px;border:0;background:#10b981;color:#06140f;font-weight:700;font-size:15px;cursor:pointer}
 	button:focus-visible{outline:2px solid #e8b86a;outline-offset:3px}
+	button.alt{background:transparent;color:#e7edf0;box-shadow:inset 0 0 0 1px #3a4650;margin-left:8px}
+	.hint{font-size:13px}
 	.dot{width:10px;height:10px;border-radius:50%;background:#e8b86a;display:inline-block;margin-right:8px;animation:p 1.6s ease-in-out infinite}
 	@keyframes p{50%{opacity:.3}}
 	@media (prefers-reduced-motion:reduce){.dot{animation:none}}
@@ -25,11 +27,19 @@
 	<h1><i class="dot"></i>Sem conexão com o servidor</h1>
 	<p>As partidas e a carreira são processadas no servidor do BRASFC para manter tudo salvo e seguro. Verifique sua internet.</p>
 	<button id="r" autofocus>Tentar novamente</button>
+	<button id="o" class="alt" hidden>Jogar offline</button>
+	<p id="oh" class="hint" hidden>No modo offline o jogo roda no seu computador e as carreiras ficam salvas aqui (separadas das carreiras online).</p>
 	<p id="s" aria-live="polite"></p>
 </div></main>
 <script>
 	const retry = () => { document.getElementById('s').textContent = 'Conectando…'; window.brasfcDesktop.retry(); };
 	document.getElementById('r').addEventListener('click', retry);
+	if (new URLSearchParams(location.search).get('offline') === '1') {
+		const o = document.getElementById('o');
+		o.hidden = false;
+		document.getElementById('oh').hidden = false;
+		o.addEventListener('click', () => { document.getElementById('s').textContent = 'Abrindo o jogo offline…'; window.brasfcDesktop.setMode('offline'); });
+	}
 	window.addEventListener('online', retry);
 	setInterval(() => { if (navigator.onLine) retry(); }, 15000);
 </script>

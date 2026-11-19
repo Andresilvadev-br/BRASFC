@@ -11,6 +11,22 @@
 	import Panel from '#lib/ui/Panel.svelte';
 	import ScreenHeader from '#lib/ui/ScreenHeader.svelte';
 	import DesktopDownload from '#lib/ui/desktop/DesktopDownload.svelte';
+	import { desktop, openSavesFolder, setDesktopMode, type DesktopMode } from '#lib/stores/desktop.svelte.ts';
+
+	const MODES: Array<Opt<DesktopMode>> = [
+		{ value: 'online', label: 'Online', hint: 'Servidor oficial: carreiras na nuvem e multiplayer', icon: 'globe' },
+		{ value: 'offline', label: 'Offline', hint: 'Sem internet: o jogo roda e salva neste computador', icon: 'save' }
+	];
+	let switching = $state(false);
+	async function chooseMode(m: DesktopMode) {
+		if (m === desktop.mode || switching) return;
+		switching = true;
+		try {
+			if (!(await setDesktopMode(m))) notify({ icon: 'alert', tone: 'error', title: 'Não foi possível trocar o modo', detail: 'Tente de novo.' });
+		} finally {
+			switching = false;
+		}
+	}
 
 	let { data } = $props();
 	let name = $state(untrack(() => data.profile?.displayName ?? ''));
@@ -115,6 +131,21 @@
 		</Panel>
 
 		<Panel title="Janela e aplicativo" icon="windows" index={4} class="wide">
+			{#if desktop.active && (desktop.offlineAvailable || desktop.mode === 'offline')}
+				<div class="opts two" role="radiogroup" aria-label="Modo de jogo do aplicativo">
+					{#each MODES as o (o.value)}
+						<button type="button" role="radio" aria-checked={desktop.mode === o.value} class="opt" disabled={switching} onclick={() => chooseMode(o.value)}>
+							<span class="oi"><Icon name={o.icon} size={22} /></span>
+							<strong>{o.label}</strong>
+							<small>{o.hint}</small>
+						</button>
+					{/each}
+				</div>
+				<p class="muted small modehint">
+					As carreiras online e offline são separadas: cada modo mostra as suas. No offline o multiplayer não fica disponível.
+					{#if desktop.mode === 'offline'}<button type="button" class="link" onclick={openSavesFolder}>Abrir a pasta dos saves</button>{/if}
+				</p>
+			{/if}
 			<DesktopDownload />
 			<p class="muted small">No aplicativo do Windows: a janela abre sempre centralizada na tela; <kbd>F11</kbd> ou <kbd>Alt</kbd>+<kbd>Enter</kbd> alternam a tela cheia.</p>
 		</Panel>
@@ -152,6 +183,22 @@
 	.opts {
 		display: grid;
 		gap: var(--sp-2);
+	}
+	.opts.two {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		margin-bottom: var(--sp-3);
+	}
+	.modehint {
+		margin: 0 0 var(--sp-3);
+	}
+	.link {
+		border: 0;
+		background: none;
+		padding: 0;
+		color: var(--emerald-strong);
+		text-decoration: underline;
+		font: inherit;
+		cursor: pointer;
 	}
 	.opts.three {
 		grid-template-columns: repeat(3, minmax(0, 1fr));

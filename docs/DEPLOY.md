@@ -143,4 +143,12 @@ App ≤ 512 MB (heap Node 384 MB), PostgreSQL ≤ 512 MB, Caddy ≤ 128 MB por a
 - Workflow `.github/workflows/desktop.yml`: em push que altere `desktop/`, roda o autoteste da janela (centralização e tela cheia) num Windows do GitHub e publica `BRASFC-Setup.exe` como release `v<versão>` — só se essa versão ainda não existir. Para lançar outra versão do app, aumente `version` em `desktop/package.json`.
 - O botão de download consulta `/api/desktop`, que só devolve link quando a release tem o instalador.
 - Teste local: `cd desktop && npm ci && npx electron . --selftest` (imprime `SELFTEST {...}` e sai com 0 se a janela abriu centralizada e entrou/saiu da tela cheia). Instalador local: `npm run dist`.
+
+### Modo offline (app 1.1.0)
+
+- O app tem dois modos, escolhidos em **Configurações → Janela e aplicativo** ou no indicador **Online/Offline** da barra da janela; sem internet, a tela de erro oferece **Jogar offline**. O app lembra o último modo.
+- **Offline**: o jogo completo (o mesmo servidor do site, `build/` + `server/`) roda dentro do app em `http://127.0.0.1:47615` (outra porta se estiver ocupada), com banco PGlite em `%APPDATA%/BRASFC/saves/pglite`. Nada sai do computador. O banco é fechado com segurança ao sair.
+- As carreiras online (servidor) e offline (computador) são separadas. No offline não há multiplayer.
+- O jogo offline é empacotado no instalador por `desktop/scripts/prepare-offline.mjs` (o CI roda `npm ci && npm run build` na raiz e depois o script com `--install`), em `resources/app-offline`. Ele só muda quando sai um novo instalador: para levar uma versão nova do jogo ao offline, aumente `version` em `desktop/package.json`.
+- Teste local do offline sem instalador: `npm run build && node desktop/scripts/prepare-offline.mjs --install && cd desktop && npx electron .`
 - O instalador ainda não tem assinatura digital paga: o SmartScreen pode pedir confirmação na primeira execução.

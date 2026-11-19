@@ -29,7 +29,17 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: desktop/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+      # Jogo offline embutido: build de produção do jogo + servidor + dependências de execução.
+      - name: Build do jogo (modo offline)
+        working-directory: .
+        shell: bash
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          node desktop/scripts/prepare-offline.mjs --install
       - run: npm ci --no-audit --no-fund
       - name: Autoteste da janela (centralização e tela cheia)
         shell: bash
@@ -60,7 +70,7 @@ jobs:
           if [ "${{ steps.ver.outputs.exists }}" = "true" ]; then
             gh release upload "v$V" $FILES --clobber --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "v$V" $FILES --repo "$GITHUB_REPOSITORY" --title "BRASFC para Windows $V" --notes "Instalador do BRASFC para Windows 10 e 11 (64 bits): janela sempre centralizada, tela cheia (F11) e atualização automática. O jogo em si se atualiza pelo servidor."
+            gh release create "v$V" $FILES --repo "$GITHUB_REPOSITORY" --title "BRASFC para Windows $V" --notes "Instalador do BRASFC para Windows 10 e 11 (64 bits): janela sempre centralizada, tela cheia (F11), modo offline (o jogo roda e salva no computador) e atualização automática. O modo online se atualiza pelo servidor; o offline, a cada nova versão do aplicativo."
           fi
       - name: Instalador já publicado
         if: steps.ver.outputs.done == 'true'

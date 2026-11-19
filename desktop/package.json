@@ -1,8 +1,8 @@
 {
   "name": "brasfc-desktop",
   "productName": "BRASFC",
-  "version": "1.0.0",
-  "description": "BRASFC para Windows — janela própria, tela cheia e atualização automática.",
+  "version": "1.1.0",
+  "description": "BRASFC para Windows — janela própria, tela cheia, modo offline e atualização automática.",
   "author": "BRASFC",
   "main": "main.js",
   "private": true,
@@ -10,7 +10,8 @@
     "start": "electron .",
     "selftest": "electron . --selftest",
     "dist": "electron-builder --win --x64 --publish never",
-    "release": "electron-builder --win --x64 --publish always"
+    "release": "electron-builder --win --x64 --publish always",
+    "offline": "node scripts/prepare-offline.mjs --install"
   },
   "dependencies": {
     "electron-updater": "6.8.11"
@@ -23,9 +24,28 @@
     "appId": "br.brasfc.desktop",
     "productName": "BRASFC",
     "artifactName": "BRASFC-Setup.${ext}",
-    "directories": { "output": "dist", "buildResources": "assets" },
-    "files": ["main.js", "preload.js", "pages/**", "assets/icon.png"],
-    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "icon": "assets/icon.png" },
+    "directories": {
+      "output": "dist",
+      "buildResources": "assets"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "local-server.js",
+      "pages/**",
+      "assets/icon.png"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png"
+    },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
@@ -36,6 +56,22 @@
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false
     },
-    "publish": [{ "provider": "github", "owner": "Andresilvadev-br", "repo": "BRASFC", "releaseType": "release" }]
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Andresilvadev-br",
+        "repo": "BRASFC",
+        "releaseType": "release"
+      }
+    ],
+    "extraResources": [
+      {
+        "from": "app-offline",
+        "to": "app-offline",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ]
   }
 }
