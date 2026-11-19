@@ -231,6 +231,22 @@ try {
 			Get-Process BRASFC -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $env:BRASFC_UPGRADE_EXE -and $_.MainWindowHandle -ne 0 } |
 			ForEach-Object { $_.CloseMainWindow() | Out-Null; $_.WaitForExit(25000) | Out-Null }
 		`], { env: { ...process.env, BRASFC_UPGRADE_EXE: exe } });
+		const waitForRecoveredWindow = (pid) => {
+			assert(Number.isSafeInteger(pid) && pid > 0, 'A recuperação precisa relançar o executável restaurado.');
+			execFileSync('powershell.exe', ['-NoProfile', '-Command', `
+				$deadline = [DateTime]::UtcNow.AddSeconds(25)
+				do {
+					$reopened = Get-Process -Id ([int]$env:BRASFC_UPGRADE_PID) -ErrorAction Stop
+					if ($reopened.Path -ne $env:BRASFC_UPGRADE_EXE) { throw 'Processo restaurado não é o BRASFC esperado.' }
+					if ($reopened.MainWindowHandle -ne 0) {
+						if (!$reopened.CloseMainWindow() -or !$reopened.WaitForExit(25000)) { throw 'Janela restaurada não encerrou.' }
+						return
+					}
+					Start-Sleep -Milliseconds 250
+				} while ([DateTime]::UtcNow -lt $deadline)
+				throw 'O BRASFC não abriu a janela após restaurar os arquivos.'
+			`], { env: { ...process.env, BRASFC_UPGRADE_EXE: exe, BRASFC_UPGRADE_PID: String(pid) } });
+		};
 		const faultLog = join(preferences, '..', 'update-validation-fault');
 		const bootFault = join(preferences, '..', 'update-validation-first-boot');
 		for (const fault of ['installer', 'first-boot']) {
@@ -256,7 +272,7 @@ try {
 			assert.equal(readFileSync(faultLog, 'utf8'), fault);
 			assert(installedVersion().startsWith(version));
 			assert.equal(createHash('sha256').update(readFileSync(exe)).digest('hex'), originalHash);
-			closeActive();
+			waitForRecoveredWindow(restored.reopenedPid);
 			await launch();
 			await waitOffline();
 			const retained = await evaluate(`Promise.all([

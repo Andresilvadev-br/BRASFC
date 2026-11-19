@@ -7,9 +7,10 @@ $cancelled = Join-Path $state.dir 'cancelled'
 $program = Join-Path $state.dir 'program'
 $outcome = Join-Path $root 'outcome.json'
 
-function Write-Outcome([string]$status, [string]$reason) {
-	[ordered]@{ status = $status; reason = $reason; version = $state.targetVersion; date = [DateTime]::UtcNow.ToString('o') } |
-		ConvertTo-Json -Compress | Set-Content -LiteralPath $outcome -Encoding UTF8
+function Write-Outcome([string]$status, [string]$reason, [int]$reopenedPid = 0) {
+	$result = [ordered]@{ status = $status; reason = $reason; version = $state.targetVersion; date = [DateTime]::UtcNow.ToString('o') }
+	if ($reopenedPid) { $result['reopenedPid'] = $reopenedPid }
+	$result | ConvertTo-Json -Compress | Set-Content -LiteralPath $outcome -Encoding UTF8
 }
 
 function Test-Program([string]$directory) {
@@ -98,9 +99,9 @@ try {
 	}
 	$prefs = Join-Path $state.dir 'preferences'
 	if (Test-Path -LiteralPath $prefs) { Copy-Item -LiteralPath $prefs -Destination $state.preferences -Force }
-	Write-Outcome 'restored' 'A atualização não concluiu a primeira inicialização. A versão anterior foi restaurada.'
 	Remove-Item -LiteralPath $StateFile -Force
-	Start-Process -FilePath $exe -WorkingDirectory $state.install
+	$reopened = Start-Process -FilePath $exe -WorkingDirectory $state.install -PassThru
+	Write-Outcome 'restored' 'A atualização não concluiu a primeira inicialização. A versão anterior foi restaurada.' $reopened.Id
 	$clean = $true
 	if (Test-Path -LiteralPath $failed) { Remove-Item -LiteralPath $failed -Recurse -Force -ErrorAction SilentlyContinue }
 } catch {
