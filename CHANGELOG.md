@@ -1,5 +1,12 @@
 # Novidades
 
+## 0.7.0 — Connected World (desenvolvimento)
+
+- Universos privados persistentes com papéis, convites, rodada oficial, classificação, decisões e negociação entre clubes.
+- Comandos versionados com confirmação durável, reprodução local de partidas e recuperação por revisão.
+- Abertura original com sequência de estádio, bola, trajetória e revelação.
+- Central Windows com verificação periódica, download configurável e aplicação pelo Electron.
+
 ## 0.6.1 — 2026-11-19 · Carreira de Jogador e estabilidade
 
 - Central com comparação por posição, notas por adversário, atributos por grupo e evolução por temporada.

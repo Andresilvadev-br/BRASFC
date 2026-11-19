@@ -20,3 +20,5 @@ export function hasUnsaved(): boolean {
 export function unsavedLabels(): string[] {
 	return Object.values(unsaved.items);
 }
+
+export const pendingWrites = $state({ count: 0 });

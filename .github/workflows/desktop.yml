@@ -4,7 +4,10 @@ name: App Windows
 # (só quando a versão do app em desktop/package.json ainda não foi publicada).
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
+    paths: ['desktop/**', '.github/workflows/desktop.yml']
+  pull_request:
+    branches: [dev]
     paths: ['desktop/**', '.github/workflows/desktop.yml']
   workflow_dispatch:
 
@@ -59,7 +62,7 @@ jobs:
         if: steps.ver.outputs.done != 'true'
         run: npx electron-builder --win --x64 --publish never
       - name: Publicar no GitHub Releases
-        if: steps.ver.outputs.done != 'true'
+        if: github.ref == 'refs/heads/main' && steps.ver.outputs.done != 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -72,6 +75,15 @@ jobs:
           else
             gh release create "v$V" $FILES --repo "$GITHUB_REPOSITORY" --title "BRASFC para Windows $V" --notes "Instalador do BRASFC para Windows 10 e 11 (64 bits): janela sempre centralizada, tela cheia (F11), modo offline (o jogo roda e salva no computador) e atualização automática. O modo online se atualiza pelo servidor; o offline, a cada nova versão do aplicativo."
           fi
+      - name: Guardar pacote de validação
+        if: github.event_name == 'pull_request' && steps.ver.outputs.done != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: BRASFC-Windows-candidato
+          path: |
+            desktop/dist/BRASFC-Setup.exe
+            desktop/dist/BRASFC-Setup.exe.blockmap
+            desktop/dist/latest.yml
       - name: Instalador já publicado
         if: steps.ver.outputs.done == 'true'
         run: echo "::notice::v${{ steps.ver.outputs.version }} já tem o instalador; aumente a versão em desktop/package.json para gerar outra."

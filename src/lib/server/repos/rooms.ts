@@ -138,6 +138,8 @@ export async function joinRoom(db: Db, code: string, profileId: string): Promise
 		if (room.status !== 'open') throw new RoomError('Esta sala foi encerrada.', 410);
 		const already = await tx.query('SELECT 1 FROM room_members WHERE room_id = $1 AND profile_id = $2', [room.id, profileId]);
 		if (already.length) return room;
+		const [world] = await tx.query<{ invite: string | null }>("SELECT state->>'inviteOpen' AS invite FROM room_worlds WHERE room_id=$1", [room.id]);
+		if (world?.invite === 'false') throw new RoomError('Este universo fechou os convites.', 403);
 		const [{ count }] = await tx.query<{ count: number | string }>(
 			'SELECT count(*)::int AS count FROM room_members WHERE room_id = $1',
 			[room.id]
@@ -150,12 +152,20 @@ export async function joinRoom(db: Db, code: string, profileId: string): Promise
 
 /** Sai da sala. Se o dono sair, a sala é encerrada para todos. */
 export async function leaveRoom(db: Db, room: Room, profileId: string): Promise<'left' | 'closed'> {
-	if (room.ownerId === profileId) {
-		await closeRoom(db, room.id);
-		return 'closed';
-	}
-	await db.query('DELETE FROM room_members WHERE room_id = $1 AND profile_id = $2', [room.id, profileId]);
-	return 'left';
+	return db.transaction(async (tx) => {
+		const [locked] = await tx.query<{ owner_id: string }>('SELECT owner_id FROM rooms WHERE id=$1 FOR UPDATE', [room.id]);
+		const [world] = await tx.query('SELECT 1 FROM room_worlds WHERE room_id=$1', [room.id]);
+		if (locked?.owner_id === profileId) {
+			if (world) throw new RoomError('Transfira a administração ou arquive o universo.', 409);
+			await closeRoom(tx, room.id);
+			return 'closed';
+		}
+		if (world) await tx.query(`UPDATE room_worlds SET revision=revision+1,
+			state=jsonb_set(state, '{participants}', (state->'participants') - ($2::text))
+			WHERE room_id=$1 AND state->'participants' ? $2`, [room.id, profileId]);
+		await tx.query('DELETE FROM room_members WHERE room_id = $1 AND profile_id = $2', [room.id, profileId]);
+		return 'left';
+	});
 }
 
 export async function closeRoom(db: Db, roomId: string): Promise<void> {

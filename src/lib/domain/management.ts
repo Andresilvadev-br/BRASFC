@@ -238,6 +238,7 @@ export interface WeekInput {
 	tier: Tier;
 	division: string;
 	roster: RosterPlayer[];
+	humanWages?: number;
 	/** jogo do usuário neste passo */
 	match: null | { home: boolean; opponent: string; goalsFor: number; goalsAgainst: number; competition: string; opponentStrength: number; myStrength: number; youthMinutes: number };
 	/** é domingo de liga (semana completa) ou quarta de Copa */
@@ -277,7 +278,7 @@ export function processWeek(prev: ClubState, w: WeekInput): WeekOutcome {
 		ledger.push({ category, amount: Math.round(amount), description });
 	};
 	let att: number | null = null;
-	const wageBill = payroll(w.roster);
+	const wageBill = payroll(w.roster) + (w.humanWages ?? 0);
 	if (!st.wageBudget) st.wageBudget = initialWageBudget(wageBill, eco.tvAnnual);
 
 	if (w.fullWeek) {
