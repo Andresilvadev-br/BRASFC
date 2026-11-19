@@ -3,6 +3,8 @@
 	import { enter, pop } from '#lib/motion/actions.ts';
 	import { PITCH } from '#lib/engine/types.ts';
 	import { newBroadcastEvents } from './broadcast-events.ts';
+	import Icon from '../Icon.svelte';
+	import type { IconName } from '../icons.ts';
 	import type { MatchEvent } from '#lib/engine/types.ts';
 	type Moment = MatchEvent & { index: number; minute: string };
 	const catalog: Partial<Record<MatchEvent['type'], { title: string; tag: string; duration: number; priority: number }>> = {
@@ -48,6 +50,12 @@
 	}
 	let timer: ReturnType<typeof setTimeout>;
 	let queue: Moment[] = [];
+	const symbols: Partial<Record<MatchEvent['type'], IconName>> = {
+		goal: 'star', foul: 'whistle', free_kick: 'whistle', corner: 'field', penalty: 'dot', penalty_miss: 'x',
+		offside: 'alert', yellow: 'alert', red: 'x', sub: 'refresh', shot_saved: 'lock', injury: 'heart',
+		half_time: 'pause', full_time: 'check', kickoff: 'play', second_half: 'play'
+	};
+	const symbol = $derived(active ? symbols[active.type] : undefined);
 	const info = $derived(active && catalog[active.type]);
 	const player = $derived(active?.player && athleteName(active.player));
 	const other = $derived(active?.other && athleteName(active.other));
@@ -134,7 +142,7 @@
 							<path class="review-flag" d={`M${x} 4V72`} stroke="currentColor" stroke-dasharray="3 3" />
 							<circle class="review-flag" cx={x} cy={y} r="4" fill="currentColor" />
 						</svg>
-					{:else}<i></i><i></i><i></i>{/if}
+					{:else if symbol}<span class="event-symbol" use:pop><Icon name={symbol} size={28} /></span>{:else}<i></i><i></i><i></i>{/if}
 				</div>
 				<div class="copy">
 					<small>{info.tag} · {active.minute}</small>
@@ -157,6 +165,8 @@
 	.review-field {width:100%;padding:5px;color:var(--mark);transform:skewX(15deg)} .review-flag {animation:pulse .55s ease-out both;transform-origin:center}
 	.copy {padding:7px 9px 7px 0;min-width:0;display:grid}.copy small{color:var(--mark);text-transform:uppercase;letter-spacing:.07em}.copy strong{font-size:clamp(1rem,3vw,1.5rem);line-height:1.02}.copy span{font-size:.75rem;color:#dee9e4}
 	.signal {display:flex;gap:3px;align-items:center;justify-content:center;height:100%;transform:skewX(-15deg);background:repeating-linear-gradient(90deg,#0000 0 7px,#ffffff0d 7px 9px)}
+	.event-symbol { color:var(--mark); }
+	.event-symbol :global(svg) { display:block; }
 	.signal i {width:4px;height:34%;border-radius:7px;background:var(--mark);animation:pulse .85s ease-out both}.signal i:nth-child(2){height:62%;animation-delay:.1s}.signal i:nth-child(3){height:44%;animation-delay:.2s}
 	[data-event='goal'] {--mark:#72ff9e;background:linear-gradient(100deg,#105a38,#112a20)}.ribbon.decisive{--mark:#ffe081;background:linear-gradient(100deg,#453208,#123220)}[data-event='red']{--mark:#ff7c83;background:#441f25}[data-event='yellow']{--mark:#ffda76;background:#372e1b}
 	[data-event='goal_disallowed']{--mark:#ffc26c;background:linear-gradient(100deg,#573621,#1e2225)}[data-event='sub']{--mark:#9bc5ff;background:#162c48}[data-event='penalty'],[data-event='penalty_miss']{--mark:#ffd580;background:#342418}[data-event='offside'],[data-event='foul']{--mark:#d5d8d5}[data-event='corner'],[data-event='free_kick']{--mark:#a2e3ff}

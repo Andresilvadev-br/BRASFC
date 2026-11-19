@@ -6,6 +6,10 @@
 - Transmissão com placares simultâneos, escalações animadas, campo 2D ligado ao servidor e alterações táticas oficiais.
 - Cápsula pré-partida da sala com atividades e prontidão dos participantes. Avisos comuns permanecem no sistema de toasts.
 - Migração incremental de sessões. O instalador Windows passa a 1.4.0 no próximo lançamento estável.
+- A carreira individual e a compartilhada usam a mesma navegação, o campo de escalação e o planejador de treinos. O lobby fica acessível dentro da carreira.
+- Gol anulado entra na súmula, na transmissão e no replay sem alterar o placar ou os gols do atleta.
+- Leituras repetidas são agrupadas. Limites por perfil, espera informada pelo servidor e recuperação mantêm a carreira disponível em falhas transitórias.
+- A candidata do Master Update inclui o editor cosmético planejado para a Dev 0.9, com visualização em pixel art. A publicação depende da homologação.
 
 ## 0.7.1 — Menu principal
 

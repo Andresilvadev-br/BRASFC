@@ -175,7 +175,7 @@ export function matchView(match: Match) {
 		goals,
 		decisions: match.applied.slice(-16), stats: { players, teams: stats },
 		teams: Object.fromEntries(sides.map((side) => [side, { tactic: { ...match.teams[side].tactic, instructions: match.teams[side].instructions },
-			bench: match.bench(side), gkId: match.teams[side].gkId, captain: match.captain(side), subs: match.subsLeft(side) }])) as Record<Side, {
-				tactic: TeamSetup['tactic']; bench: ReturnType<Match['bench']>; gkId: string; captain: string | null; subs: number;
+			bench: match.bench(side).map(({ id, position }) => ({ id, position })), gkId: match.teams[side].gkId, captain: match.captain(side), subs: match.subsLeft(side) }])) as Record<Side, {
+				tactic: TeamSetup['tactic']; bench: Array<Pick<ReturnType<Match['bench']>[number], 'id' | 'position'>>; gkId: string; captain: string | null; subs: number;
 			}> };
 }

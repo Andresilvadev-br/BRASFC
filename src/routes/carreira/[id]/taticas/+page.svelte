@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LineupPitch from '#lib/ui/tactics/LineupPitch.svelte';
 	import PlayerOrders from '#lib/ui/tactics/PlayerOrders.svelte';
 	import type { PlayerOrder } from '#lib/domain/player-orders.ts';
 	function setIndividual(id: string, order: PlayerOrder | null) {
@@ -337,16 +338,7 @@
 				</div>
 			</div>
 			<div class="pitch-wrap">
-				<div class="pitch" role="group" aria-label="Campo com titulares">
-					<svg class="lines" viewBox="0 0 68 105" preserveAspectRatio="none" aria-hidden="true">
-						<rect x="1" y="1" width="66" height="103" />
-						<line x1="1" y1="52.5" x2="67" y2="52.5" />
-						<circle cx="34" cy="52.5" r="9.15" />
-						<rect x="13.85" y="1" width="40.3" height="16.5" />
-						<rect x="13.85" y="87.5" width="40.3" height="16.5" />
-						<rect x="24.85" y="1" width="18.3" height="5.5" />
-						<rect x="24.85" y="98.5" width="18.3" height="5.5" />
-					</svg>
+				<LineupPitch>
 					{#if behavior}<TacticalOverlay formation={tactic.formation} mentality={tactic.mentality} style={tactic.style} instructions={tactic.instructions} roles={tactic.roles} legend={false} />{/if}
 					{#each slots as slot, i (i)}
 						{@const p = byId.get(tactic.lineup[i])}
@@ -370,7 +362,7 @@
 							{#if p && p.condition < 75}<span class="cond" title="Condição física: {p.condition}%">{p.condition}%</span>{/if}
 						</button>
 					{/each}
-				</div>
+				</LineupPitch>
 			</div>
 			{#if behavior}
 				<div class="legend" aria-label="Leitura do comportamento">
@@ -654,27 +646,6 @@
 		display: flex;
 		justify-content: center;
 		padding: var(--sp-4) var(--sp-4) 0;
-	}
-	.pitch {
-		position: relative;
-		container-type: inline-size;
-		/* proporção do campo sempre preservada; a altura cabe na tela */
-		/* cabe na altura da tela, mas nunca menor que 470px (acompanha a coluna de reservas e estilo) */
-		width: min(100%, 560px);
-		aspect-ratio: 68 / 74;
-		border-radius: var(--radius-l);
-		background: repeating-linear-gradient(180deg, #123e2d 0 9%, #10372a 9% 18%);
-		overflow: hidden;
-		box-shadow: inset 0 0 60px rgb(0 0 0 / 0.45);
-	}
-	.lines {
-		position: absolute;
-		inset: 0;
-		width: 100%;
-		height: 100%;
-		fill: none;
-		stroke: rgb(231 237 240 / 0.28);
-		stroke-width: 0.35;
 	}
 	.slot {
 		position: absolute;
@@ -1136,7 +1107,6 @@
 	}
 	@media (max-width: 650px) {
 		.save { width: 100%; }
-		.pitch { aspect-ratio: 68 / 88; }
 		.pitch-wrap { padding-inline: 6px; }
 	}
 </style>

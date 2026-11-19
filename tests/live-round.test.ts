@@ -56,6 +56,11 @@ it('recupera rodada com vários jogos, aplica substituições reais e espera tr�
 	now += 4000;
 	session = (await pulse()).session!;
 	expect(session.phase).toBe('PRESENTATION');
+	const compact = (await updateLiveRound(db, room, coach, { action: 'pulse', known: session.id }, connection)).session!;
+	expect(compact.relevant?.detail).toBeUndefined();
+	expect(session.relevant?.detail?.replay.home.players.length).toBeGreaterThan(11);
+	expect(compact.relevant?.match).toEqual(session.relevant?.match);
+	expect(JSON.stringify(compact).length).toBeLessThan(JSON.stringify(session).length / 2);
 	now += 13000;
 	session = (await pulse()).session!;
 	expect(session.phase).toBe('FIRST_HALF');

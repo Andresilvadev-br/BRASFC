@@ -6,7 +6,7 @@
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { aiTeamPlan } from '#lib/domain/coaches.ts';
 	import { formatDayMonth, weekday, weekdayShort } from '#lib/domain/dates.ts';
-	import { DRILL_DEFS, DRILLS, INTENSITY, previewWeek, suggestPlan, weekLoad, type DrillId, type TrainingPlan } from '#lib/domain/drills.ts';
+	import { DRILL_DEFS, INTENSITY, previewWeek, suggestPlan, weekLoad, type TrainingPlan } from '#lib/domain/drills.ts';
 	import { CAREER_PLAYER_ID, careerSquad } from '#lib/domain/matchday.ts';
 	import { PLAYER_FOCUS, PLAYER_FOCUS_LABELS, SESSION_LABELS, weekPlan, type PlayerFocus, type SessionKind } from '#lib/domain/training.ts';
 	import { recommendRoles } from '#lib/engine/roles.ts';
@@ -17,6 +17,7 @@
 	import Icon from '#lib/ui/Icon.svelte';
 	import type { IconName } from '#lib/ui/icons.ts';
 	import Panel from '#lib/ui/Panel.svelte';
+	import WeekPlanner from '#lib/ui/career/WeekPlanner.svelte';
 	import Segmented from '#lib/ui/Segmented.svelte';
 
 	let { data } = $props();
@@ -45,13 +46,8 @@
 
 	// ── Centro de Treinamento Tático (treinador)
 	const DAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'];
-	const DRILL_ICON: Record<DrillId, IconName> = {
-		formacao: 'tactics', posse: 'link', pressao: 'arrowRight', defesa: 'lock', 'contra-ataque': 'sparkle', movimentacao: 'field',
-		construcao: 'chart', 'bolas-paradas': 'star', entrosamento: 'squad', funcoes: 'user',
-		adversario: 'eye', descanso: 'clock'
-	};
+
 	let plan = $state<TrainingPlan>(untrack(() => structuredClone($state.snapshot(data.view.trainingPlan))));
-	let picking = $state<number | null>(null);
 	const planChanged = $derived(JSON.stringify(plan) !== JSON.stringify(v.trainingPlan));
 	const ctxWeek = $derived({ formation: v.tactic.formation, style: v.tactic.style, lineup: v.tactic.lineup, roles: v.tactic.roles, squad: v.squad });
 	const preview = $derived(previewWeek(v.tactical, plan, ctxWeek));
@@ -70,12 +66,7 @@
 		else markClean('treino');
 		return () => markClean('treino');
 	});
-	function setDrill(i: number, d: DrillId) {
-		const sessions = [...plan.sessions];
-		sessions[i] = d;
-		plan.sessions = sessions;
-		picking = null;
-	}
+
 	function useSuggestion() {
 		plan = structuredClone(suggestion.plan);
 	}
@@ -124,51 +115,9 @@
 </div>
 
 {#if isCoach}
-	<Panel title="Semana de treinos" icon="calendar" index={0}>
-		<div class="planner">
-			{#each DAYS as day, i (day)}
-				<div class="pday">
-					<span class="dname">{day}</span>
-					<button class="drill" data-d={plan.sessions[i]} class:open={picking === i} onclick={() => (picking = picking === i ? null : i)} aria-expanded={picking === i}>
-						<Icon name={DRILL_ICON[plan.sessions[i]]} size={20} />
-						<span>{DRILL_DEFS[plan.sessions[i]].short}</span>
-						<small>{plan.sessions[i] === 'descanso' ? 'recupera' : `carga ${Math.round(DRILL_DEFS[plan.sessions[i]].load * INTENSITY[plan.intensity].load)}`}</small>
-					</button>
-				</div>
-			{/each}
-			<div class="pday">
-				<span class="dname">Sáb</span>
-				<div class="drill static"><Icon name="clock" size={20} /><span>Véspera</span><small>leve</small></div>
-			</div>
-			<div class="pday">
-				<span class="dname">Dom</span>
-				<div class="drill static jogo">
-					{#if v.upcoming}
-						{@const opp = v.upcoming.home === c.clubId ? v.upcoming.away : v.upcoming.home}
-						<Crest clubId={opp} size={26} /><span>vs {getClub(opp)?.short}</span><small>rodada {v.upcoming.round}</small>
-					{:else}<Icon name="whistle" size={20} /><span>Sem jogo</span>{/if}
-				</div>
-			</div>
-		</div>
-		{#if picking !== null}
-			<div class="palette" role="radiogroup" aria-label="Treino de {DAYS[picking]}">
-				{#each DRILLS as d (d)}
-					<button role="radio" aria-checked={plan.sessions[picking] === d} class:on={plan.sessions[picking] === d} onclick={() => setDrill(picking!, d)}>
-						<Icon name={DRILL_ICON[d]} size={18} />
-						<strong>{DRILL_DEFS[d].label}</strong>
-						<small>{DRILL_DEFS[d].what}</small>
-					</button>
-				{/each}
-			</div>
-		{/if}
-		<div class="pfoot">
-			<Segmented label="Intensidade" bind:value={plan.intensity} options={[{ value: 'leve', label: 'Leve' }, { value: 'normal', label: 'Normal' }, { value: 'intensa', label: 'Intensa' }]} />
-			<div class="saveplan">
-				{#if planChanged}<span class="pending"><Icon name="dot" size={12} /> Plano não salvo</span>{/if}
-				<Button variant="primary" icon="save" loading={saving} disabled={!planChanged} onclick={savePlan}>Salvar semana</Button>
-			</div>
-		</div>
-	</Panel>
+	{@const opponent = v.upcoming ? getClub(v.upcoming.home === c.clubId ? v.upcoming.away : v.upcoming.home) : undefined}
+	<WeekPlanner bind:plan opponent={opponent && { id: opponent.id, short: opponent.short }} round={v.upcoming?.round}
+		changed={planChanged} {saving} onsave={savePlan} />
 
 	<div class="grid2">
 		<Panel title="Previsão da semana" icon="chart" index={1}>
@@ -268,109 +217,6 @@
 		margin: var(--sp-6) 0 var(--sp-3);
 		font-size: var(--fs-xl);
 		text-transform: uppercase;
-	}
-	.planner {
-		display: grid;
-		grid-template-columns: repeat(7, minmax(0, 1fr));
-		gap: 6px;
-	}
-	.pday {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-	.dname {
-		font-size: var(--fs-xs);
-		font-weight: 700;
-		color: var(--text-3);
-		text-align: center;
-	}
-	.drill {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 4px;
-		min-height: 96px;
-		padding: 10px 4px;
-		border: 0;
-		border-radius: 10px;
-		background: var(--surface-2);
-		color: var(--text);
-		font: inherit;
-		font-size: var(--fs-sm);
-		font-weight: 600;
-		text-align: center;
-		cursor: pointer;
-	}
-	.drill small {
-		font-size: 10.5px;
-		font-weight: 500;
-		color: var(--text-3);
-	}
-	.drill.open {
-		box-shadow: inset 0 0 0 2px var(--emerald);
-	}
-	.drill[data-d='descanso'] {
-		background: var(--surface-sunken);
-		color: var(--text-2);
-	}
-	.drill.static {
-		cursor: default;
-		background: var(--surface-sunken);
-	}
-	.drill.jogo {
-		box-shadow: inset 0 0 0 1px var(--gold);
-		color: var(--gold);
-	}
-	.palette {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-		gap: 6px;
-		margin-top: 10px;
-	}
-	.palette button {
-		display: grid;
-		grid-template-columns: auto 1fr;
-		gap: 2px 8px;
-		align-items: center;
-		padding: 8px;
-		border: 0;
-		border-radius: 8px;
-		background: var(--surface-2);
-		color: var(--text);
-		font: inherit;
-		text-align: left;
-		cursor: pointer;
-	}
-	.palette button small {
-		grid-column: 2;
-		font-size: 11px;
-		color: var(--text-3);
-	}
-	.palette button.on {
-		box-shadow: inset 0 0 0 2px var(--emerald);
-	}
-	.pfoot {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		gap: 10px;
-		flex-wrap: wrap;
-		margin-top: 12px;
-	}
-	.saveplan {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-	}
-	.pending {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		color: var(--gold);
-		font-size: var(--fs-sm);
-		font-weight: 600;
 	}
 	.grid2 {
 		display: grid;

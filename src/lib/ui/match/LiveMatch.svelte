@@ -5,6 +5,9 @@
 	import type { updateLiveRound } from '#lib/server/connected-world.ts';
 	import { FORMATIONS, FORMATION_IDS, MENTALITIES, MENTALITY_LABELS, STYLES, STYLE_LABELS, autoLineup, type FormationId } from '#lib/domain/tactics.ts';
 	import { presetInstructions, type Level5 } from '#lib/engine/instructions.ts';
+	import { DEFAULT_APPEARANCE } from '#lib/domain/appearance.ts';
+	import { coachKit } from '#lib/pixel/kits.ts';
+	import Pixel from '../Pixel.svelte';
 	import { computeOverall } from '#lib/engine/attributes.ts';
 	import type { Decision, MatchEvent } from '#lib/engine/types.ts';
 	import Crest from '../Crest.svelte';
@@ -14,9 +17,11 @@
 	import BroadcastMoments from './BroadcastMoments.svelte';
 
 	type Session = NonNullable<Awaited<ReturnType<typeof updateLiveRound>>['session']>;
+	type MatchDetail = NonNullable<NonNullable<Session['relevant']>['detail']>;
 	let { path, profile, names, online, onchange, oncomplete }: { path: string; profile: string; names: Record<string, string>; online: boolean;
 		onchange: (loading: boolean) => void; oncomplete: () => Promise<void> } = $props();
 	let session = $state.raw<Session | null>(null);
+	let details = $state.raw<MatchDetail | null>(null);
 	let pending = $state(false);
 	let pulseFailures = $state(0);
 	let retryPause = 0;
@@ -37,7 +42,7 @@
 	let replayTimer: ReturnType<typeof setInterval> | undefined;
 	const present = $derived(session?.phase === 'PRESENTATION' && !skipped);
 	const scene = $derived(now - (session?.since ?? 0) < 3200 ? 'stadium' : now - (session?.since ?? 0) < 7500 ? 'home' : 'away');
-	const relevant = $derived(session?.relevant);
+	const relevant = $derived(session?.relevant && details ? { ...session.relevant, ...details } : null);
 	const match = $derived(relevant?.match);
 	const visual = $derived(replayIndex === null ? match : frameSet[replayIndex] ?? match);
 	const sides = ['home', 'away'] as const;
@@ -65,8 +70,8 @@
 		pending = true;
 		try {
 			if (action === 'pulse') lastPulse = new AbortController();
-			const data = await api<{ session: Session | null }>(`${path}?live${action === 'pulse' ? '=pulse' : ''}`, { signal: action === 'pulse' ? lastPulse?.signal : undefined, body: action === 'pulse' ? { action } : {
-				action, session: session?.id, sequence: session?.sequence, op: crypto.randomUUID(), ...extra
+			const data = await api<{ session: Session | null }>(`${path}?live${action === 'pulse' ? '=pulse' : ''}`, { signal: action === 'pulse' ? lastPulse?.signal : undefined, body: action === 'pulse' ? { action, known: details ? session?.id : undefined } : {
+				action, known: details ? session?.id : undefined, session: session?.id, sequence: session?.sequence, op: crypto.randomUUID(), ...extra
 			} });
 			if (!data.session) {
 				await oncomplete();
@@ -77,6 +82,8 @@
 			retryPause = 0;
 			error = '';
 			const frame = data.session.relevant?.match;
+			if (data.session.id !== session?.id) details = null;
+			if (data.session.relevant?.detail) details = data.session.relevant.detail;
 			if (frame && frame.tick !== frameSet.at(-1)?.tick && replayIndex === null) frameSet = [...frameSet.slice(-8), frame];
 			session = data.session;
 			onchange(session.phase === 'LOADING');
@@ -194,7 +201,12 @@
 							{@const team = relevant.replay[scene]}
 							<div class="lineup" use:enter>
 								<h2>{team.name} · {team.tactic.formation}</h2>
-								<p>{relevant.crew.filter((member) => member.club === team.id).map((member) => `${member.role === 'coach' ? 'Treinador' : 'Auxiliar'} · ${member.name}`).join(' / ') || 'Comissão da IA'}</p>
+								<div class="crew">
+									{#each relevant.crew.filter((member) => member.club === team.id) as member}
+										<div><Pixel appearance={member.appearance ?? DEFAULT_APPEARANCE} kit={coachKit(team.id)} clubId={team.id} styled variant="full" size={52} ball={false} />
+											<span><small>{member.role === 'coach' ? 'Treinador' : 'Auxiliar'}</small><strong>{member.name}</strong></span></div>
+									{:else}<p>Comissão da equipe</p>{/each}
+								</div>
 								<div class="board">
 									{#each FORMATIONS[team.tactic.formation] as slot, index}
 										{@const athlete = athletes.get(team.tactic.lineup[index])}
@@ -277,7 +289,7 @@
 					</div>
 					<div class="controls">
 						<label>Sai <select bind:value={outId}><option value="">Titular</option>{#each match.players.filter((p) => p.side === relevant.side) as p}<option value={p.id}>{athletes.get(p.id)?.shortName} · {Math.round(p.condition)}%</option>{/each}</select></label>
-						<label>Entra <select bind:value={inId}><option value="">Reserva</option>{#each own.bench as p}<option value={p.id}>{p.shortName} · {p.position}</option>{/each}</select></label>
+						<label>Entra <select bind:value={inId}><option value="">Reserva</option>{#each own.bench as p}<option value={p.id}>{athletes.get(p.id)?.shortName ?? p.id} · {p.position}</option>{/each}</select></label>
 						<Button disabled={pending || !inId || !outId || !own.subs} onclick={() => { decision({ type: 'sub', outId, inId }); outId = ''; inId = ''; }}>{relevant.canManage ? 'Solicitar substituição' : 'Sugerir substituição'}</Button>
 					</div>
 					{#each session.suggestions as suggestion (suggestion.id)}
@@ -310,6 +322,11 @@
 </section>
 
 <style>
+	.crew {display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+	.crew > div {display:flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface-sunken)}
+	.crew span {display:grid;text-align:start}
+	.crew small {color:var(--emerald-strong)}
+
 	.live{display:grid;gap:12px;min-width:0;margin-bottom:20px}.surface{border:1px solid var(--line);background:var(--surface);border-radius:16px;padding:clamp(9px,2vw,18px);min-width:0}
 	.score,.controls,.clubs,.fixture{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.score{justify-content:space-between;border-top:3px solid #3cde90}.score small,.score strong,.event small{display:block}.clubs strong{font-size:clamp(1.1rem,4vw,2.2rem)}
 	.score time,.event time{color:var(--emerald-strong);font-variant-numeric:tabular-nums}.grid{display:grid;grid-template-columns:minmax(0,3fr) minmax(190px,1fr);gap:10px}.field{overflow:hidden;position:relative}.controls{margin-bottom:10px}

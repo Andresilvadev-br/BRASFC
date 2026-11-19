@@ -1,43 +1,48 @@
 <script lang="ts">
-	import PlayerOrders from './tactics/PlayerOrders.svelte';
-	import type { PlayerOrder, PlayerOrders as Orders } from '#lib/domain/player-orders.ts';
-	let captainDraft = $state<string[]>([]);
-	let orderDraft = $state<Orders>({});
-	function setIndividual(id: string, order: PlayerOrder | null) {
-		if (order) orderDraft[id] = order;
-		else delete orderDraft[id];
-	}
-
-	import { onMount, untrack } from 'svelte';
+	import { onMount, untrack, type Snippet } from 'svelte';
+	import { page } from '$app/state';
 	import { ApiError, api, connectionIssue } from '#lib/api.ts';
-	import { APPEARANCE_OPTIONS, APPEARANCE_FIELDS, DEFAULT_APPEARANCE, HAIR_COLORS, HAIR_STYLES, HAIR_STYLE_LABELS, SKIN_TONES, type Appearance } from '#lib/domain/appearance.ts';
+	import { DEFAULT_APPEARANCE, type Appearance } from '#lib/domain/appearance.ts';
+	import AppearanceEditor from './career/AppearanceEditor.svelte';
+	import WardrobeDialog from './career/WardrobeDialog.svelte';
 	import type { DominantFoot } from '#lib/domain/career.ts';
-	import { playerKit } from '#lib/pixel/kits.ts';
+	import { coachKit, playerKit } from '#lib/pixel/kits.ts';
 	import type { PresenceMember, RoomActivity } from '#lib/realtime/protocol.ts';
 	import Island from './Island.svelte';
 	import LiveMatch from './match/LiveMatch.svelte';
 	import type { worldReplay, worldSnapshot } from '#lib/server/connected-world.ts';
-	import { FORMATIONS, FORMATION_IDS, MENTALITIES, MENTALITY_LABELS, STYLES, STYLE_LABELS, autoLineup, type FormationId, type Mentality, type PlayStyle } from '#lib/domain/tactics.ts';
-	import type { SquadPlayer } from '#lib/domain/squad.ts';
-	import { DRILLS, DRILL_DEFS, DEFAULT_PLAN, type DrillId } from '#lib/domain/drills.ts';
+	import { sameTactic, type Tactic } from '#lib/domain/tactics.ts';
+	import { getClub } from '#lib/domain/clubs.ts';
+	import { formatShort } from '#lib/domain/dates.ts';
+	import { DEFAULT_PLAN, type TrainingPlan } from '#lib/domain/drills.ts';
 	import { POSITIONS, POSITION_INFO, type Position } from '#lib/domain/positions.ts';
 	import { isPlayerFocusForPosition, PLAYER_FOCUS, PLAYER_FOCUS_LABELS } from '#lib/domain/training.ts';
 	import { PRESS_ANSWERS, PRESS_QUESTIONS } from '#lib/domain/player-development.ts';
 	import { formatExactMoney } from '#lib/domain/market.ts';
+	import { markClean, markDirty } from '#lib/stores/unsaved.svelte.ts';
 	import { enter } from '#lib/motion/actions.ts';
 	import Button from './Button.svelte';
-	import Segmented from './Segmented.svelte';
+	import type { IconName } from './icons.ts';
+	import type { CareerGroup } from './career/navigation.ts';
+	import CareerShell from './career/CareerShell.svelte';
+	import FixtureCard from './career/FixtureCard.svelte';
+	import StandingsTable from './career/StandingsTable.svelte';
+	import WorldTactics from './tactics/WorldTactics.svelte';
+	import HumanMarket from './career/HumanMarket.svelte';
+	import WeekPlanner from './career/WeekPlanner.svelte';
+	import WorldManagement from './career/WorldManagement.svelte';
 	import MatchCenter from './match/MatchCenter.svelte';
 	import Crest from './Crest.svelte';
 	import Pixel from './Pixel.svelte';
 
 	type World = Awaited<ReturnType<typeof worldSnapshot>>;
 	type Member = Pick<World['members'][number], 'profileId' | 'displayName' | 'role'>;
-	let { code, initial, profileId, revision, membership, online = false, onactivity }: { code: string; initial: World; profileId: string; revision?: number;
-		membership?: PresenceMember[]; online?: boolean; onactivity?: (value: RoomActivity) => void } = $props();
+	let { code, initial, profileId, revision, membership, online = false, onactivity, lobby, connection }: { code: string; initial: World; profileId: string; revision?: number;
+		membership?: PresenceMember[]; online?: boolean; onactivity?: (value: RoomActivity) => void; lobby?: Snippet<[World['members']]>; connection?: Snippet } = $props();
 	let loadingLive = $state(false);
 	let world = $state.raw<World>(untrack(() => initial));
-	let section = $state<'rodada' | 'carreira' | 'mercado' | 'admin'>('rodada');
+	const requested = $derived(page.url.searchParams.get('secao'));
+	const section = $derived(requested ?? (world.current ? 'central' : 'carreira'));
 	let role = $state<'coach' | 'assistant' | 'player'>('coach');
 	let club = $state('');
 	let vacancyClub = $state('');
@@ -45,20 +50,19 @@
 	let nationality = $state('Brasil');
 	let foot = $state<DominantFoot>('direito');
 	let appearance = $state<Appearance>({ ...DEFAULT_APPEARANCE });
-	const appearanceFields = Object.keys(APPEARANCE_OPTIONS) as Array<keyof typeof APPEARANCE_OPTIONS>;
 	let name = $state('');
 	let position = $state<Position>('ATA');
 	let day = $state('');
 	let focus = $state('fisico');
-	let target = $state('');
-	let player = $state('');
-	let fee = $state<number | undefined>(0);
-	let formation = $state<FormationId>('4-3-3');
-	let style = $state<PlayStyle>('posse');
-	let mentality = $state<Mentality>('equilibrada');
-	let pendingDrills = $state<DrillId[] | null>(null);
-	let savedLineup = $state<string[]>([]);
-	let drill = $state<DrillId>('formacao');
+	let trainingDraft = $state<TrainingPlan | null>(null);
+	const officialPlan = $derived(world.plan ?? DEFAULT_PLAN);
+	const trainingPlan = $derived(trainingDraft ?? officialPlan);
+	const trainingChanged = $derived(JSON.stringify(trainingPlan) !== JSON.stringify(officialPlan));
+	$effect(() => {
+		const key = `world-training:${code}`;
+		if (trainingChanged) markDirty(key, 'Treino do universo');
+		return () => markClean(key);
+	});
 	let saving = $state(false);
 	const resultEventLabels: Record<string, string> = {
 		goal: 'Gol', goal_disallowed: 'Gol anulado', yellow: 'Amarelo', red: 'Vermelho', injury: 'Lesão', sub: 'Substituição'
@@ -71,12 +75,27 @@
 	
 	const path = $derived(`/api/rooms/${code}/world`);
 	const current = $derived(world.current);
+	const nextOpponent = $derived(world.fixture && getClub(world.fixture.home === current?.club ? world.fixture.away : world.fixture.home));
+	const base = $derived(`/multiplayer/sala/${code}`);
+	const clubInfo = $derived(current && getClub(current.club));
+	const href = (section: string) => section === 'central' ? base : `${base}?secao=${section}`;
+	const link = (section: string, label: string, icon: IconName) => ({ href: href(section), label, icon });
+	const groups = $derived<CareerGroup[]>([
+		{ label: 'Jogo', items: [link('central', current?.role === 'player' ? 'Central do jogador' : 'Central da carreira', 'home'),
+			link('rodada', 'Dia de jogo', 'play')] },
+		{ label: 'Time', items: [link('elenco', 'Elenco e escalação', 'squad'), link('taticas', 'Táticas', 'tactics'), link('treinos', 'Treinos', 'training')] },
+		{ label: 'Clube', items: [link('mercado', current?.role === 'player' ? 'Contratos e mercado' : 'Mercado', 'briefcase'),
+			...(current?.role === 'coach' ? [link('financas','Finanças e patrocínio','chart'), link('clube','Clube e diretoria','crown'),
+				link('comissao','Comissão técnica','whistle'),link('base','Base e olheiros','sparkle'),link('gabinete','Gabinete e mensagens','mail')] : [])] },
+		{ label: 'Mundo', items: [link('mundo','Notícias e mundo','globe'),link('competicoes','Competições','trophy'),link('calendario','Calendário','calendar'),
+			link('estatisticas','Estatísticas','field'),link('historia','História e conquistas','news')] },
+		{ label: 'Universo', items: [link('lobby','Lobby e convites','multiplayer'), link('carreira','Função no universo','user')] }
+	]);
+	const leagueRow = $derived(world.standings.find((row) => row.clubId === current?.club));
 	const owner = $derived(world.ownerId === profileId);
 	const pc = $derived(current?.athlete?.playerCareer);
 	const progress = $derived(pc?.daily.progress.slice(-12) ?? []);
 	const upcoming = $derived(world.clubs.filter((c) => !world.members.some((m) => m.assignment?.role === 'coach' && m.assignment.club === c.id)));
-	const tacticalRoster = $derived(world.roster as SquadPlayer[]);
-	const sortedOpponents = $derived(world.members.filter((m) => m.profileId !== profileId && m.assignment?.role === 'coach' && m.assignment.club !== current?.club));
 	const labels = { coach: 'Treinador', assistant: 'Auxiliar', player: 'Jogador' };
 
 	const friends = $derived(world.members.flatMap((member) => {
@@ -90,7 +109,8 @@
 	const everyoneReady = $derived(friends.length > 0 && friends.every((friend) => friend.online && friend.ready));
 	$effect(() => {
 		if (world.live) return;
-		onactivity?.(section === 'carreira' && savedLineup.length ? 'escalacao' : section === 'mercado' && current?.role === 'player' ? 'contratos' : section);
+		onactivity?.(section === 'elenco' ? 'escalacao' : section === 'taticas' ? 'taticas'
+			: section === 'mercado' ? current?.role === 'player' ? 'contratos' : 'mercado' : section === 'rodada' ? 'rodada' : 'carreira');
 	});
 
 	const membershipKey = (members: Member[]) => JSON.stringify(members.map((m) => [m.profileId, m.displayName, m.role]).sort());
@@ -127,7 +147,7 @@
 	});
 
 	async function execute(command: Record<string, unknown>) {
-		if (saving) return;
+		if (saving) return false;
 		message = '';
 		failed = false;
 		saving = true;
@@ -135,13 +155,15 @@
 		try {
 			await api<{ revision: number }>(path, { body: command });
 			message = 'Salvo no universo.';
-			if (command.action === 'archive') { location.assign('/multiplayer'); return; }
+			if (command.action === 'archive') { location.assign('/multiplayer'); return true; }
 			try { await refresh(); } catch { message = 'Gravação confirmada. Reconectando para atualizar a tela.'; }
+			return true;
 		} catch (e) {
 			failed = true;
 			message = e instanceof Error ? e.message : 'Falha na sincronização.';
 			if (connectionIssue(e)) retry = command;
 			else if (e instanceof ApiError && e.status === 409) void refresh().catch(() => {});
+			return false;
 		} finally {
 			saving = false;
 		}
@@ -150,10 +172,7 @@
 		execute({ ...values, action, revision: world.revision, op: crypto.randomUUID() });
 
 	async function saveTraining() {
-		const sessions: DrillId[] = [drill, 'descanso', drill, 'posse', 'descanso'];
-		pendingDrills = sessions;
-		try { await send('training', { plan: { ...DEFAULT_PLAN, sessions } }); }
-		finally { pendingDrills = null; }
+		if (await send('training', { plan: $state.snapshot(trainingPlan) })) trainingDraft = null;
 	}
 
 	async function watchMatch(home: string, away: string) {
@@ -162,9 +181,13 @@
 		catch (e) { failed = true; message = e instanceof Error ? e.message : 'Reprodução indisponível.'; }
 	}
 
-	function editFormation(next: FormationId) {
-		formation = next;
-		savedLineup = autoLineup(next, tacticalRoster);
+	async function saveWorldTactic(tactic: Tactic, base: Tactic) {
+		if (!world.tactic || !sameTactic(world.tactic, base)) {
+			message = 'Outro responsável alterou a tática do clube. Compare a escalação oficial antes de salvar.';
+			failed = true;
+			return false;
+		}
+		return send('tactic', { tactic });
 	}
 
 	function roleForm(event: SubmitEvent) {
@@ -177,14 +200,34 @@
 	<Island {friends} loading={world.live} />
 {/if}
 {#if world.live}
-	<LiveMatch {path} profile={profileId} {names} {online} onchange={(loading) => (loadingLive = loading)} oncomplete={refresh} />
+	<main class="page"><LiveMatch {path} profile={profileId} {names} {online} onchange={(loading) => (loadingLive = loading)} oncomplete={refresh} /></main>
 {:else}
+
+	{#if current && clubInfo}
+		<CareerShell {base} clubId={current.club} clubName={clubInfo.name} color={clubInfo.colors.primary} personName={current.name} roleLabel={labels[current.role]}
+			{groups} current={href(section)} date={world.date} season={world.season} cup={world.next?.kind === 'cup'}
+			stepLabel={world.next ? world.next.kind === 'cup' ? 'Copa do Brasil' : `Rodada ${world.next.round}` : 'Fim da temporada'}
+			balance={current.role === 'coach' ? world.balance : undefined} match={{ href: href('rodada'), label: 'Dia de jogo' }}
+			exit={{ href: href('lobby'), label: 'Lobby' }} >
+			{#snippet status()}
+				{#if connection}{@render connection()}{/if}
+				<WardrobeDialog value={current.appearance ?? current.athlete?.appearance} clubId={current.club}
+					kit={current.role === 'player' ? playerKit(current.club, current.athlete?.position ?? 'ATA') : coachKit(current.club)}
+					uniformOptions={current.role === 'player'} onsave={(appearance) => send('appearance', { appearance })} />
+			{/snippet}
+			{@render careerContent()}
+		</CareerShell>
+	{:else}
+		<main class="page">
+			<h1>Entre na carreira compartilhada</h1>
+			{@render careerContent()}
+			{#if lobby}{@render lobby(world.members)}{/if}
+		</main>
+	{/if}
+{/if}
+
+{#snippet careerContent()}
 <section class="world" use:enter>
-	<div class="heading">
-		<div><small>UNIVERSO COMPARTILHADO</small><h2>Temporada {world.season}</h2><span>{world.date.split('-').reverse().join('/')}</span></div>
-		<span class="badge">{saving ? 'Sincronizando' : `Revisão ${world.revision}`}</span>
-	</div>
-	<Segmented label="Central do universo" bind:value={section} options={[{ value: 'rodada', label: 'Rodada' }, { value: 'carreira', label: 'Carreira' }, { value: 'mercado', label: 'Mercado' }, { value: 'admin', label: 'Participantes' }]} />
 	<p class:error={failed} role={failed ? 'alert' : 'status'}>{message}</p>
 	{#if retry}<Button size="sm" disabled={saving} onclick={() => retry && execute(retry)}>Conferir o mesmo comando</Button>{/if}
 	{#if replay}
@@ -193,11 +236,24 @@
 	{/if}
 	{#key section}
 	<div class="cards" use:enter>
-		{#if section === 'rodada'}
+		{#if section === 'central' && current}
+			<article class="showcase">
+				<div><small>{labels[current.role]} · Temporada {world.season}</small><h1>{clubName(current.club)}</h1><strong>{current.name}</strong></div>
+				<Pixel variant="full" appearance={current.appearance ?? current.athlete?.appearance ?? DEFAULT_APPEARANCE} kit={current.role === 'player' ? playerKit(current.club, current.athlete?.position ?? 'ATA') : coachKit(current.club)} clubId={current.club} styled size={142} ball={current.role === 'player'} />
+			</article>
+			{#if world.fixture}<article class="wide"><FixtureCard fixture={world.fixture} clubId={current.club} today={world.date} /><Button href={href('rodada')} variant="primary" iconRight="arrowRight">Abrir dia de jogo</Button></article>{/if}
+			{#if pc}<article><h3>Perfil profissional</h3><p>{current.athlete?.position} · {current.athlete?.player?.age} anos</p>
+				<div class="lineup"><label>Confiança <meter min="0" max="100" value={pc.daily.trust}></meter></label>
+				<label>Condição <meter min="0" max="100" value={pc.daily.condition}></meter></label><label>Reputação <meter min="0" max="100" value={pc.reputation}></meter></label></div>
+				{#if pc.daily.injuryUntil}<p>Em recuperação até {formatShort(pc.daily.injuryUntil)}</p>{/if}
+			</article>{/if}
+			{#if leagueRow}<article><h3>Temporada em números</h3><div class="metrics"><span><strong>{leagueRow.position}º</strong>Posição</span><span><strong>{leagueRow.points}</strong>Pontos</span><span><strong>{leagueRow.won}</strong>Vitórias</span></div><a href={href('competicoes')}>Ver classificação</a></article>{/if}
+			{#if world.news.length}<article><h3>No noticiário</h3><strong>{world.news[0].title}</strong><p>{world.news[0].body}</p><a href={href('mundo')}>Abrir notícias</a></article>{/if}
+		{:else if section === 'rodada'}
 			<article>
 				<h3>{world.next ? (world.next.kind === 'cup' ? 'Copa do Brasil' : `Rodada ${world.next.round}`) : 'Encerramento da temporada'}</h3>
 				{#if world.fixture}
-					<div class="match"><Crest clubId={world.fixture.home} size={42} />{clubName(world.fixture.home)} × {clubName(world.fixture.away)}<Crest clubId={world.fixture.away} size={42} /></div>
+					<FixtureCard fixture={world.fixture} clubId={current?.club ?? world.fixture.home} today={world.date} />
 				{:else}<p>{current ? 'Acompanhe os compromissos do universo neste passo.' : 'Selecione uma carreira para entrar na rodada.'}</p>{/if}
 				<p>{friends.filter((friend) => friend.ready && friend.online).length}/{friends.length} prontos · {friends.filter((friend) => friend.online).length}/{friends.length} online</p>
 				<div class="ready-team">
@@ -224,12 +280,36 @@
 					{#each world.last as row}<p>{clubName(row.home)} {row.homeGoals} × {row.awayGoals} {clubName(row.away)}</p>{/each}
 				</details>
 			</article>{/if}
-			{#if world.news.length}<article><h3>Notícias do universo</h3>
-				{#each world.news as post (post.id)}<p><strong>{post.title}</strong><br />{post.body}</p>{/each}
-			</article>{/if}
-			{#if world.standings.length}<article><h3>Classificação</h3>
-				{#each world.standings as row}<div class="standing"><span>{row.position}. {clubName(row.clubId)}</span><strong>{row.points} pts</strong></div>{/each}
-			</article>{/if}
+		{:else if (section === 'taticas' || section === 'elenco') && current && world.tactic}
+			<div class="wide"><WorldTactics key={code} tactic={world.tactic} squad={world.roster} club={current.club} mastery={world.mastery}
+				canEdit={current.role === 'coach' || (current.role === 'assistant' && !!current.matchDelegated)} busy={saving} onsave={saveWorldTactic} /></div>
+			{#if section === 'elenco'}<article class="wide"><h3>Elenco do clube</h3><div class="squad-grid">
+				{#each world.roster as athlete (athlete.id)}
+					<div class="squad-card"><Pixel appearance={athlete.appearance} kit={playerKit(current.club, athlete.position)} size={36} />
+						<div><strong>{athlete.name}</strong><small>{athlete.position} · {athlete.age} anos</small></div><strong>{athlete.overall}</strong></div>
+				{/each}
+			</div></article>{/if}
+		{:else if section === 'competicoes' && current}
+			<article class="wide table-wrap"><h3>Classificação da divisão</h3><StandingsTable rows={world.standings} highlight={current.club} compact /></article>
+		{:else if section === 'calendario'}
+			<article class="wide"><h3>Calendário do clube</h3><div class="calendar-list">
+				{#each world.calendar as { fixture, score } (fixture.competition + ':' + fixture.round + ':' + fixture.home + ':' + fixture.away)}
+					<div><time datetime={fixture.date}>{formatShort(fixture.date)}</time><span><Crest clubId={fixture.home} size={22} /> {clubName(fixture.home)}</span><strong>{score ? score.join(' × ') : '×'}</strong><span><Crest clubId={fixture.away} size={22} /> {clubName(fixture.away)}</span></div>
+				{:else}<p>Sem confrontos definidos.</p>{/each}
+			</div></article>
+		{:else if section === 'mundo'}
+			{#each world.news as post (post.id)}<article><small>Temporada {post.season} · {post.round ? `Rodada ${post.round}` : 'Resumo'}</small><h3>{post.title}</h3><p>{post.body}</p></article>
+			{:else}<article><h3>Notícias do universo</h3><p>Ainda não há notícias registradas nesta temporada.</p></article>{/each}
+		{:else if section === 'estatisticas' && leagueRow}
+			<article><h3>Campanha na liga</h3><div class="metrics"><span><strong>{leagueRow.played}</strong>Jogos</span><span><strong>{leagueRow.goalsFor}</strong>Gols marcados</span><span><strong>{leagueRow.goalsAgainst}</strong>Gols sofridos</span></div></article>
+			{#each world.last.filter((game) => game.me) as row}<article><h3>Desempenho recente</h3><p>{row.me?.selection} · {row.me?.stats?.minutes ?? 0} minutos · nota {row.me?.stats?.rating ?? '—'}</p></article>{/each}
+		{:else if section === 'historia' && current}
+			<article><h3>Trajetória</h3>{#each current.history as entry}<p>{formatShort(entry.date)} · {clubName(entry.club)} · {labels[entry.role as keyof typeof labels]}</p>{/each}</article>
+			<article><h3>Campeões do universo</h3>{#each world.champions as year}<strong>{year.season}</strong>{#each Object.values(year.clubs) as club}<p><Crest clubId={club} size={24} /> {clubName(club)}</p>{/each}{:else}<p>Nenhuma temporada encerrada.</p>{/each}</article>
+			{#if pc?.awards.length}<article><h3>Premiações</h3>{#each pc.awards as award}<p>{award.season} · {award.label}</p>{/each}</article>{/if}
+		{:else if world.management && ['financas', 'clube', 'comissao', 'base', 'gabinete'].includes(section)}
+			<div class="wide"><WorldManagement {section} data={world.management} sponsors={world.sponsors ?? []} staff={world.staff ?? {}} balance={world.balance ?? 0} busy={saving}
+				notices={current?.notices ?? []} onaction={(request) => send('club', { request })} /></div>
 		{:else if section === 'carreira'}
 			{#if current?.role !== 'player'}
 				<article><h3>{current ? 'Mudar de função' : 'Escolher clube e função'}</h3>
@@ -244,46 +324,20 @@
 								<label>Nacionalidade<input bind:value={nationality} required maxlength="40" /></label>
 								<label>Pé dominante<select aria-label="Pé dominante" bind:value={foot}><option value="direito">Direito</option><option value="esquerdo">Esquerdo</option></select></label>
 							</div>
-							<details><summary>Personalizar aparência</summary>
-								<div class="avatar"><Pixel variant="full" {appearance} kit={playerKit(club, position)} size={136} ball={false} /></div>
-								<div class="lineup">
-									<label>Pele<select bind:value={appearance.skin}>{#each SKIN_TONES as _, i}<option value={i}>Tom {i + 1}</option>{/each}</select></label>
-									<label>Cor do cabelo<select bind:value={appearance.hairColor}>{#each HAIR_COLORS as _, i}<option value={i}>Cor {i + 1}</option>{/each}</select></label>
-									<label>Cabelo<select aria-label="Cabelo" bind:value={appearance.hairStyle}>{#each HAIR_STYLES as hair}<option value={hair}>{HAIR_STYLE_LABELS[hair]}</option>{/each}</select></label>
-									{#each appearanceFields as field}
-										<label>{APPEARANCE_FIELDS[field]}<select value={appearance[field] ?? Object.keys(APPEARANCE_OPTIONS[field])[0]} onchange={(event) => Object.assign(appearance, { [field]: event.currentTarget.value })}>
-											{#each Object.entries(APPEARANCE_OPTIONS[field]) as [value, label]}<option {value}>{label}</option>{/each}
-										</select></label>
-									{/each}
-								</div>
-							</details>
 						{/if}
+						<details><summary>Personalizar aparência</summary>
+							<AppearanceEditor bind:appearance kit={role === 'player' ? playerKit(club, position) : coachKit(club)} clubId={club} uniformOptions={role === 'player'} preview />
+						</details>
 						<Button type="submit" loading={saving}>Confirmar função</Button>
 					</form>
 					{#each world.vacancies as vacancy}<p>Proposta para treinar {clubName(vacancy)}</p><Button disabled={saving} onclick={() => send('assign', { role: 'coach', club: vacancy })}>Aceitar proposta</Button>{/each}
 				</article>
 			{/if}
-			{#if current?.role === 'coach' && world.tactic}
-				<article><h3>Plano de jogo</h3>
-					{#if !savedLineup.length}<Button onclick={() => { formation = world.tactic!.formation; style = world.tactic!.style; mentality = world.tactic!.mentality; savedLineup = [...world.tactic!.lineup]; captainDraft = [...(world.tactic!.captains ?? [])]; orderDraft = { ...world.tactic!.playerOrders }; }}>Editar escalação</Button>
-					{:else}
-						<label>Formação<select value={formation} onchange={(e) => editFormation(e.currentTarget.value as FormationId)}>{#each FORMATION_IDS as f}<option value={f}>{f}</option>{/each}</select></label>
-						<label>Estilo<select bind:value={style}>{#each STYLES as x}<option value={x}>{STYLE_LABELS[x]}</option>{/each}</select></label>
-						<label>Mentalidade<select bind:value={mentality}>{#each MENTALITIES as x}<option value={x}>{MENTALITY_LABELS[x]}</option>{/each}</select></label>
-						<div class="lineup">{#each FORMATIONS[formation] as slot, i (i)}
-							<label>{slot.position}<select bind:value={savedLineup[i]}>{#each world.roster as p}<option value={p.id}>{p.name} · {p.overall}</option>{/each}</select></label>
-						{/each}</div>
-						<PlayerOrders squad={world.roster} lineup={savedLineup} slotPositions={FORMATIONS[formation].map((slot) => slot.position)} order={captainDraft} instructions={orderDraft} oninstruction={setIndividual} oncaptains={(ids) => captainDraft = ids} />
-						<Button disabled={saving} onclick={() => send('tactic', { tactic: { ...world.tactic, formation, style, lineup: savedLineup, mentality, captains: captainDraft, playerOrders: orderDraft } })}>Salvar escalação</Button>
-					{/if}
-				</article>
-			{/if}
+		{:else if section === 'treinos'}
 			{#if current?.role === 'coach' || current?.delegated}
-				<article><h3>Treino coletivo</h3>
-					<label>Foco da semana<select bind:value={drill}>{#each DRILLS as d}<option value={d}>{DRILL_DEFS[d].label}</option>{/each}</select></label>
-					<p>{(pendingDrills ?? world.plan?.sessions)?.map((d) => DRILL_DEFS[d].label).join(' · ') ?? 'Plano padrão do clube.'}{pendingDrills ? ' · Salvando…' : ''}</p>
-					<Button disabled={saving} onclick={saveTraining}>Salvar treino coletivo</Button>
-				</article>
+				<div class="wide"><WeekPlanner bind:plan={() => trainingPlan, (value) => trainingDraft = value}
+					opponent={nextOpponent ? { id: nextOpponent.id, short: nextOpponent.short } : undefined} round={world.fixture?.round}
+					changed={trainingChanged} {saving} onsave={saveTraining} /></div>
 			{/if}
 			{#if current?.role === 'player' && pc}
 				<article><div class="profile">
@@ -311,21 +365,9 @@
 					{#if pc.awards.length}<details><summary>Premiações ({pc.awards.length})</summary>{#each pc.awards as award}<p>{award.season} · {award.label}</p>{/each}</details>{/if}
 				</article>{/if}
 			{/if}
-			{#if current?.history.length}<article><h3>Trajetória</h3>{#each current.history as entry}<p>{entry.date} · {clubName(entry.club)} · {entry.role === 'coach' ? 'Treinador' : entry.role === 'assistant' ? 'Auxiliar' : 'Jogador'}</p>{/each}</article>{/if}
 		{:else if section === 'mercado'}
 			{#if current?.role === 'coach'}
-				<article><h3>Negociar com outro treinador</h3><p>Caixa · {formatExactMoney(world.balance ?? 0)}</p>
-					<label>Treinador vendedor<select bind:value={target}><option value="">Selecione</option>{#each sortedOpponents as rival}<option value={rival.profileId}>{clubName(rival.assignment!.club)}</option>{/each}</select></label>
-					<label>Atleta<select bind:value={player}><option value="">Selecione</option>{#each (world.marketRoster[target] ?? []) as item}<option value={item.id}>{item.name}</option>{/each}</select></label>
-					<label>Proposta (R$)<input type="number" min="0" step="1" bind:value={fee} /></label>
-					<Button disabled={saving || !target || !player || fee === undefined} onclick={() => send('deal', { target, player, fee })}>Enviar proposta</Button>
-				</article>
-				<article><h3>Propostas entre clubes</h3>
-					{#each world.deals as deal (deal.id)}
-						<p>{deal.name} · {clubName(deal.from)} → {clubName(deal.to)} · {formatExactMoney(deal.fee)}</p>
-						{#if deal.from === current.club}<div class="actions"><Button disabled={saving} onclick={() => send('accept-deal', { id: deal.id })}>Autorizar venda</Button><Button disabled={saving} onclick={() => send('reject-deal', { id: deal.id })}>Recusar</Button></div>{/if}
-					{:else}<p>Sem propostas em aberto.</p>{/each}
-				</article>
+				<div class="wide market-style"><HumanMarket {world} club={current.club} busy={saving} {send} /></div>
 				<article><h3>Atletas humanos</h3>
 					{#each world.athleteDeals as proposal}
 						<p>{proposal.name} · {clubName(proposal.from)} → {clubName(proposal.to)}</p>
@@ -335,11 +377,6 @@
 							<Button disabled={saving} onclick={() => send('reject-athlete', { id: proposal.offer, target: proposal.profile })}>Recusar transferência</Button>
 						</div>{/if}
 					{:else}<p>Sem transferências aguardando autorização.</p>{/each}
-				</article>
-				<article><h3>Patrocínios disponíveis</h3>
-					{#each world.sponsors ?? [] as sponsor}<p>{sponsor.brand} · {formatExactMoney(sponsor.monthly)}/mês
-						<Button size="sm" disabled={saving} onclick={() => send('club', { request: { action: 'patrocinio', offerId: sponsor.id } })}>Assinar</Button>
-					</p>{:else}<p>Sem propostas disponíveis.</p>{/each}
 				</article>
 			{:else if pc}
 				<article><h3>Empresário e contrato</h3><div class="actions">
@@ -353,7 +390,8 @@
 					<div class="actions">{#if world.athleteDeals.some((d) => d.offer === offer.id)}<span>Aguardando autorização</span>{:else}<Button disabled={saving} onclick={() => send('jogador-aceitar', { offerId: offer.id })}>Assinar proposta</Button>{/if}<Button disabled={saving} onclick={() => send('jogador-recusar', { offerId: offer.id })}>Recusar</Button></div>
 				{/each}</article>
 			{:else}<article><p>O mercado está disponível para treinadores e atletas.</p></article>{/if}
-		{:else}
+		{:else if section === 'lobby' || section === 'admin'}
+			{#if lobby}<div class="wide">{@render lobby(world.members)}</div>{/if}
 			<article><h3>Participantes</h3>
 				{#each world.members as m (m.profileId)}
 					<p><strong>{m.displayName}</strong> · {m.assignment ? `${labels[m.assignment.role]} · ${clubName(m.assignment.club)}` : 'Sem função'}</p>
@@ -377,34 +415,49 @@
 					<Button variant="danger" disabled={saving} onclick={() => { if (confirm('Arquivar o universo para todos?')) void send('archive'); }}>Arquivar</Button>
 				</div>
 			</article>{/if}
+		{:else}
+			<article><h3>Área indisponível para esta função</h3><Button href={href('central')}>Voltar à central</Button></article>
 		{/if}
 	</div>
 	{/key}
 </section>
-{/if}
+
+{/snippet}
 
 <style>
 	.world { display: grid; gap: 12px; margin-bottom: 20px; min-width: 0; }
-	.heading,.match,.standing,.actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-	.heading { justify-content: space-between; }
-	.heading h2 { margin: 0; font-size: clamp(1.8rem, 4vw, 3.4rem); }
-	.heading small,.badge { color: var(--emerald-strong); }
+	.actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 	.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 12px; align-items: start; }
 	article { min-width: 0; border: 1px solid var(--line); border-radius: 14px; background: linear-gradient(150deg, var(--emerald-soft), transparent 50%), var(--surface); padding: 16px; }
 	h3 { margin-top: 0; }
 	.ready-team { display:grid; gap:5px; margin:10px 0; }
 	.ready-team div { display:grid; grid-template-columns:28px 1fr auto; gap:8px;align-items:center;padding:7px;border:1px solid var(--line);border-radius:8px; }
 	.ready-team small {display:block;color:var(--text-3);}
-	.standing { justify-content: space-between; border-bottom: 1px solid var(--line); padding: 6px 0; }
 	label { display: grid; gap: 4px; margin: 8px 0; }
 	select,input { min-width: 0; max-width: 100%; color: var(--text); background: var(--surface-sunken); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
 	.lineup { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: 8px; }
 	.profile { display: flex; align-items: center; gap: 12px; }
 	.profile h3, .profile p { margin: 0; }
-	.avatar { display: grid; justify-content: center; }
 	meter { width: 100%; accent-color: var(--emerald-strong); }
 	.progress { height: 88px; display: flex; align-items: end; gap: 5px; }
 	.progress div { flex: 1; height: var(--height); border-radius: 5px 5px 0 0; background: var(--emerald-strong); opacity: .75; }
 	.error { color: #ff9696; }
-	:global(.world .seg) { justify-self: start; }
+	.wide { grid-column:1 / -1; min-width:0; }
+	.showcase { grid-column:1 / -1; display:flex; justify-content:space-between; align-items:center; min-height:172px;
+		padding:24px clamp(16px,4vw,42px); background:radial-gradient(70% 130% at 90% 10%,var(--emerald-soft),transparent),var(--surface); }
+	.showcase h1 { font-size:clamp(2rem,6vw,4rem); margin:0; line-height:1; }
+	.showcase small, article > a { color:var(--emerald-strong); }
+	.metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:10px 0; }
+	.metrics span { display:grid; gap:2px; color:var(--text-2); font-size:var(--fs-sm); }
+	.metrics strong { color:var(--text); font-family:var(--font-display); font-size:1.75rem; line-height:1; }
+	.squad-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr)); gap:6px; }
+	.squad-card { display:grid; grid-template-columns:auto 1fr auto; min-width:0; gap:8px; align-items:center; padding:7px; background:var(--surface-sunken); border-radius:8px; }
+	.squad-card small { display:block; color:var(--text-2); }
+	.calendar-list > div { display:grid; grid-template-columns:68px 1fr auto 1fr; align-items:center; gap:8px; border-top:1px solid var(--line); padding:8px 0; }
+	.calendar-list span { display:flex; align-items:center; gap:6px; min-width:0; overflow-wrap:anywhere; }
+	.calendar-list time { color:var(--text-2); }
+	.table-wrap { overflow-x:auto; }
+	.market-style { display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr)); align-items:start; }
+	@media(max-width:480px) { .calendar-list > div { grid-template-columns:48px 1fr auto 1fr; font-size:var(--fs-xs); } .showcase { padding:12px; } }
+
 </style>

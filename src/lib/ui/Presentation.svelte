@@ -99,7 +99,7 @@
 		</div>
 	</div>
 	<div class="figure" bind:this={figure} aria-hidden="true">
-		<Pixel variant="full" {appearance} {kit} size={440} {ball} />
+		<Pixel variant="full" {appearance} {kit} {clubId} styled size={440} {ball} />
 	</div>
 	<span class="skip">Clique ou Enter para continuar</span>
 </div>

@@ -1,4 +1,5 @@
 import { error } from '@sveltejs/kit';
+import { isAppearance } from '#lib/domain/appearance.ts';
 import type { CareerData } from '#lib/domain/career.ts';
 // O elenco ATUAL (contratações, vendas, base), o mesmo que a tela de táticas mostra.
 import { careerSquad } from '#lib/domain/matchday.ts';
@@ -32,6 +33,10 @@ export const PATCH: RequestHandler = async (event) => {
 	const version = Number(body.version);
 	if (!Number.isInteger(version)) error(400, 'Versão da carreira ausente.');
 	const patch: Partial<CareerData> = {};
+	if (body.appearance !== undefined) {
+		if (!isAppearance(body.appearance)) error(400, 'Aparência inválida.');
+		patch.appearance = body.appearance;
+	}
 
 	if (body.tactic !== undefined) {
 		if (career.mode !== 'coach') error(403, 'Somente o treinador define a tática.');

@@ -40,6 +40,8 @@ async function call(actor, path, payload) {
 	if (kind === 'pulse') {
 		(report.clientTiming.headers ??= []).push(headersAt - t0);
 		(report.clientTiming.bodyAndJson ??= []).push(elapsed - (headersAt - t0));
+		const bytes = Number(result.headers.get('content-length'));
+		if (bytes) (report.clientTiming.pulseResponseBytes ??= []).push(bytes);
 	}
 	for (const entry of (result.headers.get('server-timing') ?? '').matchAll(/([a-z-]+);dur=([\d.]+)/g)) {
 		(report.serverTiming[entry[1]] ??= []).push(Number(entry[2]));
@@ -78,8 +80,13 @@ try {
 		const { revision } = (await call(sessions[actor], world + '?revision')).body;
 		return (await call(sessions[actor], world, { action, revision, op, ...fields })).body;
 	};
-	const live = async (actor, action = 'pulse', fields = {}) =>
-		(await call(sessions[actor], world + (action === 'pulse' ? '?live=pulse' : '?live'), { action, ...fields })).body.session;
+	const live = async (actor, action = 'pulse', fields = {}) => {
+		const member = sessions[actor];
+		const { body } = await call(member, world + (action === 'pulse' ? '?live=pulse' : '?live'), { action, known: member.matchId, ...fields });
+		if (!body.session) member.matchId = undefined;
+		else if (body.session.relevant?.detail) member.matchId = body.session.id;
+		return body.session;
+	};
 	await command(0, 'assign', { role: 'coach', club: 'flamengo' });
 	await command(1, 'assign', { role: 'assistant', club: 'flamengo' });
 	await command(2, 'assign', { role: 'coach', club: 'palmeiras' });
@@ -135,6 +142,8 @@ try {
 			} else if (round === 0 && phase === 'FIRST_HALF' && count === 10) {
 				const frames = await Promise.all(sessions.map((_, i) => live(i)));
 				assert(frames.every((frame) => frame.id === view.id));
+				assert(frames.some((frame) => frame.relevant && !frame.relevant.detail));
+				report.scenarios.push('Quadros incrementais sem reenviar uniformes ou elenco estável');
 				report.scenarios.push('Quatro clientes concorrentes na mesma rodada');
 				view = frames.at(-1);
 			} else view = await live(count % sessions.length);
