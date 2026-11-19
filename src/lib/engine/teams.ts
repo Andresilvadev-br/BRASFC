@@ -42,6 +42,6 @@ export function buildTeamSetup(
 		short: team.short,
 		colors: team.colors,
 		players: squad.map(toEnginePlayer),
-		tactic: { formation: tactic.formation, lineup, bench: pickBench(squad, lineup), mentality: tactic.mentality, style: tactic.style }
+		tactic: { formation: tactic.formation, lineup, bench: pickBench(squad, lineup), mentality: tactic.mentality, style: tactic.style, captains: tactic.captains, playerOrders: tactic.playerOrders }
 	};
 }

@@ -1,19 +1,21 @@
-// Run from the repository root on an isolated Windows runner after installing 1.3.0.
+// Run from the repository root on an isolated Windows runner after installing the stable baseline.
 import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
-import { createReadStream, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { resolve, join, basename } from 'node:path';
 import { Transform } from 'node:stream';
 import { setTimeout as wait } from 'node:timers/promises';
 import WebSocket from 'ws';
 
 assert.equal(process.platform, 'win32');
-const [exe, dist, evidence] = process.argv.slice(2).map((path) => resolve(path));
+const [exe, dist, evidence, rollbackDist] = process.argv.slice(2).map((path) => resolve(path));
 assert(exe && dist && evidence);
 const feed = 'http://127.0.0.1:4187';
-const metadata = join(dist, 'latest.yml');
-const version = readFileSync(metadata, 'utf8').match(/^version: (.+)$/m)[1].trim();
+let feedDist = dist;
+const metadataVersion = (directory) => readFileSync(join(directory, 'latest.yml'), 'utf8').match(/^version: (.+)$/m)[1].trim();
+const version = metadataVersion(dist);
 let feedMode = 'missing';
 const served = { missing: 0, truncated: 0, corrupt: 0, healthy: 0 };
 const server = createServer((request, response) => {
@@ -27,7 +29,7 @@ const server = createServer((request, response) => {
 		response.writeHead(404).end();
 		return;
 	}
-	const file = join(dist, name);
+	const file = join(feedDist, name);
 	const size = statSync(file).size;
 	response.setHeader('Content-Length', size);
 	if (!name.endsWith('.exe')) {
@@ -49,7 +51,8 @@ const server = createServer((request, response) => {
 	} else createReadStream(file).pipe(response);
 });
 await new Promise((resolve) => server.listen(4187, '127.0.0.1', resolve));
-const result = { targetVersion: version, tests: [] };
+const fromVersion = process.env.BRASFC_BASE_VERSION ?? '1.3.1';
+const result = { fromVersion, targetVersion: version, tests: [] };
 let app;
 let socket;
 let inspector = false;
@@ -94,26 +97,28 @@ function evaluate(expression) {
 		socket.send(JSON.stringify({ id: messageId, method: 'Runtime.evaluate', params: { expression, awaitPromise: true, returnByValue: true } }));
 	});
 }
-function launch() {
+function launch(extraEnv = {}) {
 	app = spawn(exe, ['--remote-debugging-port=4190', '--remote-debugging-address=127.0.0.1', '--inspect=127.0.0.1:4191'], {
-		env: { ...process.env, ELECTRON_ENABLE_LOGGING: '1' }, stdio: ['ignore', 'ignore', 'pipe']
+		env: { ...process.env, ...extraEnv, ELECTRON_ENABLE_LOGGING: '1' }, stdio: ['ignore', 'ignore', 'pipe']
 	});
 	app.stderr.on('data', (data) => diagnostics = (diagnostics + String(data)).slice(-4500));
 	app.on('exit', (code) => diagnostics += `
 Processo saiu com código ${code}`);
 	return attach();
 }
+const preferences = join(process.env.APPDATA, 'BRASFC', 'janela.json');
+const useFeed = () => writeFileSync(join(exe, '..', 'resources', 'app-update.yml'),
+	`provider: generic\nurl: ${feed}\nupdaterCacheDirName: brasfc-upgrade-validation\n`);
 const installedVersion = () => execFileSync('powershell.exe', ['-NoProfile', '-Command', '(Get-Item -LiteralPath $env:BRASFC_UPGRADE_EXE).VersionInfo.ProductVersion'], {
 	env: { ...process.env, BRASFC_UPGRADE_EXE: exe }, encoding: 'utf8'
 }).trim();
 try {
 	// Only this disposable Windows installation points to a local feed. The package still passes the updater's original SHA-512 verification.
-	writeFileSync(join(exe, '..', 'resources', 'app-update.yml'), `provider: generic\nurl: ${feed}\nupdaterCacheDirName: brasfc-upgrade-validation\n`);
-	const preferences = join(process.env.APPDATA, 'BRASFC', 'janela.json');
+	useFeed();
 	const { mkdirSync } = await import('node:fs');
 	mkdirSync(join(preferences, '..'), { recursive: true });
 	writeFileSync(preferences, JSON.stringify({ mode: 'offline', automatic: false, width: 1001 }));
-	assert.match(installedVersion(), /^1\.3\.0\b/);
+	assert.equal(installedVersion().split('.').slice(0, 3).join('.'), fromVersion);
 	await launch();
 	await until(() => evaluate("location.origin.startsWith('http://127.0.0.1:47615') && !!window.brasfcDesktop"));
 	const old = await evaluate(`(async () => {
@@ -125,7 +130,7 @@ try {
 		if (!round.match) throw Error('Falha ao registrar o primeiro jogo');
 		return { id:career.id, profile:profile.id, score:[round.match.homeGoals,round.match.awayGoals] };
 	})()`);
-	result.tests.push('1.3.0 instalado, perfil local e primeira partida oficial persistidos');
+	result.tests.push(`${fromVersion} instalado, perfil local e primeira partida oficial persistidos`);
 	await evaluate("window.brasfcDesktop.update('auto', false)");
 	await evaluate("window.brasfcDesktop.update('check', true)");
 	await until(async () => (await evaluate("window.brasfcDesktop.update('state')"))?.version === version);
@@ -139,7 +144,7 @@ try {
 		assert(served[failure] > 0);
 		if (failure === 'corrupt') assert.match(state.error, /sha512|checksum|integrity/i);
 		assert.equal(await evaluate("window.brasfcDesktop.update('install')"), false);
-		assert.match(installedVersion(), /^1\.3\.0\b/);
+		assert.equal(installedVersion().split('.').slice(0, 3).join('.'), fromVersion);
 		const preserved = await evaluate(`Promise.all([
 			fetch('/api/session').then(r => r.json()).then(data => data.profile?.id),
 			fetch('/api/careers/${old.id}/matches').then(r => r.json()).then(data => {
@@ -194,10 +199,115 @@ try {
 	assert.equal(JSON.parse(readFileSync(preferences, 'utf8')).automatic, false);
 	result.tests.push('Reabertura na versão nova com conta, carreira avançada e preferência preservadas');
 	assert(!result.relaunchMissing, 'A instalação atualizou, mas a abertura automática não foi observada');
+	if (rollbackDist) {
+		const candidate = metadataVersion(rollbackDist);
+		feedDist = rollbackDist;
+		socket.close();
+		await new Promise((resolve) => { app.once('exit', resolve); app.kill(); });
+		useFeed();
+		const originalHash = createHash('sha256').update(readFileSync(exe)).digest('hex');
+		const outcomeFile = join(preferences, '..', 'update-recovery', 'outcome.json');
+		const recoveryPending = join(preferences, '..', 'update-recovery', 'pending.json');
+		async function startInstall() {
+			let installed;
+			try { installed = await evaluate("window.brasfcDesktop.update('install')"); }
+			catch (error) {
+				if (existsSync(recoveryPending) && /frame was disposed|CDP sem resposta/.test(String(error))) return;
+				throw error;
+			}
+			if (installed !== true) {
+				throw Error(`O instalador recusou a solicitação: ${JSON.stringify(await evaluate("window.brasfcDesktop.update('state')"))}`);
+			}
+		}
+		const outcome = () => JSON.parse(readFileSync(outcomeFile, 'utf8').replace(/^\uFEFF/, ''));
+		const waitOffline = () => until(() => evaluate("location.origin.startsWith('http://127.0.0.1:47615') && !!window.brasfcDesktop"));
+		const downloadCandidate = async () => {
+			await evaluate("window.brasfcDesktop.update('check', true)");
+			await until(async () => (await evaluate("window.brasfcDesktop.update('state')"))?.version === candidate);
+			await evaluate("window.brasfcDesktop.update('download')");
+			await until(async () => (await evaluate("window.brasfcDesktop.update('state')"))?.status === 'ready', 120_000);
+		};
+		const closeActive = () => execFileSync('powershell.exe', ['-NoProfile', '-Command', `
+			Get-Process BRASFC -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $env:BRASFC_UPGRADE_EXE -and $_.MainWindowHandle -ne 0 } |
+			ForEach-Object { $_.CloseMainWindow() | Out-Null; $_.WaitForExit(25000) | Out-Null }
+		`], { env: { ...process.env, BRASFC_UPGRADE_EXE: exe } });
+		const waitForRecoveredWindow = (pid) => {
+			assert(Number.isSafeInteger(pid) && pid > 0, 'A recuperação precisa relançar o executável restaurado.');
+			execFileSync('powershell.exe', ['-NoProfile', '-Command', `
+				$deadline = [DateTime]::UtcNow.AddSeconds(25)
+				do {
+					$reopened = Get-Process -Id ([int]$env:BRASFC_UPGRADE_PID) -ErrorAction Stop
+					if ($reopened.Path -ne $env:BRASFC_UPGRADE_EXE) { throw 'Processo restaurado não é o BRASFC esperado.' }
+					if ($reopened.MainWindowHandle -ne 0) {
+						if (!$reopened.CloseMainWindow() -or !$reopened.WaitForExit(25000)) { throw 'Janela restaurada não encerrou.' }
+						return
+					}
+					Start-Sleep -Milliseconds 250
+				} while ([DateTime]::UtcNow -lt $deadline)
+				throw 'O BRASFC não abriu a janela após restaurar os arquivos.'
+			`], { env: { ...process.env, BRASFC_UPGRADE_EXE: exe, BRASFC_UPGRADE_PID: String(pid) } });
+		};
+		const faultLog = join(preferences, '..', 'update-validation-fault');
+		const bootFault = join(preferences, '..', 'update-validation-first-boot');
+		for (const fault of ['installer', 'first-boot']) {
+			result.pendingFault = fault;
+			rmSync(faultLog, { force: true });
+			rmSync(bootFault, { force: true });
+			// NSIS may relaunch through the Windows shell without inheriting the updater environment.
+			if (fault === 'first-boot') writeFileSync(bootFault, '');
+			const prior = (() => { try { return outcome().date; } catch { return ''; } })();
+			await launch(fault === 'installer' ? {
+				BRASFC_VALIDATION_FAULT_LOG: faultLog,
+				BRASFC_VALIDATION_INSTALL_FAILURE: '1'
+			} : {});
+			await waitOffline();
+			await downloadCandidate();
+			await startInstall();
+			socket.close();
+			const restored = await until(() => {
+				const state = outcome();
+				return state.date !== prior && state;
+			}, 150_000);
+			assert.equal(restored.status, 'restored', JSON.stringify(restored));
+			assert.equal(readFileSync(faultLog, 'utf8'), fault);
+			assert(installedVersion().startsWith(version));
+			assert.equal(createHash('sha256').update(readFileSync(exe)).digest('hex'), originalHash);
+			waitForRecoveredWindow(restored.reopenedPid);
+			await launch();
+			await waitOffline();
+			const retained = await evaluate(`Promise.all([
+				fetch('/api/session').then(r => r.json()).then(data => data.profile?.id),
+				fetch('/api/careers/${old.id}/matches').then(r => r.json()).then(data => data.matches?.map(m => m.round))
+			])`);
+			assert.equal(retained[0], old.profile);
+			assert(retained[1].includes(1) && retained[1].includes(2));
+			assert.equal(JSON.parse(readFileSync(preferences, 'utf8')).automatic, false);
+			result.faults.push({ stage: fault, restored, previousVersionUsable: true, executableSha256: originalHash });
+			delete result.pendingFault;
+			if (fault === 'installer') {
+				socket.close();
+				await new Promise((resolve) => { app.once('exit', resolve); app.kill(); });
+			}
+		}
+		await downloadCandidate();
+		await startInstall();
+		socket.close();
+		await until(() => installedVersion().startsWith(candidate) && outcome().status === 'healthy', 240_000);
+		closeActive();
+		await launch();
+		await waitOffline();
+		assert.equal(await evaluate(`fetch('/api/careers/${old.id}').then(r => r.json()).then(d => d.career?.id)`), old.id);
+		result.tests.push('Instalação abortada e falha de inicialização recuperadas, com nova tentativa concluída e a mesma carreira disponível');
+	}
 	result.passed = true;
 } catch (error) {
 	result.error = String(error.stack ?? error);
 	result.diagnostics = diagnostics;
+	const recoveryDir = join(preferences, '..', 'update-recovery');
+	for (const [name, file] of [['watcher', join(recoveryDir, 'watch.log')], ['faultInjected', join(preferences, '..', 'update-validation-fault')], ['recoveryOutcome', join(recoveryDir, 'outcome.json')]]) {
+		if (existsSync(file)) result[name] = readFileSync(file, 'utf8').slice(-1500);
+	}
+	result.recoveryPending = existsSync(join(recoveryDir, 'pending.json'));
 	process.exitCode = 1;
 } finally {
 	socket?.close();

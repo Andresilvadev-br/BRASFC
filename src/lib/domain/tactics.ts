@@ -1,3 +1,4 @@
+import { sanitizeCaptains, sanitizeOrders, type PlayerOrders } from './player-orders.ts';
 import { presetInstructions, sanitizeInstructions, INSTRUCTION_KEYS, type TacticalInstructions } from '#lib/engine/instructions.ts';
 import { DEFAULT_ROLE, isRoleId, ROLES, type RoleId } from '#lib/engine/roles.ts';
 import { positionFit, type Position } from './positions.ts';
@@ -109,6 +110,8 @@ style: PlayStyle;
 instructions?: TacticalInstructions;
 /** função de cada slot (Dev 0.3); ausente = função padrão da posição */
 roles?: RoleId[];
+captains?: string[];
+playerOrders?: PlayerOrders;
 }
 
 export function isFormation(value: unknown): value is FormationId {
@@ -233,7 +236,19 @@ export function sanitizeTactic(input: unknown, squad: SquadPlayer[]): Tactic | n
 	return isRoleId(r) && ROLES[r].positions.includes(slot.position) ? r : DEFAULT_ROLE[slot.position];
 	});
 	}
+	const captains = sanitizeCaptains(t.captains, squad);
+	const orders = sanitizeOrders(t.playerOrders, squad);
+	if (captains) out.captains = captains;
+	if (orders) out.playerOrders = orders;
 	return out;
+}
+
+/** Repair only unavailable starters. Keep valid tactical preferences and succession. */
+export function recoverTactic(tactic: Tactic | undefined, squad: SquadPlayer[]): Tactic | null {
+	if (!tactic) return null;
+	const saved = sanitizeTactic(tactic, squad);
+	if (saved || !isFormation(tactic.formation)) return saved;
+	return sanitizeTactic({ ...tactic, lineup: autoLineup(tactic.formation, squad) }, squad);
 }
 
 /**
@@ -242,7 +257,7 @@ export function sanitizeTactic(input: unknown, squad: SquadPlayer[]): Tactic | n
  * do objeto inteiro fazia a tela achar que a tática salva ainda tinha alterações.
  */
 export function tacticKey(t: Tactic): string {
-	return JSON.stringify([t.formation, [...t.lineup], t.mentality, t.style, t.instructions ? INSTRUCTION_KEYS.map((k) => t.instructions![k]) : null, t.roles ?? null]);
+	return JSON.stringify([t.formation, [...t.lineup], t.mentality, t.style, t.instructions ? INSTRUCTION_KEYS.map((k) => t.instructions![k]) : null, t.roles ?? null, t.captains ?? null, Object.entries(t.playerOrders ?? {}).sort(([a], [b]) => a.localeCompare(b))]);
 }
 
 export function sameTactic(a: Tactic, b: Tactic): boolean {

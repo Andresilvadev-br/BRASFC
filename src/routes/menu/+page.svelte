@@ -83,13 +83,13 @@
 		{
 			id: 'multiplayer',
 			label: 'Multiplayer',
-			hint: 'Salas privadas · beta',
+			hint: 'Carreiras e salas privadas',
 			icon: 'multiplayer',
 			href: '/multiplayer',
 			eyebrow: 'Com amigos',
 			headline: 'Monte sua liga entre amigos',
-			text: 'Crie uma sala privada, compartilhe o código e veja quem está online em tempo real. Carreiras compartilhadas chegam nas próximas etapas.',
-			chips: ['Salas privadas', 'Presença em tempo real', 'Carreiras compartilhadas em breve'],
+			text: 'Crie um universo privado, compartilhe o código e dispute temporadas com seus amigos no mesmo futebol.',
+			chips: ['Salas privadas', 'Presença em tempo real', 'Carreiras compartilhadas'],
 			cta: 'Abrir multiplayer',
 			badge: 'Beta'
 		},
@@ -244,7 +244,7 @@
 				{#if current.id === 'continuar' && latest}
 					<div class="crest-float"><Crest clubId={latest.clubId} size={96} /></div>
 				{/if}
-				<Pixel variant="full" appearance={heroAppearance} kit={heroKit} size={400} idle ball={latest?.mode !== 'coach'} />
+				<Pixel variant="full" appearance={heroAppearance} kit={heroKit} clubId={latest?.clubId} styled size={400} idle ball={latest?.mode !== 'coach'} />
 			</div>
 		{/if}
 		<div class="floor"></div>
@@ -487,6 +487,24 @@
 		font-family: var(--font-ui);
 		font-size: 11px;
 		text-align: center;
+	}
+	@media (min-width: 1101px) and (max-height: 840px) {
+		.menu-screen {
+			gap: var(--sp-3);
+			padding-block: var(--sp-4);
+		}
+		.top {
+			padding-top: 30px;
+		}
+		.copy {
+			padding-block: var(--sp-3);
+		}
+		.figure :global(svg.pixel) {
+			height: min(42vh, 330px);
+		}
+		.duo .coach :global(svg.pixel) {
+			height: min(34vh, 280px);
+		}
 	}
 	@media (max-width: 1100px) {
 		.menu-screen {

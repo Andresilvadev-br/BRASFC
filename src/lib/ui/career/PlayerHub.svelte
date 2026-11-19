@@ -137,7 +137,7 @@
 				<p class="muted">Camisa {profile.number} · {ROLE_LABELS[pc.contract.role]}</p>
 				<Button size="sm" variant="ghost" onclick={() => (portrait = !portrait)}>{portrait ? 'Ver retrato' : 'Ver uniforme'}</Button>
 			</div>
-			{#key portrait}<div class="avatar" use:enter><Pixel variant={portrait ? 'full' : 'bust'} size={portrait ? 205 : 125} appearance={c.data.appearance ?? DEFAULT_APPEARANCE} kit={playerKit(c.clubId, position)} ball={portrait} label="Seu jogador" /></div>{/key}
+			{#key portrait}<div class="avatar" use:enter><Pixel variant={portrait ? 'full' : 'bust'} size={portrait ? 205 : 125} appearance={c.data.appearance ?? DEFAULT_APPEARANCE} kit={playerKit(c.clubId, position)} clubId={c.clubId} styled ball={portrait} label="Seu jogador" /></div>{/key}
 		</section>
 		<section class="card fixture">
 			<h2>Próximo compromisso</h2>

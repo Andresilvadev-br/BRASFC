@@ -1,7 +1,7 @@
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { parseClientMessage, REALTIME_PATH, type PresenceMember, type RoomSnapshot, type ServerMessage } from '#lib/realtime/protocol.ts';
+import { parseClientMessage, REALTIME_PATH, type PresenceMember, type RoomActivity, type RoomSnapshot, type ServerMessage } from '#lib/realtime/protocol.ts';
 import { getDb, type Db } from '../db/index.ts';
 import { SESSION_COOKIE } from '../http.ts';
 import { findProfileByToken, type Profile } from '../repos/profiles.ts';
@@ -14,6 +14,8 @@ interface Connection {
 	alive: boolean;
 	tokens: number;
 	lastRefill: number;
+	activity?: RoomActivity;
+	activityUntil?: number;
 }
 
 const HEARTBEAT_MS = 25_000;
@@ -73,7 +75,7 @@ export class RealtimeHub {
 		ws.on('message', (data) => void this.onMessage(conn, data.toString()));
 		ws.on('close', () => {
 			this.conns.delete(conn);
-			if (conn.roomId) void this.broadcastRoom(conn.roomId);
+			if (conn.roomId) void this.broadcastRoom(conn.roomId).catch(() => {});
 		});
 		ws.on('error', () => ws.terminate());
 		this.send(conn, { t: 'welcome', profileId: profile.id, displayName: profile.displayName });
@@ -109,8 +111,17 @@ export class RealtimeHub {
 					}
 					const previous = conn.roomId;
 					conn.roomId = room.id;
+					if (previous !== room.id) { conn.activity = undefined; conn.activityUntil = undefined; }
 					if (previous && previous !== room.id) await this.broadcastRoom(previous);
 					return this.broadcastRoom(room.id, room);
+				}
+				case 'activity': {
+					if (!conn.roomId) return;
+					const now = Date.now();
+					if (conn.activity === msg.value && (conn.activityUntil ?? 0) > now + 10_000) return;
+					conn.activity = msg.value;
+					conn.activityUntil = now + 45_000;
+					return this.broadcastRoom(conn.roomId);
 				}
 				case 'ready': {
 					if (!conn.roomId) return;
@@ -155,6 +166,11 @@ export class RealtimeHub {
 		const ready = this.ready.get(roomId) ?? new Set<string>();
 		for (const id of ready) if (!memberIds.has(id) || !online.has(id)) ready.delete(id);
 
+		const activity = new Map<string, Connection>();
+		for (const target of targets) {
+			const expiry = target.activityUntil ?? 0;
+			if (expiry > Date.now() && expiry > (activity.get(target.profile.id)?.activityUntil ?? 0)) activity.set(target.profile.id, target);
+		}
 		const snapshot: RoomSnapshot = {
 			code: room.code,
 			name: room.name,
@@ -167,7 +183,9 @@ export class RealtimeHub {
 				displayName: m.displayName,
 				role: m.role,
 				online: online.has(m.profileId),
-				ready: ready.has(m.profileId)
+				ready: ready.has(m.profileId),
+				activity: activity.get(m.profileId)?.activity,
+				activityUntil: activity.get(m.profileId)?.activityUntil
 			}))
 		};
 		for (const c of targets) {
@@ -178,6 +196,10 @@ export class RealtimeHub {
 				this.send(c, { t: 'room', room: snapshot });
 			}
 		}
+	}
+
+	onlineProfiles(roomId: string) {
+		return new Set([...this.conns].filter((c) => c.roomId === roomId && c.ws.readyState === c.ws.OPEN).map((c) => c.profile.id));
 	}
 
 	async publishWorldRevision(roomId: string, revision: number) {

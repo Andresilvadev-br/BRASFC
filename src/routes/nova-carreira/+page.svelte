@@ -3,16 +3,8 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api, ApiError } from '#lib/api.ts';
-	import {
-		APPEARANCE_FIELDS,
-		APPEARANCE_OPTIONS,
-		DEFAULT_APPEARANCE,
-		HAIR_COLORS,
-		HAIR_STYLE_LABELS,
-		HAIR_STYLES,
-		SKIN_TONES,
-		type Appearance
-	} from '#lib/domain/appearance.ts';
+	import { DEFAULT_APPEARANCE, type Appearance } from '#lib/domain/appearance.ts';
+	import AppearanceEditor from '#lib/ui/career/AppearanceEditor.svelte';
 	import { boardExpectation, MODE_LABELS, type Career, type CareerMode, type DominantFoot } from '#lib/domain/career.ts';
 	import { CLUBS, getClub } from '#lib/domain/clubs.ts';
 	import Segmented from '#lib/ui/Segmented.svelte';
@@ -46,7 +38,6 @@
 	let nationality = $state('Brasil');
 	let foot = $state<DominantFoot>('direito');
 	let turned = $state(false);
-	const appearanceFields = Object.keys(APPEARANCE_OPTIONS) as Array<keyof typeof APPEARANCE_OPTIONS>;
 	let position = $state<Position>('ATA');
 	let appearance = $state<Appearance>({ ...DEFAULT_APPEARANCE });
 	let clubId = $state<string | null>(null);
@@ -225,51 +216,7 @@
 						</fieldset>
 					{/if}
 
-					<fieldset class="field">
-						<legend>Tom de pele</legend>
-						<div class="swatches">
-							{#each SKIN_TONES as color, i (color)}
-								<button type="button" class="swatch" class:on={appearance.skin === i} style="--c:{color}" aria-label="Tom de pele {i + 1}" aria-pressed={appearance.skin === i} onclick={() => (appearance.skin = i)}></button>
-							{/each}
-						</div>
-					</fieldset>
-					<fieldset class="field">
-						<legend>Cabelo</legend>
-						<div class="heads" role="radiogroup" aria-label="Estilo de cabelo">
-							{#each HAIR_STYLES as h (h)}
-								<button
-									type="button"
-									role="radio"
-									class="head-opt"
-									aria-checked={appearance.hairStyle === h}
-									aria-label={HAIR_STYLE_LABELS[h]}
-									title={HAIR_STYLE_LABELS[h]}
-									onclick={() => (appearance.hairStyle = h)}
-								>
-									<Pixel appearance={{ ...appearance, hairStyle: h }} kit={previewKit} size={52} />
-								</button>
-							{/each}
-						</div>
-						<div class="swatches">
-							{#each HAIR_COLORS as color, i (color)}
-								<button type="button" class="swatch" class:on={appearance.hairColor === i} style="--c:{color}" aria-label="Cor do cabelo {i + 1}" aria-pressed={appearance.hairColor === i} onclick={() => (appearance.hairColor = i)}></button>
-							{/each}
-						</div>
-					</fieldset>
-					{#if mode === 'player'}
-						<div class="profile-options">
-							{#each appearanceFields as key (key)}
-								<label class="field">
-									{APPEARANCE_FIELDS[key]}
-									<select aria-label={APPEARANCE_FIELDS[key]} value={appearance[key] ?? Object.keys(APPEARANCE_OPTIONS[key])[0]} onchange={(e) => (appearance = { ...appearance, [key]: e.currentTarget.value })}>
-										{#each Object.entries(APPEARANCE_OPTIONS[key]) as [value, label] (value)}
-											<option {value}>{label}</option>
-										{/each}
-									</select>
-								</label>
-							{/each}
-						</div>
-					{/if}
+					<AppearanceEditor bind:appearance kit={previewKit} clubId={clubId ?? undefined} uniformOptions={mode === 'player'} />
 
 					<div class="actions">
 						<Button variant="primary" size="lg" iconRight="arrowRight" onclick={next}>Escolher clube</Button>
@@ -277,7 +224,7 @@
 				</div>
 				<div class="preview" aria-label="Pré-visualização do personagem" data-umx-enter>
 					<div class="podium">
-						<div class:turned><Pixel variant="full" {appearance} kit={previewKit} size={380} ball={mode === 'player'} idle label="Seu personagem" /></div>
+						<div class:turned><Pixel variant="full" {appearance} kit={previewKit} clubId={clubId ?? undefined} styled size={380} ball={mode === 'player'} idle label="Seu personagem" /></div>
 					</div>
 					{#if mode === 'player'}
 						<Button size="sm" onclick={() => (turned = !turned)} aria-pressed={turned}>Espelhar prévia</Button>
@@ -354,7 +301,6 @@
 {/if}
 
 <style>
-	.profile-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr)); gap: 10px; }
 	.profile-options :is(input, select) { width: 100%; min-width: 0; padding: .65rem; color: var(--text); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; }
 	.turned { transform: scaleX(-1); }
 
@@ -593,47 +539,7 @@
 		font-weight: 500;
 		margin-left: var(--sp-2);
 	}
-	.heads {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--sp-2);
-	}
-	.head-opt {
-		display: grid;
-		place-items: center;
-		width: 64px;
-		height: 64px;
-		padding: 0;
-		border-radius: var(--radius-m);
-		border: 1px solid var(--line-strong);
-		background: linear-gradient(180deg, var(--surface-3), var(--surface-2));
-		overflow: hidden;
-		transition: border-color 0.15s, transform 0.15s;
-	}
-	.head-opt:hover {
-		transform: translateY(-2px);
-		border-color: var(--text-3);
-	}
-	.head-opt[aria-checked='true'] {
-		border-color: var(--emerald);
-		box-shadow: 0 0 0 3px var(--emerald-soft);
-	}
-	.swatches {
-		display: flex;
-		gap: var(--sp-2);
-		margin-top: var(--sp-1);
-	}
-	.swatch {
-		width: 36px;
-		height: 36px;
-		border-radius: 50%;
-		border: 2px solid var(--surface-3);
-		background: var(--c);
-	}
-	.swatch.on {
-		border-color: var(--text);
-		box-shadow: 0 0 0 3px var(--emerald);
-	}
+
 	.actions {
 		display: flex;
 		justify-content: flex-end;

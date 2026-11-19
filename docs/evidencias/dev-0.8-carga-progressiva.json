@@ -1,0 +1,245 @@
+{
+  "4_clientes": {
+    "rounds": [
+      {
+        "round": "league:1",
+        "fixtures": 78,
+        "official": 78,
+        "revision": 12
+      }
+    ],
+    "requests": {
+      "create": {
+        "count": 8,
+        "p50": 9.4,
+        "p95": 23.8,
+        "p99": 23.8
+      },
+      "read": {
+        "count": 18,
+        "p50": 4.1,
+        "p95": 56.5,
+        "p99": 56.5
+      },
+      "assign": {
+        "count": 4,
+        "p50": 7.3,
+        "p95": 12.4,
+        "p99": 12.4
+      },
+      "delegate": {
+        "count": 1,
+        "p50": 7.1,
+        "p95": 7.1,
+        "p99": 7.1
+      },
+      "ready": {
+        "count": 5,
+        "p50": 7.4,
+        "p95": 488,
+        "p99": 488
+      },
+      "training": {
+        "count": 1,
+        "p50": 6.3,
+        "p95": 6.3,
+        "p99": 6.3
+      },
+      "pulse": {
+        "count": 63,
+        "p50": 228.4,
+        "p95": 432.7,
+        "p99": 965.7
+      },
+      "loaded": {
+        "count": 4,
+        "p50": 10.1,
+        "p95": 22.4,
+        "p99": 22.4
+      },
+      "decision": {
+        "count": 1,
+        "p50": 14.3,
+        "p95": 14.3,
+        "p99": 14.3
+      },
+      "confirm": {
+        "count": 4,
+        "p50": 9.6,
+        "p95": 10.9,
+        "p99": 10.9
+      }
+    },
+    "errors": {},
+    "scenarios": [
+      "Treino autorizado antes da partida e 1/4 prontos",
+      "Quatro clientes concorrentes na mesma rodada",
+      "Latência artificial, decisão tática e reconexão no intervalo"
+    ],
+    "maxRssBytes": 299765760,
+    "maxCpuPercent": 163.98467169679782,
+    "ms": 14336.740216
+  },
+  "8_clientes_sala_a": {
+    "rounds": [
+      {
+        "round": "league:1",
+        "fixtures": 78,
+        "official": 78,
+        "revision": 12
+      }
+    ],
+    "requests": {
+      "create": {
+        "count": 8,
+        "p50": 6.6,
+        "p95": 36.1,
+        "p99": 36.1
+      },
+      "read": {
+        "count": 18,
+        "p50": 6.8,
+        "p95": 31.1,
+        "p99": 31.1
+      },
+      "assign": {
+        "count": 4,
+        "p50": 10,
+        "p95": 11.5,
+        "p99": 11.5
+      },
+      "delegate": {
+        "count": 1,
+        "p50": 7.2,
+        "p95": 7.2,
+        "p99": 7.2
+      },
+      "ready": {
+        "count": 5,
+        "p50": 8.1,
+        "p95": 792.6,
+        "p99": 792.6
+      },
+      "training": {
+        "count": 1,
+        "p50": 7.6,
+        "p95": 7.6,
+        "p99": 7.6
+      },
+      "pulse": {
+        "count": 58,
+        "p50": 430,
+        "p95": 876.4,
+        "p99": 1532.3
+      },
+      "loaded": {
+        "count": 4,
+        "p50": 248.6,
+        "p95": 496.3,
+        "p99": 496.3
+      },
+      "decision": {
+        "count": 1,
+        "p50": 249.6,
+        "p95": 249.6,
+        "p99": 249.6
+      },
+      "confirm": {
+        "count": 4,
+        "p50": 241.5,
+        "p95": 248.8,
+        "p99": 248.8
+      }
+    },
+    "errors": {},
+    "scenarios": [
+      "Treino autorizado antes da partida e 1/4 prontos",
+      "Quatro clientes concorrentes na mesma rodada",
+      "Latência artificial, decisão tática e reconexão no intervalo"
+    ],
+    "maxRssBytes": 390684672,
+    "maxCpuPercent": 106.9658069892404,
+    "ms": 24847.343965
+  },
+  "8_clientes_sala_b": {
+    "rounds": [
+      {
+        "round": "league:1",
+        "fixtures": 78,
+        "official": 78,
+        "revision": 12
+      }
+    ],
+    "requests": {
+      "create": {
+        "count": 8,
+        "p50": 7.5,
+        "p95": 32.6,
+        "p99": 32.6
+      },
+      "read": {
+        "count": 18,
+        "p50": 4.8,
+        "p95": 313.5,
+        "p99": 313.5
+      },
+      "assign": {
+        "count": 4,
+        "p50": 8,
+        "p95": 11.9,
+        "p99": 11.9
+      },
+      "delegate": {
+        "count": 1,
+        "p50": 7.7,
+        "p95": 7.7,
+        "p99": 7.7
+      },
+      "ready": {
+        "count": 5,
+        "p50": 8.4,
+        "p95": 351.4,
+        "p99": 351.4
+      },
+      "training": {
+        "count": 1,
+        "p50": 8.1,
+        "p95": 8.1,
+        "p99": 8.1
+      },
+      "pulse": {
+        "count": 62,
+        "p50": 386.6,
+        "p95": 739.1,
+        "p99": 1066.9
+      },
+      "loaded": {
+        "count": 4,
+        "p50": 10.4,
+        "p95": 12.6,
+        "p99": 12.6
+      },
+      "decision": {
+        "count": 1,
+        "p50": 227.6,
+        "p95": 227.6,
+        "p99": 227.6
+      },
+      "confirm": {
+        "count": 4,
+        "p50": 194.2,
+        "p95": 231.1,
+        "p99": 231.1
+      }
+    },
+    "errors": {},
+    "scenarios": [
+      "Treino autorizado antes da partida e 1/4 prontos",
+      "Quatro clientes concorrentes na mesma rodada",
+      "Latência artificial, decisão tática e reconexão no intervalo"
+    ],
+    "maxRssBytes": 390688768,
+    "maxCpuPercent": 106.90283836207519,
+    "ms": 24598.167124
+  }
+}

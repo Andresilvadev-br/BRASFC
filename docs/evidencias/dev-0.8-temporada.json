@@ -1,0 +1,391 @@
+{
+  "rounds": [
+    {
+      "round": "league:1",
+      "fixtures": 78,
+      "official": 78,
+      "revision": 12
+    },
+    {
+      "round": "league:2",
+      "fixtures": 78,
+      "official": 78,
+      "revision": 17
+    },
+    {
+      "round": "league:3",
+      "fixtures": 78,
+      "official": 78,
+      "revision": 22
+    },
+    {
+      "round": "cup:1",
+      "fixtures": 14,
+      "official": 14,
+      "revision": 27
+    },
+    {
+      "round": "league:4",
+      "fixtures": 78,
+      "official": 78,
+      "revision": 32
+    },
+    {
+      "round": "league:5",
+      "fixtures": 78,
+      "official": 78,
+      "revision": 37
+    },
+    {
+      "round": "cup:2",
+      "fixtures": 44,
+      "official": 44,
+      "revision": 42
+    },
+    {
+      "round": "league:6",
+      "fixtures": 78,
+      "official": 78,
+      "revision": 47
+    },
+    {
+      "round": "league:7",
+      "fixtures": 78,
+      "official": 78,
+      "revision": 52
+    },
+    {
+      "round": "cup:3",
+      "fixtures": 24,
+      "official": 24,
+      "revision": 57
+    },
+    {
+      "round": "league:8",
+      "fixtures": 78,
+      "official": 78,
+      "revision": 62
+    },
+    {
+      "round": "league:9",
+      "fixtures": 78,
+      "official": 78,
+      "revision": 67
+    },
+    {
+      "round": "cup:4",
+      "fixtures": 12,
+      "official": 12,
+      "revision": 72
+    },
+    {
+      "round": "league:10",
+      "fixtures": 78,
+      "official": 78,
+      "revision": 77
+    },
+    {
+      "round": "league:11",
+      "fixtures": 62,
+      "official": 62,
+      "revision": 82
+    },
+    {
+      "round": "league:12",
+      "fixtures": 62,
+      "official": 62,
+      "revision": 87
+    },
+    {
+      "round": "league:13",
+      "fixtures": 46,
+      "official": 46,
+      "revision": 92
+    },
+    {
+      "round": "cup:5",
+      "fixtures": 16,
+      "official": 16,
+      "revision": 97
+    },
+    {
+      "round": "league:14",
+      "fixtures": 46,
+      "official": 46,
+      "revision": 102
+    },
+    {
+      "round": "league:15",
+      "fixtures": 38,
+      "official": 38,
+      "revision": 107
+    },
+    {
+      "round": "league:16",
+      "fixtures": 38,
+      "official": 38,
+      "revision": 112
+    },
+    {
+      "round": "cup:6",
+      "fixtures": 16,
+      "official": 16,
+      "revision": 117
+    },
+    {
+      "round": "league:17",
+      "fixtures": 34,
+      "official": 34,
+      "revision": 122
+    },
+    {
+      "round": "league:18",
+      "fixtures": 34,
+      "official": 34,
+      "revision": 127
+    },
+    {
+      "round": "league:19",
+      "fixtures": 34,
+      "official": 34,
+      "revision": 132
+    },
+    {
+      "round": "league:20",
+      "fixtures": 28,
+      "official": 28,
+      "revision": 137
+    },
+    {
+      "round": "league:21",
+      "fixtures": 25,
+      "official": 25,
+      "revision": 142
+    },
+    {
+      "round": "cup:7",
+      "fixtures": 8,
+      "official": 8,
+      "revision": 147
+    },
+    {
+      "round": "league:22",
+      "fixtures": 25,
+      "official": 25,
+      "revision": 152
+    },
+    {
+      "round": "league:23",
+      "fixtures": 24,
+      "official": 24,
+      "revision": 157
+    },
+    {
+      "round": "cup:8",
+      "fixtures": 8,
+      "official": 8,
+      "revision": 162
+    },
+    {
+      "round": "league:24",
+      "fixtures": 24,
+      "official": 24,
+      "revision": 167
+    },
+    {
+      "round": "league:25",
+      "fixtures": 24,
+      "official": 24,
+      "revision": 172
+    },
+    {
+      "round": "league:26",
+      "fixtures": 21,
+      "official": 21,
+      "revision": 177
+    },
+    {
+      "round": "cup:9",
+      "fixtures": 4,
+      "official": 4,
+      "revision": 182
+    },
+    {
+      "round": "league:27",
+      "fixtures": 21,
+      "official": 21,
+      "revision": 187
+    },
+    {
+      "round": "league:28",
+      "fixtures": 20,
+      "official": 20,
+      "revision": 192
+    },
+    {
+      "round": "cup:10",
+      "fixtures": 4,
+      "official": 4,
+      "revision": 197
+    },
+    {
+      "round": "league:29",
+      "fixtures": 20,
+      "official": 20,
+      "revision": 202
+    },
+    {
+      "round": "league:30",
+      "fixtures": 20,
+      "official": 20,
+      "revision": 207
+    },
+    {
+      "round": "league:31",
+      "fixtures": 20,
+      "official": 20,
+      "revision": 212
+    },
+    {
+      "round": "cup:11",
+      "fixtures": 2,
+      "official": 2,
+      "revision": 217
+    },
+    {
+      "round": "league:32",
+      "fixtures": 20,
+      "official": 20,
+      "revision": 222
+    },
+    {
+      "round": "league:33",
+      "fixtures": 20,
+      "official": 20,
+      "revision": 227
+    },
+    {
+      "round": "cup:12",
+      "fixtures": 2,
+      "official": 2,
+      "revision": 232
+    },
+    {
+      "round": "league:34",
+      "fixtures": 20,
+      "official": 20,
+      "revision": 237
+    },
+    {
+      "round": "league:35",
+      "fixtures": 20,
+      "official": 20,
+      "revision": 242
+    },
+    {
+      "round": "league:36",
+      "fixtures": 20,
+      "official": 20,
+      "revision": 247
+    },
+    {
+      "round": "cup:13",
+      "fixtures": 1,
+      "official": 1,
+      "revision": 252
+    },
+    {
+      "round": "league:37",
+      "fixtures": 20,
+      "official": 20,
+      "revision": 257
+    },
+    {
+      "round": "league:38",
+      "fixtures": 20,
+      "official": 20,
+      "revision": 262
+    }
+  ],
+  "requests": {
+    "create": {
+      "count": 8,
+      "p50": 8.1,
+      "p95": 32.2,
+      "p99": 32.2
+    },
+    "read": {
+      "count": 375,
+      "p50": 4.8,
+      "p95": 136,
+      "p99": 186.1
+    },
+    "assign": {
+      "count": 4,
+      "p50": 7.9,
+      "p95": 12.2,
+      "p99": 12.2
+    },
+    "delegate": {
+      "count": 1,
+      "p50": 8.4,
+      "p95": 8.4,
+      "p99": 8.4
+    },
+    "ready": {
+      "count": 209,
+      "p50": 24.6,
+      "p95": 242.4,
+      "p99": 347.3
+    },
+    "training": {
+      "count": 1,
+      "p50": 7.5,
+      "p95": 7.5,
+      "p99": 7.5
+    },
+    "pulse": {
+      "count": 3240,
+      "p50": 76.3,
+      "p95": 241.6,
+      "p99": 319.2
+    },
+    "loaded": {
+      "count": 204,
+      "p50": 7.2,
+      "p95": 19.3,
+      "p99": 47.8
+    },
+    "decision": {
+      "count": 1,
+      "p50": 8.7,
+      "p95": 8.7,
+      "p99": 8.7
+    },
+    "confirm": {
+      "count": 204,
+      "p50": 7.4,
+      "p95": 13.4,
+      "p99": 18.2
+    },
+    "advance": {
+      "count": 1,
+      "p50": 239.2,
+      "p95": 239.2,
+      "p99": 239.2
+    }
+  },
+  "errors": {},
+  "scenarios": [
+    "Treino autorizado antes da partida e 1/4 prontos",
+    "Quatro clientes concorrentes na mesma rodada",
+    "Latência artificial, decisão tática e reconexão no intervalo"
+  ],
+  "maxRssBytes": 424620032,
+  "maxCpuPercent": 155.97289113165692,
+  "completedSeason": {
+    "before": 2026,
+    "after": 2027
+  },
+  "ms": 353829.299418
+}

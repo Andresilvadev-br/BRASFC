@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { nativeUpdateAction } from '#lib/stores/desktop.svelte.ts';
+	import { connectionText } from '#lib/api.ts';
 	import { pendingWrites } from '#lib/stores/unsaved.svelte.ts';
 	import '#lib/data/brasil.ts'; // registra os clubes reais (escudos/nomes em qualquer tela)
 	import '@fontsource-variable/inter';
@@ -9,7 +10,7 @@
 	import '../app.css';
 
 	import { onMount, tick } from 'svelte';
-	import { beforeNavigate, onNavigate } from '$app/navigation';
+	import { beforeNavigate, onNavigate, preloadData } from '$app/navigation';
 	import { page, updated } from '$app/state';
 	import { markHydrated } from '#lib/motion/actions.ts';
 	import { getMotion, loadMotion, motion } from '#lib/motion/motion.svelte.ts';
@@ -17,7 +18,7 @@
 	import { loadPrefs } from '#lib/stores/prefs.svelte.ts';
 	import { hasUnsaved, unsavedLabels } from '#lib/stores/unsaved.svelte.ts';
 	import Button from '#lib/ui/Button.svelte';
-	import Island from '#lib/ui/Island.svelte';
+	import Toast from '#lib/ui/Toast.svelte';
 	import Modal from '#lib/ui/Modal.svelte';
 	import WhatsNew from '#lib/ui/v4/WhatsNew.svelte';
 	import DesktopBar from '#lib/ui/desktop/DesktopBar.svelte';
@@ -29,6 +30,8 @@
 
 	let updateModal = $state(false);
 	let whatsNew = $state(false);
+	let navigationId = 0;
+	let navigationFeedback = $state<{ href: string; message: string; pending: boolean } | null>(null);
 	const onSplash = $derived(page.url.pathname === '/');
 
 	$effect(() => { void nativeUpdateAction('busy', hasUnsaved() || pendingWrites.count > 0); });
@@ -77,6 +80,37 @@
 		}
 	});
 
+	// Keep the current career mounted until the next page loads successfully.
+	async function openCareerPage(href: string) {
+		const attempt = ++navigationId;
+		navigationFeedback = { href, message: 'Carregando seção…', pending: true };
+		try {
+			const result = await preloadData(href);
+			if (attempt !== navigationId) return;
+			if (result.status >= 500 || result.status === 429) {
+				const ref = result.type === 'error' && result.error.id ? ` Código: ${result.error.id}` : '';
+				const reason = !navigator.onLine ? connectionText.offline : result.status === 429 ? connectionText.limited : connectionText.server;
+				navigationFeedback = { href, message: reason + ref, pending: false };
+				return;
+			}
+			navigationFeedback = null;
+			await goto(result.type === 'redirect' ? result.location : href);
+		} catch {
+			if (attempt === navigationId) navigationFeedback = { href, message: navigator.onLine ? connectionText.reconnecting : connectionText.offline, pending: false };
+		}
+	}
+
+	beforeNavigate(({ type, to, willUnload, cancel }) => {
+		if (type === 'link' && !willUnload && !updated.current && to?.url.pathname.startsWith('/carreira/')) {
+			cancel();
+			if (navigationFeedback?.pending && navigationFeedback.href === to.url.href) return;
+			void openCareerPage(to.url.href);
+		} else {
+			navigationId++;
+			navigationFeedback = null;
+		}
+	});
+
 	// Transições entre páginas: elementos compartilhados (data-umx-shared) fazem
 	// morphing e o conteúdo novo entra escalonado — Ultra Motion X.
 	onNavigate((nav) => {
@@ -93,9 +127,17 @@
 </script>
 
 <DesktopBar />
-<Island hidden={onSplash} />
+<Toast hidden={onSplash} />
 <WhatsNew bind:open={whatsNew} />
 
+{#if navigationFeedback}
+	<div class="nav-feedback" role="status">
+		{navigationFeedback.message}
+		{#if !navigationFeedback.pending}
+			<Button size="sm" onclick={() => navigationFeedback && void openCareerPage(navigationFeedback.href)}>Tentar novamente</Button>
+		{/if}
+	</div>
+{/if}
 <div id="page">
 	{@render children()}
 </div>
@@ -113,6 +155,10 @@
 </Modal>
 
 <style>
+	.nav-feedback { position: fixed; z-index: 999; inset-inline-end: 16px; inset-block-end: 16px; display: flex; gap: 10px;
+		align-items: center; max-width: calc(100% - 32px); padding: 10px 12px; border-radius: var(--radius); border: 1px solid var(--line);
+		background: var(--surface-2); color: var(--text); font-size: var(--fs-sm); }
+
 	#page {
 		min-height: var(--app-h, 100vh);
 	}
