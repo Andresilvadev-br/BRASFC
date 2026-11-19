@@ -2,7 +2,7 @@ import { careerStart, initialCareerData, validateCreateCareer, type Career, type
 import { DEFAULT_APPEARANCE } from '#lib/domain/appearance.ts';
 import { getClub } from '#lib/domain/clubs.ts';
 import { seasonSteps } from '#lib/domain/calendar.ts';
-import { initialCup, clubCupRun, cupView, prepareCup, cupFixtures, projectedCup } from '#lib/domain/cup.ts';
+import { initialCup, clubCupRun, cupView, prepareCup, cupFixtures, phaseOfMatchday, projectedCup } from '#lib/domain/cup.ts';
 import { addDays } from '#lib/domain/dates.ts';
 import { DEFAULT_PLAN, applyTrainingWeek, recoverFitness, sanitizePlan } from '#lib/domain/drills.ts';
 import { initialLeague, divisionOf, effectiveRule, divisionStandings, prepareRound, seasonFixtures, closeSeason, seasonStartDate, type LeagueState, type StoredRoundResult } from '#lib/domain/league.ts';
@@ -13,7 +13,7 @@ import { defaultTactic, sanitizeTactic, type Tactic } from '#lib/domain/tactics.
 import { rosterContext, strengthMemo, clubStateOf } from '#lib/domain/world.ts';
 import { engineFamiliarity, resolveRoles, sanitizeTacticalState, type TacticalState } from '#lib/domain/tactical.ts';
 import { closeClubSeason, processWeek, payroll, type ClubState } from '#lib/domain/management.ts';
-import { playerAttributes, playerState, advancePlayerDays, assessPlayer } from '#lib/domain/player-development.ts';
+import { playerAttributes, playerState, advancePlayerDays, assessPlayer, recordProgress } from '#lib/domain/player-development.ts';
 import { applyPlayerAction } from './player-actions.ts';
 import { actionContext, applyAction } from './management.ts';
 import { applyOfficeAction, OFFICE_ACTIONS } from './office-actions.ts';
@@ -22,7 +22,7 @@ import { closePlayerSeason } from '#lib/domain/careerlife.ts';
 import { ensureUniverse, universeAfterStep, universeAtSeasonEnd } from './universe.ts';
 import { computeOverall } from '#lib/engine/attributes.ts';
 import { buildTeamSetup } from '#lib/engine/teams.ts';
-import { simulateMatch } from '#lib/engine/match.ts';
+import { Match } from '#lib/engine/match.ts';
 import { ENGINE_VERSION, type PlayerStats, type TeamSetup } from '#lib/engine/types.ts';
 import type { Db } from './db/index.ts';
 import { isUuid } from './repos/careers.ts';
@@ -59,6 +59,20 @@ const schedule = (s: WorldState) => seasonSteps(s.league, s.cup);
 const stepOf = (s: WorldState) => schedule(s)[s.step] ?? null;
 const clubList = (s: WorldState) => Object.values(s.league.divisions).flatMap((clubs) => clubs ?? []);
 const athleteId = (member: Assignment) => `human-${member.profile}`;
+function moveAthlete(person: Assignment, club: string, date: string) {
+	if (club === person.club) return;
+	person.club = club;
+	person.ready = false;
+	person.history.push({ club, role: 'player', date });
+}
+
+function humanWages(s: WorldState, club: string) {
+	return Object.values(s.participants).reduce((sum, person) => {
+		const player = person.role === 'player' ? person.athlete?.playerCareer : undefined;
+		return player && (player.daily.loan?.parent ?? person.club) === club ? sum + player.contract.wage : sum;
+	}, 0);
+}
+
 
 function context(room: Room, s: WorldState, club: string, person?: Assignment): Career {
 	return { id: room.id, personName: person?.name ?? room.name, clubId: club, mode: person?.role === 'player' ? 'player' : 'coach',
@@ -133,11 +147,20 @@ export async function worldSnapshot(db: Db, room: Room, profile: string) {
 	};
 }
 
+async function playOfficialMatch(replay: Replay) {
+	const match = new Match({ ...replay, ...(replay.neutral ? { rules: { homeAdvantage: false } } : {}) });
+	for (let tick = 0; tick <= 20_000 && match.step(); tick++) {
+		// Give HTTP/WebSocket callbacks time between slices while this room's transaction stays locked.
+		if (tick % 256 === 255) await new Promise<void>((resolve) => setImmediate(resolve));
+	}
+	return match.result();
+}
+
 async function advance(tx: Db, room: Room, s: WorldState) {
 	const active = Object.values(s.participants);
 	if (!active.length || (!s.allowAbsent && active.some((p) => !p.ready))) fail('Aguarde a confirmação dos participantes.', 409);
 	const step = stepOf(s);
-	const previous = await results(tx, room, s.league.season);
+	const previous = await results(tx, room, s.league.season, Boolean(step));
 	const seed = seedOf(room);
 	const c = { ...context(room, s, s.league.divisions['serie-a']![0]), mode: 'player' as const };
 	s.universe = ensureUniverse(c, s.league);
@@ -146,6 +169,7 @@ async function advance(tx: Db, room: Room, s: WorldState) {
 		const outcome = closeSeason(s.league, previous.filter((g) => g.competition !== 'copa-do-brasil'), seed, strength);
 		const cup = s.cup ? cupView(s.cup, previous, seed, strength) : null;
 		const cupChampion = cup?.champion ?? null;
+		const nextDate = seasonStartDate(outcome.next.season);
 		const nextCup = projectedCup(outcome.next, { cChampion: outcome.champions['serie-c'], dChampion: outcome.champions['serie-d'] });
 		for (const club of Object.keys(s.clubs)) {
 			const division = divisionOf(s.league, club), nextDivision = divisionOf(outcome.next, club);
@@ -180,8 +204,21 @@ async function advance(tx: Db, room: Room, s: WorldState) {
 					next.state.awards.push({ season: career.season, label: 'Campeão pelo clube' });
 				}
 				if (next.state.contract.until <= s.league.season) next.state.contract.until = outcome.next.season;
-				if (next.state.daily.loan) { person.club = next.state.daily.loan.parent; next.state.daily.loan = null; }
-				next.state.daily.condition = 100; next.state.daily.injuryUntil = null; next.state.daily.drills = [];
+				const d = next.state.daily;
+				if (d.loan && d.loan.until <= s.league.season) {
+					moveAthlete(person, d.loan.parent, nextDate);
+					d.clubs.push({ clubId: person.club, date: nextDate, kind: 'retorno' });
+					d.loan = null;
+					d.trust = 48;
+					d.support = { ...d.support, fans: 50, squad: 50 };
+				}
+				d.condition = 100; d.injuryUntil = null; d.drills = [];
+				d.renewal = null; d.press = null; d.form = [];
+				if (d.sponsor && d.sponsor.until < outcome.next.season) d.sponsor = null;
+				for (const key of Object.keys(d.gains) as Array<keyof typeof d.gains>) {
+					d.gains[key] = (d.gains[key] ?? 0) * (next.profile.age >= 30 ? 0.55 : 0.85);
+				}
+				recordProgress({ ...career, data: { ...career.data, player: next.profile } }, next.state, nextDate);
 				person.athlete = { ...person.athlete, player: next.profile, playerCareer: next.state };
 			}
 			person.ready = false;
@@ -194,7 +231,7 @@ async function advance(tx: Db, room: Room, s: WorldState) {
 		});
 		s.league = outcome.next;
 		s.cup = nextCup;
-		s.date = seasonStartDate(s.league.season);
+		s.date = nextDate;
 		s.step = 0; s.tactics = {}; s.deals = []; s.athleteDeals = []; s.last = [];
 		return;
 	}
@@ -240,7 +277,7 @@ async function advance(tx: Db, room: Room, s: WorldState) {
 		};
 		const home = team(f.home), away = team(f.away);
 		const replay = { home, away, seed: matchSeed({ seed }, season, round, f.home, f.competition), neutral: Boolean('neutral' in f && f.neutral), version: ENGINE_VERSION };
-		const match = simulateMatch({ home, away, seed: replay.seed, ...(replay.neutral ? { rules: { homeAdvantage: false } } : {}) });
+		const match = await playOfficialMatch(replay);
 		for (const side of [home, away]) {
 			const conditions = (fitness[side.id] ??= {});
 			for (const player of side.players) {
@@ -277,9 +314,11 @@ async function advance(tx: Db, room: Room, s: WorldState) {
 		const opponent = game ? (home ? game.away : game.home) : '';
 		const squad = rosterOf(rosterContext({ ...career, mode: 'player' }, s.league), club);
 		const weekly = step.kind === 'league';
+		const phase = step.kind === 'cup' && game ? phaseOfMatchday(step.matchday) : null;
+		const cupPrize = phase && phase.matchdays[0] === round ? phase.prize ?? 0 : 0;
 		s.clubs[club] = processWeek(clubStateOf(career, s.league), { seed, clubId: club, season, round,
 			tier: tierOfDivision(division), division, roster: squad, fullWeek: weekly,
-			firstSeasonOfCareer: season === s.firstSeason, cupPrize: 0,
+			firstSeasonOfCareer: season === s.firstSeason, cupPrize, humanWages: humanWages(s, club),
 			match: game ? { home, opponent, competition: game.competition ?? division,
 				goalsFor: home ? game.homeGoals : game.awayGoals, goalsAgainst: home ? game.awayGoals : game.homeGoals,
 				myStrength: strength(club), opponentStrength: strength(opponent), youthMinutes: 0 } : null }).state;
@@ -299,7 +338,7 @@ async function advance(tx: Db, room: Room, s: WorldState) {
 			p.athlete.playerCareer = advancePlayerDays(career, p.athlete.playerCareer, addDays(step.date, 1), [step.date], step.date);
 		}
 	}
-		s.universe = universeAfterStep(s.universe, c, s.league, { round, league: step.kind === 'league', seasonResults: [...previous, ...rows],
+	s.universe = universeAfterStep(s.universe, c, s.league, { round, league: step.kind === 'league', seasonResults: [...previous, ...rows],
 		newResults: rows.map((g) => ({ ...g, competition: g.competition ?? 'liga-brasfc' })), strengthOf: strength });
 	s.last = rows.map(({ replay, ...row }) => ({ ...row, replayVersion: replay?.version }));
 	s.date = addDays(step.date, 1);
@@ -412,7 +451,7 @@ export async function applyWorldCommand(db: Db, room: Room, profile: string, bod
 					const buyer = clubStateOf(context(room, s, deal.to), s.league), seller = clubStateOf(context(room, s, deal.from), s.league);
 					const target = rosterOf(rosterContext({ ...context(room, s, deal.from), mode: 'player' }, s.league), deal.from).find((x) => x.id === deal.player && !x.loan);
 					const buyers = rosterOf(rosterContext({ ...context(room, s, deal.to), mode: 'player' }, s.league), deal.to);
-					if (target && (buyers.length >= 34 || (buyer.wageBudget > 0 && payroll(buyers) + target.contract.wage > buyer.wageBudget))) fail('O comprador excederia o limite de elenco ou folha.', 409);
+					if (target && (buyers.length >= 34 || (buyer.wageBudget > 0 && payroll(buyers) + humanWages(s, deal.to) + target.contract.wage > buyer.wageBudget))) fail('O comprador excederia o limite de elenco ou folha.', 409);
 					if (!target || buyer.balance < deal.fee || buyer.transferBudget < deal.fee) fail('Atleta ou orçamento indisponível.', 409);
 					s.clubs[deal.to] = { ...buyer, balance: buyer.balance - deal.fee, transferBudget: buyer.transferBudget - deal.fee };
 					s.clubs[deal.from] = { ...seller, balance: seller.balance + deal.fee };
@@ -458,8 +497,7 @@ export async function applyWorldCommand(db: Db, room: Room, profile: string, bod
 					const accepted = applyPlayerAction(c, careerView(c, await results(tx, room, s.league.season, true)), { action: 'jogador-aceitar', offerId: proposal.offer });
 					if (accepted.clubId !== proposal.to) fail('Destino da proposta mudou.', 409);
 					athlete.athlete = { ...athlete.athlete, playerCareer: accepted.state };
-					athlete.club = accepted.clubId;
-					athlete.ready = false;
+					moveAthlete(athlete, accepted.clubId, s.date);
 					s.athleteDeals = deals.filter((x) => x.profile !== athlete.profile);
 				}
 			} else {
@@ -481,7 +519,7 @@ export async function applyWorldCommand(db: Db, room: Room, profile: string, bod
 				}
 			} else {
 				p.athlete = { ...p.athlete, playerCareer: result.state };
-				if (clubId) p.club = clubId;
+				if (clubId) moveAthlete(p, clubId, s.date);
 				if (action === 'jogador-recusar') s.athleteDeals = (s.athleteDeals ?? []).filter((x) => x.profile !== p.profile || x.offer !== body.offerId);
 			}
 			p.ready = false;

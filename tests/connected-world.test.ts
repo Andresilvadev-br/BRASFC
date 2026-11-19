@@ -69,20 +69,44 @@ describe('universo compartilhado', () => {
 		await command(rival, 'settings', { allowAbsent: false, inviteOpen: false });
 		await expect(joinRoom(db, room.code, outsider)).rejects.toMatchObject({ status: 403 });
 	}, 30000);
-	it('fecha duas temporadas compartilhadas e preserva as súmulas da edição anterior', async () => {
-		const { profile } = await createGuestProfile(db);
-		const owner = profile.id;
+	it('fecha duas temporadas com empréstimo autorizado, retorno, renovação e súmulas persistidas', async () => {
+		const [owner, athlete, borrower] = await Promise.all(Array.from({ length: 3 }, () => createGuestProfile(db).then((p) => p.profile.id)));
 		const room = await createRoom(db, owner, 'Universo de temporadas');
+		await joinRoom(db, room.code, athlete);
+		await joinRoom(db, room.code, borrower);
 		let revision = 0;
-		const execute = async (action: string, parameters: Record<string, unknown> = {}) => {
-			const out = await applyWorldCommand(db, room, owner, { revision, op: randomUUID(), action, ...parameters });
+		const execute = async (action: string, parameters: Record<string, unknown> = {}, profile = owner) => {
+			const out = await applyWorldCommand(db, room, profile, { revision, op: randomUUID(), action, ...parameters });
 			revision = out.revision;
 		};
 		await execute('assign', { role: 'coach', club: 'flamengo' });
 		await execute('settings', { inviteOpen: true, allowAbsent: true });
+		await execute('assign', { role: 'player', club: 'flamengo', personName: 'Atleta em formação', position: 'ATA', age: 19 }, athlete);
+		await execute('jogador-sondar', { kind: 'emprestimo' }, athlete);
+		const offer = (await worldSnapshot(db, room, athlete)).current?.athlete?.playerCareer?.offers[0];
+		expect(offer?.kind).toBe('emprestimo');
+		await execute('assign', { role: 'coach', club: offer!.clubId }, borrower);
+		await execute('jogador-aceitar', { offerId: offer!.id }, athlete);
+		await execute('approve-athlete', { id: offer!.id, target: athlete });
+		expect((await worldSnapshot(db, room, athlete)).current?.club).toBe('flamengo');
+		await execute('approve-athlete', { id: offer!.id, target: athlete }, borrower);
+		const loaned = (await worldSnapshot(db, room, athlete)).current;
+		expect(loaned?.club).toBe(offer!.clubId);
+		expect(loaned?.athlete?.playerCareer?.daily.loan?.parent).toBe('flamengo');
+		await leaveRoom(db, room, borrower);
+		revision = (await worldSnapshot(db, room, owner)).revision;
 		const start = (await worldSnapshot(db, room, owner)).season;
 		// O calendário atual contém 38 datas de liga e 13 da Copa, mais a transição.
-		for (let i = 0; i < 104; i++) await execute('advance');
+		for (let i = 0; i < 52; i++) await execute('advance');
+		const returned = (await worldSnapshot(db, room, athlete)).current;
+		expect(returned?.club).toBe('flamengo');
+		expect(returned?.history.map((entry) => entry.club)).toEqual(['flamengo', offer!.clubId, 'flamengo']);
+		expect(returned?.athlete?.playerCareer?.daily.loan).toBeNull();
+		expect(returned?.athlete?.playerCareer?.daily.clubs.at(-1)?.kind).toBe('retorno');
+		await execute('jogador-negociar', { years: 3 }, athlete);
+		await execute('jogador-renovar', {}, athlete);
+		expect((await worldSnapshot(db, room, athlete)).current?.athlete?.playerCareer?.contract.until).toBe(start + 3);
+		for (let i = 0; i < 52; i++) await execute('advance');
 		const after = await worldSnapshot(db, room, owner);
 		expect(after.season).toBe(start + 2);
 		expect(after.champions.map((year) => year.season)).toEqual([start, start + 1]);
@@ -90,5 +114,4 @@ describe('universo compartilhado', () => {
 		expect(rows.map((r) => r.season)).toEqual([start, start + 1]);
 		expect(rows.every((r) => r.fixtures > 500)).toBe(true);
 	}, 180000);
-
 });
