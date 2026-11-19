@@ -9,7 +9,7 @@ const { pathToFileURL } = require('node:url');
 function gameDir(app) {
 	const packaged = path.join(process.resourcesPath || '', 'app-offline');
 	if (app.isPackaged) return packaged;
-	const local = path.join(__dirname, 'app-offline');
+	const local = path.join(__dirname, 'offline', 'app-offline');
 	return fs.existsSync(path.join(local, 'server', 'index.js')) ? local : path.join(__dirname, '..');
 }
 

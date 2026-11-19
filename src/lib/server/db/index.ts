@@ -20,7 +20,18 @@ export async function createPostgresDb(url: string): Promise<Db> {
 		max: Number(process.env.DATABASE_POOL_MAX ?? 5),
 		idle_timeout: 30,
 		connect_timeout: 10,
-		onnotice: () => {}
+		onnotice: () => {},
+		types: {
+			// Os repositórios já enviam JSON pronto (texto) em parâmetros `$n::jsonb`. O serializador
+			// padrão do driver aplicava JSON.stringify DE NOVO e o banco gravava uma string (ou, com
+			// `data || $n`, uma lista de strings) em vez do objeto. Texto passa intacto; objetos viram JSON.
+			json: {
+				to: 114,
+				from: [114, 3802],
+				serialize: (x: unknown) => (typeof x === 'string' ? x : JSON.stringify(x)),
+				parse: (x: string) => JSON.parse(x)
+			}
+		}
 	});
 	type Runner = { unsafe: (q: string, p?: never[]) => Promise<unknown> };
 	const wrap = (runner: Runner, isTx: boolean): Db => ({

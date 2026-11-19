@@ -1,4 +1,4 @@
-// Prepara o jogo offline embutido no instalador (desktop/app-offline):
+// Prepara o jogo offline embutido no instalador (desktop/offline/app-offline):
 // o build de produção do SvelteKit + o servidor + as dependências de execução.
 // Uso (na raiz do repositório, depois de `npm ci && npm run build`):
 //   node desktop/scripts/prepare-offline.mjs [--install]
@@ -9,7 +9,9 @@ import { fileURLToPath } from 'node:url';
 
 const desktop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const root = path.resolve(desktop, '..');
-const out = path.join(desktop, 'app-offline');
+// Fica em offline/app-offline (e não direto em offline/): o electron-builder sempre descarta o
+// node_modules da RAIZ de cada recurso extra, mas preserva o de subpastas.
+const out = path.join(desktop, 'offline', 'app-offline');
 
 if (!fs.existsSync(path.join(root, 'build', 'handler.js'))) {
 	console.error('Falta o build do jogo: rode `npm run build` na raiz antes.');
@@ -42,5 +44,13 @@ fs.writeFileSync(
 
 if (process.argv.includes('--install')) {
 	execSync('npm install --omit=dev --no-audit --no-fund --no-package-lock', { cwd: out, stdio: 'inherit' });
+}
+// Confere que as dependências de execução estão lá (o instalador falharia em silêncio sem elas).
+if (process.argv.includes('--install')) {
+	const missing = Object.keys(JSON.parse(fs.readFileSync(path.join(out, 'package.json'), 'utf8')).dependencies).filter((d) => !fs.existsSync(path.join(out, 'node_modules', d, 'package.json')));
+	if (missing.length) {
+		console.error(`Dependências ausentes no jogo offline: ${missing.join(', ')}`);
+		process.exit(1);
+	}
 }
 console.log(`Jogo offline ${pkg.version} preparado em ${out}`);
