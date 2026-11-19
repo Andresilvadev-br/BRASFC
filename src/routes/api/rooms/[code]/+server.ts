@@ -43,7 +43,12 @@ export const DELETE: RequestHandler = async (event) => {
 	const db = await getDb();
 	const room = await getRoomByCode(db, codeOf(event.params.code));
 	if (!room || !(await isMember(db, room.id, profile.id))) error(404, 'Sala não encontrada.');
-	const result = await leaveRoom(db, room, profile.id);
-	await getRealtimeHub().broadcastRoom(room.id);
-	return noStore({ result });
+	try {
+		const result = await leaveRoom(db, room, profile.id);
+		await getRealtimeHub().broadcastRoom(room.id);
+		return noStore({ result });
+	} catch (e) {
+		if (e instanceof RoomError) error(e.status, e.message);
+		throw e;
+	}
 };

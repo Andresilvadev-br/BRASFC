@@ -19,6 +19,13 @@ export interface Release {
 
 export const RELEASES: Release[] = [
 	{
+		version: '0.7.0', date: '2026-11-19', title: 'Connected World', channel: 'desenvolvimento',
+		added: ['Universos compartilhados persistentes', 'Reprodução de partidas oficiais', 'Abertura original e atualizador integrado ao Windows'],
+		improved: ['Comandos com controle de revisão e confirmação após persistência'],
+		compat: { database: 'migração 0006 cria tabelas de universos', saves: 'carreiras individuais preservadas' },
+		next: []
+	},
+	{
 		version: '0.6.1',
 		date: '2026-11-19',
 		title: 'Estabilidade e experiência das carreiras',

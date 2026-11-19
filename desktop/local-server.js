@@ -91,11 +91,9 @@ async function startLocalServer(app, preferredPort) {
 /** Fecha o banco com segurança (grava tudo antes de sair). */
 async function stopLocalServer() {
 	if (!running) return;
-	try {
-		await globalThis[Symbol.for('brasfc.shutdown')]?.();
-	} catch {
-		/* encerrando de qualquer forma */
-	}
+	// The in-process HTTP listener survives until exit. Keeping its address lets
+	// the old installation reopen the local database if the updater fails.
+	await globalThis[Symbol.for('brasfc.shutdown')]?.();
 }
 
 module.exports = { isAvailable, startLocalServer, stopLocalServer, gameDir };

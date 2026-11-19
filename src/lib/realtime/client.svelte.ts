@@ -10,6 +10,7 @@ export function createRoomConnection(code: string) {
 	const state = $state({
 		status: 'idle' as ConnectionStatus,
 		room: null as RoomSnapshot | null,
+		worldRevision: 0,
 		me: null as string | null,
 		error: null as string | null,
 		closedReason: null as string | null
@@ -46,8 +47,10 @@ export function createRoomConnection(code: string) {
 			if (msg.t === 'welcome') state.me = msg.profileId;
 			else if (msg.t === 'room') {
 				state.room = msg.room;
+				state.worldRevision = Math.max(state.worldRevision, msg.room.worldRevision ?? 0);
 				state.status = 'online';
-			} else if (msg.t === 'closed') {
+			} else if (msg.t === 'world' && msg.v === 1) state.worldRevision = Math.max(state.worldRevision, msg.revision);
+			else if (msg.t === 'closed') {
 				state.closedReason = msg.reason;
 				state.status = 'closed';
 				stop();

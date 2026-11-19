@@ -21,12 +21,14 @@ export interface RoomSnapshot {
 	ownerId: string;
 	status: 'open' | 'closed';
 	maxMembers: number;
+	worldRevision?: number;
 	members: PresenceMember[];
 }
 
 export type ServerMessage =
 	| { t: 'welcome'; profileId: string; displayName: string }
 	| { t: 'room'; room: RoomSnapshot }
+	| { t: 'world'; v: 1; revision: number }
 	| { t: 'closed'; code: string; reason: string }
 	| { t: 'error'; code: string; message: string }
 	| { t: 'pong' };

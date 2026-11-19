@@ -20,6 +20,12 @@ export const init: ServerInit = async () => {
 export const handle: Handle = async ({ event, resolve }) => {
 	const { pathname } = event.url;
 	const isApi = pathname.startsWith('/api/');
+	const started = performance.now();
+	if (process.env.BRASFC_OFFLINE === '1' && pathname.startsWith('/api/rooms')) {
+		return new Response(JSON.stringify({ message: 'Universos compartilhados exigem o modo online.' }), {
+			status: 503, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }
+		});
+	}
 	event.locals.profile = null;
 
 	if (isApi && !SAFE_METHODS.has(event.request.method)) {
@@ -55,6 +61,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	response.headers.set('referrer-policy', 'strict-origin-when-cross-origin');
 	response.headers.set('permissions-policy', 'camera=(), microphone=(), geolocation=(), payment=()');
 	response.headers.set('cross-origin-opener-policy', 'same-origin');
+	if (isApi) response.headers.append('server-timing', `request;dur=${(performance.now() - started).toFixed(1)}`);
 	if (isApi && !response.headers.has('cache-control')) response.headers.set('cache-control', 'no-store');
 	return response;
 };

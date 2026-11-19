@@ -146,7 +146,10 @@ export class RealtimeHub {
 			}
 			return;
 		}
-		const members = await listMembers(db, roomId);
+		const [members, world] = await Promise.all([
+			listMembers(db, roomId),
+			db.query<{ revision: number }>('SELECT revision FROM room_worlds WHERE room_id = $1', [roomId])
+		]);
 		const memberIds = new Set(members.map((m) => m.profileId));
 		const online = new Set(targets.map((c) => c.profile.id));
 		const ready = this.ready.get(roomId) ?? new Set<string>();
@@ -158,6 +161,7 @@ export class RealtimeHub {
 			ownerId: room.ownerId,
 			status: room.status,
 			maxMembers: room.maxMembers,
+			worldRevision: Number(world[0]?.revision ?? 0),
 			members: members.map<PresenceMember>((m) => ({
 				profileId: m.profileId,
 				displayName: m.displayName,
@@ -173,6 +177,16 @@ export class RealtimeHub {
 			} else {
 				this.send(c, { t: 'room', room: snapshot });
 			}
+		}
+	}
+
+	async publishWorldRevision(roomId: string, revision: number) {
+		const connected = [...this.conns].filter((connection) => connection.roomId === roomId);
+		if (!connected.length) return;
+		const members = await listMembers(await this.db(), roomId);
+		const ids = new Set(members.map((member) => member.profileId));
+		for (const connection of connected) {
+			if (connection.roomId === roomId && ids.has(connection.profile.id)) this.send(connection, { t: 'world', v: 1, revision });
 		}
 	}
 

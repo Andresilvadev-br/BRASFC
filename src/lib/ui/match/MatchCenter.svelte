@@ -28,6 +28,7 @@
 		seed,
 		control = null,
 		aiOpponent = true,
+		neutral = false,
 		onfinish
 	}: {
 		home: TeamSetup;
@@ -36,6 +37,7 @@
 		/** lado comandado pelo usuário (null = só assistir) */
 		control?: Side | null;
 		aiOpponent?: boolean;
+		neutral?: boolean;
 		onfinish?: (result: MatchResult, match: Match) => void;
 	} = $props();
 
@@ -45,6 +47,7 @@
 		home,
 		away,
 		seed,
+		...(neutral ? { rules: { homeAdvantage: false } } : {}),
 		ai: { home: control !== 'home' && aiOpponent, away: control !== 'away' && aiOpponent }
 	});
 
