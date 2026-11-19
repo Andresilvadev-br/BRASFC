@@ -1,3 +1,4 @@
+import type { TieOutcome } from '#lib/domain/league.ts';
 import { Match } from '#lib/engine/match.ts';
 import { ENGINE_VERSION, type AppliedDecision, type Decision, type MatchEvent, type Side, type TeamSetup } from '#lib/engine/types.ts';
 import { RoomError } from './repos/rooms.ts';
@@ -15,6 +16,7 @@ export type LiveRound = {
 	id: string; season: number; step: string; round: number; date: string; fixtures: LiveFixture[];
 	required: string[]; loaded: string[]; confirmed: string[]; phase: RoundPhase;
 	tick: number; since: number; updated: number; sequence: number; suspended: boolean;
+	shootouts?: Record<number, NonNullable<TieOutcome['penalties']>>;
 	requests: string[]; submissions: Submission[]; suggestions: Suggestion[];
 };
 
@@ -41,7 +43,7 @@ export function checkpoint(round: LiveRound): Omit<LiveRound, 'fixtures'> {
 	return state;
 }
 const sides = ['home', 'away'] as const;
-const featuredEvents = new Set<MatchEvent['type']>(['goal', 'foul', 'free_kick', 'corner', 'penalty', 'penalty_miss', 'yellow', 'red', 'sub', 'offside', 'injury', 'shot_saved', 'half_time', 'second_half', 'full_time', 'tactic', 'shot', 'aerial', 'cross']);
+const featuredEvents = new Set<MatchEvent['type']>(['kickoff', 'goal', 'foul', 'free_kick', 'corner', 'penalty', 'penalty_miss', 'yellow', 'red', 'sub', 'offside', 'injury', 'shot_saved', 'half_time', 'second_half', 'full_time', 'tactic', 'shot', 'aerial', 'cross', 'shot_off', 'shot_blocked']);
 
 function moveTo(match: Match, tick: number, secondHalf: boolean) {
 	while (match.tick < tick && match.phase !== 'finished' && (secondHalf || match.phase !== 'half_time')) match.step();
@@ -131,17 +133,17 @@ export function pulseRound(session: LiveRound, connected: ReadonlySet<string>, n
 }
 
 export function canCommitRound(session: LiveRound, now: number) {
-	return session.phase === 'FULL_TIME' && !session.suspended && now - session.since >= ENDED_MS;
+	return session.phase === 'FULL_TIME' && !session.suspended && now - session.since >= (Object.keys(session.shootouts ?? {}).length ? 11_000 : ENDED_MS);
 }
 
 export function matchView(match: Match) {
 	const { players, stats } = match.result();
 	return { tick: match.tick, minute: match.minuteLabel(match.tick), phase: match.phase, score: { ...match.score },
 		players: [...match.states.values()].filter((p) => p.onPitch).map((p) => ({ ...p })), ball: { ...match.ball },
-		events: match.events.filter((e) => featuredEvents.has(e.type)).slice(-36).map((event) => ({ ...event, minute: match.minuteLabel(event.tick) })),
+		events: match.events.map((event, index) => ({ ...event, index })).filter((e) => featuredEvents.has(e.type)).slice(-36).map((event) => ({ ...event, minute: match.minuteLabel(event.tick) })),
 		decisions: match.applied.slice(-16), stats: { players, teams: stats },
 		teams: Object.fromEntries(sides.map((side) => [side, { tactic: { ...match.teams[side].tactic, instructions: match.teams[side].instructions },
-			bench: match.bench(side), gkId: match.teams[side].gkId, subs: match.subsLeft(side) }])) as Record<Side, {
-				tactic: TeamSetup['tactic']; bench: ReturnType<Match['bench']>; gkId: string; subs: number;
+			bench: match.bench(side), gkId: match.teams[side].gkId, captain: match.captain(side), subs: match.subsLeft(side) }])) as Record<Side, {
+				tactic: TeamSetup['tactic']; bench: ReturnType<Match['bench']>; gkId: string; captain: string | null; subs: number;
 			}> };
 }

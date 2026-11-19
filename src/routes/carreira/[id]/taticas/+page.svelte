@@ -1,4 +1,12 @@
 <script lang="ts">
+	import PlayerOrders from '#lib/ui/tactics/PlayerOrders.svelte';
+	import type { PlayerOrder } from '#lib/domain/player-orders.ts';
+	function setIndividual(id: string, order: PlayerOrder | null) {
+		const next = { ...tactic.playerOrders };
+		if (order) next[id] = order;
+		else delete next[id];
+		tactic.playerOrders = Object.keys(next).length ? next : undefined;
+	}
 	import { universeCoach } from '#lib/domain/matchday.ts';
 	import { untrack } from 'svelte';
 	import { beforeNavigate, goto, invalidate } from '$app/navigation';
@@ -373,6 +381,10 @@
 		</Panel>
 
 		<div class="side">
+			<Panel title="Comandos por atleta" icon="user">
+				<PlayerOrders squad={v.squad} lineup={tactic.lineup} order={tactic.captains} instructions={tactic.playerOrders}
+					selected={selectedSlot === null ? '' : tactic.lineup[selectedSlot]} oninstruction={setIndividual} oncaptains={(ids) => tactic.captains = ids.length ? ids : undefined} />
+			</Panel>
 			<Segmented label="Escalação e estilo" options={sidebarOptions} value={sidebarView} onchange={(value) => (sidebar = value)} />
 			{#key sidebarView}
 			<div class="side-content" use:enter>

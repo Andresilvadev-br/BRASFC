@@ -3,7 +3,7 @@ import { careerStart, initialCareerData, validateCreateCareer, type Career, type
 import { DEFAULT_APPEARANCE } from '#lib/domain/appearance.ts';
 import { getClub } from '#lib/domain/clubs.ts';
 import { seasonSteps } from '#lib/domain/calendar.ts';
-import { initialCup, clubCupRun, cupView, prepareCup, cupFixtures, phaseOfMatchday, projectedCup } from '#lib/domain/cup.ts';
+import { initialCup, clubCupRun, cupView, prepareCup, cupFixtures, phaseOfMatchday, projectedCup, tieOutcome } from '#lib/domain/cup.ts';
 import { addDays } from '#lib/domain/dates.ts';
 import { DEFAULT_PLAN, applyTrainingWeek, recoverFitness, sanitizePlan } from '#lib/domain/drills.ts';
 import { initialLeague, divisionOf, effectiveRule, divisionStandings, prepareRound, seasonFixtures, closeSeason, seasonStartDate, type LeagueState, type StoredRoundResult } from '#lib/domain/league.ts';
@@ -607,7 +607,7 @@ function viewLiveRound(round: LiveRound, player: Assignment, participants: World
 		countdownUntil: round.phase === 'LOADING' && round.since ? round.since + 3000 : null,
 		waiting: round.required.filter((id) => !online.has(id)), suspended: round.suspended, tick: round.tick,
 		loaded: round.loaded, confirmed: round.confirmed, required: round.required,
-		relevant: fixture && side ? { ...fixture, match: matchView(matches[index]), side,
+		relevant: fixture && side ? { ...fixture, match: matchView(matches[index]), shootout: round.shootouts?.[index], side,
 			stadium: getClub(fixture.replay.home.id)?.stadium,
 			crew: Object.values(participants).filter((p) => p.role !== 'player' && [fixture.replay.home.id, fixture.replay.away.id].includes(p.club))
 				.map(({ club, role, name }) => ({ club, role, name })), canManage: player.role === 'coach' || (player.role === 'assistant' && !!player.matchDelegated) } : null,
@@ -615,6 +615,27 @@ function viewLiveRound(round: LiveRound, player: Assignment, participants: World
 		role: player.role, athleteId: player.role === 'player' ? athleteId(player) : null,
 		fixtures: round.fixtures.map(({ competition, replay }, i) => ({ competition, home: replay.home.id, away: replay.away.id,
 			score: { ...matches[i].score }, phase: matches[i].phase, minute: matches[i].minuteLabel(matches[i].tick) })) };
+}
+
+async function collectShootouts(tx: Db, room: Room, round: LiveRound) {
+	const [row] = await tx.query<RecordRow>('SELECT revision,state FROM room_worlds WHERE room_id=$1', [room.id]);
+	const state = readState(row);
+	const phase = phaseOfMatchday(round.round);
+	if (!state.cup || phase.matchdays.at(-1) !== round.round) return {};
+	const seed = seedOf(room);
+	const prior = await results(tx, room, round.season, true);
+	const matches = enginesFor(round);
+	const rows = [...prior, ...round.fixtures.map((fixture, index) => ({
+		competition: fixture.competition, round: round.round, home: fixture.replay.home.id, away: fixture.replay.away.id,
+		homeGoals: matches[index].score.home, awayGoals: matches[index].score.away
+	}))];
+	const strength = strengthMemo(rosterContext(context(room, state, state.league.divisions['serie-a']![0]), state.league));
+	const cup = prepareCup(state.cup, round.round, prior, seed, strength);
+	return Object.fromEntries(round.fixtures.flatMap(({ replay }, index) => {
+		const tie = cup.stages[phase.phase - 1]?.find((pair) => pair.includes(replay.home.id) && pair.includes(replay.away.id));
+		const penalties = tie && tieOutcome(cup, phase.phase - 1, tie, rows, seed, strength)?.penalties;
+		return penalties ? [[index, penalties]] : [];
+	}));
 }
 
 export async function updateLiveRound(db: Db, room: Room, profile: string, body: Record<string, unknown>, connection: RoundConnection) {
@@ -678,6 +699,10 @@ export async function updateLiveRound(db: Db, room: Room, profile: string, body:
 			changed = true;
 		}
 		if (pulseRound(round, online, now)) { round.sequence++; keepEngines(round); changed = true; }
+		if (round.phase === 'FULL_TIME' && round.step.startsWith('cup:') && !round.shootouts) {
+			round.shootouts = await collectShootouts(tx, room, round);
+			changed = true;
+		}
 		if (canCommitRound(round, now)) {
 			const official = enginesFor(round).map((match, index) => {
 				const replay = round.fixtures[index].replay;

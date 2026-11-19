@@ -1,3 +1,4 @@
+import { isPlayerOrder } from '#lib/domain/player-orders.ts';
 import { staffEffects } from '#lib/domain/staff.ts';
 import { suggestPlan } from '#lib/domain/drills.ts';
 import type { StoredRoundResult } from '#lib/domain/league.ts';
@@ -408,6 +409,8 @@ export function sanitizeDecisions(raw: unknown, side: 'home' | 'away' | null): A
 export function parseDecision(raw: unknown): Decision | null {
 	const dec = raw as Record<string, unknown> | undefined;
 	if (!dec || typeof dec !== 'object') return null;
+	if (dec.type === 'individual' && typeof dec.playerId === 'string' && dec.playerId.length <= 128 && (dec.order === null || isPlayerOrder(dec.order))) return { type: 'individual', playerId: dec.playerId, order: dec.order };
+	if (dec.type === 'captains' && Array.isArray(dec.order) && dec.order.length <= 11 && dec.order.every((id) => typeof id === 'string' && id.length <= 128)) return { type: 'captains', order: dec.order };
 	if (dec.type === 'sub' && typeof dec.outId === 'string' && typeof dec.inId === 'string') return { type: 'sub', outId: dec.outId, inId: dec.inId };
 	if (dec.type === 'mentality' && normalizeMentality(dec.value)) return { type: 'mentality', value: normalizeMentality(dec.value)! };
 	if (dec.type === 'style' && normalizeStyle(dec.value)) return { type: 'style', value: normalizeStyle(dec.value)! };

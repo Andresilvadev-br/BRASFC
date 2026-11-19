@@ -1,4 +1,13 @@
 <script lang="ts">
+	import PlayerOrders from './tactics/PlayerOrders.svelte';
+	import type { PlayerOrder, PlayerOrders as Orders } from '#lib/domain/player-orders.ts';
+	let captainDraft = $state<string[]>([]);
+	let orderDraft = $state<Orders>({});
+	function setIndividual(id: string, order: PlayerOrder | null) {
+		if (order) orderDraft[id] = order;
+		else delete orderDraft[id];
+	}
+
 	import { onMount, untrack } from 'svelte';
 	import { ApiError, api } from '#lib/api.ts';
 	import { APPEARANCE_OPTIONS, APPEARANCE_FIELDS, DEFAULT_APPEARANCE, HAIR_COLORS, HAIR_STYLES, HAIR_STYLE_LABELS, SKIN_TONES, type Appearance } from '#lib/domain/appearance.ts';
@@ -253,7 +262,7 @@
 			{/if}
 			{#if current?.role === 'coach' && world.tactic}
 				<article><h3>Plano de jogo</h3>
-					{#if !savedLineup.length}<Button onclick={() => { formation = world.tactic!.formation; style = world.tactic!.style; mentality = world.tactic!.mentality; savedLineup = [...world.tactic!.lineup]; }}>Editar escalação</Button>
+					{#if !savedLineup.length}<Button onclick={() => { formation = world.tactic!.formation; style = world.tactic!.style; mentality = world.tactic!.mentality; savedLineup = [...world.tactic!.lineup]; captainDraft = [...(world.tactic!.captains ?? [])]; orderDraft = { ...world.tactic!.playerOrders }; }}>Editar escalação</Button>
 					{:else}
 						<label>Formação<select value={formation} onchange={(e) => editFormation(e.currentTarget.value as FormationId)}>{#each FORMATION_IDS as f}<option value={f}>{f}</option>{/each}</select></label>
 						<label>Estilo<select bind:value={style}>{#each STYLES as x}<option value={x}>{STYLE_LABELS[x]}</option>{/each}</select></label>
@@ -261,7 +270,8 @@
 						<div class="lineup">{#each FORMATIONS[formation] as slot, i (i)}
 							<label>{slot.position}<select bind:value={savedLineup[i]}>{#each world.roster as p}<option value={p.id}>{p.name} · {p.overall}</option>{/each}</select></label>
 						{/each}</div>
-						<Button disabled={saving} onclick={() => send('tactic', { tactic: { formation, style, lineup: savedLineup, mentality } })}>Salvar escalação</Button>
+						<PlayerOrders squad={world.roster} lineup={savedLineup} order={captainDraft} instructions={orderDraft} oninstruction={setIndividual} oncaptains={(ids) => captainDraft = ids} />
+						<Button disabled={saving} onclick={() => send('tactic', { tactic: { ...world.tactic, formation, style, lineup: savedLineup, mentality, captains: captainDraft, playerOrders: orderDraft } })}>Salvar escalação</Button>
 					{/if}
 				</article>
 			{/if}

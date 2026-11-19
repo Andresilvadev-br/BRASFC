@@ -1,3 +1,4 @@
+import { fitsOrder, PLAYER_ORDERS, sanitizeCaptains, sanitizeOrders } from '#lib/domain/player-orders.ts';
 import { positionFit, type Position } from '#lib/domain/positions.ts';
 import { createRng, type Rng } from '#lib/domain/rng.ts';
 import { FORMATIONS, type FormationId } from '#lib/domain/tactics.ts';
@@ -215,6 +216,8 @@ export class Match {
 
 	private makeTeam(setup: TeamSetup, ai: boolean): TeamRuntime {
 		const tactic = { ...setup.tactic, lineup: [...setup.tactic.lineup], bench: [...setup.tactic.bench] };
+		tactic.captains = sanitizeCaptains(tactic.captains, setup.players);
+		tactic.playerOrders = sanitizeOrders(tactic.playerOrders, setup.players);
 		const byId = new Map(setup.players.map((p) => [p.id, p]));
 		if (tactic.lineup.length !== 11 || new Set(tactic.lineup).size !== 11 || tactic.lineup.some((id) => !byId.has(id))) {
 			throw new Error(`Escalação inválida para ${setup.name}`);
@@ -320,6 +323,11 @@ export class Match {
 		if (this.phase !== 'half_time' || this.replay) return 'O confronto ainda não está no intervalo.';
 		this.applyDecision(side, decision, false);
 		return this.applied.at(-1)?.rejected;
+	}
+
+	captain(side: Side): string | null {
+		const eligible = this.onPitch(side).filter((player) => !player.injured && !player.sentOff);
+		return this.teams[side].tactic.captains?.find((id) => eligible.some((p) => p.id === id)) ?? eligible[0]?.id ?? null;
 	}
 
 	pending(side: Side): Decision[] {
@@ -441,6 +449,29 @@ export class Match {
 		const t = this.teams[side];
 		this.fitCache.clear();
 		const record = (rejected?: string) => this.applied.push({ tick: this.tick, side, decision: d, ...(rejected ? { rejected } : {}) });
+		if (d.type === 'individual') {
+			const player = this.states.get(d.playerId);
+			const info = t.byId.get(d.playerId);
+			const slot = player && FORMATIONS[t.tactic.formation][player.slot];
+			if (!player?.onPitch || player.side !== side || !info || !slot || (d.order && (!fitsOrder(d.order, info.position) || !fitsOrder(d.order, slot.position)))) {
+				return record('Instrução incompatível com o atleta em campo');
+			}
+			const orders = { ...t.tactic.playerOrders };
+			if (d.order) orders[d.playerId] = d.order;
+			else delete orders[d.playerId];
+			t.tactic.playerOrders = orders;
+			record();
+			this.emit('tactic', { side, player: d.playerId, data: { kind: 'individual', value: d.order ?? 'padrao' } });
+			return;
+		}
+		if (d.type === 'captains') {
+			const eligible = sanitizeCaptains(d.order, [...t.byId.values()]);
+			if (d.order.length && eligible?.length !== d.order.length) return record('Hierarquia de capitães inválida');
+			t.tactic.captains = eligible;
+			record();
+			this.emit('tactic', { side, player: this.captain(side) ?? undefined, data: { kind: 'captains' } });
+			return;
+		}
 		if (d.type === 'mentality' || d.type === 'style') {
 			// Mudar mentalidade/estilo troca o preset, mas mantém os ajustes avançados do treinador.
 			const custom = overridesOf(t.instructions, presetInstructions(t.tactic.mentality, t.tactic.style));
@@ -598,11 +629,13 @@ export class Match {
 		const lateral = (s.x / 100) * PITCH.width;
 		let ax: number;
 		let ay: number;
+		const order = t.tactic.playerOrders?.[t.tactic.lineup[slot]];
+		const adjustment = order && fitsOrder(order, s.position) ? PLAYER_ORDERS[order] : null;
 		if (s.position === 'GOL') {
 			const libero = t.roles[slot] === 'gk-libero' ? (inPossession ? 1 : 0.6) : 0;
 			ax = Math.max(3, Math.min(16 + libero * 8, 4 + (bx - 30) * (0.12 + libero * 0.08)));
 			ay = PITCH.width / 2 + (by - PITCH.width / 2) * 0.15;
-			return toAbs(side, ax, ay);
+			return toAbs(side, adjustment ? clamp(ax + (inPossession ? adjustment.attack : adjustment.defend), 2, 23) : ax, ay);
 		}
 		const chosen = ROLES[t.roles[slot] ?? DEFAULT_ROLE[s.position]];
 		const std = ROLES[DEFAULT_ROLE[s.position]];
@@ -649,6 +682,10 @@ export class Match {
 		if (jitter > 0.05) {
 			ax += hashNoise(this.tick >> 3, slot, side === 'home' ? 1 : 2) * jitter;
 			ay += hashNoise(this.tick >> 3, slot + 17, side === 'home' ? 3 : 4) * jitter;
+		}
+		if (adjustment) {
+			ax += inPossession ? adjustment.attack : adjustment.defend;
+			ay += (ay - PITCH.width / 2) * adjustment.width;
 		}
 		[ax, ay] = clampToPitch(ax, ay);
 		return toAbs(side, ax, ay);

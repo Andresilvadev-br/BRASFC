@@ -10,6 +10,8 @@
 	import Crest from '../Crest.svelte';
 	import Button from '../Button.svelte';
 	import PitchCanvas from './PitchCanvas.svelte';
+	import PlayerOrders from '../tactics/PlayerOrders.svelte';
+	import BroadcastMoments from './BroadcastMoments.svelte';
 
 	type Session = NonNullable<Awaited<ReturnType<typeof updateLiveRound>>['session']>;
 	let { path, profile, names, online, onchange, oncomplete }: { path: string; profile: string; names: Record<string, string>; online: boolean;
@@ -44,10 +46,11 @@
 		ball: visual.ball, tick: visual.tick, events: visual.events, teams: visual.teams, player: (id: string) => athletes.get(id),
 		states: new Map(visual.players.map((player) => [player.id, player]))
 	} : null);
-	const feature = $derived(match?.events.findLast((event) => ['goal', 'foul', 'corner', 'free_kick', 'penalty', 'sub', 'red', 'yellow'].includes(event.type) && match.tick - event.tick <= 180));
+
 	const own = $derived(relevant?.match.teams[relevant.side]);
 	const playerStats = $derived(session?.athleteId ? match?.stats.players[session.athleteId] : undefined);
 	const suggestionRights = $derived(session?.role === 'assistant');
+	const visibleKicks = $derived(relevant?.shootout?.kicks?.slice(0, Math.max(1, Math.floor((now - (session?.since ?? 0)) / 700) + 1)) ?? []);
 	const competition = (id?: string) => id === 'copa-do-brasil' ? 'Copa do Brasil' : id?.startsWith('serie-') ? `Brasileirão Série ${id.at(-1)?.toUpperCase()}` : 'BRASFC';
 
 	async function request(action: string, extra: Record<string, unknown> = {}) {
@@ -150,7 +153,7 @@
 								<div class="board">
 									{#each FORMATIONS[team.tactic.formation] as slot, index}
 										{@const athlete = athletes.get(team.tactic.lineup[index])}
-										<div style:left={`${slot.x}%`} style:top={`${slot.y}%`}><b>{athlete?.number}</b><span>{athlete?.shortName} · {slot.position}</span></div>
+										<div style:left={`${slot.x}%`} style:top={`${slot.y}%`}><b>{athlete?.number}{#if (team.tactic.captains?.find((id) => team.tactic.lineup.includes(id)) ?? team.tactic.lineup[0]) === athlete?.id} · C{/if}</b><span>{athlete?.shortName} · {slot.position}</span></div>
 									{/each}
 								</div>
 								<small>Banco · {team.tactic.bench.map((id) => athletes.get(id)?.shortName ?? id).join(' · ')}</small>
@@ -172,11 +175,7 @@
 						{#if playerStats && !['HALF_TIME', 'FULL_TIME'].includes(session.phase)}
 							<p>Sua atuação · {playerStats.minutes} min · Nota {playerStats.rating.toFixed(1)} · Condição {Math.round(playerStats.condition)}%</p>
 						{/if}
-						{#if feature}
-							{#key `${feature.tick}-${feature.type}`}
-								<div class="feature" class:goal={feature.type === 'goal'} use:pop><strong>{labels[feature.type]}</strong><span>{namesOf(feature)} · {feature.minute}</span></div>
-							{/key}
-						{/if}
+						<BroadcastMoments events={match.events} athleteName={(id) => athletes.get(id)?.name} />
 					</div>
 					<aside class="surface">
 						<h3>Lances oficiais</h3>
@@ -196,6 +195,15 @@
 					{/each}
 					{#if playerStats}<p>Sua atuação · {playerStats.minutes} min · Nota {playerStats.rating.toFixed(1)} · Condição {Math.round(playerStats.condition)}%</p>{/if}
 					{#if session.phase === 'FULL_TIME'}
+						{#if relevant.shootout}
+							<div class="shootout" use:enter>
+								<h3>Disputa de pênaltis</h3>
+								<p>{relevant.replay.home.short} {visibleKicks.filter((kick) => kick.side === 'home' && kick.scored).length} × {visibleKicks.filter((kick) => kick.side === 'away' && kick.scored).length} {relevant.replay.away.short}</p>
+								{#each visibleKicks as kick, index (index)}
+									<span class:scored={kick.scored} title={kick.scored ? 'Convertido' : 'Perdido'} use:pop>{kick.side === 'home' ? relevant.replay.home.short : relevant.replay.away.short} {kick.scored ? '✓' : '×'}</span>
+								{/each}
+							</div>
+						{/if}
 						{@const best = Object.entries(match.stats.players).filter(([, stats]) => stats.minutes > 0).sort((a, b) => b[1].rating - a[1].rating)[0]}
 						{#if best}<p>Destaque · {athletes.get(best[0])?.name} · Nota {best[1].rating.toFixed(1)}</p>{/if}
 					{/if}
@@ -204,6 +212,10 @@
 			{#if own && (relevant.canManage || suggestionRights) && ['FIRST_HALF','HALF_TIME','SECOND_HALF'].includes(session.phase)}
 				<div class="surface" use:enter>
 					<h3>{relevant.canManage ? 'Comando do time' : 'Sugestões ao treinador'}</h3>
+					<p>Capitão · {own.captain ? athletes.get(own.captain)?.name : 'Sem jogador elegível'}</p>
+					<PlayerOrders squad={relevant.replay[relevant.side].players} lineup={match.players.filter((p) => p.side === relevant.side).map((p) => p.id)}
+						order={own.tactic.captains} instructions={own.tactic.playerOrders} disabled={pending} oncaptains={(order) => decision({ type: 'captains', order })}
+						oninstruction={(playerId, order) => decision({ type: 'individual', playerId, order })} />
 					<p>{own.subs} substituições · Familiaridade {Math.round(relevant.replay[relevant.side].familiarity?.execution ?? 60)}%</p>
 					<div class="controls">
 						<label>Formação <select value={own.tactic.formation} disabled={pending} onchange={(event) => changeFormation(event.currentTarget.value as FormationId)}>{#each FORMATION_IDS as value}<option {value}>{value}</option>{/each}</select></label>
@@ -251,7 +263,7 @@
 	.score time,.event time{color:var(--emerald-strong);font-variant-numeric:tabular-nums}.grid{display:grid;grid-template-columns:minmax(0,3fr) minmax(190px,1fr);gap:10px}.field{overflow:hidden;position:relative}.controls{margin-bottom:10px}
 	.controls select{background:var(--surface-sunken);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:7px;max-width:100%}
 	.event{display:flex;gap:8px;margin:.5rem 0;padding:.3rem 0;border-bottom:1px solid var(--line)}.event small{color:var(--text-3)}
-	.feature{padding:10px;display:flex;gap:12px;align-items:center;background:#152d25;border-left:4px solid #55d998;border-radius:7px}.feature.goal{background:#0b5735;color:#fff}.feature strong{text-transform:uppercase}
+	.shootout{background:#132b21;border:1px solid #386c53;border-radius:10px;padding:12px}.shootout span{display:inline-block;margin:3px;padding:4px 8px;border-radius:6px;background:#512828}.shootout span.scored{background:#245339}
 	.broadcast{background:radial-gradient(ellipse at 52% 15%,#23765e 0%,#10261f 35%,#101711 72%);color:#fff}.opening,.waiting{text-align:center}.opening{padding:clamp(24px,8vw,90px) 0}.opening .clubs{justify-content:center;margin:20px 0}
 	.board{position:relative;aspect-ratio:1.9;background:repeating-linear-gradient(90deg,#164935 0 10%,#1b543e 10% 20%);border:1px solid #b6e7cf;border-radius:8px;margin:10px 0;overflow:hidden}.board div{position:absolute;transform:translate(-50%,-50%);display:grid;justify-items:center;white-space:nowrap}.board b{border-radius:50%;background:#07160f;color:#fff;padding:3px 6px}.board span{background:#07160fc9;border-radius:4px;padding:1px 3px;font-size:clamp(.48rem,1.8vw,.77rem)}
 	.fixture{border:1px solid var(--line);border-radius:9px;padding:6px;justify-content:center}.fixtures{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:5px}.film{color:#ebd78c}

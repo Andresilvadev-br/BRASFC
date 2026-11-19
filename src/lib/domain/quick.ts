@@ -51,26 +51,31 @@ export function quickMatch(homeStrength: number, awayStrength: number, seed: num
  * Disputa de pênaltis determinística (5 cobranças + alternadas). A chance de cada cobrança
  * depende da força dos elencos (finalizadores × goleiro) — referência real ~75%.
  */
-export function penaltyShootout(homeStrength: number, awayStrength: number, seed: number): { home: number; away: number; winner: 'home' | 'away' } {
+export function penaltyShootout(homeStrength: number, awayStrength: number, seed: number): { home: number; away: number; winner: 'home' | 'away'; kicks: Array<{ side: 'home' | 'away'; scored: boolean }> } {
 	const rng = createRng(deriveSeed(seed, 'penaltis'));
 	const p = (att: number, def: number) => Math.max(0.6, Math.min(0.88, 0.75 + (att - def) * 0.004));
 	const ph = p(homeStrength, awayStrength);
 	const pa = p(awayStrength, homeStrength);
 	let h = 0;
 	let a = 0;
+	const kicks: Array<{ side: 'home' | 'away'; scored: boolean }> = [];
+	const take = (side: 'home' | 'away', scored: boolean) => {
+		kicks.push({ side, scored });
+		if (scored) { if (side === 'home') h++; else a++; }
+	};
 	for (let i = 0; i < 5; i++) {
-		if (rng.next() < ph) h++;
+		take('home', rng.next() < ph);
 		if (h > a + (5 - i)) break; // impossível alcançar
-		if (rng.next() < pa) a++;
+		take('away', rng.next() < pa);
 		if (a > h + (4 - i) || h > a + (4 - i)) break;
 	}
 	let guard = 0;
 	while (h === a && guard++ < 30) {
 		const sh = rng.next() < ph;
 		const sa = rng.next() < pa;
-		if (sh) h++;
-		if (sa) a++;
+		take('home', sh);
+		take('away', sa);
 	}
-	if (h === a) h++; // garantia (praticamente inalcançável)
-	return { home: h, away: a, winner: h > a ? 'home' : 'away' };
+	if (h === a) take('home', true); // garantia (praticamente inalcançável)
+	return { home: h, away: a, winner: h > a ? 'home' : 'away', kicks };
 }

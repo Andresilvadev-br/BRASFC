@@ -1,3 +1,4 @@
+import type { PlayerOrder, PlayerOrders } from '#lib/domain/player-orders.ts';
 import type { Position } from '#lib/domain/positions.ts';
 import type { FormationId, Mentality, PlayStyle } from '#lib/domain/tactics.ts';
 import type { Attributes } from './attributes.ts';
@@ -38,6 +39,8 @@ export interface TeamTactic {
 	instructions?: TacticalInstructions;
 	/** função de cada slot (mesma ordem de `lineup`); ausente = função padrão da posição */
 	roles?: RoleId[];
+	captains?: string[];
+	playerOrders?: PlayerOrders;
 }
 
 /**
@@ -78,6 +81,8 @@ export interface MatchRules {
 export const DEFAULT_RULES: MatchRules = { maxSubs: 5, maxWindows: 3, halfMinutes: 45, homeAdvantage: true };
 
 export type Decision =
+	| { type: 'individual'; playerId: string; order: PlayerOrder | null }
+	| { type: 'captains'; order: string[] }
 	| { type: 'sub'; outId: string; inId: string }
 	| { type: 'mentality'; value: Mentality }
 	| { type: 'style'; value: PlayStyle }
