@@ -232,14 +232,18 @@ try {
 			ForEach-Object { $_.CloseMainWindow() | Out-Null; $_.WaitForExit(25000) | Out-Null }
 		`], { env: { ...process.env, BRASFC_UPGRADE_EXE: exe } });
 		const faultLog = join(preferences, '..', 'update-validation-fault');
+		const bootFault = join(preferences, '..', 'update-validation-first-boot');
 		for (const fault of ['installer', 'first-boot']) {
 			result.pendingFault = fault;
 			rmSync(faultLog, { force: true });
+			rmSync(bootFault, { force: true });
+			// NSIS may relaunch through the Windows shell without inheriting the updater environment.
+			if (fault === 'first-boot') writeFileSync(bootFault, '');
 			const prior = (() => { try { return outcome().date; } catch { return ''; } })();
-			await launch({
+			await launch(fault === 'installer' ? {
 				BRASFC_VALIDATION_FAULT_LOG: faultLog,
-				[fault === 'installer' ? 'BRASFC_VALIDATION_INSTALL_FAILURE' : 'BRASFC_VALIDATION_STARTUP_FAILURE']: '1'
-			});
+				BRASFC_VALIDATION_INSTALL_FAILURE: '1'
+			} : {});
 			await waitOffline();
 			await downloadCandidate();
 			await startInstall();

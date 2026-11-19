@@ -52,7 +52,8 @@ function updateRecovery(app) {
 				catch (error) { if (error.code !== 'ENOENT') throw error; }
 			}
 			const script = path.join(dir, 'watch.ps1');
-			await fs.writeFile(script, await fs.readFile(path.join(__dirname, 'update-recovery.ps1')));
+			const recoveryScript = await fs.readFile(path.join(__dirname, 'update-recovery.ps1'), 'utf8');
+			await fs.writeFile(script, '\ufeff' + recoveryScript, 'utf8');
 			await fs.writeFile(stateFile, JSON.stringify(state), { flag: 'wx' });
 			const system32 = path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32');
 			const powershell = path.join(system32, 'WindowsPowerShell', 'v1.0', 'powershell.exe');

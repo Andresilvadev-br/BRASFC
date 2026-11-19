@@ -75,7 +75,19 @@ jobs:
           $source = Get-Content main.js -Raw
           $package = Get-Content package.json -Raw
           try {
-            $fault = "if (process.env.BRASFC_VALIDATION_STARTUP_FAILURE === '1') { require('node:fs').writeFileSync(process.env.BRASFC_VALIDATION_FAULT_LOG, 'first-boot'); require('electron').app.exit(79); }"
+            $fault = @'
+          {
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const directory = path.join(process.env.APPDATA, 'BRASFC');
+            const marker = path.join(directory, 'update-validation-first-boot');
+            if (fs.existsSync(marker)) {
+              fs.unlinkSync(marker);
+              fs.writeFileSync(path.join(directory, 'update-validation-fault'), 'first-boot');
+              require('electron').app.exit(79);
+            }
+          }
+          '@
             Set-Content main.js ($fault + [Environment]::NewLine + $source) -Encoding utf8
             node -e "const fs = require('node:fs'); const pkg = require('./package.json'); const version = pkg.version.split('.').map(Number); version[2]++; pkg.version = version.join('.'); fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));"
             if ($LASTEXITCODE -ne 0) { throw 'Falha ao configurar a versão do candidato.' }
