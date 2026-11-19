@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { invalidate } from '$app/navigation';
-	import { api } from '#lib/api.ts';
+	import { api, withCareerVersion } from '#lib/api.ts';
 	import type { Career } from '#lib/domain/career.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { aiTeamPlan } from '#lib/domain/coaches.ts';
@@ -32,7 +32,7 @@
 	async function save(body: Record<string, unknown>, label: string) {
 		saving = true;
 		try {
-			await api<{ career: Career }>(`/api/careers/${c.id}`, { method: 'PATCH', body: { version: c.version, ...body } });
+			await withCareerVersion(c.id, c.version, (version) => api<{ career: Career }>(`/api/careers/${c.id}`, { method: 'PATCH', body: { version, ...body } }));
 			await invalidate('app:career');
 			notify({ icon: 'check', tone: 'success', title: 'Treino atualizado', detail: label });
 		} catch (e) {

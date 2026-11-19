@@ -2,7 +2,7 @@
 	import { universeCoach } from '#lib/domain/matchday.ts';
 	import { untrack } from 'svelte';
 	import { beforeNavigate, goto, invalidate } from '$app/navigation';
-	import { api } from '#lib/api.ts';
+	import { api, withCareerVersion } from '#lib/api.ts';
 	import { positionFit } from '#lib/domain/positions.ts';
 	import type { SquadPlayer } from '#lib/domain/squad.ts';
 	import {
@@ -172,11 +172,10 @@
 		// No modo simples sem ajustes, a tática segue o preset (motor usa o preset calibrado).
 		const sent: Tactic = mode === 'simples' && customCount === 0 ? { ...snap, instructions: undefined } : snap;
 		try {
-			await api<{ career: Career }>(`/api/careers/${data.career.id}`, {
-				method: 'PATCH',
-				// Versão mais recente conhecida: se outra tela/aba salvou depois, o servidor recusa (409).
-				body: { version: data.career.version, tactic: sent }
-			});
+			// Se outra tela/aba gravou antes (409), busca a versão atual e grava de novo: vale a tática que o usuário salvou agora.
+			await withCareerVersion(data.career.id, data.career.version, (version) =>
+				api<{ career: Career }>(`/api/careers/${data.career.id}`, { method: 'PATCH', body: { version, tactic: sent } })
+			);
 			await invalidate('app:career');
 			// O indicador some sozinho quando o estado confirmado (servidor) bate com o editado.
 			if (tacticKey({ ...data.view.tactic, instructions: data.view.tactic.instructions }) !== tacticKey({ ...sent, roles: resolveRoles(sent.formation, sent.roles) })) throw new Error('O servidor não confirmou a tática enviada.');
@@ -220,7 +219,7 @@
 	
 	async function dismissTip(t: Tip) {
 	try {
-	await api(`/api/careers/${data.career.id}`, { method: 'PATCH', body: { version: data.career.version, dismissTip: t.id } });
+	await withCareerVersion(data.career.id, data.career.version, (version) => api(`/api/careers/${data.career.id}`, { method: 'PATCH', body: { version, dismissTip: t.id } }));
 	await invalidate('app:career');
 	} catch {
 	notify({ icon: 'alert', tone: 'error', title: 'Não foi possível ignorar agora' });

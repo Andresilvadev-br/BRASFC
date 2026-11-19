@@ -170,8 +170,15 @@ export function careerStart(world: World): { date: string; season: number } {
 return world === 'brasil' ? { date: seasonStartDate(TEMPORADA_2026.temporada), season: TEMPORADA_2026.temporada } : { ...CAREER_START };
 }
 
-export function careerWorld(c: Pick<Career, 'data'>): World {
-return c.data.world === 'brasil' ? 'brasil' : 'brasfc';
+/**
+ * Mundo da carreira. Carreiras antigas (antes do campo `world`) com clube real
+ * ficavam na Liga BRASFC fictícia, onde o clube não existe: sem jogos nem tabela.
+ * O clube decide: clube que não é da liga fictícia só pode ser do Brasil 2026.
+ */
+const FICTIONAL = new Set(CLUBS.map((c) => c.id));
+export function careerWorld(c: Pick<Career, 'data'> & Partial<Pick<Career, 'clubId'>>): World {
+	if (c.data.world === 'brasil') return 'brasil';
+	return c.clubId && !FICTIONAL.has(c.clubId) && CLUBES_2026.some((r) => r.id === c.clubId) ? 'brasil' : 'brasfc';
 }
 
 export function boardExpectation(club: Club, competition: string = LEAGUE.name): string {

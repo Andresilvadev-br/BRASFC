@@ -181,8 +181,8 @@
 		if (tired.length && match.subsLeft(me) > 0) out.push(`${tired.map((s) => nameOf(s.id)).slice(0, 2).join(' e ')} ${tired.length > 1 ? 'estão' : 'está'} cansado${tired.length > 1 ? 's' : ''} — considere substituir.`);
 		const injured = match.onPitch(me).filter((s) => s.injured);
 		if (injured.length) out.push(`${nameOf(injured[0].id)} está lesionado e rende menos.`);
-		if (diff < 0 && minute >= 60 && match.teams[me].tactic.mentality !== 'ofensiva') out.push('Atrás no placar: uma mentalidade ofensiva aumenta a pressão (e os riscos).');
-		if (diff > 0 && minute >= 75 && match.teams[me].tactic.mentality === 'ofensiva') out.push('Vantagem no fim: recuar a mentalidade ajuda a segurar o resultado.');
+		if (diff < 0 && minute >= 60 && !match.teams[me].tactic.mentality.includes('ofensiva')) out.push('Atrás no placar: uma mentalidade ofensiva aumenta a pressão (e os riscos).');
+		if (diff > 0 && minute >= 75 && match.teams[me].tactic.mentality.includes('ofensiva')) out.push('Vantagem no fim: recuar a mentalidade ajuda a segurar o resultado.');
 		const other = me === 'home' ? 'away' : 'home';
 		if (result.stats[other].shots >= result.stats[me].shots + 6) out.push('O adversário finaliza muito mais: compactar o time (Defensiva) reduz o espaço.');
 		if (match.onPitch(me).length < 11) out.push('Com um a menos, uma formação mais compacta protege a defesa.');

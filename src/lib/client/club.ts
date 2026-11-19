@@ -1,3 +1,4 @@
+import { api, withCareerVersion } from '#lib/api.ts';
 import { invalidate } from '$app/navigation';
 import type { Career } from '#lib/domain/career.ts';
 
@@ -9,15 +10,9 @@ export interface ClubActionResult {
 
 /** Envia uma ação de gestão ao servidor (validada lá) e recarrega a carreira. Erros viram mensagem. */
 export async function clubAction(careerId: string, version: number, body: Record<string, unknown>): Promise<ClubActionResult> {
-	const res = await fetch(`/api/careers/${careerId}/club`, {
-		method: 'POST',
-		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify({ version, ...body })
-	});
-	const json = await res.json().catch(() => ({}));
-	if (!res.ok) throw new Error((json as { message?: string }).message ?? `Erro ${res.status}`);
+	const json = await withCareerVersion(careerId, version, (v) => api<ClubActionResult>(`/api/careers/${careerId}/club`, { body: { version: v, ...body } }));
 	await invalidate('app:career');
-	return json as ClubActionResult;
+	return json;
 }
 
 export async function clubHistory(careerId: string) {

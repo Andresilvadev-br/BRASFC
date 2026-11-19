@@ -1,6 +1,7 @@
 import { error } from '@sveltejs/kit';
 import type { CareerData } from '#lib/domain/career.ts';
-import { generateSquad } from '#lib/domain/squad.ts';
+// O elenco ATUAL (contratações, vendas, base), o mesmo que a tela de táticas mostra.
+import { careerSquad } from '#lib/domain/matchday.ts';
 import { sanitizeTactic } from '#lib/domain/tactics.ts';
 import { isPlayerFocus, isTeamFocus } from '#lib/domain/training.ts';
 import { sanitizePlan } from '#lib/domain/drills.ts';
@@ -35,7 +36,7 @@ export const PATCH: RequestHandler = async (event) => {
 
 	if (body.tactic !== undefined) {
 		if (career.mode !== 'coach') error(403, 'Somente o treinador define a tática.');
-		const tactic = sanitizeTactic(body.tactic, generateSquad(career.clubId, career.seed));
+		const tactic = sanitizeTactic(body.tactic, careerSquad(career));
 		if (!tactic) error(400, 'Tática inválida para este elenco.');
 		patch.tactic = tactic;
 	}

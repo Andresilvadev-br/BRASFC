@@ -61,12 +61,14 @@ export const FORMATIONS = {
 export type FormationId = keyof typeof FORMATIONS;
 export const FORMATION_IDS = Object.keys(FORMATIONS) as FormationId[];
 
-export const MENTALITIES = ['defensiva', 'equilibrada', 'ofensiva'] as const;
+export const MENTALITIES = ['defensiva', 'cautelosa', 'equilibrada', 'ofensiva', 'muito-ofensiva'] as const;
 export type Mentality = (typeof MENTALITIES)[number];
 export const MENTALITY_LABELS: Record<Mentality, string> = {
 	defensiva: 'Defensiva',
+	cautelosa: 'Cautelosa',
 	equilibrada: 'Equilibrada',
-	ofensiva: 'Ofensiva'
+	ofensiva: 'Ofensiva',
+	'muito-ofensiva': 'Muito ofensiva'
 };
 
 export const STYLES = ['posse', 'tiki-taka', 'contra-ataque', 'bola-longa', 'laterais', 'pressao', 'vertical'] as const;
@@ -82,7 +84,7 @@ export const STYLE_LABELS: Record<PlayStyle, string> = {
 };
 
 /** Valores da Dev 0.1 que continuam aceitos ao ler carreiras antigas. */
-const LEGACY_MENTALITY: Record<string, Mentality> = { cautelosa: 'defensiva', 'muito-ofensiva': 'ofensiva' };
+const LEGACY_MENTALITY: Record<string, Mentality> = {};
 const LEGACY_STYLE: Record<string, PlayStyle> = { 'jogo-direto': 'bola-longa' };
 
 export function normalizeMentality(v: unknown): Mentality | null {

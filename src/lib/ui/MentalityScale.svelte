@@ -15,12 +15,13 @@
 
 <div class="scale">
 	<div class="mini" aria-hidden="true">
-		<div class="line" style="bottom:{14 + idx * 15}%"></div>
+		<div class="line" style="bottom:{14 + (idx / (MENTALITIES.length - 1)) * 60}%"></div>
 		<span class="goal"></span>
 	</div>
 	<div class="right">
 		<div
 			class="track"
+			style="--n:{MENTALITIES.length}"
 			role="slider"
 			tabindex="0"
 			aria-label="Mentalidade"
@@ -82,7 +83,7 @@
 	}
 	.track {
 		display: grid;
-		grid-template-columns: repeat(5, 1fr);
+		grid-template-columns: repeat(var(--n), 1fr);
 		gap: 4px;
 		padding: 4px;
 		border-radius: var(--radius-m);
@@ -96,7 +97,7 @@
 		transition: background 0.2s;
 	}
 	.seg.on {
-		background: color-mix(in srgb, #60a5fa calc(100% - var(--i) * 25%), #f97316);
+		background: color-mix(in srgb, #60a5fa calc(100% - var(--i) * 100% / (var(--n) - 1)), #f97316);
 		opacity: 0.85;
 	}
 	.seg.cur {

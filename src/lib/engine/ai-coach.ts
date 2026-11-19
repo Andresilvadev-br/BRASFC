@@ -132,10 +132,10 @@ export function inMatchAdjustment(profile: CoachProfile, cur: TacticalInstructio
 	}
 	if (v.goalDiff < 0 && late && !done.has('buscar')) {
 		const bold = profile.risk >= 0.5 || v.minute >= 75;
-		options.push({ key: 'buscar', change: { presencaArea: clamp5(cur.presencaArea + 1), ritmo: clamp5(cur.ritmo + 1) }, mentality: bold && mentality !== 'ofensiva' ? 'ofensiva' : undefined, reason: 'Atrás no placar: mais gente na área e mais ritmo.' });
+		options.push({ key: 'buscar', change: { presencaArea: clamp5(cur.presencaArea + 1), ritmo: clamp5(cur.ritmo + 1) }, mentality: bold && !mentality.includes('ofensiva') ? 'ofensiva' : undefined, reason: 'Atrás no placar: mais gente na área e mais ritmo.' });
 	}
 	if (v.goalDiff > 0 && v.half === 2 && v.minute >= 75 && !done.has('segurar')) {
-		options.push({ key: 'segurar', change: { compactacao: clamp5(cur.compactacao + 1), aoRecuperar: 'reter', linha: clamp5(cur.linha - 1) }, mentality: mentality === 'ofensiva' ? 'equilibrada' : undefined, reason: 'Vencendo no fim: controlar o jogo e proteger a área.' });
+		options.push({ key: 'segurar', change: { compactacao: clamp5(cur.compactacao + 1), aoRecuperar: 'reter', linha: clamp5(cur.linha - 1) }, mentality: mentality.includes('ofensiva') ? 'equilibrada' : undefined, reason: 'Vencendo no fim: controlar o jogo e proteger a área.' });
 	}
 	if (v.minute >= 25 && v.shotsAgainst >= v.shotsFor + 5 && v.onTargetAgainst >= 3 && !done.has('proteger')) {
 		options.push({ key: 'proteger', change: { compactacao: clamp5(cur.compactacao + 1), bloco: clamp3(cur.bloco - 1) }, reason: 'Rival finaliza muito: bloco mais baixo e compacto.' });

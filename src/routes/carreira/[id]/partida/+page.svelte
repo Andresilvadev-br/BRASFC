@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Walkout from '#lib/ui/v4/Walkout.svelte';
 	import { beforeNavigate, invalidate } from '$app/navigation';
-	import { ApiError, api } from '#lib/api.ts';
+	import { ApiError, api, withCareerVersion } from '#lib/api.ts';
 	import type { Career } from '#lib/domain/career.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { formatLong } from '#lib/domain/dates.ts';
@@ -73,9 +73,10 @@
 	async function save() {
 		stage = 'saving';
 		try {
-			const res = await api<RoundResponse>(`/api/careers/${c.id}/matches`, {
-				body: { version: c.version, step: v.step?.key, decisions: local && setup ? local.decisions.filter((d) => d.side === setup!.control) : [] }
-			});
+			const decisions = local && setup ? local.decisions.filter((d) => d.side === setup!.control) : [];
+			const res = await withCareerVersion(c.id, c.version, (version) =>
+				api<RoundResponse>(`/api/careers/${c.id}/matches`, { body: { version, step: v.step?.key, decisions } })
+			);
 			saved = res;
 			stage = 'saved';
 			markClean('partida');
@@ -97,7 +98,9 @@
 	async function closeSeason() {
 		busy = true;
 		try {
-			const res = await api<{ summary: SeasonSummary; moves: Array<{ clubId: string; from: DivisionId; to: DivisionId; reason: string }> }>(`/api/careers/${c.id}/season`, { body: { version: c.version } });
+			const res = await withCareerVersion(c.id, c.version, (version) =>
+				api<{ summary: SeasonSummary; moves: Array<{ clubId: string; from: DivisionId; to: DivisionId; reason: string }> }>(`/api/careers/${c.id}/season`, { body: { version } })
+			);
 			seasonEnd = res;
 			notify({ icon: 'trophy', tone: 'gold', title: `Temporada ${res.summary.season} encerrada`, detail: `${res.summary.position}º lugar na ${DIVISION_LABELS[res.summary.division]}` });
 		} catch (e) {

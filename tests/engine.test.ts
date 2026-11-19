@@ -183,10 +183,10 @@ describe('táticas salvas (regressão do Dev 0.2)', () => {
 		expect(tacticKey(fromDb)).toBe(tacticKey(t));
 	});
 
-	it('nomes antigos de mentalidade/estilo são convertidos', () => {
+	it('nomes antigos de estilo são convertidos; as 5 mentalidades são aceitas', () => {
 		const squad = generateSquad(mid[0].id, 7);
 		const t = sanitizeTactic({ formation: '4-4-2', lineup: autoLineup('4-4-2', squad), mentality: 'cautelosa', style: 'jogo-direto' } as never, squad)!;
-		expect(t.mentality).toBe('defensiva');
+		expect(t.mentality).toBe('cautelosa');
 		expect(t.style).toBe('bola-longa');
 	});
 });

@@ -26,3 +26,23 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
 	if (!res.ok) throw new ApiError(data.message ?? `Erro ${res.status}`, res.status, data.errors);
 	return data as T;
 }
+
+/** Conflito de versão: outra tela/aba (ou o app) gravou a carreira antes deste pedido. */
+export function isVersionConflict(e: unknown): boolean {
+	return e instanceof ApiError && e.status === 409 && /outra janela/.test(e.message);
+}
+
+/**
+ * Executa uma gravação com a versão conhecida da carreira; se outra tela gravou antes,
+ * busca a versão atual e tenta mais uma vez. É seguro: no conflito o servidor não gravou
+ * nada, e ele continua validando tudo (o passo do calendário, a tática, o elenco).
+ */
+export async function withCareerVersion<T>(careerId: string, version: number, run: (version: number) => Promise<T>): Promise<T> {
+	try {
+		return await run(version);
+	} catch (e) {
+		if (!isVersionConflict(e)) throw e;
+		const { career } = await api<{ career: { version: number } }>(`/api/careers/${careerId}`);
+		return run(career.version);
+	}
+}

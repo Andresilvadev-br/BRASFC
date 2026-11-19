@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { universeCoach } from '#lib/domain/matchday.ts';
 	import { goto, invalidate } from '$app/navigation';
-	import { api } from '#lib/api.ts';
+	import { api, withCareerVersion } from '#lib/api.ts';
 	import { analyze, type Tip } from '#lib/domain/assistant.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { CUP_ID } from '#lib/domain/cup.ts';
@@ -85,7 +85,7 @@
 	);
 	async function dismissTip(t: Tip) {
 		try {
-			await api(`/api/careers/${c.id}`, { method: 'PATCH', body: { version: c.version, dismissTip: t.id } });
+			await withCareerVersion(c.id, c.version, (version) => api(`/api/careers/${c.id}`, { method: 'PATCH', body: { version, dismissTip: t.id } }));
 			await invalidate('app:career');
 		} catch {
 			/* a lista apenas não muda */

@@ -65,8 +65,10 @@ const NEUTRAL: TacticalInstructions = {
 
 const MENTALITY_PRESET: Record<Mentality, Partial<TacticalInstructions>> = {
 	defensiva: { linha: 2, bloco: 1, compactacao: 4, presencaArea: 2, laterais: 1, abordagem: 2, pressao: 2 },
+	cautelosa: { linha: 2, compactacao: 4, laterais: 1 },
 	equilibrada: {},
-	ofensiva: { linha: 4, presencaArea: 4, laterais: 3, pressao: 3 }
+	ofensiva: { linha: 4, presencaArea: 4, laterais: 3, pressao: 3 },
+	'muito-ofensiva': { linha: 5, presencaArea: 5, laterais: 3, pressao: 4, ritmo: 4, profundidade: 4 }
 };
 
 const STYLE_PRESET: Record<PlayStyle, Partial<TacticalInstructions>> = {
