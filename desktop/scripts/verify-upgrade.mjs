@@ -118,7 +118,7 @@ try {
 	const { mkdirSync } = await import('node:fs');
 	mkdirSync(join(preferences, '..'), { recursive: true });
 	writeFileSync(preferences, JSON.stringify({ mode: 'offline', automatic: false, width: 1001 }));
-	assert.equal(installedVersion().split(' ')[0], fromVersion);
+	assert.equal(installedVersion().split('.').slice(0, 3).join('.'), fromVersion);
 	await launch();
 	await until(() => evaluate("location.origin.startsWith('http://127.0.0.1:47615') && !!window.brasfcDesktop"));
 	const old = await evaluate(`(async () => {
@@ -144,7 +144,7 @@ try {
 		assert(served[failure] > 0);
 		if (failure === 'corrupt') assert.match(state.error, /sha512|checksum|integrity/i);
 		assert.equal(await evaluate("window.brasfcDesktop.update('install')"), false);
-		assert.equal(installedVersion().split(' ')[0], fromVersion);
+		assert.equal(installedVersion().split('.').slice(0, 3).join('.'), fromVersion);
 		const preserved = await evaluate(`Promise.all([
 			fetch('/api/session').then(r => r.json()).then(data => data.profile?.id),
 			fetch('/api/careers/${old.id}/matches').then(r => r.json()).then(data => {
