@@ -490,11 +490,11 @@
 	}
 	@media (min-width: 1101px) and (max-height: 840px) {
 		.menu-screen {
-			gap: var(--sp-4);
+			gap: var(--sp-3);
 			padding-block: var(--sp-4);
 		}
 		.top {
-			padding-top: 32px;
+			padding-top: 30px;
 		}
 		.copy {
 			padding-block: var(--sp-3);

@@ -84,7 +84,7 @@
 		<div class="offers">
 			{#each offerList as o (o.id)}
 				{@const best = o.monthly === bestBySlot[o.slot]}
-				<article class="offer" class:sel={compareIds.includes(o.id)} data-umx-surface>
+				<article class="offer" class:sel={compareIds.includes(o.id)}>
 					<div class="ot">
 						<span class="slotl">{SPONSOR_SLOTS[o.slot].label}</span>
 						{#if best}<span class="tag">Maior valor</span>{/if}
@@ -96,6 +96,11 @@
 						{#if o.bonus}<span class="bonus">Bônus {o.bonus.label}: {formatExactMoney(o.bonus.amount)}</span>{/if}
 						{#if o.requirement}<span class="warn">Exige: {o.requirement.label}</span>{/if}
 					</div>
+					<div class="oa">
+						<Button size="sm" variant="primary" loading={busy} disabled={takenSlots.has(o.slot)} onclick={() => onsign(o)}>Assinar</Button>
+						<button class="mini" aria-pressed={compareIds.includes(o.id)} onclick={() => toggleCompare(o.id)}>{compareIds.includes(o.id) ? 'Comparando' : 'Comparar'}</button>
+						<button class="mini" aria-expanded={openOffer === o.id} onclick={() => (openOffer = openOffer === o.id ? null : o.id)}>Detalhes</button>
+					</div>
 					<div class="det" class:open={openOffer === o.id}>
 						<div>
 							<p class="small">
@@ -104,11 +109,6 @@
 								{#if takenSlots.has(o.slot)} Atenção: você já tem um contrato nesta categoria.{/if}
 							</p>
 						</div>
-					</div>
-					<div class="oa">
-						<Button size="sm" variant="primary" loading={busy} disabled={takenSlots.has(o.slot)} onclick={() => onsign(o)}>Assinar</Button>
-						<button class="mini" aria-pressed={compareIds.includes(o.id)} onclick={() => toggleCompare(o.id)}>{compareIds.includes(o.id) ? 'Comparando' : 'Comparar'}</button>
-						<button class="mini" aria-expanded={openOffer === o.id} onclick={() => (openOffer = openOffer === o.id ? null : o.id)}>Detalhes</button>
 					</div>
 				</article>
 			{/each}
