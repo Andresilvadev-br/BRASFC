@@ -61,6 +61,23 @@ jobs:
       - name: Gerar instalador
         if: steps.ver.outputs.done != 'true'
         run: npx electron-builder --win --x64 --publish never
+      - name: Gerar candidato com falhas controladas
+        if: github.event_name == 'pull_request' && steps.ver.outputs.done != 'true'
+        shell: pwsh
+        run: |
+          $source = Get-Content main.js -Raw
+          $package = Get-Content package.json -Raw
+          try {
+            $fault = "if (process.env.BRASFC_VALIDATION_STARTUP_FAILURE === '1') { require('node:fs').writeFileSync(process.env.BRASFC_VALIDATION_FAULT_LOG, 'first-boot'); require('electron').app.exit(79); }"
+            Set-Content main.js ($fault + [Environment]::NewLine + $source) -Encoding utf8
+            node -e "const fs = require('node:fs'); const pkg = require('./package.json'); const version = pkg.version.split('.').map(Number); version[2]++; pkg.version = version.join('.'); fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));"
+            if ($LASTEXITCODE -ne 0) { throw 'Falha ao configurar a versão do candidato.' }
+            npx electron-builder --win --x64 --publish never "-c.directories.output=dist-recovery" "-c.nsis.include=scripts/upgrade-faults.nsh"
+            if ($LASTEXITCODE -ne 0) { throw 'Falha ao gerar o candidato para recuperação.' }
+          } finally {
+            Set-Content main.js $source -Encoding utf8
+            Set-Content package.json $package -Encoding utf8
+          }
       - name: Validar atualização interna com save anterior
         if: github.event_name == 'pull_request' && steps.ver.outputs.done != 'true'
         shell: pwsh
@@ -74,7 +91,7 @@ jobs:
           Stop-Process -Name BRASFC -ErrorAction SilentlyContinue
           $exe = Get-ChildItem (Join-Path $env:LOCALAPPDATA 'Programs') -Filter BRASFC.exe -Recurse | Select-Object -First 1
           if (!$exe) { throw 'O instalador não criou BRASFC.exe' }
-          node scripts/verify-upgrade.mjs $exe.FullName dist (Join-Path $env:RUNNER_TEMP 'brasfc-upgrade.json')
+          node scripts/verify-upgrade.mjs $exe.FullName dist (Join-Path $env:RUNNER_TEMP 'brasfc-upgrade.json') dist-recovery
       - name: Guardar evidências de atualização
         if: always() && github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4

@@ -1,13 +1,14 @@
 // Adaptador do electron-updater. O provedor e a verificação de integridade ficam no Electron.
-function desktopUpdates({ updater, publish, persist, automatic = true, canInstall, drain, recoverInstall = () => {}, interval = 15 * 60_000 }) {
+function desktopUpdates({ updater, publish, persist, automatic = true, canInstall, drain, recoverInstall = () => {}, recovery, interval = 15 * 60_000 }) {
 	let state = { status: 'idle', automatic, progress: 0, version: null, error: null };
-	let checking, downloading, installing = false, checkedAt = 0;
+	let checking, downloading, installer, installing = false, checkedAt = 0;
 	const set = (patch) => { state = { ...state, ...patch }; publish(state); };
 	const errorText = (error) => error?.message || String(error);
 	const failed = (error) => {
 		if (installing) {
 			installing = false;
 			recoverInstall();
+			void recovery?.abandon().catch(console.error);
 			set({ status: 'ready', error: errorText(error) });
 		} else {
 			set({ status: 'error', error: errorText(error) });
@@ -24,7 +25,10 @@ function desktopUpdates({ updater, publish, persist, automatic = true, canInstal
 		if (state.automatic) void download();
 	});
 	updater.on('download-progress', (info) => set({ status: 'downloading', progress: Math.min(100, Math.max(0, info.percent)) }));
-	updater.on('update-downloaded', (info) => set({ status: 'ready', version: info.version, progress: 100, error: null }));
+	updater.on('update-downloaded', (info) => {
+		installer = info.downloadedFile;
+		set({ status: 'ready', version: info.version, progress: 100, error: null });
+	});
 	updater.on('error', failed);
 	function check(manual = false) {
 		if (checking) return checking;
@@ -46,6 +50,7 @@ function desktopUpdates({ updater, publish, persist, automatic = true, canInstal
 		set({ status: 'installing' });
 		try {
 			await drain();
+			await recovery?.prepare(state.version, installer);
 			updater.quitAndInstall(true, true);
 			return installing;
 		} catch (error) {
@@ -56,7 +61,7 @@ function desktopUpdates({ updater, publish, persist, automatic = true, canInstal
 	const timer = setInterval(() => void check(), interval);
 	timer.unref();
 	return {
-		get: () => state, check, download, install, close: () => clearInterval(timer),
+		get: () => state, check, download, install, reportRecovery: (error) => set({ status: 'error', error }), close: () => clearInterval(timer),
 		setAutomatic(value) {
 			set({ automatic: value });
 			persist(value);

@@ -1,19 +1,21 @@
 // Run from the repository root on an isolated Windows runner after installing 1.3.0.
 import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
-import { createReadStream, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { createReadStream, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { resolve, join, basename } from 'node:path';
 import { Transform } from 'node:stream';
 import { setTimeout as wait } from 'node:timers/promises';
 import WebSocket from 'ws';
 
 assert.equal(process.platform, 'win32');
-const [exe, dist, evidence] = process.argv.slice(2).map((path) => resolve(path));
+const [exe, dist, evidence, rollbackDist] = process.argv.slice(2).map((path) => resolve(path));
 assert(exe && dist && evidence);
 const feed = 'http://127.0.0.1:4187';
-const metadata = join(dist, 'latest.yml');
-const version = readFileSync(metadata, 'utf8').match(/^version: (.+)$/m)[1].trim();
+let feedDist = dist;
+const metadataVersion = (directory) => readFileSync(join(directory, 'latest.yml'), 'utf8').match(/^version: (.+)$/m)[1].trim();
+const version = metadataVersion(dist);
 let feedMode = 'missing';
 const served = { missing: 0, truncated: 0, corrupt: 0, healthy: 0 };
 const server = createServer((request, response) => {
@@ -27,7 +29,7 @@ const server = createServer((request, response) => {
 		response.writeHead(404).end();
 		return;
 	}
-	const file = join(dist, name);
+	const file = join(feedDist, name);
 	const size = statSync(file).size;
 	response.setHeader('Content-Length', size);
 	if (!name.endsWith('.exe')) {
@@ -94,22 +96,24 @@ function evaluate(expression) {
 		socket.send(JSON.stringify({ id: messageId, method: 'Runtime.evaluate', params: { expression, awaitPromise: true, returnByValue: true } }));
 	});
 }
-function launch() {
+function launch(extraEnv = {}) {
 	app = spawn(exe, ['--remote-debugging-port=4190', '--remote-debugging-address=127.0.0.1', '--inspect=127.0.0.1:4191'], {
-		env: { ...process.env, ELECTRON_ENABLE_LOGGING: '1' }, stdio: ['ignore', 'ignore', 'pipe']
+		env: { ...process.env, ...extraEnv, ELECTRON_ENABLE_LOGGING: '1' }, stdio: ['ignore', 'ignore', 'pipe']
 	});
 	app.stderr.on('data', (data) => diagnostics = (diagnostics + String(data)).slice(-4500));
 	app.on('exit', (code) => diagnostics += `
 Processo saiu com código ${code}`);
 	return attach();
 }
+const preferences = join(process.env.APPDATA, 'BRASFC', 'janela.json');
+const useFeed = () => writeFileSync(join(exe, '..', 'resources', 'app-update.yml'),
+	`provider: generic\nurl: ${feed}\nupdaterCacheDirName: brasfc-upgrade-validation\n`);
 const installedVersion = () => execFileSync('powershell.exe', ['-NoProfile', '-Command', '(Get-Item -LiteralPath $env:BRASFC_UPGRADE_EXE).VersionInfo.ProductVersion'], {
 	env: { ...process.env, BRASFC_UPGRADE_EXE: exe }, encoding: 'utf8'
 }).trim();
 try {
 	// Only this disposable Windows installation points to a local feed. The package still passes the updater's original SHA-512 verification.
-	writeFileSync(join(exe, '..', 'resources', 'app-update.yml'), `provider: generic\nurl: ${feed}\nupdaterCacheDirName: brasfc-upgrade-validation\n`);
-	const preferences = join(process.env.APPDATA, 'BRASFC', 'janela.json');
+	useFeed();
 	const { mkdirSync } = await import('node:fs');
 	mkdirSync(join(preferences, '..'), { recursive: true });
 	writeFileSync(preferences, JSON.stringify({ mode: 'offline', automatic: false, width: 1001 }));
@@ -194,6 +198,71 @@ try {
 	assert.equal(JSON.parse(readFileSync(preferences, 'utf8')).automatic, false);
 	result.tests.push('Reabertura na versão nova com conta, carreira avançada e preferência preservadas');
 	assert(!result.relaunchMissing, 'A instalação atualizou, mas a abertura automática não foi observada');
+	if (rollbackDist) {
+		const candidate = metadataVersion(rollbackDist);
+		feedDist = rollbackDist;
+		socket.close();
+		await new Promise((resolve) => { app.once('exit', resolve); app.kill(); });
+		useFeed();
+		const originalHash = createHash('sha256').update(readFileSync(exe)).digest('hex');
+		const outcomeFile = join(preferences, '..', 'update-recovery', 'outcome.json');
+		const outcome = () => JSON.parse(readFileSync(outcomeFile, 'utf8').replace(/^\uFEFF/, ''));
+		const waitOffline = () => until(() => evaluate("location.origin.startsWith('http://127.0.0.1:47615') && !!window.brasfcDesktop"));
+		const downloadCandidate = async () => {
+			await evaluate("window.brasfcDesktop.update('check', true)");
+			await until(async () => (await evaluate("window.brasfcDesktop.update('state')"))?.version === candidate);
+			await evaluate("window.brasfcDesktop.update('download')");
+			await until(async () => (await evaluate("window.brasfcDesktop.update('state')"))?.status === 'ready', 120_000);
+		};
+		const closeActive = () => execFileSync('powershell.exe', ['-NoProfile', '-Command', `
+			Get-Process BRASFC -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $env:BRASFC_UPGRADE_EXE -and $_.MainWindowHandle -ne 0 } |
+			ForEach-Object { $_.CloseMainWindow() | Out-Null; $_.WaitForExit(25000) | Out-Null }
+		`], { env: { ...process.env, BRASFC_UPGRADE_EXE: exe } });
+		const faultLog = join(preferences, '..', 'update-validation-fault');
+		for (const fault of ['installer', 'first-boot']) {
+			rmSync(faultLog, { force: true });
+			const prior = (() => { try { return outcome().date; } catch { return ''; } })();
+			await launch({
+				BRASFC_VALIDATION_FAULT_LOG: faultLog,
+				[fault === 'installer' ? 'BRASFC_VALIDATION_INSTALL_FAILURE' : 'BRASFC_VALIDATION_STARTUP_FAILURE']: '1'
+			});
+			await waitOffline();
+			await downloadCandidate();
+			assert.equal(await evaluate("window.brasfcDesktop.update('install')"), true);
+			socket.close();
+			const restored = await until(() => {
+				const state = outcome();
+				return state.date !== prior && state.status === 'restored' && state;
+			}, 240_000);
+			assert.equal(readFileSync(faultLog, 'utf8'), fault);
+			assert(installedVersion().startsWith(version));
+			assert.equal(createHash('sha256').update(readFileSync(exe)).digest('hex'), originalHash);
+			closeActive();
+			await launch();
+			await waitOffline();
+			const retained = await evaluate(`Promise.all([
+				fetch('/api/session').then(r => r.json()).then(data => data.profile?.id),
+				fetch('/api/careers/${old.id}/matches').then(r => r.json()).then(data => data.matches?.map(m => m.round))
+			])`);
+			assert.equal(retained[0], old.profile);
+			assert(retained[1].includes(1) && retained[1].includes(2));
+			assert.equal(JSON.parse(readFileSync(preferences, 'utf8')).automatic, false);
+			result.faults.push({ stage: fault, restored, previousVersionUsable: true, executableSha256: originalHash });
+			if (fault === 'installer') {
+				socket.close();
+				await new Promise((resolve) => { app.once('exit', resolve); app.kill(); });
+			}
+		}
+		await downloadCandidate();
+		assert.equal(await evaluate("window.brasfcDesktop.update('install')"), true);
+		socket.close();
+		await until(() => installedVersion().startsWith(candidate) && outcome().status === 'healthy', 240_000);
+		closeActive();
+		await launch();
+		await waitOffline();
+		assert.equal(await evaluate(`fetch('/api/careers/${old.id}').then(r => r.json()).then(d => d.career?.id)`), old.id);
+		result.tests.push('Instalação abortada e falha de inicialização recuperadas, com nova tentativa concluída e a mesma carreira disponível');
+	}
 	result.passed = true;
 } catch (error) {
 	result.error = String(error.stack ?? error);

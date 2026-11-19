@@ -32,6 +32,8 @@
       "main.js",
       "preload.js",
       "updates.js",
+      "update-recovery.js",
+      "update-recovery.ps1",
       "local-server.js",
       "pages/**",
       "assets/icon.png"

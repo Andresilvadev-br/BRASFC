@@ -14,7 +14,9 @@ const BAR = 36; // altura da barra de título integrada ao jogo
 const OFFLINE_PORT = 47615; // porta fixa do jogo offline (mesma origem a cada abertura)
 const local = require('./local-server.js');
 const { desktopUpdates } = require('./updates.js');
+const { updateRecovery } = require('./update-recovery.js');
 let updates;
+let recovery;
 let rendererBusy = true;
 
 if (!SELFTEST && !app.requestSingleInstanceLock()) app.quit();
@@ -187,6 +189,13 @@ function createWindow() {
 		void win.loadFile(path.join(__dirname, 'pages', 'offline.html'), { query: { url: url || GAME_URL, offline: offlineAvailable() ? '1' : '0' } });
 	});
 
+	win.webContents.on('did-finish-load', () => {
+		const url = win.webContents.getURL();
+		const healthy = prefs.mode === 'offline' ? offlineUrl && url.startsWith(offlineUrl)
+			: url.startsWith(ORIGIN + '/') || url.startsWith('file:') && new URL(url).pathname.endsWith('/pages/offline.html');
+		if (healthy) void recovery?.markBooted().catch(console.error);
+	});
+
 	// Abre no último modo usado (padrão: online). Sem internet, a página de erro oferece o offline.
 	if (prefs.mode === 'offline' && offlineAvailable() && !SELFTEST) void openGame('offline');
 	else void win.loadURL(GAME_URL);
@@ -268,12 +277,14 @@ app.on('second-instance', () => {
 
 app.whenReady().then(() => {
 	if (SELFTEST) app.setPath('userData', path.join(app.getPath('temp'), 'brasfc-selftest'));
+	if (app.isPackaged && !SELFTEST && process.platform === 'win32') recovery = updateRecovery(app);
 	createWindow();
 	if (app.isPackaged && !SELFTEST) {
 		const { autoUpdater } = require('electron-updater');
 		let installOfflineUrl = null;
 		updates = desktopUpdates({
 			updater: autoUpdater,
+			recovery,
 			publish: (state) => { if (win && !win.isDestroyed()) win.webContents.send('desktop:update-state', state); },
 			persist: (automatic) => { prefs = { ...prefs, automatic }; writePrefs(prefs); },
 			automatic: prefs.automatic !== false,
@@ -285,7 +296,12 @@ app.whenReady().then(() => {
 			},
 			recoverInstall: () => { offlineUrl = installOfflineUrl; }
 		});
-		void updates.check();
+		void (async () => {
+			const outcome = await recovery?.outcome();
+			if (outcome?.status === 'restored' || outcome?.status === 'failed') {
+				updates.reportRecovery(outcome.reason);
+			} else await updates.check();
+		})().catch(console.error);
 	}
 });
 
