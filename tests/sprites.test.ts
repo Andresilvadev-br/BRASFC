@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { HAIR_STYLES } from '#lib/domain/appearance.ts';
-import { bodyGrid, bustGrid, palette, toRuns } from '#lib/pixel/sprites.ts';
+import { DEFAULT_APPEARANCE, HAIR_STYLES, isAppearance } from '#lib/domain/appearance.ts';
+import { defaultOutfit, WARDROBE, type WardrobeCategory } from '#lib/domain/wardrobe.ts';
+import { bodyGrid, bustGrid, palette, toRuns, wardrobeKit } from '#lib/pixel/sprites.ts';
 
 describe('sprites em pixel art', () => {
 	for (const style of HAIR_STYLES) {
@@ -20,6 +21,25 @@ describe('sprites em pixel art', () => {
 			for (const row of bodyGrid(style)) for (const ch of row) if (ch !== '.') expect(colors[ch], `cor para "${ch}"`).toBeDefined();
 		});
 	}
+
+	it('todos os penteados possuem desenhos distintos', () => {
+		expect(new Set(HAIR_STYLES.map((hair) => bustGrid(hair).join(''))).size).toBe(HAIR_STYLES.length);
+	});
+
+	it('valida as peças da coleção, preserva looks antigos e usa o clube atual', () => {
+		for (const category of Object.keys(WARDROBE) as WardrobeCategory[]) {
+			const wardrobe = defaultOutfit(category);
+			expect(isAppearance({ ...DEFAULT_APPEARANCE, wardrobe })).toBe(true);
+			expect(bodyGrid('curto', { outfit: wardrobe }).every((row) => row.length === 30)).toBe(true);
+		}
+		const wardrobe = defaultOutfit('clube');
+		const first = { shirt: '#004411', trim: '#eeeeee', shorts: '#222222', socks: '#bbbbbb' };
+		const moved = { ...first, shirt: '#aa1122' };
+		expect(wardrobeKit(wardrobe, first).shirt).toBe(first.shirt);
+		expect(wardrobeKit(wardrobe, moved).shirt).toBe(moved.shirt);
+		expect(isAppearance(DEFAULT_APPEARANCE)).toBe(true);
+		expect(isAppearance({ ...DEFAULT_APPEARANCE, wardrobe: { ...wardrobe, top: 'polo' } })).toBe(false);
+	});
 
 	it('o treinador não carrega a bola', () => {
 		expect(bodyGrid('curto').join('')).toContain('L');

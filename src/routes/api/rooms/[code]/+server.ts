@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { getDb } from '#lib/server/db/index.ts';
-import { ensureProfile, noStore, RateLimiter, requireProfile } from '#lib/server/http.ts';
+import { ensureProfile, limitedResponse, noStore, RateLimiter, requireProfile } from '#lib/server/http.ts';
 import { getRealtimeHub } from '#lib/server/realtime/hub.ts';
 import { getRoomByCode, isMember, joinRoom, leaveRoom, listMembers, normalizeCode, RoomError } from '#lib/server/repos/rooms.ts';
 import type { RequestHandler } from './$types';
@@ -26,10 +26,11 @@ export const POST: RequestHandler = async (event) => {
 	const code = codeOf(event.params.code);
 	const profile = await ensureProfile(event);
 	// Limite por perfil: dificulta tentativas de adivinhar códigos.
-	if (!joinLimiter.take(profile.id)) error(429, 'Muitas tentativas. Aguarde um minuto.');
+	const retry = joinLimiter.retryAfter(profile.id);
+	if (retry) return limitedResponse(retry, 'Muitas tentativas de entrar em uma sala.');
 	try {
 		const room = await joinRoom(await getDb(), code, profile.id);
-		await getRealtimeHub().broadcastRoom(room.id);
+		void getRealtimeHub().broadcastRoom(room.id).catch(() => {});
 		return noStore({ room });
 	} catch (e) {
 		if (e instanceof RoomError) error(e.status, e.message);
@@ -45,7 +46,7 @@ export const DELETE: RequestHandler = async (event) => {
 	if (!room || !(await isMember(db, room.id, profile.id))) error(404, 'Sala não encontrada.');
 	try {
 		const result = await leaveRoom(db, room, profile.id);
-		await getRealtimeHub().broadcastRoom(room.id);
+		void getRealtimeHub().broadcastRoom(room.id).catch(() => {});
 		return noStore({ result });
 	} catch (e) {
 		if (e instanceof RoomError) error(e.status, e.message);

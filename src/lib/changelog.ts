@@ -19,6 +19,13 @@ export interface Release {
 
 export const RELEASES: Release[] = [
 	{
+		version: '0.8.0', date: '2026-11-19', title: 'Ultimate Football Experience', channel: 'desenvolvimento',
+		added: ['Rodadas cooperativas e intervalo com decisões oficiais', 'Transmissão sincronizada com escalações e placares', 'Dynamic Island pré-partida com presença e atividade'],
+		improved: ['Recuperação de rodada a partir de checkpoints e decisões persistidas'],
+		compat: { database: 'migração incremental 0007', saves: 'universos e carreiras anteriores preservados' },
+		next: []
+	},
+	{
 		version: '0.7.0', date: '2026-11-19', title: 'Connected World', channel: 'desenvolvimento',
 		added: ['Universos compartilhados persistentes', 'Reprodução de partidas oficiais', 'Abertura original e atualizador integrado ao Windows'],
 		improved: ['Comandos com controle de revisão e confirmação após persistência'],

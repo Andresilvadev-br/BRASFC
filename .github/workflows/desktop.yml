@@ -16,7 +16,7 @@ permissions:
 
 concurrency:
   group: desktop-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   windows:
@@ -35,6 +35,13 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             desktop/package-lock.json
+      - name: Verificar sintaxe do monitor no Windows PowerShell
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'update-recovery.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | Out-String | Write-Error; exit 1 }
       # Jogo offline embutido: build de produção do jogo + servidor + dependências de execução.
       - name: Build do jogo (modo offline)
         working-directory: .
@@ -61,22 +68,51 @@ jobs:
       - name: Gerar instalador
         if: steps.ver.outputs.done != 'true'
         run: npx electron-builder --win --x64 --publish never
+      - name: Gerar candidato com falhas controladas
+        if: github.event_name == 'pull_request' && steps.ver.outputs.done != 'true'
+        shell: pwsh
+        run: |
+          $source = Get-Content main.js -Raw
+          $package = Get-Content package.json -Raw
+          try {
+            $fault = @'
+          {
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const directory = path.join(process.env.APPDATA, 'BRASFC');
+            const marker = path.join(directory, 'update-validation-first-boot');
+            if (fs.existsSync(marker)) {
+              fs.unlinkSync(marker);
+              fs.writeFileSync(path.join(directory, 'update-validation-fault'), 'first-boot');
+              require('electron').app.exit(79);
+            }
+          }
+          '@
+            Set-Content main.js ($fault + [Environment]::NewLine + $source) -Encoding utf8
+            node -e "const fs = require('node:fs'); const pkg = require('./package.json'); const version = pkg.version.split('.').map(Number); version[2]++; pkg.version = version.join('.'); fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));"
+            if ($LASTEXITCODE -ne 0) { throw 'Falha ao configurar a versão do candidato.' }
+            npx electron-builder --win --x64 --publish never "-c.directories.output=dist-recovery" "-c.nsis.include=scripts/upgrade-faults.nsh"
+            if ($LASTEXITCODE -ne 0) { throw 'Falha ao gerar o candidato para recuperação.' }
+          } finally {
+            Set-Content main.js $source -Encoding utf8
+            Set-Content package.json $package -Encoding utf8
+          }
       - name: Validar atualização interna com save anterior
-        if: steps.ver.outputs.done != 'true'
+        if: github.event_name == 'pull_request' && steps.ver.outputs.done != 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $old = Join-Path $env:RUNNER_TEMP 'brasfc-1.3.0'
-          gh release download v1.3.0 --pattern BRASFC-Setup.exe --dir $old --repo $env:GITHUB_REPOSITORY
+          $old = Join-Path $env:RUNNER_TEMP 'brasfc-1.3.1'
+          gh release download v1.3.1 --pattern BRASFC-Setup.exe --dir $old --repo $env:GITHUB_REPOSITORY
           $process = Start-Process (Join-Path $old 'BRASFC-Setup.exe') -ArgumentList '/S' -PassThru -Wait
           if ($process.ExitCode -ne 0) { throw "Instalação anterior falhou: $($process.ExitCode)" }
           Stop-Process -Name BRASFC -ErrorAction SilentlyContinue
           $exe = Get-ChildItem (Join-Path $env:LOCALAPPDATA 'Programs') -Filter BRASFC.exe -Recurse | Select-Object -First 1
           if (!$exe) { throw 'O instalador não criou BRASFC.exe' }
-          node scripts/verify-upgrade.mjs $exe.FullName dist (Join-Path $env:RUNNER_TEMP 'brasfc-upgrade.json')
+          node scripts/verify-upgrade.mjs $exe.FullName dist (Join-Path $env:RUNNER_TEMP 'brasfc-upgrade.json') dist-recovery
       - name: Guardar evidências de atualização
-        if: always()
+        if: always() && github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: BRASFC-Windows-evidencias

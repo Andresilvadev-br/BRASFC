@@ -22,13 +22,13 @@
 	<div class="txt">
 		<strong>BRASFC para Windows</strong>
 		{#if desktop.active}
-			<small>Você está no aplicativo{desktop.version ? ` · versão ${desktop.version}` : ''}. Ele se atualiza sozinho.</small>
+			<small>{compact ? 'Aplicativo instalado' : 'Você está no aplicativo'}{desktop.version ? ` · versão ${desktop.version}` : ''}{compact ? '' : '. Ele se atualiza sozinho.'}</small>
 		{:else if release?.available}
-			<small>Versão {release.version} · {release.sizeMb} MB · Windows 10 e 11 (64 bits) · janela própria, tela cheia (F11) e atualização automática</small>
+			<small>Versão {release.version} · {release.sizeMb} MB{compact ? '' : ' · Windows 10 e 11 (64 bits) · janela própria, tela cheia (F11) e atualização automática'}</small>
 		{:else if release && !release.available}
-			<small>{release.reason}</small>
+			<small>{compact ? 'Instalador indisponível' : release.reason}</small>
 		{:else if failed}
-			<small>Não foi possível verificar o instalador agora.</small>
+			<small>{compact ? 'Sem acesso ao instalador' : 'Não foi possível verificar o instalador agora.'}</small>
 		{:else}
 			<small>Verificando o instalador…</small>
 		{/if}
@@ -88,6 +88,7 @@
 	small {
 		color: #aab6bd;
 	}
+	.compact small { min-block-size: 2lh; }
 	.btn {
 		display: inline-flex;
 		align-items: center;
@@ -126,6 +127,7 @@
 		.dl {
 			grid-template-columns: auto 1fr;
 		}
+		.compact { grid-template-rows: auto minmax(42px, auto); }
 		.btn {
 			grid-column: 1 / -1;
 			justify-content: center;

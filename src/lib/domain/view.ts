@@ -20,7 +20,7 @@ import { CUP_ID, sanitizeCup } from './cup.ts';
 import { CLUBES_2026 } from '#lib/data/brasil.ts';
 import { squadStrength } from './squad.ts';
 import { resolveRoles, sanitizeTacticalState, syncSquad, teamMastery } from './tactical.ts';
-import { defaultTactic, sanitizeTactic, type Tactic } from './tactics.ts';
+import { defaultTactic, recoverTactic, type Tactic } from './tactics.ts';
 
 /**
  * Visão derivada de uma carreira: tudo o que é determinístico a partir da semente e do
@@ -56,7 +56,7 @@ export function careerView(career: Career, results: StoredRoundResult[] = []) {
 	const squad = withFitness(careerSquad(career), career.data.fitness);
 	const { fixtures, mine, activeCup, steps, step, rounds, seasonOver, mineAll, next, upcoming } = careerCalendar(career, results, league);
 	const division = (divisionOf(league, career.clubId) ?? 'liga-brasfc') as DivisionId;
-	const persisted = career.data.tactic ? sanitizeTactic(career.data.tactic, squad) : null;
+	const persisted = recoverTactic(career.data.tactic, squad);
 	const tactic: Tactic = persisted ?? defaultTactic(squad);
 	const roles = resolveRoles(tactic.formation, tactic.roles);
 	const tactical = syncSquad(sanitizeTacticalState(career.data.tactical, squad, tactic.formation, tactic.style), squad);

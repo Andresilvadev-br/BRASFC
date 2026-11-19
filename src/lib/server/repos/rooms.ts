@@ -155,6 +155,8 @@ export async function leaveRoom(db: Db, room: Room, profileId: string): Promise<
 	return db.transaction(async (tx) => {
 		const [locked] = await tx.query<{ owner_id: string }>('SELECT owner_id FROM rooms WHERE id=$1 FOR UPDATE', [room.id]);
 		const [world] = await tx.query('SELECT 1 FROM room_worlds WHERE room_id=$1', [room.id]);
+		const [live] = await tx.query("SELECT 1 FROM room_live_rounds WHERE room_id=$1 AND state->'required' ? $2", [room.id, profileId]);
+		if (live) throw new RoomError('Conclua a rodada em andamento antes de sair do universo.', 409);
 		if (locked?.owner_id === profileId) {
 			if (world) throw new RoomError('Transfira a administração ou arquive o universo.', 409);
 			await closeRoom(tx, room.id);

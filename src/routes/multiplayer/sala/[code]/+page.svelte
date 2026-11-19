@@ -3,9 +3,10 @@
 	import { goto } from '$app/navigation';
 	import { api } from '#lib/api.ts';
 	import { HAIR_STYLES } from '#lib/domain/appearance.ts';
+	import { clubKit, coachKit } from '#lib/pixel/kits.ts';
 	import { createRng, hashString } from '#lib/domain/rng.ts';
 	import { createRoomConnection } from '#lib/realtime/client.svelte.ts';
-	import { notify, setPersistent } from '#lib/stores/island.svelte.ts';
+	import { notify } from '#lib/stores/island.svelte.ts';
 	import ConnectedWorld from '#lib/ui/ConnectedWorld.svelte';
 	import Badge from '#lib/ui/Badge.svelte';
 	import Button from '#lib/ui/Button.svelte';
@@ -30,24 +31,7 @@
 	}
 	const SHIRTS = ['#10B981', '#1F6FEB', '#DC2626', '#EAB308', '#9333EA', '#0E7490', '#EA580C', '#E7EDF0'];
 
-	onMount(() => {
-		conn.start();
-		return () => {
-			conn.stop();
-			setPersistent('room', null);
-		};
-	});
-
-	$effect(() => {
-		if (s.status === 'online') {
-			const online = s.room?.members.filter((m) => m.online).length ?? 0;
-			setPersistent('room', { icon: 'multiplayer', tone: 'success', title: `Sala ${data.room.code}`, detail: `${online} online` });
-		} else if (s.status === 'reconnecting') {
-			setPersistent('room', { icon: 'refresh', tone: 'warning', title: 'Reconectando…', detail: `Sala ${data.room.code}` });
-		} else if (s.status === 'closed') {
-			setPersistent('room', null);
-		}
-	});
+	onMount(() => { conn.start(); return conn.stop; });
 
 	async function copy() {
 		try {
@@ -75,38 +59,44 @@
 
 <svelte:head><title>Sala {data.room.code} · BRASFC</title></svelte:head>
 
-<div class="page">
-	<ScreenHeader title={data.room.name} eyebrow="Sala privada" back="/multiplayer">
-		{#snippet actions()}
-			{#if !isOwner}<Button variant="ghost" icon="exit" onclick={() => (leaveOpen = true)}>Sair do universo</Button>{/if}
-		{/snippet}
-	</ScreenHeader>
-
-	{#if s.status === 'closed'}
+{#if s.status === 'closed'}
+	<main class="page">
+		<ScreenHeader title={data.room.name} eyebrow="Sala privada" back="/multiplayer" />
 		<div class="closed" role="alert">
-			<Icon name="info" />
-			<span>{s.closedReason}</span>
+			<Icon name="info" /><span>{s.closedReason}</span>
 			<Button variant="primary" href="/multiplayer">Voltar ao multiplayer</Button>
 		</div>
-	{:else}
-		<ConnectedWorld code={data.room.code} initial={data.world} profileId={data.profileId} revision={s.worldRevision} membership={s.room?.members} />
-		<div class="layout">
-			<section class="lobby" aria-label="Jogadores na sala">
-				<div class="status">
-					<span class="conn" data-s={s.status}><span class="led"></span>{s.status === 'online' ? 'Conectado em tempo real' : s.status === 'reconnecting' ? 'Reconectando…' : 'Conectando…'}</span>
+	</main>
+{:else}
+	<ConnectedWorld code={data.room.code} initial={data.world} profileId={data.profileId} revision={s.worldRevision}
+		membership={s.room?.members} online={s.status === 'online'} onactivity={conn.setActivity}>
+		{#snippet connection()}
+			<div class="status" role="status">
+					<span class="conn" data-s={s.status}><span class="led"></span>{s.status === 'online' ? 'Conectado em tempo real' : s.status === 'reconnecting' ? 'Reconectando…' : s.status === 'offline' ? 'Sem conexão de rede' : s.status === 'unavailable' ? 'Servidor temporariamente indisponível' : 'Conectando…'}</span>
+					{#if s.status === 'unavailable'}<Button size="sm" onclick={conn.start}>Reconectar</Button>{/if}
 					{#if s.error}<span class="err">{s.error}</span>{/if}
 				</div>
+		{/snippet}
+		{#snippet lobby(members)}
+		<div class="layout">
+			<section class="lobby" aria-label="Jogadores na sala">
+				<header class="lobby-title"><div><span class="eyebrow">Universo compartilhado</span><h2>{data.room.name}</h2></div>
+					{#if !isOwner}<Button variant="ghost" icon="exit" onclick={() => (leaveOpen = true)}>Sair do universo</Button>{/if}
+				</header>
 				<div class="bench">
 					{#each s.room?.members ?? [] as m, i (m.profileId)}
-						<div class="member" class:offline={!m.online} class:ready={m.ready}>
+						{@const assignment = members.find((member) => member.profileId === m.profileId)?.assignment}
+						<div class="member" class:offline={!m.online}>
 							<div class="spot">
-								<Pixel variant="full" appearance={look(m.profileId)} kit={{ shirt: SHIRTS[i % SHIRTS.length], trim: '#E7EDF0', shorts: '#101418', socks: SHIRTS[i % SHIRTS.length] }} size={130} ball={false} />
-								{#if m.ready}<span class="tick" aria-hidden="true"><Icon name="check" size={16} stroke={3} /></span>{/if}
+								<Pixel variant="full" appearance={assignment?.appearance ?? look(m.profileId)} clubId={assignment?.club} styled
+									kit={assignment ? assignment.role === 'player' ? clubKit(assignment.club) : coachKit(assignment.club)
+										: { shirt: SHIRTS[i % SHIRTS.length], trim: '#E7EDF0', shorts: '#101418', socks: SHIRTS[i % SHIRTS.length] }} size={130} ball={false} />
 							</div>
 							<strong>{m.displayName}{#if m.profileId === s.me} <small>(você)</small>{/if}</strong>
 							<span class="tags">
+								{#if assignment}<Badge tone="neutral">{assignment.role === 'coach' ? 'Treinador' : assignment.role === 'assistant' ? 'Auxiliar' : 'Jogador'}</Badge>{/if}
 								{#if m.role === 'owner'}<Badge tone="gold" icon="crown">Anfitrião</Badge>{/if}
-								<Badge tone={m.online ? (m.ready ? 'emerald' : 'neutral') : 'neutral'}>{m.online ? (m.ready ? 'Pronto' : 'Online') : 'Offline'}</Badge>
+								<Badge tone={m.online ? 'emerald' : 'neutral'}>{m.online ? 'Online' : 'Offline'}</Badge>
 							</span>
 						</div>
 					{/each}
@@ -129,8 +119,9 @@
 				<p class="muted small">Eles abrem Multiplayer → Entrar com código. Até {data.room.maxMembers} pessoas por sala.</p>
 			</aside>
 		</div>
-	{/if}
-</div>
+		{/snippet}
+	</ConnectedWorld>
+{/if}
 
 <Modal bind:open={leaveOpen} title={isOwner ? 'Encerrar a sala?' : 'Sair da sala?'} size="sm" description={isOwner ? 'Como anfitrião, ao sair você encerra a sala para todos.' : 'Você pode voltar depois usando o código.'}>
 	{#snippet footer()}
@@ -160,6 +151,8 @@
 			radial-gradient(80% 60% at 50% 0%, rgb(16 185 129 / 0.12), transparent 70%),
 			var(--surface);
 	}
+	.lobby-title { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px; }
+	.lobby-title h2 { margin:0; }
 	.status {
 		display: flex;
 		justify-content: space-between;
@@ -227,18 +220,6 @@
 	.placeholder strong {
 		color: var(--text-3);
 		font-weight: 500;
-	}
-	.tick {
-		position: absolute;
-		top: -6px;
-		right: -6px;
-		display: grid;
-		place-items: center;
-		width: 28px;
-		height: 28px;
-		border-radius: 50%;
-		background: var(--emerald);
-		color: #04140e;
 	}
 	.member strong {
 		font-size: var(--fs-sm);

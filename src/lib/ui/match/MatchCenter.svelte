@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BroadcastMoments from './BroadcastMoments.svelte';
 	import { onDestroy, untrack } from 'svelte';
 	import { overridesOf, presetInstructions, type TacticalInstructions } from '#lib/engine/instructions.ts';
 	import InstructionsEditor from '../tactics/InstructionsEditor.svelte';
@@ -29,6 +30,7 @@
 		control = null,
 		aiOpponent = true,
 		neutral = false,
+		official,
 		onfinish
 	}: {
 		home: TeamSetup;
@@ -38,6 +40,7 @@
 		control?: Side | null;
 		aiOpponent?: boolean;
 		neutral?: boolean;
+		official?: { version?: string; ai?: Partial<Record<Side, boolean>>; decisions?: import('#lib/engine/types.ts').AppliedDecision[] };
 		onfinish?: (result: MatchResult, match: Match) => void;
 	} = $props();
 
@@ -48,7 +51,9 @@
 		away,
 		seed,
 		...(neutral ? { rules: { homeAdvantage: false } } : {}),
-		ai: { home: control !== 'home' && aiOpponent, away: control !== 'away' && aiOpponent }
+		ai: official?.ai ?? { home: control !== 'home' && aiOpponent, away: control !== 'away' && aiOpponent },
+		version: official?.version,
+		replay: official?.decisions
 	});
 
 	const SPEEDS = [
@@ -150,6 +155,15 @@
 		const side = match.teams.home.byId.has(p.id) ? 'home' : 'away';
 		return p.pending ? `${p.shortName} (${match.teams[side].setup.short})` : p.shortName;
 	};
+	const moments = $derived.by(() => {
+		void version;
+		const start = Math.max(0, match.events.length - 36);
+		return match.events.slice(start).map((event, index) => ({ ...event, index: start + index, minute: match.minuteLabel(event.tick) }));
+	});
+	const captains = $derived.by(() => {
+		void version;
+		return { home: nameOf(match.captain('home') ?? undefined), away: nameOf(match.captain('away') ?? undefined) };
+	});
 	const lines = $derived.by<NarrationLine[]>(() => {
 		void version;
 		const out: NarrationLine[] = [];
@@ -308,7 +322,7 @@
 	<header class="score-bar">
 		<div class="team home">
 			<span class="swatch" style="--c1:{colors.home.primary};--c2:{home.colors.secondary}"></span>
-			<span class="tname">{home.name}</span>
+			<span class="tname">{home.name}<small> · C {captains.home}</small></span>
 		</div>
 		<div class="score" aria-live="polite">
 			<strong>{result.homeGoals}</strong>
@@ -319,7 +333,7 @@
 			<strong>{result.awayGoals}</strong>
 		</div>
 		<div class="team away">
-			<span class="tname">{away.name}</span>
+			<span class="tname">{away.name}<small> · C {captains.away}</small></span>
 			<span class="swatch" style="--c1:{colors.away.primary};--c2:{away.colors.secondary}"></span>
 		</div>
 		<div class="possbar" aria-label="Posse de bola {poss.home}% a {poss.away}%">
@@ -382,6 +396,7 @@
 				/>
 			{/if}
 
+			<BroadcastMoments events={moments} athleteName={nameOf} />
 			<div class="ticker" aria-live="polite">
 				{#if lines[0]}<span class="min">{lines[0].minute}</span> {lines[0].text}{:else}Pronto para o apito inicial.{/if}
 			</div>

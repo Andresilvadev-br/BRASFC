@@ -19,6 +19,6 @@ export const PATCH: RequestHandler = async (event) => {
 	const name = normalizeDisplayName(body.displayName);
 	if (!name) error(400, 'Use de 2 a 32 caracteres (letras, números, espaço, ponto, hífen).');
 	const updated = await renameProfile(await getDb(), profile.id, name);
-	await getRealtimeHub().profileRenamed(profile.id);
+	void getRealtimeHub().profileRenamed(profile.id).catch(() => {});
 	return noStore({ profile: updated });
 };

@@ -5,6 +5,8 @@ import { runMigrations } from '#lib/server/db/migrate.ts';
 import { createGuestProfile } from '#lib/server/repos/profiles.ts';
 import { createRoom, getRoomByCode, joinRoom, leaveRoom } from '#lib/server/repos/rooms.ts';
 import { applyWorldCommand, worldReplay, worldSnapshot } from '#lib/server/connected-world.ts';
+import { DEFAULT_APPEARANCE } from '#lib/domain/appearance.ts';
+import { defaultOutfit } from '#lib/domain/wardrobe.ts';
 import { simulateMatch } from '#lib/engine/match.ts';
 
 let db: Db;
@@ -23,10 +25,19 @@ describe('universo compartilhado', () => {
 			applyWorldCommand(db, room, profile, { ...params, action, op: randomUUID(), revision: (await get(profile)).revision });
 		await expect(get(outsider)).rejects.toMatchObject({ status: 404 });
 		await command(owner, 'assign', { role: 'coach', club: first });
+		const look = { ...DEFAULT_APPEARANCE, wardrobe: defaultOutfit('clube') };
+		await command(owner, 'appearance', { appearance: look });
+		expect((await get(owner)).current?.appearance).toEqual(look);
 		const opponent = (await get(owner)).fixture!;
 		const second = opponent.home === first ? opponent.away : opponent.home;
 		await command(rival, 'assign', { role: 'coach', club: second });
 		await command(assistant, 'assign', { role: 'assistant', club: first });
+		const tactic = { ...(await get(owner)).tactic!, mentality: 'ofensiva' };
+		await expect(command(assistant, 'tactic', { tactic })).rejects.toMatchObject({ status: 403 });
+		await command(owner, 'delegate', { target: assistant, area: 'match', value: true });
+		await command(assistant, 'tactic', { tactic });
+		expect((await get(owner)).tactic?.mentality).toBe('ofensiva');
+		expect((await get(assistant)).management).toBeNull();
 		await expect(command(assistant, 'training', { plan: {} })).rejects.toMatchObject({ status: 403 });
 		await command(owner, 'delegate', { target: assistant, value: true });
 		await command(assistant, 'training', { plan: { sessions: ['posse', 'descanso', 'posse', 'descanso', 'posse'], intensity: 'normal' } });
@@ -43,6 +54,7 @@ describe('universo compartilhado', () => {
 		await command(rival, 'accept-deal', { id: deal.id });
 		expect((await get(owner)).roster.some((p) => p.id === talent.id)).toBe(true);
 		expect((await get(rival)).roster.some((p) => p.id === talent.id)).toBe(false);
+		expect((await get(rival)).dealHistory.find((entry) => entry.id === deal.id)?.status).toBe('aceita');
 		await expect(command(owner, 'advance')).rejects.toMatchObject({ status: 409 });
 		for (const profile of [owner, rival, assistant, player, teammate]) await command(profile, 'ready', { value: true });
 		const request = { action: 'advance', op: randomUUID(), revision: (await get(owner)).revision };
@@ -56,6 +68,9 @@ describe('universo compartilhado', () => {
 		expect(repeat.duplicate).toBe(true);
 		const view = await get(owner), rivalView = await get(rival);
 		expect(view.revision).toBe(request.revision + 1);
+		expect(view.management?.office.totals.games).toBe(1);
+		expect(view.calendar.some((item) => item.score?.length === 2)).toBe(true);
+		expect(rivalView.members.find((member) => member.profileId === owner)?.assignment?.appearance).toEqual(look);
 		expect(view.standings).toEqual(rivalView.standings);
 		const latest = view.last.find((r) => r.home === opponent.home && r.away === opponent.away)!;
 		const replay = await worldReplay(db, room, owner, latest.home, latest.away);

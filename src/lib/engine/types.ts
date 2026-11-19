@@ -1,3 +1,4 @@
+import type { PlayerOrder, PlayerOrders } from '#lib/domain/player-orders.ts';
 import type { Position } from '#lib/domain/positions.ts';
 import type { FormationId, Mentality, PlayStyle } from '#lib/domain/tactics.ts';
 import type { Attributes } from './attributes.ts';
@@ -9,7 +10,9 @@ import type { CoachProfile } from './ai-coach.ts';
 export const PITCH = { length: 105, width: 68, goalWidth: 7.32, boxDepth: 16.5, boxWidth: 40.3 } as const;
 
 /** Versão do motor gravada com cada resultado (mudanças de regra mudam a versão). */
-export const ENGINE_VERSION = '0.5.0';
+export const LEGACY_ENGINE_VERSION = '0.5.0';
+export const ENGINE_VERSION = '0.5.1';
+export const supportsEngineVersion = (version: unknown) => version === ENGINE_VERSION || version === LEGACY_ENGINE_VERSION;
 
 export type Side = 'home' | 'away';
 
@@ -38,6 +41,8 @@ export interface TeamTactic {
 	instructions?: TacticalInstructions;
 	/** função de cada slot (mesma ordem de `lineup`); ausente = função padrão da posição */
 	roles?: RoleId[];
+	captains?: string[];
+	playerOrders?: PlayerOrders;
 }
 
 /**
@@ -78,6 +83,8 @@ export interface MatchRules {
 export const DEFAULT_RULES: MatchRules = { maxSubs: 5, maxWindows: 3, halfMinutes: 45, homeAdvantage: true };
 
 export type Decision =
+	| { type: 'individual'; playerId: string; order: PlayerOrder | null }
+	| { type: 'captains'; order: string[] }
 	| { type: 'sub'; outId: string; inId: string }
 	| { type: 'mentality'; value: Mentality }
 	| { type: 'style'; value: PlayStyle }
@@ -95,7 +102,7 @@ export interface AppliedDecision {
 export type EventType =
 	| 'kickoff' | 'half_time' | 'second_half' | 'full_time'
 	| 'pass' | 'pass_fail' | 'interception' | 'dribble' | 'dribble_fail' | 'tackle' | 'cross' | 'clearance'
-	| 'shot' | 'shot_saved' | 'shot_off' | 'shot_blocked' | 'goal' | 'aerial'
+	| 'shot' | 'shot_saved' | 'shot_off' | 'shot_blocked' | 'goal' | 'goal_disallowed' | 'aerial'
 	| 'corner' | 'throw_in' | 'goal_kick' | 'free_kick' | 'penalty' | 'penalty_miss' | 'foul' | 'offside'
 	| 'yellow' | 'red' | 'injury' | 'sub' | 'tactic';
 

@@ -1,6 +1,6 @@
 {
   "name": "brasfc",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "private": true,
   "description": "BRASFC — simulador brasileiro de futebol com carreiras de treinador e jogador.",
   "type": "module",

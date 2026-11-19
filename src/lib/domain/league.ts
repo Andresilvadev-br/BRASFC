@@ -247,7 +247,7 @@ export interface TieOutcome {
 	tie: Tie;
 	/** gols no agregado (do ponto de vista de tie[0], tie[1]) */
 	aggregate: [number, number];
-	penalties: { home: number; away: number } | null;
+	penalties: { home: number; away: number; kicks?: ReturnType<typeof penaltyShootout>['kicks'] } | null;
 	winner: string;
 	loser: string;
 	decidedBy: 'agregado' | 'penaltis' | 'campanha';
@@ -276,7 +276,7 @@ export function resolveTie(tie: Tie, results: StoredRoundResult[], comp: string,
 	const last = legs.at(-1)!;
 	const pen = penaltyShootout(strengthOf(last.home), strengthOf(last.away), deriveSeed(seed, comp, rounds.join('-'), tie.join('-')));
 	const winner = pen.winner === 'home' ? last.home : last.away;
-	return { tie, aggregate: [a, b], penalties: { home: pen.home, away: pen.away }, winner, loser: winner === tie[0] ? tie[1] : tie[0], decidedBy: 'penaltis' };
+	return { tie, aggregate: [a, b], penalties: { home: pen.home, away: pen.away, kicks: pen.kicks }, winner, loser: winner === tie[0] ? tie[1] : tie[0], decidedBy: 'penaltis' };
 }
 
 /** Confrontos por índice técnico: melhor campanha × pior campanha; o melhor decide em casa. */

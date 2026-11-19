@@ -1,3 +1,4 @@
+import { CLOTHING_COLORS, type Outfit } from '#lib/domain/wardrobe.ts';
 import { HAIR_COLORS, SKIN_TONES, type Appearance, type HairStyle } from '#lib/domain/appearance.ts';
 
 /**
@@ -76,6 +77,42 @@ const HAIR: Record<HairStyle, Record<number, string>> = {
 		2: '...OOSSHhhHSSOO...',
 		3: '..OSSSSHHHHSSSSO..'
 	},
+	crespo: {
+		0: '...OOOOOOOOOOOO...',
+		1: '.OOHhHhHhHhHhHOO..',
+		2: 'OHHhHhHhHhHhHhHHHO',
+		3: 'OHHHHHHHHHHHHHHHHO',
+		4: '.OHHHHHHHHHHHHHHO.',
+		5: '.OHHHSSSSSSSSHHHO.'
+	},
+	medio: {
+		0: '.....OOOOOOOO.....',
+		1: '...OOHHHHHHHHOO...',
+		2: '..OHHHHHHHHHHHHO..',
+		3: '.OHHHHHhHHHHHHHHO.',
+		4: '.OHHHHhHHHHHHHHHO.',
+		5: '.OHHHSSSSSSSHHHHO.',
+		6: 'OHHHEESSSSSSEEHHHO',
+		7: 'OHHSSESSSSSESSEHHO',
+		8: '.OHHEWSSSSSSEWHHO.'
+	},
+	'liso-lateral': {
+		0: '.....OOOOOOOO.....',
+		1: '...OOHHHHHHHHOO...',
+		2: '..OHHhHHHHHHHHHO..',
+		3: '.OHHHHhHHHHHHHHHO.',
+		4: '.OHHHHHhHHHHHHHHO.',
+		5: '.OHHHHSSSSSSSSSHO.',
+		6: '.OHHEESSSSSSEEEHO.'
+	},
+	coque: {
+		0: '......OOHHOO......',
+		1: '.....OHHHHHHO.....',
+		2: '...OOHHHHHHHHOO...',
+		3: '..OHHhhHHhhHHHHO..',
+		4: '.OHSSSSSSSSSSSSHO.',
+		5: '.OHSSSSSSSSSSSSHO.'
+	},
 	longo: {
 		0: '.....OOOOOOOO.....',
 		1: '...OOHHHHHHHHOO...',
@@ -142,6 +179,11 @@ export function headGrid(style: HairStyle, details?: Appearance): string[] {
 		rows[10] = rows[10].slice(0, 6) + 'HHHHHH' + rows[10].slice(12);
 	}
 	if (details?.accessory === 'faixa') rows[5] = rows[5].replace(/[SHh]/g, 'K');
+	if (details?.accessory === 'oculos') {
+		rows[7] = rows[7].slice(0, 3) + 'OOOOOssOOOOO' + rows[7].slice(15);
+		rows[8] = rows[8].slice(0, 3) + 'OWWOOssOOWWO' + rows[8].slice(15);
+	}
+	if (details?.accessory === 'brinco') rows[9] = rows[9].slice(0, 1) + 'K' + rows[9].slice(2);
 	return rows;
 }
 
@@ -151,7 +193,7 @@ export function bustGrid(style: HairStyle, details?: Appearance): string[] {
 }
 
 /** Corpo inteiro 30×35. Sem bola para o treinador. */
-export function bodyGrid(style: HairStyle, { ball = true, details }: { ball?: boolean; details?: Appearance } = {}): string[] {
+export function bodyGrid(style: HairStyle, { ball = true, details, outfit }: { ball?: boolean; details?: Appearance; outfit?: Outfit } = {}): string[] {
 	const pad = '.'.repeat(HEAD_OFFSET);
 	const right = '.'.repeat(BODY[0].length - HEAD_W - HEAD_OFFSET);
 	const head = headGrid(style, details).map((r) => pad + r + right);
@@ -167,9 +209,43 @@ export function bodyGrid(style: HairStyle, { ball = true, details }: { ball?: bo
 		if (details?.accessory === 'munhequeira' && i === 6) row = row.replace('SSS', 'KKS');
 		if (details?.socks === 'alto' && i >= 12 && i <= 14) row = row.replace(/[Ss]/g, 'D');
 		if (details?.shirt === 'fora' && i === 8) row = row.replace(/P/g, 'j');
+		if (outfit) row = dressRow(row, i, outfit);
 		return row;
 	});
 	return [...head, ...body];
+}
+
+function dressRow(row: string, i: number, outfit: Outfit) {
+	const { top, bottom, shoes } = outfit;
+	const isJacket = ['jaqueta', 'agasalho', 'blazer', 'terno', 'clubeJaqueta', 'casaco', 'clubeTerno'].includes(top);
+	const isFormal = ['social', 'blazer', 'terno', 'clubeTerno'].includes(top);
+	const longSleeve = isJacket || top === 'social' || top === 'camisa';
+	if (longSleeve && i >= 3 && i <= 6) row = row.replace(/S/g, i === 6 ? 'K' : 'J');
+	if ((isJacket || isFormal || top === 'polo') && i >= 1 && i <= (isJacket ? 7 : 4)) {
+		const front = row.length / 2 - 1;
+		const chest = isFormal && i <= 3 ? 'K' : isJacket ? (i === 4 ? 'K' : 'j') : 'K';
+		row = row.slice(0, front) + chest + row.slice(front + 1);
+	}
+	if (top === 'treino' && i === 2) row = row.replace(/JJJJ/, 'JKKJ');
+	if (top === 'viagem' && i === 5) row = row.replace(/JJJJJJ/, 'JKKKKJ');
+	if (top === 'clubeJaqueta' && i === 6) row = row.replace(/JJJJ/, 'JKKJ');
+	if (top === 'casaco' && i === 8) row = row.replace(/P/g, 'j');
+	if (!['shorts', 'bermuda'].includes(bottom) && i >= 12 && i <= 17) row = row.replace(/[SsDK]/g, i === 15 ? 'p' : 'P');
+	else if (outfit.category === 'casual' && i >= 15) row = row.replace(/D/g, 'S');
+	if (i === 17 && shoes === 'tenis') row = row.replace(/BBBB/g, 'BKBB');
+	if (i === 18 && shoes === 'chuteira') row = row.replace(/OOOOOO/, 'OBOBOO');
+	if (i === 17 && shoes === 'mocassim') row = row.replace(/BBBB/g, 'BOBB');
+	return row;
+}
+
+export function wardrobeKit(outfit: Outfit, kit: Kit): Kit {
+	const club = outfit.category === 'clube' || outfit.top === 'uniforme';
+	const top = club ? kit.shirt : CLOTHING_COLORS[outfit.color];
+	return {
+		shirt: top, trim: club ? kit.trim : ['social', 'blazer', 'terno', 'polo'].includes(outfit.top) ? '#f1f1e8' : shade(top, .42),
+		shorts: outfit.bottom === 'jeans' ? '#253653' : outfit.bottom === 'sarja' ? '#837258' : outfit.bottom === 'social' ? '#252830' : kit.shorts,
+		socks: club ? kit.socks : '#51565d'
+	};
 }
 
 /** Escurece/clareia uma cor hexadecimal (fator -1..1). */
@@ -181,7 +257,7 @@ export function shade(hex: string, amount: number): string {
 	return `#${ch.map((c) => c.toString(16).padStart(2, '0')).join('')}`;
 }
 
-export function palette(appearance: Appearance, kit: Kit): Record<string, string> {
+export function palette(appearance: Appearance, kit: Kit, outfit?: Outfit): Record<string, string> {
 	const skin = SKIN_TONES[appearance.skin] ?? SKIN_TONES[2];
 	const hair = HAIR_COLORS[appearance.hairColor] ?? HAIR_COLORS[1];
 	return {
@@ -200,7 +276,7 @@ export function palette(appearance: Appearance, kit: Kit): Record<string, string
 		P: kit.shorts,
 		p: shade(kit.shorts, -0.25),
 		D: kit.socks,
-		B: '#1B1F24',
+		B: outfit?.shoes === 'tenis' ? '#e0e1d9' : outfit?.shoes === 'mocassim' ? '#694736' : outfit?.shoes === 'casual' ? '#7d5a45' : '#1B1F24',
 		L: '#F4F7F8',
 		l: '#10B981'
 	};
