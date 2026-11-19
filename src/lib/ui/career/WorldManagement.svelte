@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { worldSnapshot } from '#lib/server/connected-world.ts';
 	import { REGIONS, REGION_LABELS, YOUTH_PLANS } from '#lib/domain/academy.ts';
-	import { SPONSOR_SLOTS, type SponsorOffer } from '#lib/domain/club.ts';
+	import { type SponsorOffer } from '#lib/domain/club.ts';
 	import { formatShort } from '#lib/domain/dates.ts';
 	import { formatExactMoney } from '#lib/domain/market.ts';
 	import { POSITIONS } from '#lib/domain/positions.ts';
@@ -10,6 +10,7 @@
 	import Button from '../Button.svelte';
 	import Meter from '../Meter.svelte';
 	import Panel from '../Panel.svelte';
+	import SponsorContracts from './SponsorContracts.svelte';
 
 	type Management = NonNullable<Awaited<ReturnType<typeof worldSnapshot>>['management']>;
 	let { section, data, sponsors, staff, balance, busy, notices, onaction }: {
@@ -24,7 +25,6 @@
 	let position = $state<(typeof POSITIONS)[number]>('ATA');
 	const meeting = $derived(data.office.meeting);
 	const press = $derived(data.office.press);
-	const signed = $derived(new Set(data.sponsors.map((offer) => offer.slot)));
 	const localeMoney = (value: number) => formatExactMoney(value);
 </script>
 
@@ -37,22 +37,8 @@
 			<span>Folha mensal<strong>{localeMoney(data.wages)}</strong><small>Teto {localeMoney(data.wageBudget)}</small></span>
 		</div>
 	</Panel>
-	<Panel title="Patrocínios" icon="briefcase" class="wide">
-		<div class="contracts">
-			{#each data.sponsors as contract (contract.id)}
-				<div class="deal signed" data-umx-surface><small>{SPONSOR_SLOTS[contract.slot].label} · Vigente</small><strong>{contract.brand}</strong>
-					<span>{localeMoney(contract.monthly)}/mês · até {contract.untilSeason}</span></div>
-			{/each}
-			{#each sponsors as offer (offer.id)}
-				<div class="deal" data-umx-surface><small>{SPONSOR_SLOTS[offer.slot].label} · Proposta</small><strong>{offer.brand}</strong>
-					<span>{localeMoney(offer.monthly)}/mês · {offer.seasons} temporada(s)</span>
-					{#if offer.bonus}<span>{offer.bonus.label} · {localeMoney(offer.bonus.amount)}</span>{/if}
-					{#if offer.requirement}<small>{offer.requirement.label}</small>{/if}
-					<Button size="sm" disabled={busy || signed.has(offer.slot)} onclick={() => onaction({ action: 'patrocinio', offerId: offer.id })}>Assinar contrato</Button>
-				</div>
-			{:else}{#if !data.sponsors.length}<p>Sem contratos de patrocínio registrados.</p>{/if}{/each}
-		</div>
-	</Panel>
+	<div class="wide"><SponsorContracts contracts={data.sponsors} offers={sponsors} {busy}
+		onsign={(offer) => onaction({ action: 'patrocinio', offerId: offer.id })} /></div>
 	<Panel title="Receitas e despesas">
 		{#each [...data.months].reverse() as month (month.season + ':' + month.month)}
 			<div class="row"><strong>{month.month}/{month.season}</strong><span>{localeMoney(month.income)} de receitas</span><span>{localeMoney(month.expense)} de despesas</span></div>
@@ -129,11 +115,10 @@
 <style>
 	.management { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; align-items:start; }
 	.management :global(.wide) { grid-column:1/-1; }
-	.kpis,.contracts { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr)); gap:12px; }
+	.kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr)); gap:12px; }
 	.kpis > span,.deal { display:grid; gap:5px; padding:12px; border:1px solid var(--line); border-radius:var(--radius-l); margin-block:3px; }
 	.kpis strong { font-family:var(--font-display); font-size:var(--fs-xl); }
 	.deal { background:var(--surface-sunken); }
-	.deal.signed { border-color:var(--emerald-line); }
 	.deal small,.row span,details small { color:var(--text-2); }
 	.deal strong { font-size:var(--fs-lg); }
 	.row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; border-top:1px solid var(--line); padding:9px 0; }

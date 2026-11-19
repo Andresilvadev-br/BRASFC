@@ -24,9 +24,11 @@ A aceleração só altera os prazos de apresentação e o ritmo solicitado de si
 
 Para comparar carga, defina `BRASFC_TEST_ROUNDS=1` e execute primeiro uma instância do cliente, depois duas instâncias em paralelo com arquivos de saída diferentes. Use a mesma instância do servidor e do banco. O cenário de duas salas ocupa oito conexões WebSocket. O alvo local de P95 de 500 ms para o relógio deixa folga antes da próxima consulta normal de 950 ms. As chamadas aceleradas geram carga mais concentrada que a cadência da interface.
 
+O ensaio de tráfego por IP compartilhado usa `node scripts/validate-request-load.mjs /tmp/brasfc-http.json` contra o mesmo servidor descartável. A opção `--baseline` só coleta o tráfego da versão anterior e omite as verificações específicas da candidata. Na VPS, execute o cenário em ambiente isolado e registre também a latência externa e o consumo de recursos.
+
 ## Atualizador Windows
 
-O workflow **App Windows** do PR faz o teste em runner descartável. Ele baixa o instalador estável 1.3.0, instala, cria um perfil offline, salva uma carreira e disputa a primeira rodada pelo aplicativo. O pacote candidato da execução é oferecido em um servidor HTTP de loopback, com o hash produzido pelo NSIS e lido pelo atualizador existente. O fluxo testa uma resposta de erro do servidor de download, a tentativa seguinte, a instalação pelo aplicativo e a continuidade da carreira depois de atualizar. O JSON de evidência é guardado como artefato, inclusive em falhas.
+O workflow **App Windows** do PR instala a versão estável 1.3.1 em um runner descartável, cria um perfil offline, salva uma carreira e disputa a primeira rodada pelo aplicativo. O pacote candidato é oferecido por HTTP em loopback, com o hash produzido pelo NSIS. O teste cobre download ausente, incompleto e corrompido, nova tentativa, atualização interna, reabertura e continuidade da carreira. Um segundo pacote injeta falhas no instalador e na primeira inicialização para validar a recuperação, os hashes, os saves e uma tentativa seguinte. O JSON de evidência é guardado como artefato, inclusive em falhas.
 
 A configuração temporária do feed e a depuração Chromium só são usadas pelo teste. O workflow de release continua usando o provedor normal do aplicativo.
 
