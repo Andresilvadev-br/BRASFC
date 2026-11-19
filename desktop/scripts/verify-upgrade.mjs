@@ -233,6 +233,7 @@ try {
 		`], { env: { ...process.env, BRASFC_UPGRADE_EXE: exe } });
 		const faultLog = join(preferences, '..', 'update-validation-fault');
 		for (const fault of ['installer', 'first-boot']) {
+			result.pendingFault = fault;
 			rmSync(faultLog, { force: true });
 			const prior = (() => { try { return outcome().date; } catch { return ''; } })();
 			await launch({
@@ -245,8 +246,9 @@ try {
 			socket.close();
 			const restored = await until(() => {
 				const state = outcome();
-				return state.date !== prior && state.status === 'restored' && state;
-			}, 240_000);
+				return state.date !== prior && state;
+			}, 150_000);
+			assert.equal(restored.status, 'restored', JSON.stringify(restored));
 			assert.equal(readFileSync(faultLog, 'utf8'), fault);
 			assert(installedVersion().startsWith(version));
 			assert.equal(createHash('sha256').update(readFileSync(exe)).digest('hex'), originalHash);
@@ -261,6 +263,7 @@ try {
 			assert(retained[1].includes(1) && retained[1].includes(2));
 			assert.equal(JSON.parse(readFileSync(preferences, 'utf8')).automatic, false);
 			result.faults.push({ stage: fault, restored, previousVersionUsable: true, executableSha256: originalHash });
+			delete result.pendingFault;
 			if (fault === 'installer') {
 				socket.close();
 				await new Promise((resolve) => { app.once('exit', resolve); app.kill(); });
@@ -280,6 +283,11 @@ try {
 } catch (error) {
 	result.error = String(error.stack ?? error);
 	result.diagnostics = diagnostics;
+	const recoveryDir = join(preferences, '..', 'update-recovery');
+	for (const [name, file] of [['watcher', join(recoveryDir, 'watch.log')], ['faultInjected', join(preferences, '..', 'update-validation-fault')], ['recoveryOutcome', join(recoveryDir, 'outcome.json')]]) {
+		if (existsSync(file)) result[name] = readFileSync(file, 'utf8').slice(-1500);
+	}
+	result.recoveryPending = existsSync(join(recoveryDir, 'pending.json'));
 	process.exitCode = 1;
 } finally {
 	socket?.close();

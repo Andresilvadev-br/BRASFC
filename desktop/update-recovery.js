@@ -54,9 +54,15 @@ function updateRecovery(app) {
 			await fs.copyFile(path.join(__dirname, 'update-recovery.ps1'), script);
 			await fs.writeFile(stateFile, JSON.stringify(state), { flag: 'wx' });
 			const powershell = path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-			const child = spawn(powershell, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'RemoteSigned',
-				'-File', script, '-StateFile', stateFile], { detached: true, stdio: 'ignore', windowsHide: true, cwd: dir });
-			await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
+			const log = await fs.open(path.join(root, 'watch.log'), 'w');
+			let child;
+			try {
+				child = spawn(powershell, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'RemoteSigned',
+					'-File', script, '-StateFile', stateFile], { detached: true, stdio: ['ignore', log.fd, log.fd], windowsHide: true, cwd: root });
+				await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
+			} finally {
+				await log.close();
+			}
 			child.unref();
 			current = state;
 		} catch (error) {

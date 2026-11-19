@@ -24,6 +24,7 @@ function Test-Program([string]$directory) {
 
 $clean = $false
 try {
+	Write-Output 'Recovery watcher started.'
 	$old = Get-Process -Id $state.oldPid -ErrorAction SilentlyContinue
 	while ($old -and !$old.HasExited -and !(Test-Path -LiteralPath $cancelled)) {
 		Start-Sleep -Milliseconds 350
@@ -32,6 +33,7 @@ try {
 		$clean = $true
 		return
 	}
+	Write-Output 'Previous process exited.'
 	$name = Split-Path -Leaf $state.installer
 	$installerDeadline = [DateTime]::UtcNow.AddMinutes(7)
 	$bootDeadline = [DateTime]::UtcNow.AddSeconds(100)
@@ -52,6 +54,7 @@ try {
 	} while ([DateTime]::UtcNow -lt $bootDeadline)
 
 	if (!(Test-Program $program)) { throw 'A cópia anterior falhou na verificação de integridade.' }
+	Write-Output 'Previous installation verified.'
 	$exe = $state.exe
 	$appName = [IO.Path]::GetFileNameWithoutExtension($exe)
 	Get-Process -Name $appName -ErrorAction SilentlyContinue | Where-Object Path -eq $exe | Stop-Process -Force
