@@ -6,6 +6,7 @@
 	import { createRng, hashString } from '#lib/domain/rng.ts';
 	import { createRoomConnection } from '#lib/realtime/client.svelte.ts';
 	import { notify, setPersistent } from '#lib/stores/island.svelte.ts';
+	import ConnectedWorld from '#lib/ui/ConnectedWorld.svelte';
 	import Badge from '#lib/ui/Badge.svelte';
 	import Button from '#lib/ui/Button.svelte';
 	import Icon from '#lib/ui/Icon.svelte';
@@ -19,8 +20,7 @@
 	let leaveOpen = $state(false);
 	let leaving = $state(false);
 
-	const me = $derived(s.room?.members.find((m) => m.profileId === s.me));
-	const isOwner = $derived(data.room.ownerId === s.me);
+	const isOwner = $derived((s.room?.ownerId ?? data.room.ownerId) === data.profileId);
 	const empty = $derived(Math.max(0, (s.room?.maxMembers ?? data.room.maxMembers) - (s.room?.members.length ?? 0)));
 
 	// Aparência estável por perfil (até a criação de avatar do multiplayer).
@@ -78,7 +78,7 @@
 <div class="page">
 	<ScreenHeader title={data.room.name} eyebrow="Sala privada" back="/multiplayer">
 		{#snippet actions()}
-			<Button variant="ghost" icon="exit" onclick={() => (leaveOpen = true)}>{isOwner ? 'Encerrar sala' : 'Sair da sala'}</Button>
+			{#if !isOwner}<Button variant="ghost" icon="exit" onclick={() => (leaveOpen = true)}>Sair do universo</Button>{/if}
 		{/snippet}
 	</ScreenHeader>
 
@@ -89,6 +89,7 @@
 			<Button variant="primary" href="/multiplayer">Voltar ao multiplayer</Button>
 		</div>
 	{:else}
+		<ConnectedWorld code={data.room.code} initial={data.world} profileId={data.profileId} revision={s.worldRevision} membership={s.room?.members} />
 		<div class="layout">
 			<section class="lobby" aria-label="Jogadores na sala">
 				<div class="status">
@@ -116,12 +117,7 @@
 						</div>
 					{/each}
 				</div>
-				<div class="ready-bar">
-					<Button variant={me?.ready ? 'secondary' : 'primary'} size="lg" icon={me?.ready ? 'x' : 'check'} disabled={s.status !== 'online'} onclick={() => conn.setReady(!me?.ready)}>
-						{me?.ready ? 'Cancelar pronto' : 'Estou pronto'}
-					</Button>
-					<span class="muted">Quando todos estiverem prontos, as próximas etapas permitirão iniciar uma carreira compartilhada.</span>
-				</div>
+
 			</section>
 
 			<aside class="invite">
@@ -257,17 +253,6 @@
 		flex-wrap: wrap;
 		justify-content: center;
 	}
-	.ready-bar {
-		display: flex;
-		align-items: center;
-		gap: var(--sp-4);
-		margin-top: var(--sp-5);
-		padding-top: var(--sp-4);
-		border-top: 1px solid var(--line);
-	}
-	.ready-bar span {
-		font-size: var(--fs-sm);
-	}
 	.invite {
 		display: flex;
 		flex-direction: column;
@@ -313,10 +298,6 @@
 	@media (max-width: 900px) {
 		.layout {
 			grid-template-columns: 1fr;
-		}
-		.ready-bar {
-			flex-direction: column;
-			align-items: flex-start;
 		}
 	}
 </style>

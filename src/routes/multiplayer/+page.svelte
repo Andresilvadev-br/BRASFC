@@ -65,7 +65,7 @@
 <svelte:head><title>Multiplayer · BRASFC</title></svelte:head>
 
 <div class="page">
-	<ScreenHeader title="Multiplayer" eyebrow="Beta · salas privadas" />
+	<ScreenHeader title="Multiplayer" eyebrow="Connected World · salas privadas" />
 
 	<section class="hero" data-umx-enter>
 		<div class="squad" aria-hidden="true">
@@ -75,7 +75,7 @@
 		</div>
 		<div class="copy">
 			<h2>Jogue com seus amigos</h2>
-			<p class="muted">Crie uma sala, mande o código e vejam juntos quem está online e pronto. É o primeiro passo das carreiras compartilhadas.</p>
+			<p class="muted">Crie um universo, convide seus amigos e disputem a mesma temporada como treinadores, auxiliares ou jogadores.</p>
 			<div class="works">
 				<Badge tone="emerald" icon="check">Salas privadas com código</Badge>
 				<Badge tone="emerald" icon="check">Presença em tempo real</Badge>
