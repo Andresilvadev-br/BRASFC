@@ -1,0 +1,50 @@
+{
+  "competitions": [
+    {
+      "competition": "copa-do-brasil",
+      "matches": 155,
+      "goals": 484,
+      "goal_events": 484
+    },
+    {
+      "competition": "serie-a",
+      "matches": 380,
+      "goals": 1224,
+      "goal_events": 1224
+    },
+    {
+      "competition": "serie-b",
+      "matches": 380,
+      "goals": 1109,
+      "goal_events": 1109
+    },
+    {
+      "competition": "serie-c",
+      "matches": 216,
+      "goals": 571,
+      "goal_events": 571
+    },
+    {
+      "competition": "serie-d",
+      "matches": 610,
+      "goals": 1445,
+      "goal_events": 1445
+    }
+  ],
+  "world": {
+    "season": "2027",
+    "champions": [
+      {
+        "clubs": {
+          "serie-a": "palmeiras",
+          "serie-b": "fortaleza",
+          "serie-c": "guarani",
+          "serie-d": "altos"
+        },
+        "season": 2026
+      }
+    ],
+    "active_rounds": 0,
+    "athlete_careers": 1
+  }
+}

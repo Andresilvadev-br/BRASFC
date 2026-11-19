@@ -122,12 +122,22 @@ try {
 	await until(async () => (await evaluate("window.brasfcDesktop.update('state')"))?.status === 'ready', 120_000);
 	assert(served > 0);
 	assert.equal(await evaluate("window.brasfcDesktop.update('install')"), true);
+	const oldPid = app.pid;
+	// A connected main-process inspector keeps Node alive at shutdown and can retain Electron's instance lock.
+	socket.close();
 	await until(() => installedVersion().startsWith(version), 120_000);
 	result.tests.push('Download repetido, pacote verificado pelo updater e NSIS aplicado pelo app');
 	// The updater relaunches without the developer-only CDP argument.
-	await until(() => execFileSync('powershell.exe', ['-NoProfile','-Command', '(Get-Process BRASFC -ErrorAction SilentlyContinue | Where-Object MainWindowHandle).Count'], {encoding:'utf8'}).trim() === '1',60_000);
-	execFileSync('powershell.exe', ['-NoProfile','-Command', 'Get-Process BRASFC -ErrorAction SilentlyContinue | Where-Object MainWindowHandle | ForEach-Object { $_.CloseMainWindow() | Out-Null; $_.WaitForExit(15000) | Out-Null }']);
-	socket?.close();
+	let relaunchPid;
+	try {
+		relaunchPid = await until(() => Number(execFileSync('powershell.exe', ['-NoProfile','-Command',
+			'Get-Process BRASFC -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 -and $_.Id -ne ' + oldPid + ' } | Select-Object -First 1 -ExpandProperty Id'], {encoding:'utf8'}).trim()),60_000);
+		result.tests.push('Nova instância aberta automaticamente após o NSIS');
+	} catch {
+		result.relaunchMissing = true;
+	}
+	if (relaunchPid) execFileSync('powershell.exe', ['-NoProfile','-Command',
+		'(Get-Process -Id ' + relaunchPid + ').CloseMainWindow() | Out-Null; (Get-Process -Id ' + relaunchPid + ' -ErrorAction SilentlyContinue).WaitForExit(15000) | Out-Null']);
 	await launch();
 	await until(() => evaluate("location.origin.startsWith('http://127.0.0.1:47615') && !!window.brasfcDesktop"));
 	const after = await evaluate(`(async () => {
@@ -148,6 +158,7 @@ try {
 	assert(after.continued, 'A carreira precisa jogar a segunda rodada');
 	assert.equal(JSON.parse(readFileSync(preferences, 'utf8')).automatic, false);
 	result.tests.push('Reabertura na versão nova com conta, carreira avançada e preferência preservadas');
+	assert(!result.relaunchMissing, 'A instalação atualizou, mas a abertura automática não foi observada');
 	result.passed = true;
 } catch (error) {
 	result.error = String(error.stack ?? error);
