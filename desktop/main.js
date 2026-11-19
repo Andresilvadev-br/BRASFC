@@ -13,6 +13,9 @@ const BG = '#101418';
 const BAR = 36; // altura da barra de título integrada ao jogo
 const OFFLINE_PORT = 47615; // porta fixa do jogo offline (mesma origem a cada abertura)
 const local = require('./local-server.js');
+const { desktopUpdates } = require('./updates.js');
+let updates;
+let rendererBusy = true;
 
 if (!SELFTEST && !app.requestSingleInstanceLock()) app.quit();
 
@@ -165,6 +168,7 @@ function createWindow() {
 	});
 
 	// Links externos abrem no navegador; a janela só navega dentro do jogo.
+	win.webContents.on('did-start-navigation', (_e, _url, samePage, mainFrame) => { if (mainFrame && !samePage) rendererBusy = true; });
 	win.webContents.setWindowOpenHandler(({ url }) => {
 		if (/^https?:/.test(url)) void shell.openExternal(url);
 		return { action: 'deny' };
@@ -187,6 +191,21 @@ function createWindow() {
 	if (prefs.mode === 'offline' && offlineAvailable() && !SELFTEST) void openGame('offline');
 	else void win.loadURL(GAME_URL);
 }
+
+function trustedRenderer(event) {
+	if (!win || event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame) return false;
+	try { return new URL(event.senderFrame.url).origin === currentOrigin(); } catch { return false; }
+}
+ipcMain.handle('desktop:update-action', async (event, action, value) => {
+	if (!trustedRenderer(event)) return null;
+	if (action === 'busy') { rendererBusy = value === true; return true; }
+	if (!updates) return null;
+	if (action === 'check') await updates.check(value === true);
+	if (action === 'download') void updates.download();
+	if (action === 'auto') updates.setAutomatic(value === true);
+	if (action === 'install') return updates.install();
+	return updates.get();
+});
 
 ipcMain.handle('desktop:get-state', () => ({
 	fullscreen: Boolean(win?.isFullScreen()),
@@ -251,32 +270,23 @@ app.whenReady().then(() => {
 	if (SELFTEST) app.setPath('userData', path.join(app.getPath('temp'), 'brasfc-selftest'));
 	createWindow();
 	if (app.isPackaged && !SELFTEST) {
-		// Atualização do aplicativo (inclui o jogo offline embutido; o online se atualiza pelo servidor).
 		const { autoUpdater } = require('electron-updater');
-		autoUpdater.autoInstallOnAppQuit = true;
-		autoUpdater.on('update-downloaded', (info) => {
-			void dialog
-				.showMessageBox(win, {
-					type: 'info',
-					title: 'BRASFC',
-					message: `Versão ${info.version} do aplicativo baixada.`,
-					detail: 'Ela será instalada ao fechar o BRASFC. Deseja reiniciar agora?',
-					buttons: ['Reiniciar agora', 'Depois'],
-					defaultId: 1,
-					cancelId: 1
-				})
-				.then((r) => {
-					if (r.response === 0) autoUpdater.quitAndInstall();
-				});
+		updates = desktopUpdates({
+			updater: autoUpdater,
+			publish: (state) => { if (win && !win.isDestroyed()) win.webContents.send('desktop:update-state', state); },
+			persist: (automatic) => { prefs = { ...prefs, automatic }; writePrefs(prefs); },
+			automatic: prefs.automatic !== false,
+			canInstall: () => !rendererBusy,
+			drain: async () => {
+				await local.stopLocalServer();
+				offlineUrl = null;
+			}
 		});
-		autoUpdater.on('error', () => {
-			/* sem internet ou sem versão nova: o jogo continua normalmente */
-		});
-		void autoUpdater.checkForUpdates().catch(() => {});
+		void updates.check();
 	}
 });
 
-app.on('will-quit', () => globalShortcut.unregisterAll());
+app.on('will-quit', () => { updates?.close(); globalShortcut.unregisterAll(); });
 
 // Fecha o banco do jogo offline antes de sair (nenhum progresso fica pela metade).
 let quitting = false;

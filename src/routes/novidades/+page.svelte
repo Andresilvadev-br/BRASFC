@@ -8,11 +8,15 @@
 	import Icon from '#lib/ui/Icon.svelte';
 	import ScreenHeader from '#lib/ui/ScreenHeader.svelte';
 	import DesktopDownload from '#lib/ui/desktop/DesktopDownload.svelte';
-	import { desktop } from '#lib/stores/desktop.svelte.ts';
+	import { desktop, nativeUpdate, nativeUpdateAction } from '#lib/stores/desktop.svelte.ts';
 
 	let { data } = $props();
 	let blocked = $state<string[]>([]);
 	let applyError = $state('');
+	let nativeError = $state('');
+	async function restart() {
+		if (!(await nativeUpdateAction('install'))) nativeError = 'Conclua os salvamentos e tente reiniciar novamente.';
+	}
 	let open = $state<string | null>(RELEASES[0]?.version ?? null);
 
 	$effect(() => setIslandContext('Atualizações'));
@@ -87,7 +91,19 @@
 		<article class="glass install" use:reveal={{ index: 2 }}>
 			<span class="eyebrow-gold">Aplicativo</span>
 			{#if desktop.active}
-				<p><Icon name="check" size={16} /> Você está no aplicativo do Windows. O jogo se atualiza pelo servidor (esta central) e o próprio aplicativo baixa a versão nova sozinho.</p>
+				<p>Aplicativo Windows {desktop.version} · modo {desktop.mode === 'online' ? 'online' : 'offline'}</p>
+				{#if nativeUpdate.value}
+					{@const update = nativeUpdate.value}
+					<label><input type="checkbox" checked={update.automatic} onchange={(e) => nativeUpdateAction('auto', e.currentTarget.checked)} /> Baixar automaticamente</label>
+					<p role="status">{({ checking: 'Verificando versão', current: 'Em dia', available: 'Atualização disponível', downloading: 'Baixando', ready: 'Pronta para instalar', installing: 'Reiniciando', error: 'Falha na atualização' } as Record<string, string>)[update.status] ?? 'Pronto para verificar'} {update.version ?? ''}</p>
+					{#if update.status === 'downloading'}<progress max="100" value={update.progress} aria-label="Download do instalador"></progress> {Math.floor(update.progress)}%{/if}
+					{#if update.error || nativeError}<p role="alert">{update.error ?? nativeError}</p>{/if}
+					<div class="row">
+						{#if update.status === 'ready'}<Button onclick={restart}>Reiniciar e atualizar</Button>
+						{:else if update.status === 'available' || (update.status === 'error' && update.version)}<Button onclick={() => nativeUpdateAction('download')}>Baixar atualização</Button>
+						{:else if !['checking', 'downloading', 'installing'].includes(update.status)}<Button onclick={() => nativeUpdateAction('check', true)}>Verificar aplicativo</Button>{/if}
+					</div>
+				{/if}
 			{:else if updates.installed}
 				<p><Icon name="check" size={16} /> O BRASFC está instalado como aplicativo neste computador. As atualizações chegam por aqui.</p>
 			{:else if updates.installable}

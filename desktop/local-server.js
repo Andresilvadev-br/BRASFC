@@ -91,11 +91,8 @@ async function startLocalServer(app, preferredPort) {
 /** Fecha o banco com segurança (grava tudo antes de sair). */
 async function stopLocalServer() {
 	if (!running) return;
-	try {
-		await globalThis[Symbol.for('brasfc.shutdown')]?.();
-	} catch {
-		/* encerrando de qualquer forma */
-	}
+	await globalThis[Symbol.for('brasfc.shutdown')]?.();
+	running = null;
 }
 
 module.exports = { isAvailable, startLocalServer, stopLocalServer, gameDir };

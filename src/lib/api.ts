@@ -1,3 +1,5 @@
+import { pendingWrites } from '#lib/stores/unsaved.svelte.ts';
+
 /** Cliente HTTP da API do BRASFC: JSON, mensagens de erro em português, sem exceções silenciosas. */
 export class ApiError extends Error {
 	constructor(
@@ -11,10 +13,14 @@ export class ApiError extends Error {
 
 export async function api<T>(path: string, init: { method?: string; body?: unknown; fetch?: typeof fetch } = {}): Promise<T> {
 	const f = init.fetch ?? fetch;
+	const method = init.method ?? (init.body ? 'POST' : 'GET');
+	const writing = typeof window !== 'undefined' && ['POST', 'PATCH', 'PUT', 'DELETE'].includes(method);
+	if (writing) pendingWrites.count++;
+	try {
 	let res: Response;
 	try {
 		res = await f(path, {
-			method: init.method ?? (init.body ? 'POST' : 'GET'),
+			method,
 			headers: init.body !== undefined ? { 'content-type': 'application/json' } : undefined,
 			body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
 			credentials: 'same-origin'
@@ -25,6 +31,7 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
 	const data = (await res.json().catch(() => ({}))) as { message?: string; errors?: Record<string, string> };
 	if (!res.ok) throw new ApiError(data.message ?? `Erro ${res.status}`, res.status, data.errors);
 	return data as T;
+	} finally { if (writing) pendingWrites.count--; }
 }
 
 /** Conflito de versão: outra tela/aba (ou o app) gravou a carreira antes deste pedido. */

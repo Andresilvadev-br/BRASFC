@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { nativeUpdateAction } from '#lib/stores/desktop.svelte.ts';
+	import { pendingWrites } from '#lib/stores/unsaved.svelte.ts';
 	import '#lib/data/brasil.ts'; // registra os clubes reais (escudos/nomes em qualquer tela)
 	import '@fontsource-variable/inter';
 	import '@fontsource/barlow-condensed/600.css';
@@ -19,7 +21,7 @@
 	import Modal from '#lib/ui/Modal.svelte';
 	import WhatsNew from '#lib/ui/v4/WhatsNew.svelte';
 	import DesktopBar from '#lib/ui/desktop/DesktopBar.svelte';
-	import { initDesktop } from '#lib/stores/desktop.svelte.ts';
+	import { initNativeUpdates, initDesktop } from '#lib/stores/desktop.svelte.ts';
 	import { goto } from '$app/navigation';
 	import { applyUpdate, initUpdates, shouldShowWhatsNew, updates } from '#lib/stores/updates.svelte.ts';
 
@@ -29,6 +31,8 @@
 	let whatsNew = $state(false);
 	const onSplash = $derived(page.url.pathname === '/');
 
+	$effect(() => { void nativeUpdateAction('busy', hasUnsaved() || pendingWrites.count > 0); });
+	onMount(initNativeUpdates);
 	onMount(() => {
 		loadPrefs();
 		void loadMotion();

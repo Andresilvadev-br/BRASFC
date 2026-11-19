@@ -1,5 +1,5 @@
 import type { Release } from '#lib/changelog.ts';
-import { hasUnsaved, unsavedLabels } from './unsaved.svelte.ts';
+import { hasUnsaved, pendingWrites, unsavedLabels } from './unsaved.svelte.ts';
 
 /**
  * Central de Atualizações (Dev 0.4) — cliente.
@@ -91,6 +91,7 @@ export async function checkForUpdate(): Promise<UpdateStatus> {
  * seria perdido para a interface pedir confirmação.
  */
 export async function applyUpdate(opts: { force?: boolean } = {}): Promise<{ ok: true } | { ok: false; blocked: string[] } | { ok: false; error: string }> {
+	if (pendingWrites.count) return { ok: false, blocked: ['Gravação em andamento'] };
 	if (!opts.force && hasUnsaved()) return { ok: false, blocked: unsavedLabels() };
 	if (!updates.remote) {
 		const st = await checkForUpdate();
