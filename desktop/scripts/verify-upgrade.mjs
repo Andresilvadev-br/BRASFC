@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
-import { createReadStream, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { resolve, join, basename } from 'node:path';
 import { Transform } from 'node:stream';
 import { setTimeout as wait } from 'node:timers/promises';
@@ -207,6 +207,18 @@ try {
 		useFeed();
 		const originalHash = createHash('sha256').update(readFileSync(exe)).digest('hex');
 		const outcomeFile = join(preferences, '..', 'update-recovery', 'outcome.json');
+		const recoveryPending = join(preferences, '..', 'update-recovery', 'pending.json');
+		async function startInstall() {
+			let installed;
+			try { installed = await evaluate("window.brasfcDesktop.update('install')"); }
+			catch (error) {
+				if (existsSync(recoveryPending) && /frame was disposed|CDP sem resposta/.test(String(error))) return;
+				throw error;
+			}
+			if (installed !== true) {
+				throw Error(`O instalador recusou a solicitação: ${JSON.stringify(await evaluate("window.brasfcDesktop.update('state')"))}`);
+			}
+		}
 		const outcome = () => JSON.parse(readFileSync(outcomeFile, 'utf8').replace(/^\uFEFF/, ''));
 		const waitOffline = () => until(() => evaluate("location.origin.startsWith('http://127.0.0.1:47615') && !!window.brasfcDesktop"));
 		const downloadCandidate = async () => {
@@ -229,8 +241,7 @@ try {
 			});
 			await waitOffline();
 			await downloadCandidate();
-			const installed = await evaluate("window.brasfcDesktop.update('install')");
-			assert.equal(installed, true, JSON.stringify(await evaluate("window.brasfcDesktop.update('state')")));
+			await startInstall();
 			socket.close();
 			const restored = await until(() => {
 				const state = outcome();
@@ -256,7 +267,7 @@ try {
 			}
 		}
 		await downloadCandidate();
-		assert.equal(await evaluate("window.brasfcDesktop.update('install')"), true);
+		await startInstall();
 		socket.close();
 		await until(() => installedVersion().startsWith(candidate) && outcome().status === 'healthy', 240_000);
 		closeActive();
