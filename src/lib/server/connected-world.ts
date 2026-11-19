@@ -24,7 +24,7 @@ import { ensureUniverse, universeAfterStep, universeAtSeasonEnd } from './univer
 import { computeOverall } from '#lib/engine/attributes.ts';
 import { buildTeamSetup } from '#lib/engine/teams.ts';
 import { Match } from '#lib/engine/match.ts';
-import { ENGINE_VERSION, type MatchResult, type Side, type PlayerStats } from '#lib/engine/types.ts';
+import { ENGINE_VERSION, supportsEngineVersion, type MatchResult, type Side, type PlayerStats } from '#lib/engine/types.ts';
 import { canCommitRound, checkpoint, enginesFor, forgetRound, keepEngines, matchView, preparedFixtures, pulseRound, rememberFixtures, startRound, type LiveFixture, type LiveRound, type RoundReplay } from './live-round.ts';
 import { parseDecision } from './rounds.ts';
 import type { Db } from './db/index.ts';
@@ -131,7 +131,7 @@ export async function worldSnapshot(db: Db, room: Room, profile: string) {
 		current, standings: division ? divisionStandings(s.league, division, past) : [],
 		last: s.last.map(({ athletes, events, replay, replayVersion, ...match }) => ({ ...match,
 			me: current && athletes ? athletes[athleteId(current)] : undefined,
-			replay: Boolean((replayVersion ?? replay?.version) === ENGINE_VERSION && current && [match.home, match.away].includes(current.club)),
+			replay: Boolean(supportsEngineVersion(replayVersion ?? replay?.version) && current && [match.home, match.away].includes(current.club)),
 			events: current && [match.home, match.away].includes(current.club) ? events : undefined })),
 		allowAbsent: s.allowAbsent, inviteOpen: s.inviteOpen, champions: s.champions, news: s.universe?.news.slice(-5).reverse() ?? [],
 		deals: current ? s.deals.filter((d) => current.club === d.from || current.club === d.to).map((d) => ({
@@ -311,7 +311,7 @@ async function advance(tx: Db, room: Room, s: WorldState, run?: RoundRun) {
 		}
 		rows.push({ home: f.home, away: f.away, round, competition: f.competition,
 			homeGoals: match.homeGoals, awayGoals: match.awayGoals, athletes, replay,
-			events: match.events.filter((e) => ['goal', 'yellow', 'red', 'injury', 'sub'].includes(e.type)).slice(0, 100) });
+			events: match.events.filter((e) => ['goal', 'goal_disallowed', 'yellow', 'red', 'injury', 'sub'].includes(e.type)).slice(0, 100) });
 		await new Promise<void>((resolve) => setImmediate(resolve));
 	}
 	if (run?.prepare) return;
@@ -381,11 +381,11 @@ export async function worldReplay(db: Db, room: Room, profile: string, home: str
 	const step = schedule(s)[s.step - 1]?.key;
 	const [match] = await db.query<{ replay: Replay }>(`SELECT result->'replay' AS replay FROM room_world_matches
 		WHERE room_id=$1 AND season=$2 AND step=$3 AND home=$4 AND away=$5`, [room.id, s.league.season, step, home, away]);
-	if (!match?.replay || match.replay.version !== ENGINE_VERSION) fail('Reprodução indisponível.', 404);
+	if (!match?.replay || !supportsEngineVersion(match.replay.version)) fail('Reprodução indisponível.', 404);
 	return match.replay;
 }
 
-type RoundConnection = { online: () => ReadonlySet<string>; now?: () => number };
+type RoundConnection = { online: () => ReadonlySet<string>; now?: () => number; timing?: (stage: string, ms: number) => void };
 export async function applyWorldCommand(db: Db, room: Room, profile: string, body: Record<string, unknown>, connection?: RoundConnection) {
 	const op = body.op;
 	if (typeof op !== 'string' || !isUuid(op) || !Number.isInteger(body.revision)) fail('Comando ou revisão inválida.', 400);
@@ -638,8 +638,11 @@ async function collectShootouts(tx: Db, room: Room, round: LiveRound) {
 }
 
 export async function updateLiveRound(db: Db, room: Room, profile: string, body: Record<string, unknown>, connection: RoundConnection) {
+	const started = performance.now();
 	return db.transaction(async (tx) => {
 		const [identity] = await tx.query('SELECT id FROM rooms WHERE id=$1 AND status=\'open\' FOR UPDATE', [room.id]);
+		connection.timing?.('lock', performance.now() - started);
+		const readStarted = performance.now();
 		if (!identity || !(await listMembers(tx, room.id)).some((member) => member.profileId === profile)) fail('Universo não encontrado.', 404);
 		const [row] = await tx.query<{ session_id: string; state: Omit<LiveRound, 'fixtures'> }>(
 			'SELECT session_id,state FROM room_live_rounds WHERE room_id=$1', [room.id]
@@ -650,6 +653,7 @@ export async function updateLiveRound(db: Db, room: Room, profile: string, body:
 		const round = { ...row.state, fixtures };
 		const [{ participants }] = await tx.query<{ participants: WorldState['participants'] }>(
 			"SELECT state->'participants' AS participants FROM room_worlds WHERE room_id=$1", [room.id]);
+		connection.timing?.('read', performance.now() - readStarted);
 		const player = participants[profile];
 		if (!player || !round.required.includes(profile)) fail('Você não participa desta rodada.', 403);
 		const online = connection.online();
@@ -697,12 +701,15 @@ export async function updateLiveRound(db: Db, room: Room, profile: string, body:
 			keepEngines(round);
 			changed = true;
 		}
-		if (pulseRound(round, online, now)) { round.sequence++; keepEngines(round); changed = true; }
+		const engineStarted = performance.now();
+		if (await pulseRound(round, online, now)) { round.sequence++; keepEngines(round); changed = true; }
+		connection.timing?.('engine', performance.now() - engineStarted);
 		if (round.phase === 'FULL_TIME' && round.step.startsWith('cup:') && !round.shootouts) {
 			round.shootouts = await collectShootouts(tx, room, round);
 			changed = true;
 		}
 		if (canCommitRound(round, now)) {
+			const commitStarted = performance.now();
 			const official = enginesFor(round).map((match, index) => {
 				const replay = round.fixtures[index].replay;
 				const result = match.result();
@@ -715,9 +722,15 @@ export async function updateLiveRound(db: Db, room: Room, profile: string, body:
 			await tx.query('UPDATE room_worlds SET revision=$2,state=$3::jsonb WHERE room_id=$1', [room.id, revision, JSON.stringify(state)]);
 			await tx.query('DELETE FROM room_live_rounds WHERE room_id=$1 AND session_id=$2', [room.id, round.id]);
 			forgetRound(round.id);
+			connection.timing?.('result', performance.now() - commitStarted);
 			return { session: null, revision };
 		}
+		const checkpointStarted = performance.now();
 		if (changed) await tx.query('UPDATE room_live_rounds SET state=$2::jsonb WHERE room_id=$1', [room.id, JSON.stringify(checkpoint(round))]);
-		return { session: viewLiveRound(round, player, participants, online) };
+		connection.timing?.('checkpoint', performance.now() - checkpointStarted);
+		const viewStarted = performance.now();
+		const session = viewLiveRound(round, player, participants, online);
+		connection.timing?.('view', performance.now() - viewStarted);
+		return { session };
 	});
 }

@@ -1,6 +1,6 @@
 import { fitsOrder, PLAYER_ORDERS, sanitizeCaptains, sanitizeOrders } from '#lib/domain/player-orders.ts';
 import { positionFit, type Position } from '#lib/domain/positions.ts';
-import { createRng, type Rng } from '#lib/domain/rng.ts';
+import { createRng, deriveSeed, type Rng } from '#lib/domain/rng.ts';
 import { FORMATIONS, type FormationId } from '#lib/domain/tactics.ts';
 import type { Attributes } from './attributes.ts';
 import { baseXg, clampToPitch, dist, inBox, segmentDistance, toAbs, toRel } from './geometry.ts';
@@ -11,6 +11,7 @@ import { COACH_PROFILES, inMatchAdjustment, type CoachProfile, type MatchView } 
 import {
 	DEFAULT_RULES,
 	PITCH,
+	LEGACY_ENGINE_VERSION,
 	type AppliedDecision,
 	type BallState,
 	type Decision,
@@ -77,6 +78,7 @@ export interface MatchOptions {
 	home: TeamSetup;
 	away: TeamSetup;
 	seed: number;
+	version?: string;
 	rules?: Partial<MatchRules>;
 	/** quais lados o "treinador automático" controla (substituições e ajustes) */
 	ai?: Partial<Record<Side, boolean>>;
@@ -156,6 +158,7 @@ export class Match {
 	ball: BallState;
 
 	private rng: Rng;
+	private readonly allowDisallowedGoals: boolean;
 	private queue: Record<Side, Decision[]> = { home: [], away: [] };
 	private replay: Map<number, AppliedDecision[]> | null = null;
 	private restart: Restart | null = null;
@@ -179,6 +182,7 @@ export class Match {
 	constructor(opts: MatchOptions) {
 		this.rules = { ...DEFAULT_RULES, ...(opts.rules ?? {}) };
 		this.seed = opts.seed >>> 0;
+		this.allowDisallowedGoals = opts.version !== LEGACY_ENGINE_VERSION;
 		this.rng = createRng(this.seed);
 		const formRng = createRng((this.seed ^ 0x9e3779b9) >>> 0);
 		this.form = { home: 0.9 + formRng.next() * 0.2, away: 0.9 + formRng.next() * 0.2 };
@@ -1381,6 +1385,11 @@ export class Match {
 				const off = this.states.get(f.target!)!;
 				this.emit('offside', { side: off.side, player: off.id, x: off.x, y: off.y });
 				if (pp) this.emit('pass_fail', { side: pp.side, player: pp.from, other: pp.to, data: { offside: true } });
+				const [x] = toRel(off.side, off.x, off.y);
+				if (this.allowDisallowedGoals && off.onPitch && !off.injured && x >= PITCH.length - PITCH.boxDepth) {
+					// A delayed flag allows the physical finish, but the offside already voided the play.
+					this.shoot(off, false, false, false, pp?.from ?? null);
+				}
 				return this.setRestart({ type: 'free_kick', side: OTHER[off.side], x: off.x, y: off.y }, 12);
 			}
 		}
@@ -1538,7 +1547,7 @@ export class Match {
 
 	// ──────────────────────────────────────────────── finalizações
 
-	private shoot(shooter: PlayerState, header: boolean, setPiece = false, penalty = false) {
+	private shoot(shooter: PlayerState, header: boolean, setPiece = false, penalty = false, offsidePasser?: string | null) {
 		const side = shooter.side;
 		const a = this.player(shooter.id)!.attributes;
 		const [ax, ay] = toRel(side, shooter.x, shooter.y);
@@ -1556,6 +1565,16 @@ export class Match {
 		const boxDef = this.teams[OTHER[side]].params.boxDefense;
 		const blockChance = penalty ? 0 : clamp((0.06 + this.defendersInLane(shooter) * 0.11) * boxDef, 0, 0.45);
 		const onTarget = clamp(0.5 + (skillAttr - 60) / 160 + (a.compostura - 60) / 320 - pressure * 0.07 - Math.max(0, PITCH.length - ax - 16) * 0.005, 0.16, 0.86) * this.techFactor(shooter);
+		const pGoalGivenTarget = clamp(pGoal / onTarget / (1 - blockChance), 0.02, 0.96);
+		if (offsidePasser !== undefined) {
+			// An invalidated finish is never an official shot, goal or assist and does not consume the match RNG.
+			const review = createRng(deriveSeed(this.seed, 'offside-finish', this.tick, shooter.id));
+			if (review.next() >= blockChance && review.next() < onTarget && review.next() < pGoalGivenTarget) {
+				this.emit('goal_disallowed', { side, player: shooter.id, other: offsidePasser ?? undefined, x: shooter.x, y: shooter.y,
+					data: { reason: 'impedimento', score: `${this.score.home}-${this.score.away}` } });
+			}
+			return;
+		}
 		const assist = this.lastPass && this.lastPass.to === shooter.id && this.tick - this.lastPass.tick <= 6 && this.lastPass.side === side ? this.lastPass.from : undefined;
 		const data = { xg: Math.round(xg * 1000) / 1000, header, setPiece, penalty, ...(assist ? { keyPassFrom: assist } : {}) };
 		this.emit('shot', { side, player: shooter.id, x: shooter.x, y: shooter.y, data });
@@ -1574,7 +1593,6 @@ export class Match {
 			if (penalty) this.emit('penalty_miss', { side, player: shooter.id });
 			return this.outOfPlay('goal_kick', OTHER[side], ...toAbs(side, PITCH.length, PITCH.width / 2));
 		}
-		const pGoalGivenTarget = clamp(pGoal / onTarget / (1 - blockChance), 0.02, 0.96);
 		if (this.rng.next() < pGoalGivenTarget) return this.goal(shooter, assist);
 		// Defesa do goleiro
 		if (gkState) this.emit('shot_saved', { side: OTHER[side], player: gkState.id, other: shooter.id, data: { xg: data.xg } });

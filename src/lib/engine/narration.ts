@@ -40,6 +40,8 @@ export function narrate(e: MatchEvent, ctx: NarrationContext): NarrationLine | n
 			return { ...base, tone: 'whistle', text: 'Recomeça o jogo para o segundo tempo.' };
 		case 'full_time':
 			return { ...base, tone: 'whistle', text: 'Apita o árbitro: fim de jogo!' };
+		case 'goal_disallowed':
+			return { ...base, tone: 'whistle', text: `Gol anulado${e.data?.reason === 'impedimento' ? ' por impedimento' : ''}. ${p} balançou a rede e o placar permanece ${e.data?.score ?? 'inalterado'}.` };
 		case 'goal':
 			return {
 				...base,

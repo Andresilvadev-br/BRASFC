@@ -36,7 +36,7 @@
 	const visual = $derived(replayIndex === null ? match : frameSet[replayIndex] ?? match);
 	const sides = ['home', 'away'] as const;
 	const labels: Record<string, string> = {
-		goal: 'Gol', foul: 'Falta', free_kick: 'Cobrança de falta', corner: 'Escanteio', penalty: 'Pênalti', penalty_miss: 'Pênalti perdido',
+		goal: 'Gol', goal_disallowed: 'Gol anulado', foul: 'Falta', free_kick: 'Cobrança de falta', corner: 'Escanteio', penalty: 'Pênalti', penalty_miss: 'Pênalti perdido',
 		yellow: 'Cartão amarelo', red: 'Cartão vermelho', sub: 'Substituição', offside: 'Impedimento', injury: 'Lesão', shot_saved: 'Defesa',
 		shot: 'Finalização', aerial: 'Disputa aérea', cross: 'Cruzamento', half_time: 'Intervalo', second_half: 'Segundo tempo', full_time: 'Fim de jogo', tactic: 'Ajuste tático'
 	};
@@ -185,7 +185,7 @@
 						{#if playerStats && !['HALF_TIME', 'FULL_TIME'].includes(session.phase)}
 							<p>Sua atuação · {playerStats.minutes} min · Nota {playerStats.rating.toFixed(1)} · Condição {Math.round(playerStats.condition)}%</p>
 						{/if}
-						<BroadcastMoments events={match.events} athleteName={(id) => athletes.get(id)?.name} />
+						<BroadcastMoments events={match.events} sessionKey={session.id + ":" + relevant.replay.home.id} athleteName={(id) => athletes.get(id)?.name} />
 					</div>
 					<aside class="surface">
 						<h3>Lances oficiais</h3>

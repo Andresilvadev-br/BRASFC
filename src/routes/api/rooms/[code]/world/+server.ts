@@ -45,9 +45,13 @@ export const POST: RequestHandler = async (event) => {
 		const hub = getRealtimeHub();
 		const connection = { online: () => hub.onlineProfiles(room.id) };
 		if (live) {
-			const result = await updateLiveRound(db, room, profile.id, command, connection);
+			const timing: string[] = [];
+			const result = await updateLiveRound(db, room, profile.id, command, {
+				...connection, timing: (stage, ms) => timing.push(`live-${stage};dur=${ms.toFixed(1)}`)
+			});
 			if (result.revision) void hub.publishWorldRevision(room.id, result.revision).catch(() => {});
-			return noStore(result);
+			timing.push(`live;dur=${(performance.now() - t).toFixed(1)}`);
+			return noStore(result, { headers: { 'Server-Timing': timing.join(', ') } });
 		}
 		const committed = await applyWorldCommand(db, room, profile.id, command, connection);
 		if (!committed.duplicate) {

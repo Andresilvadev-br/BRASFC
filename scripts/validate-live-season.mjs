@@ -12,7 +12,7 @@ const limit = Number(process.env.BRASFC_TEST_ROUNDS ?? 0);
 assert(Number.isSafeInteger(limit) && limit >= 0 && limit <= 51);
 
 const started = performance.now();
-const report = { rounds: [], requests: {}, errors: {}, scenarios: [], maxRssBytes: 0, maxCpuPercent: 0 };
+const report = { rounds: [], requests: {}, serverTiming: {}, errors: {}, scenarios: [], maxRssBytes: 0, maxCpuPercent: 0 };
 const sessions = [];
 const ip = new URL(base);
 let cpuStart;
@@ -35,6 +35,9 @@ async function call(actor, path, payload) {
 		...(payload ? { 'content-type': 'application/json' } : {}) }, body: payload ? JSON.stringify(payload) : undefined });
 	const body = await result.json();
 	(report.requests[kind] ??= []).push(performance.now() - t0);
+	for (const entry of (result.headers.get('server-timing') ?? '').matchAll(/([a-z-]+);dur=([\d.]+)/g)) {
+		(report.serverTiming[entry[1]] ??= []).push(Number(entry[2]));
+	}
 	if (!result.ok) report.errors[result.status] = (report.errors[result.status] ?? 0) + 1;
 	assert(result.ok, `${kind}: ${result.status} ${JSON.stringify(body).slice(0,300)}`);
 	return { body, headers: result.headers };
@@ -96,7 +99,7 @@ try {
 		assert.equal(view.phase, 'LOADING');
 		for (const [i] of sessions.entries()) view = await live(i, 'loaded', { session: view.id, op: randomUUID() });
 		let half = false, finish = false, count = 0, maxFixtures = 0;
-		while (view && count++ < 180) {
+		while (view && count++ < 500) {
 			const phase = view.phase;
 			maxFixtures = Math.max(maxFixtures, view.fixtures.length);
 			if (phase === 'HALF_TIME' && !half) {
@@ -145,11 +148,13 @@ try {
 	clearInterval(sampler);
 	await Promise.all(sessions.map((actor) => actor.socket?.terminate()));
 	report.ms = performance.now() - started;
-	report.requests = Object.fromEntries(Object.entries(report.requests).map(([key, values]) => {
+	const summarize = (samples) => Object.fromEntries(Object.entries(samples).map(([key, values]) => {
 		values.sort((a,b) => a-b);
 		const p = (ratio) => Number(values[Math.ceil(values.length * ratio) - 1].toFixed(1));
 		return [key, { count: values.length, p50: p(.5), p95: p(.95), p99: p(.99) }];
 	}));
+	report.requests = summarize(report.requests);
+	report.serverTiming = summarize(report.serverTiming);
 	writeFileSync(output, JSON.stringify(report, null, 2));
 	console.log(JSON.stringify({ ...report, rounds: report.rounds.length }));
 }

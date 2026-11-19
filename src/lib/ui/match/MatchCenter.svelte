@@ -40,7 +40,7 @@
 		control?: Side | null;
 		aiOpponent?: boolean;
 		neutral?: boolean;
-		official?: { ai?: Partial<Record<Side, boolean>>; decisions?: import('#lib/engine/types.ts').AppliedDecision[] };
+		official?: { version?: string; ai?: Partial<Record<Side, boolean>>; decisions?: import('#lib/engine/types.ts').AppliedDecision[] };
 		onfinish?: (result: MatchResult, match: Match) => void;
 	} = $props();
 
@@ -52,6 +52,7 @@
 		seed,
 		...(neutral ? { rules: { homeAdvantage: false } } : {}),
 		ai: official?.ai ?? { home: control !== 'home' && aiOpponent, away: control !== 'away' && aiOpponent },
+		version: official?.version,
 		replay: official?.decisions
 	});
 

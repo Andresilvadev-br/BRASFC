@@ -1,6 +1,6 @@
 import type { TieOutcome } from '#lib/domain/league.ts';
 import { Match } from '#lib/engine/match.ts';
-import { ENGINE_VERSION, type AppliedDecision, type Decision, type MatchEvent, type Side, type TeamSetup } from '#lib/engine/types.ts';
+import { supportsEngineVersion, type AppliedDecision, type Decision, type MatchEvent, type Side, type TeamSetup } from '#lib/engine/types.ts';
 import { RoomError } from './repos/rooms.ts';
 
 export type RoundReplay = {
@@ -22,6 +22,8 @@ export type LiveRound = {
 
 const SPEED = 80;
 const MAX_SLICE = 120;
+const TICKS_PER_BATCH = 8;
+const PULSE_BUDGET_MS = 36;
 const PRESENTATION_MS = 12_000;
 const LOADING_MS = 3_000;
 const ENDED_MS = 4_000;
@@ -43,7 +45,7 @@ export function checkpoint(round: LiveRound): Omit<LiveRound, 'fixtures'> {
 	return state;
 }
 const sides = ['home', 'away'] as const;
-const featuredEvents = new Set<MatchEvent['type']>(['kickoff', 'goal', 'foul', 'free_kick', 'corner', 'penalty', 'penalty_miss', 'yellow', 'red', 'sub', 'offside', 'injury', 'shot_saved', 'half_time', 'second_half', 'full_time', 'tactic', 'shot', 'aerial', 'cross', 'shot_off', 'shot_blocked']);
+const featuredEvents = new Set<MatchEvent['type']>(['kickoff', 'goal', 'goal_disallowed', 'foul', 'free_kick', 'corner', 'penalty', 'penalty_miss', 'yellow', 'red', 'sub', 'offside', 'injury', 'shot_saved', 'half_time', 'second_half', 'full_time', 'tactic', 'shot', 'aerial', 'cross', 'shot_off', 'shot_blocked']);
 
 function moveTo(match: Match, tick: number, secondHalf: boolean) {
 	while (match.tick < tick && match.phase !== 'finished' && (secondHalf || match.phase !== 'half_time')) match.step();
@@ -54,7 +56,7 @@ export function enginesFor(session: LiveRound) {
 	if (covered?.sequence === session.sequence) return covered.matches;
 	const secondHalf = ['SECOND_HALF', 'FULL_TIME'].includes(session.phase);
 	const matches = session.fixtures.map(({ replay }, fixture) => {
-		if (replay.version !== ENGINE_VERSION) throw new RoomError('Esta rodada exige a versão do motor com que foi iniciada.', 409);
+		if (!supportsEngineVersion(replay.version)) throw new RoomError('Esta rodada exige a versão do motor com que foi iniciada.', 409);
 		const match = new Match({ ...replay, ...(replay.neutral ? { rules: { homeAdvantage: false } } : {}) });
 		for (const entry of session.submissions) {
 			if (entry.fixture !== fixture) continue;
@@ -78,7 +80,7 @@ export function startRound(id: string, season: number, step: string, round: numb
 		tick: 0, since: 0, updated: now, sequence: 0, suspended: false, requests: [], submissions: [], suggestions: [] };
 }
 
-export function pulseRound(session: LiveRound, connected: ReadonlySet<string>, now: number) {
+export async function pulseRound(session: LiveRound, connected: ReadonlySet<string>, now: number) {
 	if (!session.required.every((id) => connected.has(id))) {
 		if (!session.suspended) {
 			session.suspended = true;
@@ -118,17 +120,31 @@ export function pulseRound(session: LiveRound, connected: ReadonlySet<string>, n
 		return true;
 	}
 	if (session.phase === 'FULL_TIME') return false;
-	const count = Math.min(MAX_SLICE, Math.floor((now - session.updated) * SPEED / 1000));
+	const clock = Math.max(session.updated, now - MAX_SLICE * 1000 / SPEED);
+	const count = Math.floor((now - clock) * SPEED / 1000);
 	if (!count) return false;
 	const matches = enginesFor(session);
-	const end = session.tick + count;
 	const second = session.phase === 'SECOND_HALF';
-	for (const match of matches) moveTo(match, end, second);
-	session.tick = matches.length ? Math.max(...matches.map((match) => match.tick)) : end;
+	const startTick = session.tick;
+	const end = startTick + count;
+	const started = performance.now();
+	// Normal requests keep their full clock advance. Catch-up requests share time with other rooms.
+	const hasBudget = () => count < MAX_SLICE || performance.now() - started < PULSE_BUDGET_MS;
+	// Commit only at common tick boundaries, so no fixture can go ahead of another.
+	let target = startTick;
+	do {
+		target = Math.min(target + TICKS_PER_BATCH, end);
+		for (const match of matches) moveTo(match, target, second);
+		if (matches.every((match) => match.phase === (second ? 'finished' : 'half_time'))) break;
+		if (target < end && hasBudget()) {
+			await new Promise<void>((resolve) => setImmediate(resolve));
+		}
+	} while (target < end && hasBudget());
+	session.tick = matches.length ? Math.max(...matches.map((match) => match.tick)) : target;
 	cache.set(session.id, { sequence: session.sequence + 1, matches });
 	if (!second && matches.every((match) => match.phase === 'half_time')) transition('HALF_TIME');
 	else if (matches.every((match) => match.phase === 'finished')) transition('FULL_TIME');
-	session.updated = now;
+	else session.updated = Math.min(now, clock + (target - startTick) * 1000 / SPEED);
 	return true;
 }
 
@@ -139,10 +155,24 @@ export function canCommitRound(session: LiveRound, now: number) {
 
 export function matchView(match: Match) {
 	const { players, stats } = match.result();
+	const events = [];
+	const goals = [];
+	for (let index = 0; index < match.events.length; index++) {
+		const event = match.events[index];
+		if (event.type === 'goal') goals.push({ ...event, minute: match.minuteLabel(event.tick) });
+		else if (event.type === 'goal_disallowed') events.push({ ...event, index, minute: match.minuteLabel(event.tick) });
+	}
+	const recent = [];
+	for (let index = match.events.length - 1; index >= 0 && recent.length < 36; index--) {
+		const event = match.events[index];
+		if (event.type !== 'goal_disallowed' && featuredEvents.has(event.type)) recent.push({ ...event, index, minute: match.minuteLabel(event.tick) });
+	}
+	events.push(...recent);
+	events.sort((a, b) => a.index - b.index);
 	return { tick: match.tick, minute: match.minuteLabel(match.tick), phase: match.phase, added: [...match.added], score: { ...match.score },
 		players: [...match.states.values()].filter((p) => p.onPitch).map((p) => ({ ...p })), ball: { ...match.ball },
-		events: match.events.map((event, index) => ({ ...event, index })).filter((e) => featuredEvents.has(e.type)).slice(-36).map((event) => ({ ...event, minute: match.minuteLabel(event.tick) })),
-		goals: match.events.filter((e) => e.type === 'goal').map((e) => ({ ...e, minute: match.minuteLabel(e.tick) })),
+		events,
+		goals,
 		decisions: match.applied.slice(-16), stats: { players, teams: stats },
 		teams: Object.fromEntries(sides.map((side) => [side, { tactic: { ...match.teams[side].tactic, instructions: match.teams[side].instructions },
 			bench: match.bench(side), gkId: match.teams[side].gkId, captain: match.captain(side), subs: match.subsLeft(side) }])) as Record<Side, {
