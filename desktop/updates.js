@@ -1,9 +1,18 @@
 // Adaptador do electron-updater. O provedor e a verificação de integridade ficam no Electron.
-function desktopUpdates({ updater, publish, persist, automatic = true, canInstall, drain, interval = 15 * 60_000 }) {
+function desktopUpdates({ updater, publish, persist, automatic = true, canInstall, drain, recoverInstall = () => {}, interval = 15 * 60_000 }) {
 	let state = { status: 'idle', automatic, progress: 0, version: null, error: null };
 	let checking, downloading, installing = false, checkedAt = 0;
 	const set = (patch) => { state = { ...state, ...patch }; publish(state); };
-	const failed = (error) => set({ status: 'error', error: error?.message || String(error) });
+	const errorText = (error) => error?.message || String(error);
+	const failed = (error) => {
+		if (installing) {
+			installing = false;
+			recoverInstall();
+			set({ status: 'ready', error: errorText(error) });
+		} else {
+			set({ status: 'error', error: errorText(error) });
+		}
+	};
 	updater.autoDownload = false;
 	updater.autoInstallOnAppQuit = false;
 	updater.allowDowngrade = false;
@@ -38,10 +47,9 @@ function desktopUpdates({ updater, publish, persist, automatic = true, canInstal
 		try {
 			await drain();
 			updater.quitAndInstall(true, true);
-			return true;
+			return installing;
 		} catch (error) {
-			installing = false;
-			set({ status: 'ready', error: error?.message || String(error) });
+			failed(error);
 			return false;
 		}
 	}

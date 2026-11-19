@@ -271,6 +271,7 @@ app.whenReady().then(() => {
 	createWindow();
 	if (app.isPackaged && !SELFTEST) {
 		const { autoUpdater } = require('electron-updater');
+		let installOfflineUrl = null;
 		updates = desktopUpdates({
 			updater: autoUpdater,
 			publish: (state) => { if (win && !win.isDestroyed()) win.webContents.send('desktop:update-state', state); },
@@ -278,9 +279,11 @@ app.whenReady().then(() => {
 			automatic: prefs.automatic !== false,
 			canInstall: () => !rendererBusy,
 			drain: async () => {
+				installOfflineUrl = offlineUrl;
 				await local.stopLocalServer();
 				offlineUrl = null;
-			}
+			},
+			recoverInstall: () => { offlineUrl = installOfflineUrl; }
 		});
 		void updates.check();
 	}
@@ -295,7 +298,7 @@ app.on('before-quit', (e) => {
 	e.preventDefault();
 	quitting = true;
 	const force = setTimeout(() => app.exit(0), 8000);
-	void local.stopLocalServer().finally(() => {
+	void local.stopLocalServer().catch((error) => console.error('[brasfc] erro ao encerrar', error)).finally(() => {
 		clearTimeout(force);
 		app.exit(0);
 	});

@@ -30,4 +30,19 @@ describe('atualizador nativo', () => {
 			expect(updater.quitAndInstall).toHaveBeenCalledWith(true, true);
 		} finally { controller.close(); }
 	});
+	it('recupera a instalação atual após erro do NSIS e deixa tentar de novo', async () => {
+		const updater = Object.assign(new EventEmitter(), { quitAndInstall: vi.fn() });
+		const recoverInstall = vi.fn();
+		const controller = desktopUpdates({ updater, publish: vi.fn(), persist: vi.fn(),
+			canInstall: () => true, drain: vi.fn(), recoverInstall });
+		try {
+			updater.emit('update-downloaded', { version: '1.3.0' });
+			updater.quitAndInstall.mockImplementationOnce(() => updater.emit('error', new Error('Instalador indisponível')));
+			expect(await controller.install()).toBe(false);
+			expect(controller.get()).toMatchObject({ status: 'ready', error: 'Instalador indisponível' });
+			expect(recoverInstall).toHaveBeenCalledOnce();
+			expect(await controller.install()).toBe(true);
+		} finally { controller.close(); }
+	});
+
 });
