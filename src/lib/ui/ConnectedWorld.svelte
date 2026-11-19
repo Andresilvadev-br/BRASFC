@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import { ApiError, api } from '#lib/api.ts';
+	import { APPEARANCE_OPTIONS, APPEARANCE_FIELDS, DEFAULT_APPEARANCE, HAIR_COLORS, HAIR_STYLES, HAIR_STYLE_LABELS, SKIN_TONES, type Appearance } from '#lib/domain/appearance.ts';
+	import type { DominantFoot } from '#lib/domain/career.ts';
+	import { playerKit } from '#lib/pixel/kits.ts';
 	import type { worldReplay, worldSnapshot } from '#lib/server/connected-world.ts';
 	import { FORMATIONS, FORMATION_IDS, MENTALITIES, MENTALITY_LABELS, STYLES, STYLE_LABELS, autoLineup, type FormationId, type Mentality, type PlayStyle } from '#lib/domain/tactics.ts';
 	import type { SquadPlayer } from '#lib/domain/squad.ts';
@@ -14,6 +17,7 @@
 	import Segmented from './Segmented.svelte';
 	import MatchCenter from './match/MatchCenter.svelte';
 	import Crest from './Crest.svelte';
+	import Pixel from './Pixel.svelte';
 
 	type World = Awaited<ReturnType<typeof worldSnapshot>>;
 	type Member = Pick<World['members'][number], 'profileId' | 'displayName' | 'role'>;
@@ -22,6 +26,12 @@
 	let section = $state<'rodada' | 'carreira' | 'mercado' | 'admin'>('rodada');
 	let role = $state<'coach' | 'assistant' | 'player'>('coach');
 	let club = $state('');
+	let vacancyClub = $state('');
+	let age = $state<number | undefined>(18);
+	let nationality = $state('Brasil');
+	let foot = $state<DominantFoot>('direito');
+	let appearance = $state<Appearance>({ ...DEFAULT_APPEARANCE });
+	const appearanceFields = Object.keys(APPEARANCE_OPTIONS) as Array<keyof typeof APPEARANCE_OPTIONS>;
 	let name = $state('');
 	let position = $state<Position>('ATA');
 	let day = $state('');
@@ -46,6 +56,8 @@
 	const current = $derived(world.current);
 	const owner = $derived(world.ownerId === profileId);
 	const pc = $derived(current?.athlete?.playerCareer);
+	const progress = $derived(pc?.daily.progress.slice(-12) ?? []);
+	const upcoming = $derived(world.clubs.filter((c) => !world.members.some((m) => m.assignment?.role === 'coach' && m.assignment.club === c.id)));
 	const tacticalRoster = $derived(world.roster as SquadPlayer[]);
 	const sortedOpponents = $derived(world.members.filter((m) => m.profileId !== profileId && m.assignment?.role === 'coach' && m.assignment.club !== current?.club));
 	const labels = { coach: 'Treinador', assistant: 'Auxiliar', player: 'Jogador' };
@@ -126,7 +138,7 @@
 
 	function roleForm(event: SubmitEvent) {
 		event.preventDefault();
-		void send('assign', { role, club, personName: name, position });
+		void send('assign', { role, club, personName: name, position, age, nationality, foot, appearance: $state.snapshot(appearance) });
 	}
 </script>
 
@@ -182,8 +194,28 @@
 					<form onsubmit={roleForm}>
 						<label>Clube<select aria-label="Clube" bind:value={club} required><option value="">Selecione</option>{#each world.clubs as c}<option value={c.id}>{c.name}</option>{/each}</select></label>
 						<label>Função<select bind:value={role}><option value="coach">Treinador</option><option value="assistant">Auxiliar</option>{#if !current}<option value="player">Jogador</option>{/if}</select></label>
-						{#if role === 'player'}<label>Nome<input bind:value={name} required maxlength="40" /></label>
-							<label>Posição<select bind:value={position}>{#each POSITIONS as p}<option value={p}>{POSITION_INFO[p].label}</option>{/each}</select></label>{/if}
+						{#if role === 'player'}
+							<div class="lineup">
+								<label>Nome<input bind:value={name} required maxlength="40" /></label>
+								<label>Posição<select bind:value={position}>{#each POSITIONS as p}<option value={p}>{POSITION_INFO[p].label}</option>{/each}</select></label>
+								<label>Idade<input type="number" bind:value={age} min="16" max="35" required /></label>
+								<label>Nacionalidade<input bind:value={nationality} required maxlength="40" /></label>
+								<label>Pé dominante<select bind:value={foot}><option value="direito">Direito</option><option value="esquerdo">Esquerdo</option></select></label>
+							</div>
+							<details><summary>Personalizar aparência</summary>
+								<div class="avatar"><Pixel variant="full" {appearance} kit={playerKit(club, position)} size={136} ball={false} /></div>
+								<div class="lineup">
+									<label>Pele<select bind:value={appearance.skin}>{#each SKIN_TONES as _, i}<option value={i}>Tom {i + 1}</option>{/each}</select></label>
+									<label>Cor do cabelo<select bind:value={appearance.hairColor}>{#each HAIR_COLORS as _, i}<option value={i}>Cor {i + 1}</option>{/each}</select></label>
+									<label>Cabelo<select bind:value={appearance.hairStyle}>{#each HAIR_STYLES as hair}<option value={hair}>{HAIR_STYLE_LABELS[hair]}</option>{/each}</select></label>
+									{#each appearanceFields as field}
+										<label>{APPEARANCE_FIELDS[field]}<select value={appearance[field] ?? Object.keys(APPEARANCE_OPTIONS[field])[0]} onchange={(event) => Object.assign(appearance, { [field]: event.currentTarget.value })}>
+											{#each Object.entries(APPEARANCE_OPTIONS[field]) as [value, label]}<option {value}>{label}</option>{/each}
+										</select></label>
+									{/each}
+								</div>
+							</details>
+						{/if}
 						<Button type="submit" loading={saving}>Confirmar função</Button>
 					</form>
 					{#each world.vacancies as vacancy}<p>Proposta para treinar {clubName(vacancy)}</p><Button disabled={saving} onclick={() => send('assign', { role: 'coach', club: vacancy })}>Aceitar proposta</Button>{/each}
@@ -211,8 +243,16 @@
 				</article>
 			{/if}
 			{#if current?.role === 'player' && pc}
-				<article><h3>{current.name}</h3>
-					<p>{clubName(current.club)} · Geral {current.athlete?.player?.overall} · Confiança {pc.daily.trust}%</p>
+				<article><div class="profile">
+						<Pixel variant="full" appearance={current.athlete?.appearance ?? DEFAULT_APPEARANCE} kit={playerKit(current.club, current.athlete?.position ?? 'ATA')} size={88} ball={false} />
+						<div><h3>{current.name}</h3><p>{clubName(current.club)} · {current.athlete?.player?.nationality} · {current.athlete?.player?.age} anos</p></div>
+					</div>
+					<div class="lineup">
+						<label>Confiança do treinador <meter min="0" max="100" value={pc.daily.trust}>{pc.daily.trust}%</meter></label>
+						<label>Condicionamento <meter min="0" max="100" value={pc.daily.condition}>{pc.daily.condition}%</meter></label>
+						<label>Reputação <meter min="0" max="100" value={pc.reputation}>{pc.reputation}%</meter></label>
+					</div>
+					{#if pc.daily.injuryUntil}<p role="status">Em recuperação até {pc.daily.injuryUntil.split('-').reverse().join('/')}</p>{/if}
 					<p>{formatExactMoney(pc.contract.wage)}/mês · contrato até {pc.contract.until}</p>
 					<label>Dia de treino<input type="date" bind:value={day} min={world.date} /></label>
 					<label>Foco<select bind:value={focus}>{#each PLAYER_FOCUS.filter((f) => isPlayerFocusForPosition(f, current?.athlete?.position ?? 'ATA')) as f}<option value={f}>{PLAYER_FOCUS_LABELS[f]}</option>{/each}</select></label>
@@ -220,6 +260,13 @@
 					{#each pc.daily.drills as drill}<p>{drill.date} · {PLAYER_FOCUS_LABELS[drill.focus]} <Button size="sm" disabled={saving} onclick={() => send('jogador-cancelar-treino', { date: drill.date })}>Cancelar</Button></p>{/each}
 					{#if pc.daily.press}<p>{PRESS_QUESTIONS[pc.daily.press.kind]}</p><div class="actions">{#each Object.entries(PRESS_ANSWERS) as [key, answer]}<Button disabled={saving} onclick={() => send('jogador-entrevista', { choice: key, date: pc.daily.press?.date })}>{answer.label}</Button>{/each}</div>{/if}
 				</article>
+				{#if progress.length}<article><h3>Evolução do atributo geral</h3>
+					<p>{progress[0].overall} → <strong>{progress.at(-1)?.overall}</strong> · Potencial {current.athlete?.player?.potential}</p>
+					<div class="progress" aria-label="Histórico de evolução">
+						{#each progress as point}<div title={`${point.date}: ${point.overall}`} style:--height={`${point.overall}%`}></div>{/each}
+					</div>
+					{#if pc.awards.length}<details><summary>Premiações ({pc.awards.length})</summary>{#each pc.awards as award}<p>{award.season} · {award.label}</p>{/each}</details>{/if}
+				</article>{/if}
 			{/if}
 			{#if current?.history.length}<article><h3>Trajetória</h3>{#each current.history as entry}<p>{entry.date} · {clubName(entry.club)} · {entry.role === 'coach' ? 'Treinador' : entry.role === 'assistant' ? 'Auxiliar' : 'Jogador'}</p>{/each}</article>{/if}
 		{:else if section === 'mercado'}
@@ -272,17 +319,17 @@
 							<Button size="sm" disabled={saving} onclick={() => send('delegate', { target: m.profileId, value: !m.assignment?.delegated })}>{m.assignment.delegated ? 'Revogar treino' : 'Delegar treino'}</Button>
 						{/if}
 						{#if owner && m.profileId !== profileId}
-							<Button size="sm" disabled={saving} onclick={() => send('transfer-owner', { target: m.profileId })}>Transferir administração</Button>
-							<Button size="sm" disabled={saving} onclick={() => send('remove', { target: m.profileId })}>Remover</Button>
-							{#if m.assignment?.role === 'assistant' && club}<Button size="sm" disabled={saving} onclick={() => send('vacancy', { target: m.profileId, club })}>Oferecer vaga em {clubName(club)}</Button>{/if}
+							<Button size="sm" disabled={saving} onclick={() => { if (confirm(`Transferir a administração para ${m.displayName}?`)) void send('transfer-owner', { target: m.profileId }); }}>Transferir administração</Button>
+							<Button size="sm" disabled={saving} onclick={() => { if (confirm(`Remover ${m.displayName} do universo?`)) void send('remove', { target: m.profileId }); }}>Remover</Button>
+							{#if m.assignment?.role === 'assistant' && vacancyClub}<Button size="sm" disabled={saving} onclick={() => send('vacancy', { target: m.profileId, club: vacancyClub })}>Oferecer vaga em {clubName(vacancyClub)}</Button>{/if}
 						{/if}
 					</div>
 				{/each}
 			</article>
 			{#if owner}<article><h3>Regras do universo</h3>
-				<label>Clube para vaga<select bind:value={club}><option value="">Selecione</option>{#each world.clubs as c}<option value={c.id}>{c.name}</option>{/each}</select></label>
+				<label>Clube para vaga<select bind:value={vacancyClub}><option value="">Selecione</option>{#each upcoming as c}<option value={c.id}>{c.name}</option>{/each}</select></label>
 				<div class="actions">
-					<Button disabled={saving} onclick={() => send('settings', { allowAbsent: !world.allowAbsent, inviteOpen: world.inviteOpen })}>{world.allowAbsent ? 'Exigir todos prontos' : 'Permitir IA nas ausências'}</Button>
+					<Button disabled={saving} onclick={() => send('settings', { allowAbsent: !world.allowAbsent, inviteOpen: world.inviteOpen })}>{world.allowAbsent ? 'Exigir todos prontos' : 'Permitir avanço com participantes pendentes'}</Button>
 					<Button disabled={saving} onclick={() => send('settings', { allowAbsent: world.allowAbsent, inviteOpen: !world.inviteOpen })}>{world.inviteOpen ? 'Fechar convites' : 'Abrir convites'}</Button>
 					<Button variant="danger" disabled={saving} onclick={() => { if (confirm('Arquivar o universo para todos?')) void send('archive'); }}>Arquivar</Button>
 				</div>
@@ -305,6 +352,12 @@
 	label { display: grid; gap: 4px; margin: 8px 0; }
 	select,input { min-width: 0; max-width: 100%; color: var(--text); background: var(--surface-sunken); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
 	.lineup { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: 8px; }
+	.profile { display: flex; align-items: center; gap: 12px; }
+	.profile h3, .profile p { margin: 0; }
+	.avatar { display: grid; justify-content: center; }
+	meter { width: 100%; accent-color: var(--emerald-strong); }
+	.progress { height: 88px; display: flex; align-items: end; gap: 5px; }
+	.progress div { flex: 1; height: var(--height); border-radius: 5px 5px 0 0; background: var(--emerald-strong); opacity: .75; }
 	.error { color: #ff9696; }
 	:global(.world .seg) { justify-self: start; }
 </style>
