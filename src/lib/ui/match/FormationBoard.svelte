@@ -16,6 +16,7 @@
 		players,
 		selected = $bindable(null),
 		canSub = false,
+		compact = false,
 		pendingOut = [],
 		color: kit,
 		onsub
@@ -26,6 +27,7 @@
 		players: Record<string, PlayerStats>;
 		selected?: string | null;
 		canSub?: boolean;
+		compact?: boolean;
 		pendingOut?: string[];
 		/** cor do uniforme em uso (resolve choque de cores) */
 		color?: string;
@@ -64,7 +66,7 @@
 	}
 </script>
 
-<section class="board" style="--team:{color}" aria-label="Time {team.setup.name} em campo">
+<section class="board" class:compact style="--team:{color}" aria-label="Time {team.setup.name} em campo">
 	<header>
 		<strong>{team.setup.short}</strong>
 		<span>{team.tactic.formation} · {MENTALITY_LABELS[team.tactic.mentality]} · {STYLE_LABELS[team.tactic.style]}</span>
@@ -324,6 +326,39 @@
 	.tok .nm {
 		max-width: 100%;
 		font-size: 10.5px;
+	}
+	.board.compact {
+		display: grid;
+		grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+		gap: 10px;
+		align-items: start;
+		margin-top: 8px;
+	}
+	.compact header {
+		grid-column: 1 / -1;
+		flex-flow: row wrap;
+		align-items: baseline;
+		gap: 2px 8px;
+	}
+	.compact .field {
+		aspect-ratio: auto;
+		height: clamp(235px, 41dvh, 330px);
+	}
+	.compact .chip {
+		width: clamp(48px, 21%, 72px);
+	}
+	.compact .tokens {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(76px, 1fr));
+	}
+	.compact .tok {
+		width: 100%;
+		min-width: 0;
+		min-height: 34px;
+	}
+	@media (max-width: 630px) {
+		.board.compact { grid-template-columns: minmax(0, 1fr); }
+		.compact .field { height: clamp(220px, 34dvh, 275px); }
 	}
 	.tok.ready {
 		cursor: pointer;

@@ -376,10 +376,13 @@
 							ondrop={(e) => onDrop(e, { kind: 'slot', index: i })}
 							onclick={() => clickSlot(i)}
 							aria-pressed={isSel('slot', i)}
-							aria-label="{slot.position}: {p?.name ?? 'vazio'}"
+							aria-label="{slot.position}: {p ? `Overall ${p.overall} · ${p.name}` : 'vazio'}"
 						>
 							{#if p}<Pixel appearance={p.appearance} kit={playerKit(data.career.clubId, p.position)} size={40} />{/if}
-							<span class="role">{slot.position}</span>
+							<span class="rating-line">
+								<span class="role">{slot.position}</span>
+								{#if p}<span class="overall num" title="Overall">{p.overall}</span>{/if}
+							</span>
 							<span class="pname">{p?.shortName ?? '—'}</span>
 							<span class="fn">{ROLES[tactic.roles[i]]?.label ?? ''}</span>
 							{#if p && p.condition < 75}<span class="cond" title="Condição física: {p.condition}%">{p.condition}%</span>{/if}
@@ -719,6 +722,16 @@
 		letter-spacing: 0.06em;
 		padding: 0 6px;
 		border-radius: 4px;
+	}
+	.rating-line {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+	}
+	.overall {
+		color: var(--text);
+		font-size: 11px;
+		font-weight: 800;
 	}
 	.good .role {
 		background: var(--emerald-soft);

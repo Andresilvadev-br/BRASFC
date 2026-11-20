@@ -127,12 +127,15 @@
 			{#each slots as field, i (i)}
 				{@const player = players.get(official.lineup[i])}
 				<button type="button" class="slot" class:active={slot === i} style:left={field.x + '%'} style:top={field.y + '%'}
-					aria-label={`${field.position}: ${player?.name ?? 'vaga'}`} aria-pressed={slot === i} onclick={() => choose(i)}>
+					aria-label={`${field.position}: ${player ? `Overall ${player.overall} · ${player.name}` : 'vaga'}`}
+					aria-pressed={slot === i} onclick={() => choose(i)}>
 					{#if player}
 						<Pixel appearance={player.appearance} kit={playerKit(club, player.position)} size={36} />
 						<span>{player.shortName}</span>
 					{/if}
-					<small>{field.position}{player && captain === player.id ? ' · C' : ''}</small>
+					<small class="rating-line">{field.position}{player && captain === player.id ? ' · C' : ''}
+						{#if player}<b class="num" title="Overall">{player.overall}</b>{/if}
+					</small>
 				</button>
 			{/each}
 		</LineupPitch>
@@ -188,6 +191,8 @@
 		width:min(18cqw,84px); padding:3px; border-radius:8px; border:1px solid transparent; background:#0b151cce; color:var(--text); cursor:pointer; }
 	.slot span { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--fs-xs); }
 	.slot small { color:var(--emerald-strong); font-weight:700; font-size:.7rem; }
+	.rating-line { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
+	.rating-line b { color:var(--text); font-weight:800; }
 	.slot:is(:hover,:focus-visible,.active) { border-color:var(--emerald); background:#122f26; }
 	.bench { display:grid; gap:5px; max-height:510px; overflow:auto; }
 	.bench button { display:grid; grid-template-columns:38px minmax(0,1fr) 30px; text-align:left; align-items:center; gap:7px; padding:8px; border:1px solid var(--line); border-radius:8px; color:var(--text); }
