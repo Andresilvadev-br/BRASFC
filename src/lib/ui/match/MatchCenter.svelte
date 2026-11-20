@@ -30,6 +30,7 @@
 		control = null,
 		aiOpponent = true,
 		neutral = false,
+		autoplay = false,
 		official,
 		onfinish
 	}: {
@@ -40,6 +41,7 @@
 		control?: Side | null;
 		aiOpponent?: boolean;
 		neutral?: boolean;
+		autoplay?: boolean;
 		official?: { version?: string; ai?: Partial<Record<Side, boolean>>; decisions?: import('#lib/engine/types.ts').AppliedDecision[] };
 		onfinish?: (result: MatchResult, match: Match) => void;
 	} = $props();
@@ -66,7 +68,7 @@
 	type ViewMode = 'classico' | 'pixel' | 'narracao';
 
 	let speed = $state<SpeedValue>('2');
-	let paused = $state(true);
+	let paused = $state(untrack(() => !autoplay));
 	let view = $state<ViewMode>('classico');
 	let version = $state(0);
 	let finished = $state(false);

@@ -56,15 +56,15 @@
 
 	let walkout = $state(false);
 	function kickOff() {
-		if (!fixture) return;
+		if (!fixture || !preview) return;
+		setup = preview;
+		playedFixture = fixture;
+		playerKickoff = c.mode === 'player' ? { version: c.version, step: v.step?.key } : null;
 		walkout = true;
 	}
 	function startMatch() {
 		walkout = false;
-		if (!fixture) return;
-		setup = preview;
-		playedFixture = fixture;
-		playerKickoff = c.mode === 'player' ? { version: c.version, step: v.step?.key } : null;
+		if (!setup) return;
 		stage = 'live';
 		markDirty('partida', 'Partida em andamento (o resultado só vale quando for registrado)');
 	}
@@ -146,7 +146,15 @@
 	const otherCount = $derived(saved ? saved.results.length - myResults.length : 0);
 </script>
 
-{#if walkout && fixture}<Walkout home={fixture.home} away={fixture.away} label={fixture.competition === 'copa-do-brasil' ? `Copa do Brasil · ${fixture.phase ?? ''}` : `${DIVISION_LABELS[fixture.competition as DivisionId] ?? ''} · Rodada ${fixture.round}`} ondone={startMatch} />{/if}
+{#if walkout && playedFixture && setup}
+	{@const game = playedFixture}
+	<Walkout home={setup.home} away={setup.away} neutral={setup.neutral}
+		coaches={c.mode === 'coach' ? { [setup.mySide]: c.personName } : {}}
+		label={game.competition === 'copa-do-brasil'
+			? `Copa do Brasil · ${game.phase ?? ''}`
+			: `${DIVISION_LABELS[game.competition as DivisionId] ?? 'BRASFC'} · Rodada ${game.round}`}
+		ondone={startMatch} />
+{/if}
 
 <svelte:head><title>Dia de jogo · {v.club.name} · BRASFC</title></svelte:head>
 
@@ -281,7 +289,7 @@
 		</section>
 	{/if}
 	{#if setup && stage !== 'pre'}
-		<MatchCenter home={setup.home} away={setup.away} seed={setup.seed} control={setup.control} onfinish={finished} />
+		<MatchCenter home={setup.home} away={setup.away} seed={setup.seed} control={setup.control} neutral={setup.neutral} autoplay onfinish={finished} />
 	{/if}
 {/if}
 
