@@ -36,6 +36,8 @@
 	let outId = $state('');
 	let pickedPlayer = $state('');
 	let inId = $state('');
+	let intervalHeading = $state<HTMLHeadingElement>();
+	let intervalFocused = false;
 	let latched = false;
 	let frameSet = $state.raw<NonNullable<Session['relevant']>['match'][]>([]);
 	let replayIndex = $state<number | null>(null);
@@ -62,6 +64,14 @@
 	const own = $derived(relevant?.match.teams[relevant.side]);
 	const playerStats = $derived(session?.athleteId ? match?.stats.players[session.athleteId] : undefined);
 	const suggestionRights = $derived(session?.role === 'assistant');
+	$effect(() => {
+		if (session?.phase !== 'HALF_TIME') {
+			intervalFocused = false;
+		} else if (intervalHeading && !intervalFocused) {
+			intervalFocused = true;
+			intervalHeading.focus();
+		}
+	});
 	const visibleKicks = $derived(relevant?.shootout?.kicks?.slice(0, Math.max(1, Math.floor((now - (session?.since ?? 0)) / 700) + 1)) ?? []);
 	const competition = (id?: string) => id === 'copa-do-brasil' ? 'Copa do Brasil' : id?.startsWith('serie-') ? `Brasileirão Série ${id.at(-1)?.toUpperCase()}` : 'BRASFC';
 
@@ -275,7 +285,24 @@
 			{/if}
 			{#if own && (relevant.canManage || suggestionRights) && ['FIRST_HALF','HALF_TIME','SECOND_HALF'].includes(session.phase)}
 				<div class="surface" use:enter>
-					<h3>{relevant.canManage ? 'Comando do time' : 'Sugestões ao treinador'}</h3>
+					{#if session.phase === 'HALF_TIME'}
+						<h3 tabindex="-1" bind:this={intervalHeading}>Intervalo · Escalação</h3>
+						<div class="board interval-board">
+							{#each FORMATIONS[own.tactic.formation] as slot, index (index)}
+								{@const id = own.tactic.lineup[index]}
+								{@const athlete = athletes.get(id)}
+								{@const state = match.players.find((player) => player.id === id)}
+								{#if athlete && state && !state.sentOff}
+									<button type="button" style:left={slot.x + '%'} style:top={slot.y + '%'} aria-pressed={outId === id}
+										onclick={() => { pickedPlayer = id; outId = id; }}>
+										<strong>{athlete.shortName}</strong><small>{slot.position} · {Math.round(state.condition)}%</small>
+									</button>
+								{/if}
+							{/each}
+						</div>
+					{:else}
+						<h3>{relevant.canManage ? 'Comando do time' : 'Sugestões ao treinador'}</h3>
+					{/if}
 					<p>Capitão · {own.captain ? athletes.get(own.captain)?.name : 'Sem jogador elegível'}</p>
 					<PlayerOrders squad={relevant.replay[relevant.side].players} lineup={own.tactic.lineup.filter((id) => match.players.some((state) => state.id === id))} selected={pickedPlayer} slotPositions={own.tactic.lineup.filter((id) => match.players.some((state) => state.id === id)).map((id) => FORMATIONS[own.tactic.formation][own.tactic.lineup.indexOf(id)].position)}
 						order={own.tactic.captains} instructions={own.tactic.playerOrders} disabled={pending} oncaptains={(order) => decision({ type: 'captains', order })}
@@ -305,7 +332,11 @@
 		{/if}
 		{#if session.phase === 'HALF_TIME'}
 			<div class="surface waiting">
-				<h2>{session.confirmed.length}/{session.required.length} prontos para o segundo tempo</h2>
+				{#if !own || !(relevant?.canManage || suggestionRights)}
+					<h2 tabindex="-1" bind:this={intervalHeading}>{session.confirmed.length}/{session.required.length} prontos para o segundo tempo</h2>
+				{:else}
+					<h2>{session.confirmed.length}/{session.required.length} prontos para o segundo tempo</h2>
+				{/if}
 				<p>{session.required.map((id) => `${names[id] ?? 'Participante'} · ${session?.confirmed.includes(id) ? 'Pronto' : 'Aguardando'}`).join(' / ')}</p>
 				<Button disabled={pending || !online} onclick={() => request('confirm', { value: !session?.confirmed.includes(profile) })}>{session.confirmed.includes(profile) ? 'Cancelar confirmação' : 'Confirmar segundo tempo'}</Button>
 			</div>
@@ -336,6 +367,10 @@
 	.broadcast{background:radial-gradient(ellipse at 52% 15%,#23765e 0%,#10261f 35%,#101711 72%);color:#fff}.opening,.waiting{text-align:center}.opening{padding:clamp(24px,8vw,90px) 0}.opening .clubs{justify-content:center;margin:20px 0}
 	.entry{display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:600px;margin:12px auto 0}.tunnel{display:grid;grid-template-columns:repeat(6,1fr);gap:3px;align-items:center}.tunnel div{background:linear-gradient(145deg,var(--team),#162a22 70%);min-width:0;aspect-ratio:1.05;border:1px solid #c9e7d46b;border-radius:28% 28% 12% 12%;display:grid;place-items:center;font-size:clamp(.6rem,2.2vw,.88rem);font-weight:700}.goals p{margin:.3rem 0}.goals strong{color:var(--emerald-strong)}
 	.board{position:relative;aspect-ratio:1.9;background:repeating-linear-gradient(90deg,#164935 0 10%,#1b543e 10% 20%);border:1px solid #b6e7cf;border-radius:8px;margin:10px 0;overflow:hidden}.board div{position:absolute;transform:translate(-50%,-50%);display:grid;justify-items:center;white-space:nowrap}.board b{border-radius:50%;background:#07160f;color:#fff;padding:3px 6px}.board span{background:#07160fc9;border-radius:4px;padding:1px 3px;font-size:clamp(.48rem,1.8vw,.77rem)}
+	.interval-board{width:min(100%,540px);min-height:300px}
+	.interval-board button{position:absolute;translate:-50% -50%;display:grid;justify-items:center;width:min(20%,92px);padding:3px;border:1px solid transparent;border-radius:6px;background:#07160f;color:#fff;font-size:var(--fs-xs)}
+	.interval-board button[aria-pressed="true"]{border-color:var(--emerald)}
+	.interval-board strong{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 	.fixture{border:1px solid var(--line);border-radius:9px;padding:6px;justify-content:center}.fixtures{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:5px}.film{color:#ebd78c}
 	@media(max-width:740px){.grid{grid-template-columns:1fr}.clubs{gap:5px}}
 </style>

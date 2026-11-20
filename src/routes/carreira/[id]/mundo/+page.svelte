@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { invalidate } from '$app/navigation';
+	import Button from '#lib/ui/Button.svelte';
 	import { COACH_PROFILES } from '#lib/engine/ai-coach.ts';
 	import { BOARD_PROFILES } from '#lib/domain/club.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
@@ -62,7 +64,14 @@
 		<p class="muted">Tudo aqui nasce dos resultados simulados: técnicos caem, projetos mudam, recordes se formam — mesmo nos clubes que você não acompanha.</p>
 	</header>
 
-	{#if !u}
+	{#if data.newsUnavailable}
+		<section class="empty glass pad" use:reveal>
+			<div>
+				<strong>Não foi possível carregar as notícias.</strong>
+				<Button size="sm" onclick={() => invalidate('app:career')}>Tentar novamente</Button>
+			</div>
+		</section>
+	{:else if !u}
 		<section class="empty glass pad" use:reveal>
 			<Icon name="globe" size={28} />
 			<div>

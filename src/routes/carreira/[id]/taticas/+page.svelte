@@ -11,7 +11,8 @@
 	import { universeCoach } from '#lib/domain/matchday.ts';
 	import { untrack } from 'svelte';
 	import { beforeNavigate, goto, invalidate } from '$app/navigation';
-	import { api, withCareerVersion } from '#lib/api.ts';
+	import { api, isVersionConflict, withCareerVersion } from '#lib/api.ts';
+	import { pickBench } from '#lib/engine/teams.ts';
 	import { positionFit } from '#lib/domain/positions.ts';
 	import type { SquadPlayer } from '#lib/domain/squad.ts';
 	import {
@@ -19,6 +20,7 @@
 		FORMATION_IDS,
 		FORMATIONS,
 		lineupFamiliarity,
+		MATCH_BENCH_SIZE,
 		MENTALITY_LABELS,
 		sameTactic,
 		tacticKey,
@@ -63,7 +65,7 @@
 	const v = $derived(data.view);
 	let behavior = $state(true);
 	let sidebar = $state<'banco' | 'estilo' | 'funcao'>('banco');
-	let showBench = $state(false);
+	let showReserves = $state(false);
 	let workspace = $state<'instrucoes' | 'dominio' | 'auxiliar' | 'partida' | 'comercial'>('instrucoes');
 	const workspaceOptions = [
 		{ value: 'instrucoes', label: 'Instruções' }, { value: 'dominio', label: 'Domínio tático' },
@@ -74,12 +76,15 @@
 	const DIRTY_KEY = 'tactic';
 
 	// Estado de edição local (salvo explicitamente). Sempre com instruções e funções explícitas.
-	type EditTactic = Tactic & { instructions: TacticalInstructions; roles: RoleId[] };
+	type EditTactic = Tactic & { instructions: TacticalInstructions; roles: RoleId[]; bench: string[] };
 	function editable(t: Tactic): EditTactic {
 		const c = structuredClone($state.snapshot(t)) as Tactic;
-		return { ...c, instructions: c.instructions ?? presetInstructions(c.mentality, c.style), roles: resolveRoles(c.formation, c.roles) };
+		return { ...c, bench: c.bench ?? pickBench(v.squad, c.lineup), instructions: c.instructions ?? presetInstructions(c.mentality, c.style), roles: resolveRoles(c.formation, c.roles) };
 	}
 	let tactic = $state<EditTactic>(untrack(() => editable(data.view.tactic)));
+	const savedKey = (career: Career) => career.data.tactic ? tacticKey(career.data.tactic) : null;
+	const saveBase = (career: Career) => ({ clubId: career.clubId, season: career.season, version: career.version, key: savedKey(career) });
+	let basedOn = untrack(() => saveBase(data.career));
 	let mode = $state<'simples' | 'avancada'>(untrack(() => (data.view.tactic.instructions ? 'avancada' : 'simples')));
 	// Mudar mentalidade/estilo troca o preset, mas mantém os ajustes avançados (nada é apagado em silêncio).
 	let lastPreset = untrack(() => presetInstructions(tactic.mentality, tactic.style));
@@ -109,10 +114,11 @@
 			dismissed: data.career.data.dismissedTips
 		})
 	);
-	let selection = $state<{ kind: 'slot'; index: number } | { kind: 'bench'; id: string } | null>(null);
+	type Selection = { kind: 'slot'; index: number } | { kind: 'bench' | 'reserve'; id: string };
+	let selection = $state<Selection | null>(null);
 	const selectedSlot = $derived(selection?.kind === 'slot' ? selection.index : null);
 	const sidebarOptions = $derived([
-		{ value: 'banco' as const, label: 'Banco' }, { value: 'estilo' as const, label: 'Estilo' },
+		{ value: 'banco' as const, label: 'Convocação' }, { value: 'estilo' as const, label: 'Estilo' },
 		...(selectedSlot !== null ? [{ value: 'funcao' as const, label: 'Função do titular' }] : [])
 	]);
 	const sidebarView = $derived(sidebar === 'funcao' && selectedSlot === null ? 'banco' : sidebar);
@@ -124,10 +130,12 @@
 	//  • tactic        → o que está sendo editado nesta tela;
 	//  • data.view.tactic → o último estado CONFIRMADO pelo servidor (é o que o motor usa);
 	//  • changed       → há diferença entre os dois (indicador de pendência).
-	const changed = $derived(!sameTactic(tactic, { ...data.view.tactic, instructions: data.view.tactic.instructions ?? presetInstructions(data.view.tactic.mentality, data.view.tactic.style) }));
+	const changed = $derived(!sameTactic(tactic, editable(data.view.tactic)));
 	const dirty = $derived(changed || !v.tacticSaved);
 	const slots = $derived(FORMATIONS[tactic.formation]);
-	const bench = $derived(v.squad.filter((p) => !tactic.lineup.includes(p.id)).sort((a, b) => b.overall - a.overall));
+	const bench = $derived(tactic.bench.map((id) => byId.get(id)).filter((p): p is SquadPlayer => !!p));
+	const reserves = $derived(v.squad.filter((p) => !tactic.lineup.includes(p.id) && !tactic.bench.includes(p.id)).sort((a, b) => b.overall - a.overall));
+	const selectedPlayer = $derived(selection ? byId.get(selection.kind === 'slot' ? tactic.lineup[selection.index] : selection.id) : undefined);
 	const familiarity = $derived(lineupFamiliarity(tactic.formation, tactic.lineup, v.squad));
 
 	$effect(() => {
@@ -146,23 +154,27 @@
 	function changeFormation(f: FormationId) {
 		const current = tactic.lineup.map((id) => byId.get(id)).filter((p): p is SquadPlayer => !!p);
 		tactic.lineup = autoLineup(f, current.length === 11 ? current : v.squad);
+		tactic.bench = tactic.bench.filter((id) => !tactic.lineup.includes(id));
 		tactic.formation = f;
 		tactic.roles = resolveRoles(f);
 	}
 
-	function swap(target: { kind: 'slot'; index: number } | { kind: 'bench'; id: string }) {
+	function swap(target: Selection) {
 		const src = selection;
 		selection = null;
 		if (!src) return;
 		const lineup = [...tactic.lineup];
-		if (src.kind === 'slot' && target.kind === 'slot') {
-			[lineup[src.index], lineup[target.index]] = [lineup[target.index], lineup[src.index]];
-		} else if (src.kind === 'bench' && target.kind === 'slot') {
-			lineup[target.index] = src.id;
-		} else if (src.kind === 'slot' && target.kind === 'bench') {
-			lineup[src.index] = target.id;
-		} else return;
+		const nextBench = [...tactic.bench];
+		const idOf = (item: Selection) => item.kind === 'slot' ? lineup[item.index] : item.id;
+		const a = idOf(src), b = idOf(target);
+		if (!a || !b || a === b) return;
+		const benchIndexes = [nextBench.indexOf(a), nextBench.indexOf(b)];
+		if (src.kind === 'slot') lineup[src.index] = b;
+		if (target.kind === 'slot') lineup[target.index] = a;
+		if (benchIndexes[0] >= 0) nextBench[benchIndexes[0]] = b;
+		if (benchIndexes[1] >= 0) nextBench[benchIndexes[1]] = a;
 		tactic.lineup = lineup;
+		tactic.bench = nextBench;
 		const idx = target.kind === 'slot' ? target.index : src.kind === 'slot' ? src.index : -1;
 		const el = document.querySelector(`[data-slot="${idx}"]`);
 		if (el) void animate(el, { scale: 1 }, { spring: 'snappy', from: { scale: 0.86 } });
@@ -174,19 +186,20 @@
 		else swap({ kind: 'slot', index });
 	}
 
-	function clickBench(id: string) {
-		if (!selection) selection = { kind: 'bench', id };
-		else if (selection.kind === 'bench') selection = selection.id === id ? null : { kind: 'bench', id };
-		else swap({ kind: 'bench', id });
+	function clickOffPitch(kind: 'bench' | 'reserve', id: string) {
+		if (!selection || (selection.kind === 'reserve' && kind === 'reserve')) {
+			selection = isSel(kind, id) ? null : { kind, id };
+		} else if (isSel(kind, id)) selection = null;
+		else swap({ kind, id });
 	}
 
 	// Arrastar e soltar (mouse); o clique em dois passos é a alternativa acessível.
-	function onDragStart(e: DragEvent, src: { kind: 'slot'; index: number } | { kind: 'bench'; id: string }) {
+	function onDragStart(e: DragEvent, src: Selection) {
 		selection = src;
 		e.dataTransfer?.setData('text/plain', JSON.stringify(src));
 		if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
 	}
-	function onDrop(e: DragEvent, target: { kind: 'slot'; index: number } | { kind: 'bench'; id: string }) {
+	function onDrop(e: DragEvent, target: Selection) {
 		e.preventDefault();
 		swap(target);
 	}
@@ -204,18 +217,26 @@
 		// No modo simples sem ajustes, a tática segue o preset (motor usa o preset calibrado).
 		const sent: Tactic = mode === 'simples' && customCount === 0 ? { ...snap, instructions: undefined } : snap;
 		try {
-			await api<{ career: Career }>(`/api/careers/${data.career.id}`, { method: 'PATCH', body: { version: data.career.version, tactic: sent } });
-			await invalidate('app:career');
-			// O indicador some sozinho quando o estado confirmado (servidor) bate com o editado.
-			if (tacticKey({ ...data.view.tactic, instructions: data.view.tactic.instructions }) !== tacticKey({ ...sent, roles: resolveRoles(sent.formation, sent.roles) })) throw new Error('O servidor não confirmou a tática enviada.');
+			const path = `/api/careers/${data.career.id}`;
+			const send = (version: number) => api<{ career: Career }>(path, { method: 'PATCH', body: { version, tactic: sent } });
+			const result = await send(basedOn.version).catch(async (cause) => {
+				if (!isVersionConflict(cause)) throw cause;
+				const { career } = await api<{ career: Career }>(path);
+				if (career.season !== basedOn.season || career.clubId !== basedOn.clubId || savedKey(career) !== basedOn.key) throw cause;
+				return send(career.version);
+			});
+			if (savedKey(result.career) !== tacticKey(sent)) throw new Error('O servidor não confirmou a tática enviada.');
+			basedOn = saveBase(result.career);
+			await invalidate('app:career').catch(() => {});
 			notify({ icon: 'save', tone: 'success', title: 'Tática salva', detail: `${sent.formation} · ${MENTALITY_LABELS[sent.mentality]}` });
 		} catch (e) {
 			const conflict = e instanceof Error && 'status' in e && (e as { status: number }).status === 409;
+			if (conflict) await invalidate('app:career').catch(() => {});
 			notify({
 				icon: 'alert',
 				tone: 'error',
-				title: conflict ? 'A carreira mudou em outra tela' : e instanceof Error ? e.message : 'Falha ao salvar',
-				detail: conflict ? 'Recarregue a página e aplique de novo.' : 'Suas alterações continuam aqui.',
+				title: conflict ? 'Conflito ao salvar a tática' : e instanceof Error ? e.message : 'Falha ao salvar',
+				detail: conflict ? 'O rascunho foi mantido. Confira se a tática ou o clube mudou em outra tela.' : 'Suas alterações continuam aqui.',
 				duration: 6000
 			});
 		} finally {
@@ -224,6 +245,7 @@
 	}
 
 	function reset() {
+	basedOn = saveBase(data.career);
 	tactic = editable(data.view.tactic);
 	lastPreset = presetInstructions(tactic.mentality, tactic.style);
 	selection = null;
@@ -255,7 +277,7 @@
 	}
 	}
 
-	function isSel(kind: 'slot' | 'bench', key: number | string) {
+	function isSel(kind: Selection['kind'], key: number | string) {
 		if (!selection || selection.kind !== kind) return false;
 		return selection.kind === 'slot' ? selection.index === key : selection.id === key;
 	}
@@ -317,7 +339,7 @@
 		<div class="intro">
 			<span class="eyebrow">Central do treinador · {v.club.name}</span>
 			<h1>Táticas</h1>
-			<p class="muted">Clique em um jogador e depois em outro para trocar — ou arraste. Clique uma vez para escolher a função dele. O time aprende o sistema aos poucos: mantê-lo rende mais do que trocar toda semana.</p>
+			<p class="muted">Selecione dois atletas para trocar de lugar entre campo, banco e reservas. Também é possível arrastar. Selecione um titular para ajustar a função dele.</p>
 		</div>
 		<div class="save" class:dirty={changed}>
 			<Segmented label="Nível de detalhe" bind:value={mode} options={[{ value: 'simples', label: 'Simples' }, { value: 'avancada', label: 'Avançada' }]} />
@@ -349,6 +371,7 @@
 							style="left:{slot.x}%; top:{slot.y}%"
 							draggable="true"
 							ondragstart={(e) => onDragStart(e, { kind: 'slot', index: i })}
+							ondragend={() => (selection = null)}
 							ondragover={(e) => e.preventDefault()}
 							ondrop={(e) => onDrop(e, { kind: 'slot', index: i })}
 							onclick={() => clickSlot(i)}
@@ -387,29 +410,42 @@
 					<RolePicker player={sp} position={slots[selectedSlot].position} value={tactic.roles[selectedSlot]} familiarity={v.tactical.roles[sp.id] ?? {}} onpick={(r) => setRole(selectedSlot, r)} />
 				</Panel>
 			{:else if sidebarView === 'banco'}
-			<Panel title="Reservas" icon="squad" index={1} class="bench-panel">
-				<ul class="bench">
-					{#each (showBench ? bench : bench.slice(0, 6)) as p (p.id)}
-						<li>
-							<button
-								class:sel={isSel('bench', p.id)}
-								draggable="true"
-								ondragstart={(e) => onDragStart(e, { kind: 'bench', id: p.id })}
-								ondragover={(e) => e.preventDefault()}
-								ondrop={(e) => onDrop(e, { kind: 'bench', id: p.id })}
-								onclick={() => clickBench(p.id)}
-								aria-pressed={isSel('bench', p.id)}
-							>
-								<Pixel appearance={p.appearance} kit={playerKit(data.career.clubId, p.position)} size={30} />
-								<span class="bn">{p.name}</span>
-								<span class="bp">{p.position}</span>
-								<span class="bo num">{p.overall}</span>
-							</button>
-						</li>
+			{#snippet athleteRow(p: SquadPlayer, kind: 'bench' | 'reserve')}
+				<li>
+					<button class:sel={isSel(kind, p.id)} draggable="true"
+						ondragstart={(e) => onDragStart(e, { kind, id: p.id })}
+						ondragend={() => (selection = null)}
+						ondragover={(e) => e.preventDefault()} ondrop={(e) => onDrop(e, { kind, id: p.id })}
+						onclick={() => clickOffPitch(kind, p.id)} aria-pressed={isSel(kind, p.id)}>
+						<Pixel appearance={p.appearance} kit={playerKit(data.career.clubId, p.position)} size={30} />
+						<span class="bn">{p.name}</span><span class="bp">{p.position}</span><span class="bo num">{p.overall}</span>
+					</button>
+				</li>
+			{/snippet}
+			<Panel title={`Banco de suplentes · ${bench.length}/${MATCH_BENCH_SIZE}`} icon="squad" index={1} class="bench-panel">
+				<p class="muted small">Convocados que podem entrar durante a partida.</p>
+				{#if selectedPlayer}<p class="small" role="status"><strong>{selectedPlayer.name}</strong> selecionado. Escolha outro atleta para trocar.</p>{/if}
+				<ul class="bench" aria-label="Banco de suplentes">
+					{#each bench as p (p.id)}{@render athleteRow(p, 'bench')}{:else}<li class="muted small">Banco vazio.</li>{/each}
+				</ul>
+				{#if selection?.kind === 'bench'}
+					{@const id = selection.id}
+					<Button size="sm" variant="ghost" onclick={() => { tactic.bench = tactic.bench.filter((item) => item !== id); selection = null; }}>Retirar do banco</Button>
+				{:else if selection?.kind === 'reserve' && bench.length < MATCH_BENCH_SIZE}
+					{@const id = selection.id}
+					<Button size="sm" variant="secondary" onclick={() => { tactic.bench = [...tactic.bench, id]; selection = null; }}>Convocar para o banco</Button>
+				{/if}
+			</Panel>
+			<Panel title={`Reservas fora da convocação · ${reserves.length}`} icon="squad" index={2} class="bench-panel">
+				<ul class="bench" aria-label="Reservas fora da convocação">
+					{#each (showReserves ? reserves : reserves.slice(0, 6)) as p (p.id)}
+						{@render athleteRow(p, 'reserve')}
+					{:else}
+						<li class="muted small">Todos os atletas estão convocados.</li>
 					{/each}
 				</ul>
-				{#if bench.length > 6}
-					<Button size="sm" variant="ghost" aria-expanded={showBench} onclick={() => (showBench = !showBench)}>{showBench ? 'Recolher reservas' : `Ver todas as reservas (${bench.length})`}</Button>
+				{#if reserves.length > 6}
+					<Button size="sm" variant="ghost" aria-expanded={showReserves} onclick={() => (showReserves = !showReserves)}>{showReserves ? 'Recolher reservas' : `Ver todas as reservas (${reserves.length})`}</Button>
 				{/if}
 			</Panel>
 			{:else}

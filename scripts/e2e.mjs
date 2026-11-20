@@ -109,6 +109,7 @@ await new Promise((r) => ws.once('open', r));
 let n = 0;
 const pending = new Map();
 const pageErrors = [];
+let inboxWrites = 0;
 ws.on('message', (m) => {
 	const msg = JSON.parse(m.toString());
 	if (msg.id && pending.has(msg.id)) {
@@ -116,6 +117,8 @@ ws.on('message', (m) => {
 		pending.delete(msg.id);
 	} else if (msg.method === 'Runtime.exceptionThrown') pageErrors.push(msg.params.exceptionDetails?.exception?.description ?? msg.params.exceptionDetails?.text);
 	else if (msg.method === 'Runtime.consoleAPICalled' && msg.params.type === 'error') pageErrors.push(msg.params.args?.map((a) => a.value ?? a.description).join(' '));
+	else if (msg.method === 'Network.requestWillBeSent' && msg.params.request.method === 'POST' &&
+		new URL(msg.params.request.url).pathname === `/api/careers/${id}/messages`) inboxWrites++;
 });
 const cdp = (method, params = {}) => new Promise((res) => { const k = ++n; pending.set(k, res); ws.send(JSON.stringify({ id: k, method, params })); });
 await cdp('Runtime.enable');
@@ -140,6 +143,7 @@ const pages = [
 	[`${c}/gabinete`, 'Gabinete do treinador'],
 	[`${c}/comissao`, 'Quem trabalha com você'],
 	[`${c}/mundo`, 'Notícias e mundo'],
+	[`${c}/mensagens`, 'Mensagens'],
 	[`${c}/calendario`, ''],
 	[`${c}/estatisticas`, ''],
 	[`${c}/treinos`, ''],
@@ -159,6 +163,7 @@ for (const [path, text] of pages) {
 	const errs = pageErrors.filter((e) => e && !/favicon|service-worker|ServiceWorker/.test(e));
 	ok(`abre ${path.replace(id, ':id')}`, errs.length === 0 && (!text || body.toLowerCase().includes(text.toLowerCase())), errs.length ? errs.join(' | ').slice(0, 200) : text ? `contém "${text}"` : '');
 }
+ok('abrir mensagens faz no máximo uma gravação automática', inboxWrites <= 1, `${inboxWrites} gravação(ões)`);
 // Navegação interna (sem recarregar): Painel → Mercado → Finanças, medida no próprio navegador.
 await cdp('Page.navigate', { url: `${base}${c}` });
 await new Promise((r) => setTimeout(r, 2500));

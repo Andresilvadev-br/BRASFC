@@ -311,7 +311,7 @@ async function advance(tx: Db, room: Room, s: WorldState, run?: RoundRun) {
 			const manager = active.find((p) => p.club === id && p.role === 'coach');
 			const saved = manager?.ready && s.tactics[id] ? recoverTactic(s.tactics[id], squad) : null;
 			const ai = aiTeam(projection, id, { season, firstSeason: s.firstSeason }, round).setup;
-			const tactical = saved ?? { ...ai.tactic, lineup: [], formation: ai.tactic.formation };
+			const tactical = saved ?? { ...ai.tactic, lineup: [], bench: undefined, formation: ai.tactic.formation };
 			const identity = getClub(id)!;
 			const built = buildTeamSetup({ id, name: identity.name, short: identity.short, colors: identity.colors }, squad, tactical);
 			built.tactic.instructions = tactical.instructions; built.tactic.roles = tactical.roles;

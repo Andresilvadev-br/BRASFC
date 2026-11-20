@@ -92,6 +92,9 @@
 		width: 760px;
 	}
 	.card {
+		display: flex;
+		flex-direction: column;
+		max-height: calc(var(--app-h, 100dvh) - 32px);
 		background: var(--surface-2);
 		border: 1px solid var(--line-strong);
 		border-radius: var(--radius-xl);
@@ -99,6 +102,7 @@
 		overflow: hidden;
 	}
 	header {
+		flex-shrink: 0;
 		display: flex;
 		justify-content: space-between;
 		gap: var(--sp-4);
@@ -127,10 +131,15 @@
 		color: var(--text);
 	}
 	.content {
+		min-height: 0;
+		overflow-y: auto;
+		overscroll-behavior: contain;
 		padding: var(--sp-2) var(--sp-6) var(--sp-5);
 	}
 	footer {
 		display: flex;
+		flex-shrink: 0;
+		flex-wrap: wrap;
 		justify-content: flex-end;
 		gap: var(--sp-3);
 		padding: var(--sp-4) var(--sp-6);

@@ -47,7 +47,7 @@ const KICKOFFS = ['16:00', '18:30', '20:00', '11:00'];
  * Turno e returno pelo método do círculo: cada clube enfrenta todos os
  * outros duas vezes, uma em casa e outra fora. Determinístico pela semente.
  */
-export function generateLeagueFixtures(seed: number, clubIds: string[] = CLUBS.map((c) => c.id)): Fixture[] {
+export function generateLeagueFixtures(seed: number, clubIds: string[] = CLUBS.map((c) => c.id), legacyMandos = false): Fixture[] {
 	if (clubIds.length % 2 !== 0) throw new Error('Número de clubes deve ser par');
 	const rng = createRng(deriveSeed(seed, 'fixtures'));
 	const teams = rng.shuffle(clubIds);
@@ -64,7 +64,10 @@ export function generateLeagueFixtures(seed: number, clubIds: string[] = CLUBS.m
 		for (let i = 0; i < n / 2 - 1; i++) {
 			const a = rotating[i];
 			const b = rotating[rotating.length - 2 - i];
-			round.push(i % 2 === r % 2 ? [a, b] : [b, a]);
+			// Os clubes já trocam de lado ao girar. Alternar também pela rodada
+			// anulava essa troca e criava blocos inteiros de jogos em casa ou fora.
+			const homeOnLeft = i % 2 === (legacyMandos ? r % 2 : 0);
+			round.push(homeOnLeft ? [a, b] : [b, a]);
 		}
 		round.forEach(([home, away], idx) => {
 			fixtures.push(makeFixture(r + 1, home, away, idx));
@@ -73,9 +76,7 @@ export function generateLeagueFixtures(seed: number, clubIds: string[] = CLUBS.m
 	}
 	// Returno: mandos invertidos.
 	const firstHalf = [...fixtures];
-	for (const f of firstHalf) {
-		fixtures.push(makeFixture(f.round + half, f.away, f.home, firstHalf.indexOf(f) % (n / 2)));
-	}
+	firstHalf.forEach((f, i) => fixtures.push(makeFixture(f.round + half, f.away, f.home, i % (n / 2))));
 	return fixtures;
 }
 

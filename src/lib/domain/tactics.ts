@@ -104,6 +104,8 @@ export interface Tactic {
 formation: FormationId;
 /** ids dos 11 titulares, na ordem dos slots da formação */
 lineup: string[];
+/** Suplentes convocados. Ausente nos saves antigos significa banco automático. */
+bench?: string[];
 mentality: Mentality;
 style: PlayStyle;
 /** instruções avançadas (Dev 0.3); ausente = preset de mentalidade + estilo */
@@ -113,6 +115,8 @@ roles?: RoleId[];
 captains?: string[];
 playerOrders?: PlayerOrders;
 }
+
+export const MATCH_BENCH_SIZE = 9;
 
 export function isFormation(value: unknown): value is FormationId {
 	return typeof value === 'string' && value in FORMATIONS;
@@ -228,6 +232,16 @@ export function sanitizeTactic(input: unknown, squad: SquadPlayer[]): Tactic | n
 	mentality,
 	style
 	};
+	if (t.bench !== undefined) {
+		if (!Array.isArray(t.bench) || t.bench.length > MATCH_BENCH_SIZE) return null;
+		const bench: string[] = [];
+		for (const id of t.bench) {
+			if (typeof id !== 'string' || !ids.has(id) || seen.has(id)) return null;
+			seen.add(id);
+			bench.push(id);
+		}
+		out.bench = bench;
+	}
 	if (t.instructions && typeof t.instructions === 'object') out.instructions = sanitizeInstructions(t.instructions, presetInstructions(mentality, style));
 	if (Array.isArray(t.roles) && t.roles.length === FORMATIONS[t.formation].length) {
 	const slots = FORMATIONS[t.formation];
@@ -248,7 +262,12 @@ export function recoverTactic(tactic: Tactic | undefined, squad: SquadPlayer[]):
 	if (!tactic) return null;
 	const saved = sanitizeTactic(tactic, squad);
 	if (saved || !isFormation(tactic.formation)) return saved;
-	return sanitizeTactic({ ...tactic, lineup: autoLineup(tactic.formation, squad) }, squad);
+	const lineup = sanitizeTactic({ ...tactic, bench: undefined }, squad)?.lineup ?? autoLineup(tactic.formation, squad);
+	const ids = new Set(squad.map((player) => player.id));
+	const bench = Array.isArray(tactic.bench)
+		? [...new Set(tactic.bench)].filter((id) => ids.has(id) && !lineup.includes(id)).slice(0, MATCH_BENCH_SIZE)
+		: undefined;
+	return sanitizeTactic({ ...tactic, lineup, bench }, squad);
 }
 
 /**
@@ -257,7 +276,7 @@ export function recoverTactic(tactic: Tactic | undefined, squad: SquadPlayer[]):
  * do objeto inteiro fazia a tela achar que a tática salva ainda tinha alterações.
  */
 export function tacticKey(t: Tactic): string {
-	return JSON.stringify([t.formation, [...t.lineup], t.mentality, t.style, t.instructions ? INSTRUCTION_KEYS.map((k) => t.instructions![k]) : null, t.roles ?? null, t.captains ?? null, Object.entries(t.playerOrders ?? {}).sort(([a], [b]) => a.localeCompare(b))]);
+	return JSON.stringify([t.formation, t.lineup, t.bench ?? null, t.mentality, t.style, t.instructions ? INSTRUCTION_KEYS.map((k) => t.instructions![k]) : null, t.roles ?? null, t.captains ?? null, Object.entries(t.playerOrders ?? {}).sort(([a], [b]) => a.localeCompare(b))]);
 }
 
 export function sameTactic(a: Tactic, b: Tactic): boolean {
