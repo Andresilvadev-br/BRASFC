@@ -6,6 +6,7 @@ import { generateSquad } from '#lib/domain/squad.ts';
 import { initialTacticalState, resolveRoles, teamMastery } from '#lib/domain/tactical.ts';
 import { defaultTactic } from '#lib/domain/tactics.ts';
 import { presetInstructions } from '#lib/engine/instructions.ts';
+import { buildTeamSetup } from '#lib/engine/teams.ts';
 import AssistantTips from '#lib/ui/AssistantTips.svelte';
 import InstructionsEditor from '#lib/ui/tactics/InstructionsEditor.svelte';
 import MasteryPanel from '#lib/ui/tactics/MasteryPanel.svelte';
@@ -20,6 +21,17 @@ const squad = generateSquad(club.id, 5);
 const t = defaultTactic(squad);
 const tactic = { ...t, roles: resolveRoles(t.formation) };
 const st = initialTacticalState(squad, t.formation, t.style);
+
+it('apresenta os onze titulares, o capitão e os suplentes da partida', async () => {
+	const LineupPresentation = (await import('#lib/ui/match/LineupPresentation.svelte')).default;
+	const captain = t.lineup[2];
+	const team = buildTeamSetup(club, squad, { ...t, captains: [captain] });
+	const { body } = render(LineupPresentation, { props: { team, coach: 'Técnico Teste' } });
+	expect(body.match(/class="player[ "]/g)).toHaveLength(11);
+	expect(body).toContain('Técnico Teste');
+	expect(body).toContain(' · C');
+	expect(body).toContain('Banco');
+});
 
 describe('editor tático (interface)', () => {
 	it('instruções: mostra a seção com a bola, marca o valor e sinaliza o que difere do padrão', () => {

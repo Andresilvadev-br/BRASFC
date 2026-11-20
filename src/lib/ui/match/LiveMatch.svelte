@@ -15,6 +15,7 @@
 	import PitchCanvas from './PitchCanvas.svelte';
 	import PlayerOrders from '../tactics/PlayerOrders.svelte';
 	import BroadcastMoments from './BroadcastMoments.svelte';
+	import LineupPresentation from './LineupPresentation.svelte';
 
 	type Session = NonNullable<Awaited<ReturnType<typeof updateLiveRound>>['session']>;
 	type MatchDetail = NonNullable<NonNullable<Session['relevant']>['detail']>;
@@ -210,20 +211,13 @@
 						{:else}
 							{@const team = relevant.replay[scene]}
 							<div class="lineup" use:enter>
-								<h2>{team.name} · {team.tactic.formation}</h2>
 								<div class="crew">
 									{#each relevant.crew.filter((member) => member.club === team.id) as member}
 										<div><Pixel appearance={member.appearance ?? DEFAULT_APPEARANCE} kit={coachKit(team.id)} clubId={team.id} styled variant="full" size={52} ball={false} />
 											<span><small>{member.role === 'coach' ? 'Treinador' : 'Auxiliar'}</small><strong>{member.name}</strong></span></div>
 									{:else}<p>Comissão da equipe</p>{/each}
 								</div>
-								<div class="board">
-									{#each FORMATIONS[team.tactic.formation] as slot, index}
-										{@const athlete = athletes.get(team.tactic.lineup[index])}
-										<div style:left={`${slot.x}%`} style:top={`${slot.y}%`}><b>{athlete?.number}{#if (team.tactic.captains?.find((id) => team.tactic.lineup.includes(id)) ?? team.tactic.lineup[0]) === athlete?.id} · C{/if}</b><span>{athlete?.shortName} · {slot.position}</span></div>
-									{/each}
-								</div>
-								<small>Banco · {team.tactic.bench.map((id) => athletes.get(id)?.shortName ?? id).join(' · ')}</small>
+								<LineupPresentation {team} />
 							</div>
 						{/if}
 					{/key}
@@ -366,7 +360,7 @@
 	.shootout{background:#132b21;border:1px solid #386c53;border-radius:10px;padding:12px}.shootout span{display:inline-block;margin:3px;padding:4px 8px;border-radius:6px;background:#512828}.shootout span.scored{background:#245339}
 	.broadcast{background:radial-gradient(ellipse at 52% 15%,#23765e 0%,#10261f 35%,#101711 72%);color:#fff}.opening,.waiting{text-align:center}.opening{padding:clamp(24px,8vw,90px) 0}.opening .clubs{justify-content:center;margin:20px 0}
 	.entry{display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:600px;margin:12px auto 0}.tunnel{display:grid;grid-template-columns:repeat(6,1fr);gap:3px;align-items:center}.tunnel div{background:linear-gradient(145deg,var(--team),#162a22 70%);min-width:0;aspect-ratio:1.05;border:1px solid #c9e7d46b;border-radius:28% 28% 12% 12%;display:grid;place-items:center;font-size:clamp(.6rem,2.2vw,.88rem);font-weight:700}.goals p{margin:.3rem 0}.goals strong{color:var(--emerald-strong)}
-	.board{position:relative;aspect-ratio:1.9;background:repeating-linear-gradient(90deg,#164935 0 10%,#1b543e 10% 20%);border:1px solid #b6e7cf;border-radius:8px;margin:10px 0;overflow:hidden}.board div{position:absolute;transform:translate(-50%,-50%);display:grid;justify-items:center;white-space:nowrap}.board b{border-radius:50%;background:#07160f;color:#fff;padding:3px 6px}.board span{background:#07160fc9;border-radius:4px;padding:1px 3px;font-size:clamp(.48rem,1.8vw,.77rem)}
+	.board{position:relative;aspect-ratio:1.9;background:repeating-linear-gradient(90deg,#164935 0 10%,#1b543e 10% 20%);border:1px solid #b6e7cf;border-radius:8px;margin:10px 0;overflow:hidden}
 	.interval-board{width:min(100%,540px);min-height:300px}
 	.interval-board button{position:absolute;translate:-50% -50%;display:grid;justify-items:center;width:min(20%,92px);padding:3px;border:1px solid transparent;border-radius:6px;background:#07160f;color:#fff;font-size:var(--fs-xs)}
 	.interval-board button[aria-pressed="true"]{border-color:var(--emerald)}
