@@ -376,8 +376,7 @@
 							ondrop={(e) => onDrop(e, { kind: 'slot', index: i })}
 							onclick={() => clickSlot(i)}
 							aria-pressed={isSel('slot', i)}
-							aria-label="{slot.position}: {p?.name ?? 'vazio'}"
-							aria-description={p ? `Overall ${p.overall}` : undefined}
+							aria-label="{slot.position}: {p ? `Overall ${p.overall} · ${p.name}` : 'vazio'}"
 						>
 							{#if p}<Pixel appearance={p.appearance} kit={playerKit(data.career.clubId, p.position)} size={40} />{/if}
 							<span class="rating-line">

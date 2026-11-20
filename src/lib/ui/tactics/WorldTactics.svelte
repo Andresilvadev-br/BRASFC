@@ -127,8 +127,8 @@
 			{#each slots as field, i (i)}
 				{@const player = players.get(official.lineup[i])}
 				<button type="button" class="slot" class:active={slot === i} style:left={field.x + '%'} style:top={field.y + '%'}
-					aria-label={`${field.position}: ${player?.name ?? 'vaga'}`}
-					aria-description={player ? `Overall ${player.overall}` : undefined} aria-pressed={slot === i} onclick={() => choose(i)}>
+					aria-label={`${field.position}: ${player ? `Overall ${player.overall} · ${player.name}` : 'vaga'}`}
+					aria-pressed={slot === i} onclick={() => choose(i)}>
 					{#if player}
 						<Pixel appearance={player.appearance} kit={playerKit(club, player.position)} size={36} />
 						<span>{player.shortName}</span>
