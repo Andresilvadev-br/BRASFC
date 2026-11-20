@@ -88,7 +88,11 @@ describe('interface 0.4 (componentes reais)', () => {
 
 	it('gráfico de finanças desenha uma coluna por mês com rótulo acessível', async () => {
 		const Bars = (await import('#lib/ui/v4/Bars.svelte')).default;
-		const body = render(Bars, { props: { months: [{ label: 'Jan', income: 5e6, expense: -3e6, balance: 2e6 }, { label: 'Fev', income: 4e6, expense: -4.5e6, balance: 1.5e6 }] } }).body;
+		const months = [
+			{ season: 2027, month: 12, label: 'Jan', income: 5e6, expense: -3e6, balance: 2e6 },
+			{ season: 2027, month: 13, label: 'Fev', income: 4e6, expense: -4.5e6, balance: 1.5e6 }
+		];
+		const body = render(Bars, { props: { months } }).body;
 		expect(body).toContain('Jan: receitas R$ 5 mi');
 		expect(body).toContain('Fev: receitas R$ 4 mi');
 	});

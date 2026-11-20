@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { formatMoney } from '#lib/domain/market.ts';
 	/** Receitas × despesas por mês, com a linha do saldo — interativo (foco/cursor mostra o detalhe). */
-	let { months }: { months: Array<{ label: string; income: number; expense: number; balance: number }> } = $props();
+	let { months }: { months: Array<{ season: number; month: number; label: string; income: number; expense: number; balance: number }> } = $props();
 	let active = $state<number | null>(null);
 	const W = 640;
 	const H = 220;
@@ -19,7 +19,7 @@
 <div class="bars">
 	<svg viewBox="0 0 {W} {H}" role="img" aria-label="Receitas e despesas por mês">
 		<line x1={pad} x2={W - pad} y1={H / 2} y2={H / 2} class="axis" />
-		{#each months as m, i (m.label)}
+		{#each months as m, i (`${m.season}:${m.month}`)}
 			{@const x = pad + i * bw + bw * 0.18}
 			<g
 				class="col"

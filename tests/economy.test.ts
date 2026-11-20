@@ -13,6 +13,7 @@ import {
 	promote,
 	releasePlayer,
 	renewContract,
+	sanitizeClubState,
 	signSponsor,
 	startUpgrade,
 	type ActionContext
@@ -21,6 +22,17 @@ import { askingPrice, emptyMarket, evolve, formatExactMoney, evolvedBase, freeAg
 
 const league = initialLeague('brasil', 2026);
 const SEED = 2468;
+
+it('preserva valores mensais de temporadas antigas sem detalhamento por categoria', () => {
+	const club = initialClubState(SEED, 'bahia', 'serie-a', 2027);
+	const january = { season: 2027, month: 12, income: 750_000, expense: -330_000, balance: 4_950_000 };
+	const february = { ...january, month: 13, byCategory: { tv: 800_000, salarios: -330_000, invalido: null } };
+	const restored = sanitizeClubState({ ...club, months: [null, january, february, { ...february, balance: 5_000_000 }] }, SEED, 'bahia', 'serie-a', 2027);
+	expect(restored.months).toEqual([
+		{ ...january, byCategory: {} },
+		{ ...february, balance: 5_000_000, byCategory: { tv: 800_000, salarios: -330_000 } }
+	]);
+});
 function ctxWith(market: MarketState, season = 2026): RosterContext {
 	return { seed: SEED, firstSeason: 2026, season, market, divisionOf: (id) => divisionOf(league, id), userClub: 'bahia', userDevBoost: 1 };
 }
