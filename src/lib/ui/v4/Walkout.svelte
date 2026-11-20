@@ -1,101 +1,70 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { getClub } from '#lib/domain/clubs.ts';
-	import { animate, motion } from '#lib/motion/motion.svelte.ts';
+	import type { Side, TeamSetup } from '#lib/engine/types.ts';
+	import { enter, pop } from '#lib/motion/actions.ts';
 	import Crest from '../Crest.svelte';
+	import LineupPresentation from '../match/LineupPresentation.svelte';
 
-	/**
-	 * Entrada em campo: transição cinematográfica curta (≈1,3 s) entre a prévia e a partida.
-	 * Pode ser pulada (clique/tecla); com movimento reduzido, termina imediatamente.
-	 */
-	let { home, away, label, ondone }: { home: string; away: string; label: string; ondone: () => void } = $props();
-	let root = $state<HTMLElement | null>(null);
-	let left = $state<HTMLElement | null>(null);
-	let right = $state<HTMLElement | null>(null);
-	let title = $state<HTMLElement | null>(null);
+	let { home, away, label, neutral = false, coaches = {}, ondone }: {
+		home: TeamSetup; away: TeamSetup; label: string; neutral?: boolean;
+		coaches?: Partial<Record<Side, string>>; ondone: () => void;
+	} = $props();
+	const scenes = ['duel', 'home', 'away', 'kickoff'] as const;
+	let scene = $state<(typeof scenes)[number]>('duel');
 	let done = false;
+
 	function finish() {
 		if (done) return;
 		done = true;
 		ondone();
 	}
+
 	onMount(() => {
-		if (motion.reduced) return finish();
-		void animate(root, { opacity: 1 }, { spring: 'critical', from: { opacity: 0 } });
-		void animate(left, { x: 0, opacity: 1, scale: 1 }, { spring: 'expressive', from: { x: -160, opacity: 0, scale: 0.8 } });
-		void animate(right, { x: 0, opacity: 1, scale: 1 }, { spring: 'expressive', delay: 80, from: { x: 160, opacity: 0, scale: 0.8 } });
-		void animate(title, { y: 0, opacity: 1 }, { spring: 'gentle', delay: 220, from: { y: 16, opacity: 0 } });
-		const t = setTimeout(finish, 1350);
-		return () => clearTimeout(t);
+		const timers = [
+			setTimeout(() => { scene = 'home'; }, 1800),
+			setTimeout(() => { scene = 'away'; }, 4700),
+			setTimeout(() => { scene = 'kickoff'; }, 7600),
+			setTimeout(finish, 8400)
+		];
+		return () => timers.forEach(clearTimeout);
 	});
 </script>
 
-<svelte:window onkeydown={finish} />
-<div class="walk" bind:this={root} role="button" tabindex="0" aria-label="Entrada em campo — pular" onclick={finish} onkeydown={finish}>
+<svelte:window onkeydown={(event) => { if (event.key === 'Escape') finish(); }} />
+<section class="walk" aria-label="Apresentação pré-jogo">
 	<div class="lights"></div>
-	<div class="duel">
-		<div bind:this={left} class="c"><Crest clubId={home} size={150} /><strong>{getClub(home)?.name}</strong></div>
-		<span class="x display">×</span>
-		<div bind:this={right} class="c"><Crest clubId={away} size={150} /><strong>{getClub(away)?.name}</strong></div>
+	<div class="show">
+		<p class="competition">{label}</p>
+		{#key scene}
+			{#if scene === 'duel'}
+				<div class="duel">
+					<div class="club" use:pop><Crest clubId={home.id} size={104} /><strong>{home.name}</strong></div>
+					<span aria-hidden="true">×</span>
+					<div class="club" use:pop={{ delay:100 }}><Crest clubId={away.id} size={104} /><strong>{away.name}</strong></div>
+				</div>
+				<p class="venue" use:enter>{neutral ? 'Campo neutro' : getClub(home.id)?.stadium ?? 'Campo de jogo'}</p>
+			{:else if scene === 'kickoff'}
+				<div class="kickoff" use:pop><strong>Apito inicial</strong><span>{home.short} × {away.short}</span></div>
+			{:else}
+				<LineupPresentation team={scene === 'home' ? home : away} coach={coaches[scene]} />
+			{/if}
+		{/key}
 	</div>
-	<p bind:this={title} class="t">{label}</p>
-	<small>Clique para pular</small>
-</div>
+	<button type="button" onclick={finish}>Pular apresentação</button>
+</section>
 
 <style>
-	.walk {
-		position: fixed;
-		inset: 0;
-		z-index: 80;
-		display: grid;
-		place-content: center;
-		justify-items: center;
-		gap: var(--sp-5);
-		background: radial-gradient(60% 50% at 50% 45%, rgb(16 185 129 / 0.18), #05080a 75%);
-		cursor: pointer;
-		overflow: hidden;
-	}
-	.lights {
-		position: absolute;
-		inset: -20% -10% auto;
-		height: 70%;
-		background:
-			conic-gradient(from 160deg at 15% 0%, transparent 0 40deg, rgb(255 255 255 / 0.08) 50deg, transparent 60deg),
-			conic-gradient(from 160deg at 85% 0%, transparent 0 40deg, rgb(255 255 255 / 0.08) 50deg, transparent 60deg);
-		pointer-events: none;
-	}
-	.duel {
-		display: grid;
-		grid-template-columns: 1fr auto 1fr;
-		align-items: center;
-		gap: clamp(24px, 6vw, 96px);
-	}
-	.c {
-		display: grid;
-		justify-items: center;
-		gap: 12px;
-		filter: drop-shadow(0 18px 40px rgb(0 0 0 / 0.6));
-	}
-	.c strong {
-		font-family: var(--font-display);
-		font-size: clamp(1.4rem, 3vw, 2.4rem);
-		text-transform: uppercase;
-	}
-	.x {
-		font-size: clamp(3rem, 7vw, 6rem);
-		color: var(--text-3);
-	}
-	.t {
-		margin: 0;
-		font-size: var(--fs-sm);
-		letter-spacing: 0.24em;
-		text-transform: uppercase;
-		color: var(--gold);
-		font-weight: 700;
-	}
-	small {
-		position: absolute;
-		bottom: 24px;
-		color: var(--text-3);
-	}
+	.walk { position:fixed; inset:0; z-index:80; display:grid; grid-template-rows:minmax(0,1fr) auto; justify-items:center;
+		gap:12px; padding:clamp(12px,4vw,40px); overflow:hidden; color:var(--text); background:radial-gradient(ellipse at 50% 10%, #145740, #07130f 54%, #05080a); }
+	.lights { position:absolute; inset:0; background:conic-gradient(from 135deg at 15% 0%,transparent 0 15deg,#fff1 30deg,transparent 42deg),
+		conic-gradient(from 184deg at 85% 0%,transparent 0 15deg,#fff1 30deg,transparent 42deg); pointer-events:none; }
+	.show { position:relative; width:min(100%,650px); min-height:0; align-self:center; max-height:100%; overflow:auto; text-align:center; }
+	.competition { margin:0 0 12px; color:var(--gold); font-weight:700; font-size:var(--fs-sm); text-transform:uppercase; }
+	.duel { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:clamp(8px,4vw,48px); }
+	.duel > span { font-size:2rem; color:var(--text-2); }
+	.club,.kickoff { display:grid; justify-items:center; gap:10px; }
+	.club strong,.kickoff strong { font-family:var(--font-display); font-size:clamp(1.5rem,4vw,3rem); line-height:1; }
+	.venue,.kickoff span { color:var(--text-2); }
+	button { z-index:1; padding:8px 14px; border:1px solid var(--line-strong); border-radius:20px; color:var(--text); background:var(--surface); cursor:pointer; }
 </style>

@@ -1,5 +1,11 @@
 # Novidades
 
+## 0.8.3 — Apresentação pré-jogo
+
+- Na carreira individual, a abertura mostra o confronto, as duas escalações com capitães e banco, e o apito inicial. A partida começa automaticamente e a apresentação pode ser pulada pelo botão ou com Esc.
+- O multiplayer usa o mesmo painel de escalação na abertura sincronizada.
+- O instalador Windows passa para 1.4.3.
+
 ## 0.8.2 — Táticas, intervalo e mandos
 
 - A tela de Táticas mostra o overall dos 11 titulares ao lado da posição no campo, na carreira individual e no multiplayer. O número acompanha o jogador nas trocas.
