@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
-	import { FORMATIONS, FORMATION_IDS, autoLineup, sanitizeTactic, sameTactic, type FormationId, type Tactic } from '#lib/domain/tactics.ts';
+	import { FORMATIONS, FORMATION_IDS, MATCH_BENCH_SIZE, autoLineup, sanitizeTactic, sameTactic, type FormationId, type Tactic } from '#lib/domain/tactics.ts';
+	import { pickBench } from '#lib/engine/teams.ts';
 	import { resolveRoles } from '#lib/domain/tactical.ts';
 	import type { SquadPlayer } from '#lib/domain/squad.ts';
 	import { presetInstructions, type TacticalInstructions } from '#lib/engine/instructions.ts';
@@ -25,16 +26,18 @@
 	let draft = $state<Tactic | null>(null);
 	let original: Tactic | null = null;
 	let slot = $state<number | null>(null);
+	let substitute = $state<string | null>(null);
 	let panel = $state('elenco');
 	let showShape = $state(false);
 	const official = $derived(draft ?? tactic);
 	const slots = $derived(FORMATIONS[official.formation]);
 	const players = $derived(new Map(squad.map((player) => [player.id, player])));
-	const reserves = $derived(squad.filter((player) => !official.lineup.includes(player.id)));
+	const bench = $derived(official.bench ?? pickBench(squad, official.lineup));
+	const reserves = $derived(squad.filter((player) => !official.lineup.includes(player.id) && !bench.includes(player.id)));
 	const captain = $derived(official.captains?.find((id) => official.lineup.includes(id)) ?? official.lineup[0]);
 	const preset = $derived(presetInstructions(official.mentality, official.style));
 	const instructions = $derived({ ...preset, ...official.instructions });
-	const changed = $derived(draft !== null && !sameTactic(tactic, draft));
+	const changed = $derived(draft !== null && !sameTactic({ ...tactic, bench: tactic.bench ?? pickBench(squad, tactic.lineup) }, draft));
 	const unsavedKey = $derived(`world-tactics:${key}`);
 	$effect(() => {
 		if (changed) markDirty(unsavedKey, 'Tática do universo');
@@ -43,13 +46,14 @@
 	onDestroy(() => markClean(unsavedKey));
 
 	function edit() {
-		original = structuredClone(tactic);
-		draft = structuredClone(tactic);
+		original = structuredClone($state.snapshot(tactic));
+		draft = { ...structuredClone(original), bench: [...bench] };
 	}
 	function discard() {
 		draft = null;
 		original = null;
 		slot = null;
+		substitute = null;
 	}
 	async function save() {
 		if (!draft || !original) return;
@@ -58,10 +62,13 @@
 	}
 	function changeFormation(formation: FormationId) {
 		if (!draft) return;
-		draft = { ...draft, formation, lineup: autoLineup(formation, squad), roles: undefined };
+		const lineup = autoLineup(formation, squad);
+		draft = { ...draft, formation, lineup, bench: bench.filter((id) => !lineup.includes(id)), roles: undefined };
 		slot = null;
+		substitute = null;
 	}
 	function choose(index: number) {
+		substitute = null;
 		if (!draft || slot === index || slot === null) { slot = index; return; }
 		const lineup = [...draft.lineup];
 		[lineup[slot], lineup[index]] = [lineup[index], lineup[slot]];
@@ -69,10 +76,29 @@
 		slot = index;
 	}
 	function replace(id: string) {
-		if (slot === null || !draft) return;
+		if (!draft || slot === null) return;
 		const lineup = [...draft.lineup];
+		const outgoing = lineup[slot];
+		const nextBench = bench.map((player) => player === id ? outgoing : player);
 		lineup[slot] = id;
-		if (sanitizeTactic({ ...draft, lineup }, squad)) draft.lineup = lineup;
+		const valid = sanitizeTactic({ ...draft, lineup, bench: nextBench }, squad);
+		if (valid) draft = valid;
+		slot = null;
+		substitute = null;
+	}
+	function pickSubstitute(id: string) {
+		if (slot !== null) replace(id);
+		else substitute = substitute === id ? null : id;
+	}
+	function pickReserve(id: string) {
+		if (!draft) return;
+		if (slot !== null) replace(id);
+		else if (substitute) {
+			draft.bench = bench.map((player) => player === substitute ? id : player);
+			substitute = null;
+		} else if (bench.length < MATCH_BENCH_SIZE) {
+			draft.bench = [...bench, id];
+		}
 	}
 	function setInstructions(value: TacticalInstructions) {
 		if (draft) draft.instructions = value;
@@ -113,12 +139,22 @@
 	</section>
 
 	<section class="options">
-		<Segmented label="Ferramentas de tática" bind:value={panel} options={[{ value: 'elenco', label: 'Banco' }, { value: 'coletivo', label: 'Coletivo' }, { value: 'atleta', label: 'Por atleta' }]} />
+		<Segmented label="Ferramentas de tática" bind:value={panel} options={[{ value: 'elenco', label: 'Convocação' }, { value: 'coletivo', label: 'Coletivo' }, { value: 'atleta', label: 'Por atleta' }]} />
 		{#if panel === 'elenco'}
-			<h3>{draft && slot !== null ? `Trocar ${players.get(official.lineup[slot])?.name ?? 'titular'}` : 'Reservas e demais atletas'}</h3>
-			<div class="bench" aria-label="Reservas">
+			{#if draft}<p>{slot !== null ? `Escolha quem entra no lugar de ${players.get(official.lineup[slot])?.name}.` : substitute ? 'Escolha um reserva para trocar com o suplente selecionado.' : 'Selecione um titular no campo ou um suplente no banco para fazer a troca.'}</p>{/if}
+			<h3>Banco de suplentes · {bench.length}/{MATCH_BENCH_SIZE}</h3>
+			<div class="bench" aria-label="Banco de suplentes">
+				{#each bench as id (id)}
+					{@const player = players.get(id)}
+					{#if player}<button type="button" disabled={!draft || busy} aria-pressed={substitute === id} onclick={() => pickSubstitute(id)}><small>{player.position}</small><strong>{player.name}</strong><span>{player.overall}</span></button>{/if}
+				{:else}<p>Banco vazio.</p>{/each}
+			</div>
+			{#if draft && substitute}<Button disabled={busy} size="sm" onclick={() => { if (draft) draft.bench = bench.filter((id) => id !== substitute); substitute = null; }}>Retirar do banco</Button>{/if}
+			<h3>Reservas fora da convocação · {reserves.length}</h3>
+			<div class="bench" aria-label="Reservas fora da convocação">
 				{#each reserves as player (player.id)}
-					<button type="button" disabled={!draft || slot === null || busy} onclick={() => replace(player.id)}><small>{player.position}</small><strong>{player.name}</strong><span>{player.overall}</span></button>
+					<button type="button" disabled={!draft || busy || (slot === null && !substitute && bench.length >= MATCH_BENCH_SIZE)} onclick={() => pickReserve(player.id)}><small>{player.position}</small><strong>{player.name}</strong><span>{player.overall}</span></button>
+				{:else}<p>Todos os atletas estão convocados.</p>
 				{/each}
 			</div>
 		{:else if panel === 'coletivo'}
@@ -155,7 +191,7 @@
 	.slot:is(:hover,:focus-visible,.active) { border-color:var(--emerald); background:#122f26; }
 	.bench { display:grid; gap:5px; max-height:510px; overflow:auto; }
 	.bench button { display:grid; grid-template-columns:38px minmax(0,1fr) 30px; text-align:left; align-items:center; gap:7px; padding:8px; border:1px solid var(--line); border-radius:8px; color:var(--text); }
-	.bench button:enabled:hover { border-color:var(--emerald); }
+	.bench button:is(:enabled:hover,[aria-pressed='true']) { border-color:var(--emerald); }
 	.bench small,.bench button:disabled { color:var(--text-2); }
 	@media(max-width:760px) { .tactics { grid-template-columns:1fr; } .bench { max-height:300px; } }
 	@container(max-width:440px) { .slot :global(svg) { height:22px; width:auto; } .slot span { font-size:.62rem; } }

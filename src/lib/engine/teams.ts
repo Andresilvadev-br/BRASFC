@@ -1,5 +1,5 @@
 import type { SquadPlayer } from '#lib/domain/squad.ts';
-import { autoLineup, type FormationId, type Mentality, type PlayStyle, type Tactic } from '#lib/domain/tactics.ts';
+import { autoLineup, MATCH_BENCH_SIZE, type FormationId, type Mentality, type PlayStyle, type Tactic } from '#lib/domain/tactics.ts';
 import type { EnginePlayer, TeamSetup } from './types.ts';
 
 export function toEnginePlayer(p: SquadPlayer & { pending?: boolean }): EnginePlayer {
@@ -16,7 +16,7 @@ export function toEnginePlayer(p: SquadPlayer & { pending?: boolean }): EnginePl
 }
 
 /** Reservas: um goleiro e os melhores atletas restantes (até `size`). */
-export function pickBench(squad: SquadPlayer[], lineup: string[], size = 9): string[] {
+export function pickBench(squad: SquadPlayer[], lineup: string[], size = MATCH_BENCH_SIZE): string[] {
 	const rest = squad.filter((p) => !lineup.includes(p.id)).sort((a, b) => b.overall - a.overall);
 	const gk = rest.find((p) => p.position === 'GOL');
 	const others = rest.filter((p) => p !== gk);
@@ -36,12 +36,16 @@ export function buildTeamSetup(
 	tactic: Partial<Tactic> & { formation: FormationId; mentality: Mentality; style: PlayStyle }
 ): TeamSetup {
 	const lineup = tactic.lineup && tactic.lineup.length === 11 ? tactic.lineup : autoLineup(tactic.formation, squad);
+	const eligible = new Set(squad.map((player) => player.id));
+	const bench = tactic.bench === undefined
+		? pickBench(squad, lineup)
+		: [...new Set(tactic.bench)].filter((id) => eligible.has(id) && !lineup.includes(id)).slice(0, MATCH_BENCH_SIZE);
 	return {
 		id: team.id,
 		name: team.name,
 		short: team.short,
 		colors: team.colors,
 		players: squad.map(toEnginePlayer),
-		tactic: { formation: tactic.formation, lineup, bench: pickBench(squad, lineup), mentality: tactic.mentality, style: tactic.style, captains: tactic.captains, playerOrders: tactic.playerOrders }
+		tactic: { formation: tactic.formation, lineup, bench, mentality: tactic.mentality, style: tactic.style, captains: tactic.captains, playerOrders: tactic.playerOrders }
 	};
 }

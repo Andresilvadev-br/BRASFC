@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { validateCreateCareer, initialCareerData, welcomeMessages } from '#lib/domain/career.ts';
-import { CLUBS } from '#lib/domain/clubs.ts';
+import { CLUBS, LEAGUE } from '#lib/domain/clubs.ts';
+import { closeSeason, initialLeague, sanitizeLeague, seasonFixtures } from '#lib/domain/league.ts';
 import { addDays, formatLong, isIsoDate, monthGrid, startOfWeek, weekday } from '#lib/domain/dates.ts';
 import { positionFit } from '#lib/domain/positions.ts';
 import { computeStandings, generateLeagueFixtures, nextFixture } from '#lib/domain/season.ts';
 import { generateSquad } from '#lib/domain/squad.ts';
-import { assistantReport, autoLineup, FORMATION_IDS, FORMATIONS, lineupFamiliarity, sanitizeTactic } from '#lib/domain/tactics.ts';
+import { assistantReport, autoLineup, FORMATION_IDS, FORMATIONS, lineupFamiliarity, MATCH_BENCH_SIZE, recoverTactic, sanitizeTactic } from '#lib/domain/tactics.ts';
+import { buildTeamSetup } from '#lib/engine/teams.ts';
 import { weekPlan } from '#lib/domain/training.ts';
 import { careerView } from '#lib/domain/view.ts';
 
@@ -50,6 +52,28 @@ describe('calendário da Liga', () => {
 		expect(generateLeagueFixtures(999)).not.toEqual(fixtures);
 	});
 
+	it('intercala os mandos e mantém 19 jogos em casa e 19 fora para cada clube', () => {
+		for (const club of CLUBS) {
+			const venues = fixtures
+				.filter((f) => f.home === club.id || f.away === club.id)
+				.map((f) => f.home === club.id ? 'C' : 'F');
+			expect(venues.filter((venue) => venue === 'C')).toHaveLength(19);
+			expect(venues.filter((venue) => venue === 'F')).toHaveLength(19);
+			expect(venues.slice(0, 19).join('')).not.toMatch(/CCC|FFF/);
+			expect(venues.join('')).not.toMatch(/CCCC|FFFF/);
+		}
+	});
+
+	it('mantém os mandos do save antigo e aplica a regra na temporada seguinte', () => {
+		const current = initialLeague('brasfc', 2027);
+		const { scheduleVersion, ...oldSave } = current;
+		expect(scheduleVersion).toBe(2);
+		const legacy = sanitizeLeague(oldSave, 'brasfc', 2027);
+		expect(seasonFixtures(legacy, 12345)).toEqual(generateLeagueFixtures(12345, current.divisions[LEAGUE.id]!, true));
+		expect(seasonFixtures(sanitizeLeague(current, 'brasfc', 2027), 12345)).toEqual(fixtures);
+		expect(closeSeason(legacy, []).next.scheduleVersion).toBe(2);
+	});
+
 	it('encontra o próximo jogo a partir da data atual', () => {
 		const next = nextFixture(fixtures, 'aurora', '2027-01-11');
 		expect(next?.round).toBe(1);
@@ -91,6 +115,21 @@ describe('elencos demonstrativos', () => {
 
 describe('táticas', () => {
 	const squad = generateSquad('cerrado', 7);
+
+	it('mantém somente os suplentes convocados no banco da partida', () => {
+		const lineup = autoLineup('4-3-3', squad);
+		const outside = squad.filter((player) => !lineup.includes(player.id));
+		const legacy = { formation: '4-3-3', lineup, mentality: 'equilibrada', style: 'posse' } as const;
+		const club = { id: 'cerrado', name: 'Cerrado', short: 'CER', colors: { primary: '#319', secondary: '#fff' } };
+		const bench = [outside[1].id, outside[0].id];
+		expect(buildTeamSetup(club, squad, legacy).tactic.bench).toHaveLength(MATCH_BENCH_SIZE);
+		expect(buildTeamSetup(club, squad, { ...legacy, bench }).tactic.bench).toEqual(bench);
+		expect(buildTeamSetup(club, squad, { ...legacy, bench: [] }).tactic.bench).toEqual([]);
+		expect(sanitizeTactic({ ...legacy, bench: [lineup[0]] }, squad)).toBeNull();
+		expect(sanitizeTactic({ ...legacy, bench: [bench[0], bench[0]] }, squad)).toBeNull();
+		expect(sanitizeTactic({ ...legacy, bench: outside.slice(0, MATCH_BENCH_SIZE + 1).map(({ id }) => id) }, squad)).toBeNull();
+		expect(recoverTactic({ ...legacy, bench }, squad.filter(({ id }) => id !== bench[0]))).toMatchObject({ lineup, bench: [bench[1]] });
+	});
 
 	it('escalação automática preenche todas as formações sem repetir e com goleiro no gol', () => {
 		for (const f of FORMATION_IDS) {

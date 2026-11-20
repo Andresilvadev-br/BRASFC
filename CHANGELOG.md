@@ -1,5 +1,13 @@
 # Novidades
 
+## 0.8.1 — Mensagens, calendário e escalação
+
+- Abrir a caixa de mensagens marca a primeira mensagem como lida uma única vez. A caixa e a página de notícias oferecem nova tentativa se a consulta falhar.
+- Novas temporadas intercalam os mandos de campo. As temporadas já salvas preservam o calendário original até a virada.
+- As táticas separam titulares, banco de suplentes e reservas fora da convocação. Uma alteração independente na carreira pode ser conciliada ao salvar a tática, e conflitos com outra edição tática preservam o rascunho.
+- O painel tático da partida tem rolagem própria. No intervalo, a escalação abre para ajustes antes de confirmar o segundo tempo.
+- O instalador Windows passa para 1.4.1.
+
 ## 0.8.0 — Ultimate Football Experience (desenvolvimento)
 
 - Rodada cooperativa com presença obrigatória, carregamento coletivo, intervalo compartilhado e gravação transacional.
