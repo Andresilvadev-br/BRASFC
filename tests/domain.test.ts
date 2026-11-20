@@ -53,25 +53,36 @@ describe('calendário da Liga', () => {
 	});
 
 	it('intercala os mandos e mantém 19 jogos em casa e 19 fora para cada clube', () => {
-		for (const club of CLUBS) {
-			const venues = fixtures
-				.filter((f) => f.home === club.id || f.away === club.id)
-				.map((f) => f.home === club.id ? 'C' : 'F');
-			expect(venues.filter((venue) => venue === 'C')).toHaveLength(19);
-			expect(venues.filter((venue) => venue === 'F')).toHaveLength(19);
-			expect(venues.slice(0, 19).join('')).not.toMatch(/CCC|FFF/);
-			expect(venues.join('')).not.toMatch(/CCCC|FFFF/);
+		const national = seasonFixtures(initialLeague('brasil', 2027), 12345);
+		for (const schedule of [fixtures, national.filter((f) => f.competition === 'serie-a'), national.filter((f) => f.competition === 'serie-b')]) {
+			const clubs = new Set(schedule.flatMap((f) => [f.home, f.away]));
+			expect(clubs.size).toBe(20);
+			for (const club of clubs) {
+				const games = schedule.filter((f) => f.home === club || f.away === club);
+				const venues = games.map((f) => f.home === club ? 'C' : 'F').join('');
+				expect(venues.match(/C/g)).toHaveLength(19);
+				expect(venues.match(/F/g)).toHaveLength(19);
+				expect(venues).not.toMatch(/CCC|FFF/);
+				expect(venues.match(/(?=(CC|FF))/g)).toHaveLength(2);
+				const opponents = games.map((f) => f.home === club ? f.away : f.home);
+				expect(opponents.slice(1).every((opponent, index) => opponent !== opponents[index])).toBe(true);
+			}
 		}
 	});
 
 	it('mantém os mandos do save antigo e aplica a regra na temporada seguinte', () => {
 		const current = initialLeague('brasfc', 2027);
 		const { scheduleVersion, ...oldSave } = current;
-		expect(scheduleVersion).toBe(2);
+		expect(scheduleVersion).toBe(3);
+		const clubs = current.divisions[LEAGUE.id]!;
 		const legacy = sanitizeLeague(oldSave, 'brasfc', 2027);
-		expect(seasonFixtures(legacy, 12345)).toEqual(generateLeagueFixtures(12345, current.divisions[LEAGUE.id]!, true));
+		const previous = sanitizeLeague({ ...oldSave, scheduleVersion: 2 }, 'brasfc', 2027);
+		expect(seasonFixtures(legacy, 12345)).toEqual(generateLeagueFixtures(12345, clubs, 1));
+		expect(seasonFixtures(previous, 12345)).toEqual(generateLeagueFixtures(12345, clubs, 2));
+		expect(seasonFixtures(previous, 12345)).not.toEqual(fixtures);
 		expect(seasonFixtures(sanitizeLeague(current, 'brasfc', 2027), 12345)).toEqual(fixtures);
-		expect(closeSeason(legacy, []).next.scheduleVersion).toBe(2);
+		expect(closeSeason(legacy, []).next.scheduleVersion).toBe(3);
+		expect(closeSeason(previous, []).next.scheduleVersion).toBe(3);
 	});
 
 	it('encontra o próximo jogo a partir da data atual', () => {
