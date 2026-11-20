@@ -28,10 +28,14 @@
 	});
 
 	const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-	const series = $derived(club.months.filter((x) => x.season === c.season).map((x) => ({ label: MONTHS[Math.min(11, x.month)] ?? `M${x.month + 1}`, income: x.income, expense: x.expense, balance: x.balance })));
+	const seasonMonths = $derived(club.months.filter((x) => x.season === c.season).sort((a, b) => a.month - b.month));
+	const series = $derived(seasonMonths.map((month) => {
+		const relativeMonth = month.month - seasonMonths[0].month;
+		return { ...month, label: MONTHS[relativeMonth] ?? `M${relativeMonth + 1}` };
+	}));
 	const byCat = $derived.by(() => {
 		const acc: Record<string, number> = {};
-		for (const x of club.months.filter((y) => y.season === c.season)) for (const [k, val] of Object.entries(x.byCategory)) acc[k] = (acc[k] ?? 0) + val;
+		for (const month of seasonMonths) for (const [k, val] of Object.entries(month.byCategory)) acc[k] = (acc[k] ?? 0) + val;
 		return acc;
 	});
 	const COLORS: Record<string, string> = { tv: '#34d399', patrocinio: '#60a5fa', bilheteria: '#e8b86a', premiacao: '#f5d08a', transferencias: '#a78bfa', bonus: '#fbbf24', salarios: '#f87171', estrutura: '#fb923c', obras: '#f472b6', base: '#22d3ee', comissao: '#94a3b8', rescisoes: '#ef4444' };

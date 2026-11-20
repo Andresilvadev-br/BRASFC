@@ -517,7 +517,7 @@
 			<Segmented label="Intervalo" bind:value={intervalTab} options={[{ value: 'elenco', label: 'Escalação' }, { value: 'tatica', label: 'Tática' }]} />
 		{/if}
 		{#if atInterval && intervalTab === 'elenco'}
-			<FormationBoard {match} side={control} color={colors[control].primary} {version} players={result.players}
+			<FormationBoard compact {match} side={control} color={colors[control].primary} {version} players={result.players}
 				bind:selected={intervalSelected} canSub={match.subsLeft(control) > 0} pendingOut={pendingOut} onsub={doSub} />
 			{#if intervalError}<p role="status">{intervalError}</p>{/if}
 		{:else}

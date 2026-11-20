@@ -43,11 +43,13 @@ export interface StandingRow {
 
 const KICKOFFS = ['16:00', '18:30', '20:00', '11:00'];
 
+export type ScheduleVersion = 1 | 2 | 3;
+
 /**
  * Turno e returno pelo método do círculo: cada clube enfrenta todos os
  * outros duas vezes, uma em casa e outra fora. Determinístico pela semente.
  */
-export function generateLeagueFixtures(seed: number, clubIds: string[] = CLUBS.map((c) => c.id), legacyMandos = false): Fixture[] {
+export function generateLeagueFixtures(seed: number, clubIds: string[] = CLUBS.map((c) => c.id), version: ScheduleVersion = 3): Fixture[] {
 	if (clubIds.length % 2 !== 0) throw new Error('Número de clubes deve ser par');
 	const rng = createRng(deriveSeed(seed, 'fixtures'));
 	const teams = rng.shuffle(clubIds);
@@ -66,7 +68,7 @@ export function generateLeagueFixtures(seed: number, clubIds: string[] = CLUBS.m
 			const b = rotating[rotating.length - 2 - i];
 			// Os clubes já trocam de lado ao girar. Alternar também pela rodada
 			// anulava essa troca e criava blocos inteiros de jogos em casa ou fora.
-			const homeOnLeft = i % 2 === (legacyMandos ? r % 2 : 0);
+			const homeOnLeft = i % 2 === (version === 1 ? r % 2 : 0);
 			round.push(homeOnLeft ? [a, b] : [b, a]);
 		}
 		round.forEach(([home, away], idx) => {
@@ -74,9 +76,11 @@ export function generateLeagueFixtures(seed: number, clubIds: string[] = CLUBS.m
 		});
 		rotating.unshift(rotating.pop()!);
 	}
-	// Returno: mandos invertidos.
-	const firstHalf = [...fixtures];
-	firstHalf.forEach((f, i) => fixtures.push(makeFixture(f.round + half, f.away, f.home, i % (n / 2))));
+	// Jogar a revanche da primeira rodada no encerramento evita trincas de mandos
+	// na virada do turno sem repetir de imediato o último adversário.
+	const gamesPerRound = n / 2;
+	const returnOrder = version === 3 ? [...fixtures.slice(gamesPerRound), ...fixtures.slice(0, gamesPerRound)] : [...fixtures];
+	returnOrder.forEach((f, i) => fixtures.push(makeFixture(half + 1 + Math.floor(i / gamesPerRound), f.away, f.home, i % gamesPerRound)));
 	return fixtures;
 }
 

@@ -1,5 +1,13 @@
 # Novidades
 
+## 0.8.2 — Táticas, intervalo e mandos
+
+- A tela de Táticas mostra o overall dos 11 titulares ao lado da posição no campo, na carreira individual e no multiplayer. O número acompanha o jogador nas trocas.
+- A escalação do intervalo tem um campo menor e coloca o banco ao lado em janelas largas.
+- Nos novos calendários do Brasileirão com 38 rodadas, cada clube alterna entre casa e fora em 35 das 37 transições. A sequência fica limitada a dois jogos com o mesmo mando.
+- Finanças abre em temporadas avançadas e em saves antigos com resumos mensais sem categorias.
+- O instalador Windows passa para 1.4.2.
+
 ## 0.8.1 — Mensagens, calendário e escalação
 
 - Abrir a caixa de mensagens marca a primeira mensagem como lida uma única vez. A caixa e a página de notícias oferecem nova tentativa se a consulta falhar.

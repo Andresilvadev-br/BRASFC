@@ -191,6 +191,18 @@ export function sanitizeClubState(raw: unknown, seed: number, clubId: string, di
 	if (!raw || typeof raw !== 'object' || (raw as ClubState).v !== 1) return base;
 	const r = raw as ClubState;
 	const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+	const months = new Map<string, MonthSummary>();
+	if (Array.isArray(r.months)) {
+		for (const entry of r.months.slice(-36)) {
+			if (!entry || !Number.isInteger(entry.season) || !Number.isInteger(entry.month) || entry.month < 0) continue;
+			const categories = entry.byCategory && typeof entry.byCategory === 'object' && !Array.isArray(entry.byCategory) ? entry.byCategory : {};
+			months.set(`${entry.season}:${entry.month}`, {
+				season: entry.season, month: entry.month,
+				income: num(entry.income, 0), expense: num(entry.expense, 0), balance: num(entry.balance, 0),
+				byCategory: Object.fromEntries(Object.entries(categories).filter(([, value]) => Number.isFinite(value)))
+			});
+		}
+	}
 	return {
 		...base,
 		...r,
@@ -206,7 +218,7 @@ export function sanitizeClubState(raw: unknown, seed: number, clubId: string, di
 		scouts: Array.isArray(r.scouts) ? r.scouts.slice(0, 5) : [],
 		reports: Array.isArray(r.reports) ? r.reports.slice(-60) : [],
 		academy: Array.isArray(r.academy) ? r.academy.slice(0, 30) : base.academy,
-		months: Array.isArray(r.months) ? r.months.slice(-36) : [],
+		months: [...months.values()],
 		incoming: Array.isArray(r.incoming) ? r.incoming : [],
 		negotiations: Array.isArray(r.negotiations) ? r.negotiations.slice(-30) : [],
 		jobOffers: Array.isArray(r.jobOffers) ? r.jobOffers : [],
