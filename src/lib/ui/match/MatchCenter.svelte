@@ -72,6 +72,13 @@
 	let finished = $state(false);
 	let pitch: PitchCanvas | undefined = $state();
 	let tacticOpen = $state(false);
+	let intervalTab = $state<'elenco' | 'tatica'>('elenco');
+	let intervalSelected = $state<string | null>(null);
+	let intervalError = $state('');
+	const atInterval = $derived.by(() => {
+		void version;
+		return !!control && match.phase === 'half_time';
+	});
 	/** atleta destacado no campo (escolhido numa ficha de cada time) */
 	let selHome = $state<string | null>(null);
 	let selAway = $state<string | null>(null);
@@ -115,6 +122,10 @@
 				end();
 				break;
 			}
+			if (control && match.phase === 'half_time') {
+				openInterval();
+				break;
+			}
 		}
 		pitch?.draw(tps > 60 ? 1 : acc);
 		if (now - lastUi > 200 || match.events.length !== hadEvents) {
@@ -137,6 +148,14 @@
 	}
 
 	function skipToEnd() {
+		if (control && match.half === 1) {
+			while (match.phase !== 'half_time' && match.step()) { /* aguarda o apito */ }
+			if (match.phase === 'half_time') {
+				openInterval();
+				version++;
+				return;
+			}
+		}
 		match.runToEnd();
 		end();
 	}
@@ -234,7 +253,18 @@
 		paused = true;
 		tacticOpen = true;
 	}
-	function applyTactic() {
+	function openInterval() {
+		intervalTab = 'elenco';
+		intervalSelected = null;
+		intervalError = '';
+		openTactic();
+	}
+	function togglePlayback() {
+		if (finished) return;
+		if (atInterval) tacticOpen = true;
+		else paused = !paused;
+	}
+	function applyTactic(resume = false) {
 		if (!control) return;
 		const t = match.teams[control].tactic;
 		const before = JSON.stringify(match.teams[control].instructions);
@@ -242,13 +272,19 @@
 		if (style !== t.style) match.submit(control, { type: 'style', value: style });
 		if (formation !== t.formation && match.onPitch(control).length === 11) {
 			match.submit(control, { type: 'formation', value: formation, lineup: reorderFor(formation) });
-			}
-			// Instruções finais (preset novo + ajustes): registradas como decisão reproduzível.
-			if (JSON.stringify(instructions) !== before || mentality !== t.mentality || style !== t.style) {
-				match.submit(control, { type: 'instructions', value: $state.snapshot(instructions) as TacticalInstructions });
-			}
+		}
+		// Instruções finais (preset novo + ajustes): registradas como decisão reproduzível.
+		if (JSON.stringify(instructions) !== before || mentality !== t.mentality || style !== t.style) {
+			match.submit(control, { type: 'instructions', value: $state.snapshot(instructions) as TacticalInstructions });
+		}
 		tacticOpen = false;
 		version++;
+		if (resume) {
+			acc = 0;
+			paused = false;
+			match.step();
+			version++;
+		}
 	}
 	/** Encaixa os mesmos 11 nos slots da nova formação (goleiro sempre no slot 0). */
 	function reorderFor(f: FormationId): string[] {
@@ -268,7 +304,9 @@
 	}
 	function doSub(outId: string, inId: string) {
 		if (!control) return;
-		match.submit(control, { type: 'sub', outId, inId });
+		const decision = { type: 'sub', outId, inId } as const;
+		if (atInterval) intervalError = match.prepareInterval(control, decision) ?? '';
+		else match.submit(control, decision);
 		version++;
 	}
 	const pending = $derived.by(() => {
@@ -301,7 +339,7 @@
 		if ((e.target as HTMLElement)?.closest('input,textarea,dialog')) return;
 		if (e.code === 'Space') {
 			e.preventDefault();
-			if (!finished) paused = !paused;
+			togglePlayback();
 		}
 	}
 
@@ -408,13 +446,13 @@
 						size="sm"
 						icon={paused ? 'play' : 'pause'}
 						disabled={finished}
-						onclick={() => (paused = !paused)}
-						aria-label={paused ? 'Continuar' : 'Pausar'}
+						onclick={togglePlayback}
+						aria-label={atInterval ? 'Abrir escalação do intervalo' : paused ? 'Continuar' : 'Pausar'}
 					>
-						{paused ? (started ? 'Continuar' : 'Iniciar') : 'Pausar'}
+						{atInterval ? 'Revisar intervalo' : paused ? (started ? 'Continuar' : 'Iniciar') : 'Pausar'}
 					</Button>
 					<Segmented label="Velocidade" options={SPEEDS.map((s) => ({ value: s.value, label: s.label }))} bind:value={speed} />
-					<Button variant="ghost" size="sm" icon="skip" disabled={finished} onclick={skipToEnd}>Resultado</Button>
+					<Button variant="ghost" size="sm" icon="skip" disabled={finished || atInterval} onclick={skipToEnd}>{control && match.half === 1 && clock !== 'Intervalo' ? 'Ir ao intervalo' : 'Resultado'}</Button>
 				</div>
 				<div class="playback">
 					<Segmented
@@ -427,7 +465,7 @@
 						bind:value={view}
 					/>
 					{#if control && !finished}
-						<Button size="sm" icon="tactics" onclick={openTactic}>Tática</Button>
+						<Button size="sm" icon="tactics" onclick={() => { if (atInterval) tacticOpen = true; else openTactic(); }}>Tática</Button>
 					{/if}
 				</div>
 			</div>
@@ -473,7 +511,16 @@
 </div>
 
 {#if control}
-	<Modal bind:open={tacticOpen} title="Ajuste tático" description="Mentalidade e estilo mudam na hora; a formação reorganiza os mesmos atletas." size="lg">
+	<Modal bind:open={tacticOpen} title={atInterval ? 'Intervalo · Escalação' : 'Ajuste tático'}
+		description={atInterval ? 'Revise a equipe e confirme quando estiver pronto para o segundo tempo.' : 'Mentalidade e estilo mudam na hora; a formação reorganiza os mesmos atletas.'} size="lg">
+		{#if atInterval}
+			<Segmented label="Intervalo" bind:value={intervalTab} options={[{ value: 'elenco', label: 'Escalação' }, { value: 'tatica', label: 'Tática' }]} />
+		{/if}
+		{#if atInterval && intervalTab === 'elenco'}
+			<FormationBoard {match} side={control} color={colors[control].primary} {version} players={result.players}
+				bind:selected={intervalSelected} canSub={match.subsLeft(control) > 0} pendingOut={pendingOut} onsub={doSub} />
+			{#if intervalError}<p role="status">{intervalError}</p>{/if}
+		{:else}
 		<div class="tac">
 			<div>
 				<h4>Formação</h4>
@@ -501,9 +548,10 @@
 				{#if showAdvanced}
 					<InstructionsEditor bind:value={instructions} preset={modalPreset} />
 				{/if}
+		{/if}
 		{#snippet footer()}
-			<Button variant="ghost" onclick={() => (tacticOpen = false)}>Cancelar</Button>
-			<Button variant="primary" icon="check" onclick={applyTactic}>Aplicar</Button>
+			<Button variant="ghost" onclick={() => (tacticOpen = false)}>{atInterval ? 'Voltar à transmissão' : 'Cancelar'}</Button>
+			<Button variant="primary" icon="check" onclick={() => applyTactic(atInterval)}>{atInterval ? 'Iniciar segundo tempo' : 'Aplicar'}</Button>
 		{/snippet}
 	</Modal>
 {/if}

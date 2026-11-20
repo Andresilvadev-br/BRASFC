@@ -6,7 +6,8 @@ import { addDays, formatLong, isIsoDate, monthGrid, startOfWeek, weekday } from 
 import { positionFit } from '#lib/domain/positions.ts';
 import { computeStandings, generateLeagueFixtures, nextFixture } from '#lib/domain/season.ts';
 import { generateSquad } from '#lib/domain/squad.ts';
-import { assistantReport, autoLineup, FORMATION_IDS, FORMATIONS, lineupFamiliarity, sanitizeTactic } from '#lib/domain/tactics.ts';
+import { assistantReport, autoLineup, FORMATION_IDS, FORMATIONS, lineupFamiliarity, MATCH_BENCH_SIZE, recoverTactic, sanitizeTactic } from '#lib/domain/tactics.ts';
+import { buildTeamSetup } from '#lib/engine/teams.ts';
 import { weekPlan } from '#lib/domain/training.ts';
 import { careerView } from '#lib/domain/view.ts';
 
@@ -114,6 +115,21 @@ describe('elencos demonstrativos', () => {
 
 describe('táticas', () => {
 	const squad = generateSquad('cerrado', 7);
+
+	it('mantém somente os suplentes convocados no banco da partida', () => {
+		const lineup = autoLineup('4-3-3', squad);
+		const outside = squad.filter((player) => !lineup.includes(player.id));
+		const legacy = { formation: '4-3-3', lineup, mentality: 'equilibrada', style: 'posse' } as const;
+		const club = { id: 'cerrado', name: 'Cerrado', short: 'CER', colors: { primary: '#319', secondary: '#fff' } };
+		const bench = [outside[1].id, outside[0].id];
+		expect(buildTeamSetup(club, squad, legacy).tactic.bench).toHaveLength(MATCH_BENCH_SIZE);
+		expect(buildTeamSetup(club, squad, { ...legacy, bench }).tactic.bench).toEqual(bench);
+		expect(buildTeamSetup(club, squad, { ...legacy, bench: [] }).tactic.bench).toEqual([]);
+		expect(sanitizeTactic({ ...legacy, bench: [lineup[0]] }, squad)).toBeNull();
+		expect(sanitizeTactic({ ...legacy, bench: [bench[0], bench[0]] }, squad)).toBeNull();
+		expect(sanitizeTactic({ ...legacy, bench: outside.slice(0, MATCH_BENCH_SIZE + 1).map(({ id }) => id) }, squad)).toBeNull();
+		expect(recoverTactic({ ...legacy, bench }, squad.filter(({ id }) => id !== bench[0]))).toMatchObject({ lineup, bench: [bench[1]] });
+	});
 
 	it('escalação automática preenche todas as formações sem repetir e com goleiro no gol', () => {
 		for (const f of FORMATION_IDS) {
