@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { invalidate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api } from '#lib/api.ts';
@@ -11,11 +12,13 @@
 	import Segmented from '#lib/ui/Segmented.svelte';
 
 	let { data } = $props();
+	type CareerMessage = (typeof data.messages)[number];
 	const c = $derived(data.career);
 
 	let filter = $state<'todas' | 'importantes' | 'naolidas'>('todas');
 	let openId = $state<string | null>(page.url.searchParams.get('m'));
 	let reading: HTMLElement | undefined = $state();
+	const marking = new Set<string>();
 
 	const list = $derived(
 		data.messages.filter((m) => (filter === 'importantes' ? m.kind === 'important' : filter === 'naolidas' ? !m.read : true))
@@ -23,12 +26,17 @@
 	const open = $derived(data.messages.find((m) => m.id === openId) ?? list[0]);
 	const unread = $derived(data.messages.filter((m) => !m.read).length);
 
-	async function markRead(id: string) {
+	async function markRead(message: CareerMessage) {
+		const { id } = message;
+		if (message.read || marking.has(id)) return;
+		marking.add(id);
 		try {
 			await api(`/api/careers/${c.id}/messages`, { body: { action: 'read', id } });
 			await invalidate('app:career');
 		} catch (e) {
 			notify({ icon: 'alert', tone: 'error', title: e instanceof Error ? e.message : 'Falha ao atualizar' });
+		} finally {
+			marking.delete(id);
 		}
 	}
 
@@ -42,14 +50,14 @@
 		}
 	}
 
-	function select(id: string) {
-		openId = id;
+	function select(message: CareerMessage) {
+		openId = message.id;
 		if (reading) void animate(reading, { opacity: 1, y: 0 }, { spring: 'snappy', from: { opacity: 0.3, y: 6 } });
+		void markRead(message);
 	}
 
-	// Abrir uma mensagem a marca como lida no servidor.
-	$effect(() => {
-		if (open && !open.read) void markRead(open.id);
+	onMount(() => {
+		if (open) void markRead(open);
 	});
 </script>
 
@@ -70,17 +78,23 @@
 				{ value: 'naolidas', label: 'Não lidas' }
 			]}
 		/>
-		<Button variant="ghost" icon="check" disabled={!unread} onclick={readAll}>Marcar todas como lidas</Button>
+		<Button variant="ghost" icon="check" disabled={!unread || data.messagesUnavailable} onclick={readAll}>Marcar todas como lidas</Button>
 	</div>
 </div>
 
 <div class="layout">
 	<Panel pad={false} index={0}>
+		{#if data.messagesUnavailable}
+			<div class="empty">
+				<p>O restante da caixa de mensagens está indisponível.</p>
+				<Button size="sm" onclick={() => invalidate('app:career')}>Tentar novamente</Button>
+			</div>
+		{/if}
 		{#if list.length}
 			<ul class="inbox">
 				{#each list as m (m.id)}
 					<li>
-						<button class:active={open?.id === m.id} class:unread={!m.read} class:important={m.kind === 'important'} onclick={() => select(m.id)}>
+						<button class:active={open?.id === m.id} class:unread={!m.read} class:important={m.kind === 'important'} onclick={() => select(m)}>
 							<span class="avatar" aria-hidden="true"><Icon name={m.kind === 'important' ? 'bell' : 'mail'} size={18} /></span>
 							<span class="txt">
 								<span class="from">{m.sender}</span>
@@ -91,7 +105,7 @@
 					</li>
 				{/each}
 			</ul>
-		{:else}
+		{:else if !data.messagesUnavailable}
 			<p class="empty muted">Nenhuma mensagem neste filtro.</p>
 		{/if}
 	</Panel>

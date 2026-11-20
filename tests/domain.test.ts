@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { validateCreateCareer, initialCareerData, welcomeMessages } from '#lib/domain/career.ts';
-import { CLUBS } from '#lib/domain/clubs.ts';
+import { CLUBS, LEAGUE } from '#lib/domain/clubs.ts';
+import { closeSeason, initialLeague, sanitizeLeague, seasonFixtures } from '#lib/domain/league.ts';
 import { addDays, formatLong, isIsoDate, monthGrid, startOfWeek, weekday } from '#lib/domain/dates.ts';
 import { positionFit } from '#lib/domain/positions.ts';
 import { computeStandings, generateLeagueFixtures, nextFixture } from '#lib/domain/season.ts';
@@ -48,6 +49,28 @@ describe('calendário da Liga', () => {
 	it('é determinístico pela semente', () => {
 		expect(generateLeagueFixtures(12345)).toEqual(fixtures);
 		expect(generateLeagueFixtures(999)).not.toEqual(fixtures);
+	});
+
+	it('intercala os mandos e mantém 19 jogos em casa e 19 fora para cada clube', () => {
+		for (const club of CLUBS) {
+			const venues = fixtures
+				.filter((f) => f.home === club.id || f.away === club.id)
+				.map((f) => f.home === club.id ? 'C' : 'F');
+			expect(venues.filter((venue) => venue === 'C')).toHaveLength(19);
+			expect(venues.filter((venue) => venue === 'F')).toHaveLength(19);
+			expect(venues.slice(0, 19).join('')).not.toMatch(/CCC|FFF/);
+			expect(venues.join('')).not.toMatch(/CCCC|FFFF/);
+		}
+	});
+
+	it('mantém os mandos do save antigo e aplica a regra na temporada seguinte', () => {
+		const current = initialLeague('brasfc', 2027);
+		const { scheduleVersion, ...oldSave } = current;
+		expect(scheduleVersion).toBe(2);
+		const legacy = sanitizeLeague(oldSave, 'brasfc', 2027);
+		expect(seasonFixtures(legacy, 12345)).toEqual(generateLeagueFixtures(12345, current.divisions[LEAGUE.id]!, true));
+		expect(seasonFixtures(sanitizeLeague(current, 'brasfc', 2027), 12345)).toEqual(fixtures);
+		expect(closeSeason(legacy, []).next.scheduleVersion).toBe(2);
 	});
 
 	it('encontra o próximo jogo a partir da data atual', () => {
