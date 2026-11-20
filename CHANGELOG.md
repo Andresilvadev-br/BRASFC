@@ -1,5 +1,10 @@
 # Novidades
 
+## 0.8.2 — Overall dos titulares
+
+- A tela de Táticas mostra o overall dos 11 titulares ao lado da posição no campo, na carreira individual e no multiplayer. O número acompanha o jogador nas trocas.
+- O instalador Windows passa para 1.4.2.
+
 ## 0.8.1 — Mensagens, calendário e escalação
 
 - Abrir a caixa de mensagens marca a primeira mensagem como lida uma única vez. A caixa e a página de notícias oferecem nova tentativa se a consulta falhar.
