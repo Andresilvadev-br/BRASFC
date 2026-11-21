@@ -113,6 +113,9 @@ try {
 	await athlete.getByRole('button', { name:'Continuar para o clube' }).click();
 	await clubs(athlete,'Palmeiras');
 	await invite(athlete,'parceiro_teste');
+	const startSeason = await athlete.getByRole('button', { name:'Iniciar temporada' }).boundingBox();
+	const inviteForm = await athlete.getByRole('button', { name:'Enviar convite' }).boundingBox();
+	assert.ok(startSeason && inviteForm && startSeason.x < inviteForm.x && startSeason.y < inviteForm.y);
 	await capture(athlete,'06-lobby-desktop');
 	await accepted(teammate,'Liga dos atletas');
 	await visible(teammate.getByRole('heading', { name:'Crie seu atleta' }));

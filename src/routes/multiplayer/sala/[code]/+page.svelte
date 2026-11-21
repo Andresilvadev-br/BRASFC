@@ -82,40 +82,43 @@
 					{#if s.error}<span class="err">{s.error}</span>{/if}
 				</div>
 		{/snippet}
-		{#snippet lobby(world)}
+		{#snippet lobby(world, controls)}
 		{@const members = world.members}
 		{@const coaches = new Set(members.filter((member) => member.assignment?.role === 'coach').map((member) => member.assignment?.club))}
 		{@const total = s.room?.maxMembers ?? data.room.maxMembers}
 		{@const participants = s.room?.members ?? members}
 		<div class="layout">
-			<section class="lobby" aria-label="Jogadores na sala">
-				<header class="lobby-title"><div><h2>Participantes</h2><span class="muted small">{participants.length}/{total} vagas</span></div>
-					{#if !isOwner}<Button variant="ghost" icon="exit" onclick={() => (leaveOpen = true)}>Sair do universo</Button>{/if}
-				</header>
-				<div class="bench">
-					{#each participants as m, i (m.profileId)}
-						{@const assignment = members.find((member) => member.profileId === m.profileId)?.assignment}
-						{@const connected = s.status === 'online' && 'online' in m && m.online === true}
-						<div class="member" use:enter={{ index: i }} class:offline={!connected}>
-							<div class="spot">
-								<Pixel variant="full" appearance={assignment?.appearance ?? look(m.profileId)} clubId={assignment?.club} styled
-									kit={assignment ? assignment.role === 'player' ? clubKit(assignment.club) : coachKit(assignment.club)
-										: { shirt: SHIRTS[i % SHIRTS.length], trim: '#E7EDF0', shorts: '#101418', socks: SHIRTS[i % SHIRTS.length] }} size={68} ball={false} />
+			<div class="lobby-main">
+				<section class="lobby" aria-label="Jogadores na sala">
+					<header class="lobby-title"><div><h2>Participantes</h2><span class="muted small">{participants.length}/{total} vagas</span></div>
+						{#if !isOwner}<Button variant="ghost" icon="exit" onclick={() => (leaveOpen = true)}>Sair do universo</Button>{/if}
+					</header>
+					<div class="bench">
+						{#each participants as m, i (m.profileId)}
+							{@const assignment = members.find((member) => member.profileId === m.profileId)?.assignment}
+							{@const connected = s.status === 'online' && 'online' in m && m.online === true}
+							<div class="member" use:enter={{ index: i }} class:offline={!connected}>
+								<div class="spot">
+									<Pixel variant="full" appearance={assignment?.appearance ?? look(m.profileId)} clubId={assignment?.club} styled
+										kit={assignment ? assignment.role === 'player' ? clubKit(assignment.club) : coachKit(assignment.club)
+											: { shirt: SHIRTS[i % SHIRTS.length], trim: '#E7EDF0', shorts: '#101418', socks: SHIRTS[i % SHIRTS.length] }} size={68} ball={false} />
+								</div>
+								<strong>{m.displayName}{#if m.profileId === data.profileId} <small>(você)</small>{/if}</strong>
+								<small class="member-club">{assignment ? getClub(assignment.club)?.name ?? assignment.club : 'Participação pendente'}</small>
+								<span class="tags">
+									{#if assignment}<Badge tone={assignment.ready ? 'emerald' : 'neutral'}>{assignment.ready ? 'Pronto' : 'Aguardando prontidão'}</Badge>{/if}
+									{#if assignment}<Badge tone="neutral">{assignment.role === 'coach' ? 'Treinador' : assignment.role === 'assistant' ? 'Auxiliar' : 'Jogador'}</Badge>{/if}
+									{#if m.role === 'owner'}<Badge tone="gold" icon="crown">Anfitrião</Badge>{/if}
+									<Badge tone={connected ? 'emerald' : 'neutral'}>{connected ? 'Online' : s.status === 'online' ? 'Offline' : 'Sem confirmação de presença'}</Badge>
+								</span>
 							</div>
-							<strong>{m.displayName}{#if m.profileId === data.profileId} <small>(você)</small>{/if}</strong>
-							<small class="member-club">{assignment ? getClub(assignment.club)?.name ?? assignment.club : 'Participação pendente'}</small>
-							<span class="tags">
-								{#if assignment}<Badge tone={assignment.ready ? 'emerald' : 'neutral'}>{assignment.ready ? 'Pronto' : 'Aguardando prontidão'}</Badge>{/if}
-								{#if assignment}<Badge tone="neutral">{assignment.role === 'coach' ? 'Treinador' : assignment.role === 'assistant' ? 'Auxiliar' : 'Jogador'}</Badge>{/if}
-								{#if m.role === 'owner'}<Badge tone="gold" icon="crown">Anfitrião</Badge>{/if}
-								<Badge tone={connected ? 'emerald' : 'neutral'}>{connected ? 'Online' : s.status === 'online' ? 'Offline' : 'Sem confirmação de presença'}</Badge>
-							</span>
-						</div>
-					{/each}
+						{/each}
 
-				</div>
+					</div>
 
-			</section>
+				</section>
+				{@render controls()}
+			</div>
 
 			<aside class="invite">
 				<h2>Convites da liga</h2>
@@ -166,6 +169,7 @@
 		gap: 10px;
 		align-items: start;
 	}
+	.lobby-main { display: grid; align-content: start; gap: 10px; min-width: 0; }
 	.lobby {
 		padding: var(--sp-5);
 		border-radius: var(--radius-xl);
