@@ -11,11 +11,16 @@ export const GET: RequestHandler = async ({ locals }) => {
 };
 
 export const POST: RequestHandler = async (event) => {
-	const result = validateCreateCareer(await readJson(event.request));
+	const body = await readJson(event.request);
+	const result = validateCreateCareer(body);
 	if (!result.ok) return noStore({ message: 'Revise os dados da carreira.', errors: result.errors }, { status: 400 });
+	const seed = body.previewSeed;
+	if (seed !== undefined && (typeof seed !== 'number' || !Number.isInteger(seed) || seed < 1 || seed >= 2 ** 31 - 1)) {
+		error(400, 'Prévia de elenco inválida.');
+	}
 	const profile = await ensureProfile(event);
 	try {
-		const career = await createCareer(await getDb(), profile.id, result.value);
+		const career = await createCareer(await getDb(), profile.id, result.value, seed);
 		return noStore({ career }, { status: 201 });
 	} catch (e) {
 		if (e instanceof CareerLimitError) error(409, e.message);

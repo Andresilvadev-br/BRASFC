@@ -4,7 +4,8 @@ import { createPgliteDb, createPostgresDb, type Db } from '#lib/server/db/index.
 import { runMigrations } from '#lib/server/db/migrate.ts';
 import { createGuestProfile } from '#lib/server/repos/profiles.ts';
 import { createRoom, getRoomByCode, joinRoom, leaveRoom } from '#lib/server/repos/rooms.ts';
-import { applyWorldCommand, worldReplay, worldSnapshot } from '#lib/server/connected-world.ts';
+import { applyWorldCommand, worldClubLineup, worldReplay, worldSnapshot } from '#lib/server/connected-world.ts';
+import { clubLineup } from '#lib/domain/club-selection.ts';
 import { DEFAULT_APPEARANCE } from '#lib/domain/appearance.ts';
 import { defaultOutfit } from '#lib/domain/wardrobe.ts';
 import { simulateMatch } from '#lib/engine/match.ts';
@@ -19,6 +20,10 @@ describe('universo compartilhado', () => {
 		const room = await createRoom(db, owner, 'Campeonato de amigos');
 		const empty = await worldSnapshot(db, room, owner);
 		const first = empty.clubs.find((c) => c.id === 'flamengo')!.id;
+		expect(new Set(empty.clubs.map((club) => club.division))).toEqual(new Set(['serie-a', 'serie-b', 'serie-c', 'serie-d']));
+		expect(await worldClubLineup(db, room, owner, first)).toMatchObject({ starters: expect.any(Array) });
+		await expect(worldClubLineup(db, room, outsider, first)).rejects.toMatchObject({ status: 404 });
+		await expect(worldClubLineup(db, room, owner, 'inexistente')).rejects.toMatchObject({ status: 404 });
 		for (const profile of [rival, assistant, player, teammate]) await joinRoom(db, room.code, profile);
 		const get = (profile: string) => worldSnapshot(db, room, profile);
 		const command = async (profile: string, action: string, params: Record<string, unknown> = {}) =>
@@ -36,7 +41,12 @@ describe('universo compartilhado', () => {
 		await expect(command(assistant, 'tactic', { tactic })).rejects.toMatchObject({ status: 403 });
 		await command(owner, 'delegate', { target: assistant, area: 'match', value: true });
 		await command(assistant, 'tactic', { tactic });
-		expect((await get(owner)).tactic?.mentality).toBe('ofensiva');
+		const saved = await get(owner);
+		expect(saved.tactic?.mentality).toBe('ofensiva');
+		const preview = await worldClubLineup(db, room, player, first);
+		expect(preview).toEqual(clubLineup(saved.roster, saved.tactic));
+		expect(preview.starters).toHaveLength(11);
+		expect(preview.starters.every((starter) => starter.name && starter.overall)).toBe(true);
 		expect((await get(assistant)).management).toBeNull();
 		await expect(command(assistant, 'training', { plan: {} })).rejects.toMatchObject({ status: 403 });
 		await command(owner, 'delegate', { target: assistant, value: true });

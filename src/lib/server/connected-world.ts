@@ -1,12 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { careerStart, initialCareerData, validateCreateCareer, type Career, type CareerData } from '#lib/domain/career.ts';
 import { DEFAULT_APPEARANCE, isAppearance, type Appearance } from '#lib/domain/appearance.ts';
+import { clubLineup } from '#lib/domain/club-selection.ts';
 import { getClub } from '#lib/domain/clubs.ts';
 import { seasonSteps } from '#lib/domain/calendar.ts';
 import { initialCup, clubCupRun, cupView, prepareCup, cupFixtures, phaseOfMatchday, projectedCup, tieOutcome } from '#lib/domain/cup.ts';
 import { addDays } from '#lib/domain/dates.ts';
 import { DEFAULT_PLAN, applyTrainingWeek, recoverFitness, sanitizePlan } from '#lib/domain/drills.ts';
-import { initialLeague, divisionOf, effectiveRule, divisionStandings, prepareRound, seasonFixtures, closeSeason, seasonStartDate, type LeagueState, type StoredRoundResult } from '#lib/domain/league.ts';
+import { initialLeague, divisionOf, effectiveRule, divisionStandings, prepareRound, seasonFixtures, closeSeason, seasonStartDate, type DivisionId, type LeagueState, type StoredRoundResult } from '#lib/domain/league.ts';
 import { aiTeam, matchSeed, simulateOtherFixtures } from '#lib/domain/matchday.ts';
 import { currentClubOf, emptyMarket, tierOfDivision, rosterOf, transferWindow, type MarketState } from '#lib/domain/market.ts';
 import { hashString } from '#lib/domain/rng.ts';
@@ -144,7 +145,8 @@ export async function worldSnapshot(db: Db, room: Room, profile: string) {
 			&& [f.home, f.away].includes(current.club)) : null,
 		members: members.map((m) => { const p = s.participants[m.profileId]; return {
 			...m, assignment: p ? { club: p.club, role: p.role, ready: p.ready, delegated: p.delegated, matchDelegated: p.matchDelegated, appearance: p.appearance ?? p.athlete?.appearance } : null }; }),
-		clubs: clubList(s).map((id) => ({ id, name: getClub(id)?.name ?? id })),
+		clubs: Object.entries(s.league.divisions).flatMap(([division, ids]) =>
+			ids.map((id) => ({ id, name: getClub(id)?.name ?? id, division: division as DivisionId }))),
 		current, standings: division ? divisionStandings(s.league, division, past) : [],
 		last: s.last.map(({ athletes, events, replay, replayVersion, ...match }) => ({ ...match,
 			me: current && athletes ? athletes[athleteId(current)] : undefined,
@@ -425,6 +427,16 @@ export async function worldRevision(db: Db, room: Room, profile: string) {
 	if (!row) fail('Universo não encontrado.', 404);
 	if (row.status !== 'open') fail('Universo arquivado.', 410);
 	return { revision: Number(row.revision) };
+}
+
+export async function worldClubLineup(db: Db, room: Room, profile: string, club: string) {
+	const members = await listMembers(db, room.id);
+	if (!members.some((member) => member.profileId === profile)) fail('Universo não encontrado.', 404);
+	const [row] = await db.query<RecordRow>('SELECT revision, state FROM room_worlds WHERE room_id = $1', [room.id]);
+	const state = row ? readState(row) : initial();
+	if (!divisionOf(state.league, club)) fail('Clube não participa desta temporada.', 404);
+	const squad = roster(room, state, club);
+	return clubLineup(squad, recoverTactic(state.tactics[club], squad) ?? defaultTactic(squad));
 }
 
 export async function worldReplay(db: Db, room: Room, profile: string, home: string, away: string) {

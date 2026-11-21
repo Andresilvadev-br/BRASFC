@@ -5,23 +5,27 @@
 	import { api, ApiError } from '#lib/api.ts';
 	import { DEFAULT_APPEARANCE, type Appearance } from '#lib/domain/appearance.ts';
 	import AppearanceEditor from '#lib/ui/career/AppearanceEditor.svelte';
-	import { boardExpectation, MODE_LABELS, type Career, type CareerMode, type DominantFoot } from '#lib/domain/career.ts';
-	import { CLUBS, getClub } from '#lib/domain/clubs.ts';
+	import { boardExpectation, careerStart, MODE_LABELS, type Career, type CareerMode, type DominantFoot } from '#lib/domain/career.ts';
+	import { getClub } from '#lib/domain/clubs.ts';
 	import Segmented from '#lib/ui/Segmented.svelte';
-	import { CLUBES_2026, toGameClub } from '#lib/data/brasil.ts';
+	import { initialLeague, DIVISION_LABELS, type DivisionId } from '#lib/domain/league.ts';
+	import { clubLineup } from '#lib/domain/club-selection.ts';
+	import { generateSquad } from '#lib/domain/squad.ts';
+	import ClubSelector from '#lib/ui/career/ClubSelector.svelte';
 	import { POSITION_INFO, type Position } from '#lib/domain/positions.ts';
 	import { enter } from '#lib/motion/actions.ts';
-	import { clubKit, coachKit, playerKit } from '#lib/pixel/kits.ts';
+	import { coachKit, playerKit } from '#lib/pixel/kits.ts';
 	import { notify, setIslandContext } from '#lib/stores/island.svelte.ts';
 	import Button from '#lib/ui/Button.svelte';
-	import Crest from '#lib/ui/Crest.svelte';
 	import Icon from '#lib/ui/Icon.svelte';
 	import Logo from '#lib/ui/Logo.svelte';
 	import Pixel from '#lib/ui/Pixel.svelte';
 	import PositionPicker from '#lib/ui/PositionPicker.svelte';
 	import Presentation from '#lib/ui/Presentation.svelte';
 	import Stadium from '#lib/ui/Stadium.svelte';
-	import Stars from '#lib/ui/Stars.svelte';
+	import type { PageProps } from './$types';
+
+	let { data }: PageProps = $props();
 
 	type Step = 'modo' | 'perfil' | 'clube';
 	const STEPS: Array<{ id: Step; label: string }> = [
@@ -51,19 +55,12 @@
 	const previewKit = $derived(
 		mode === 'coach' ? coachKit(clubId ?? undefined) : clubId ? playerKit(clubId, position) : position === 'GOL' ? { shirt: '#E8B86A', trim: '#15110E', shorts: '#15110E', socks: '#E8B86A' } : NEUTRAL_KIT
 	);
-	// Mundo: clubes reais (base 2026, Séries A/B/C) ou a liga fictícia da Dev 0.1/0.2.
 	let world = $state<'brasil' | 'brasfc'>('brasil');
-	let serie = $state<'A' | 'B' | 'C' | 'D'>('A');
-	const realClubs = CLUBES_2026.map((c) => ({ real: c, game: toGameClub(c) }));
-	const sortedClubs = $derived(
-		world === 'brasil'
-			? realClubs.filter((c) => c.real.serie === serie).map((c) => c.game).sort((a, b) => b.reputation - a.reputation || a.name.localeCompare(b.name, 'pt-BR'))
-			: [...CLUBS].sort((a, b) => b.reputation - a.reputation || a.name.localeCompare(b.name, 'pt-BR'))
-	);
-	const competitionOf = (id: string) => {
-		const r = realClubs.find((c) => c.real.id === id);
-		return r ? `Série ${r.real.serie}` : 'Liga BRASFC';
-	};
+	const league = $derived(initialLeague(world, careerStart(world).season));
+	const selectionClubs = $derived(Object.entries(league.divisions).flatMap(([division, ids]) =>
+		ids.map((id) => ({ id, division: division as DivisionId }))));
+	const clubDivision = $derived(selectionClubs.find((entry) => entry.id === clubId)?.division);
+	const lineup = $derived(step === 'clube' && clubId ? clubLineup(generateSquad(clubId, data.previewSeed)) : undefined);
 
 	onMount(() => setIslandContext('Nova carreira'));
 
@@ -100,7 +97,7 @@
 		errors = {};
 		try {
 			const res = await api<{ career: Career }>('/api/careers', {
-				body: { mode, personName, clubId, appearance, world, ...(mode === 'player' ? { position, age, nationality, foot } : {}) }
+				body: { mode, personName, clubId, appearance, world, previewSeed: data.previewSeed, ...(mode === 'player' ? { position, age, nationality, foot } : {}) }
 			});
 			created = res.career;
 		} catch (e) {
@@ -234,54 +231,20 @@
 				</div>
 			</div>
 		{:else}
-			<div class="intro row" data-umx-enter>
-				<div>
-					<span class="eyebrow">Passo 3 de 3</span>
-					<h1>Escolha seu clube</h1>
-					<p class="muted">
-						{world === 'brasil'
-							? 'Clubes reais das Séries A, B, C e D de 2026 (fontes públicas), com Copa do Brasil, acesso, rebaixamento e expansão da Série C. Elencos reais ainda não foram importados: os jogadores têm nomes fictícios.'
-							: 'Clubes fictícios da Liga BRASFC. A reputação define a expectativa da diretoria.'}
-					</p>
-					<div class="worldpick">
-						<Segmented label="Mundo" bind:value={world} onchange={() => (clubId = null)} options={[{ value: 'brasil', label: 'Brasil 2026' }, { value: 'brasfc', label: 'Liga fictícia' }]} />
-						{#if world === 'brasil'}
-							<Segmented label="Série" bind:value={serie} options={[{ value: 'A', label: 'Série A' }, { value: 'B', label: 'Série B' }, { value: 'C', label: 'Série C' }, { value: 'D', label: 'Série D' }]} />
-						{/if}
-					</div>
-				</div>
-				<div class="confirm">
-					{#if club}
-						<div class="pick">
-							<Crest clubId={club.id} size={44} />
-							<div>
-								<strong>{club.name}</strong>
-								<small class="muted">{competitionOf(club.id)}{#if mode === 'coach'} · Meta: {boardExpectation(club, competitionOf(club.id))}{/if}</small>
-							</div>
-						</div>
-					{/if}
-					<Button variant="primary" size="lg" icon="play" disabled={!clubId} loading={saving} onclick={create}>Iniciar carreira</Button>
-				</div>
+			<div class="intro" data-umx-enter>
+				<h1>Escolha seu clube</h1>
 			</div>
-			<div class="clubs" role="radiogroup" aria-label="Clubes">
-				{#each sortedClubs as c, i (c.id)}
-					<button
-						class="club"
-						role="radio"
-						aria-checked={clubId === c.id}
-						data-active={clubId === c.id}
-						onclick={() => (clubId = c.id)}
-						ondblclick={create}
-						use:enter={{ index: Math.min(i, 10) }}
-						data-umx-hover
-						style="--c:{c.colors.primary}"
-					>
-						<Crest club={c} size={48} />
-						<span class="cname">{c.name}</span>
-						<span class="ccity muted">{c.city}</span>
-						<Stars value={c.reputation} />
-					</button>
-				{/each}
+			{#key world}
+				<ClubSelector clubs={selectionClubs} bind:clubId {lineup} previewLabel="Elenco inicial gerado"
+					summary={mode === 'coach' && club && clubDivision ? `Meta da diretoria · ${boardExpectation(club, DIVISION_LABELS[clubDivision])}` : undefined}>
+					{#snippet top()}
+						<Segmented label="Base de clubes" bind:value={world} onchange={() => (clubId = null)}
+							options={[{ value: 'brasil', label: 'Clubes nacionais' }, { value: 'brasfc', label: 'Liga fictícia' }]} />
+					{/snippet}
+				</ClubSelector>
+			{/key}
+			<div class="actions finish">
+				<Button variant="primary" size="lg" icon="play" disabled={!clubId} loading={saving} onclick={create}>Iniciar carreira</Button>
 			</div>
 		{/if}
 	</main>
@@ -304,12 +267,6 @@
 	.profile-options :is(input, select) { width: 100%; min-width: 0; padding: .65rem; color: var(--text); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; }
 	.turned { transform: scaleX(-1); }
 
-	.worldpick {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px;
-		margin-top: 10px;
-	}
 	.screen {
 		position: relative;
 		min-height: var(--app-h, 100vh);
@@ -389,13 +346,6 @@
 	}
 	.intro {
 		margin-bottom: var(--sp-6);
-	}
-	.intro.row {
-		display: flex;
-		justify-content: space-between;
-		align-items: flex-end;
-		gap: var(--sp-6);
-		flex-wrap: wrap;
 	}
 	h1 {
 		font-size: calc(clamp(2.25rem, 3.4vw, 3.25rem) * var(--text-scale));
@@ -540,6 +490,7 @@
 		margin-left: var(--sp-2);
 	}
 
+	.finish { margin-top: var(--sp-4); }
 	.actions {
 		display: flex;
 		justify-content: flex-end;
@@ -567,64 +518,6 @@
 		font-size: var(--fs-3xl);
 		text-transform: uppercase;
 		line-height: 1;
-	}
-	.confirm {
-		display: flex;
-		align-items: center;
-		gap: var(--sp-5);
-	}
-	.pick {
-		display: flex;
-		align-items: center;
-		gap: var(--sp-3);
-	}
-	.pick div {
-		display: flex;
-		flex-direction: column;
-	}
-	.pick small {
-		font-size: var(--fs-xs);
-		max-width: 280px;
-	}
-	.clubs {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-		gap: var(--sp-3);
-	}
-	.club {
-		display: grid;
-		grid-template-columns: auto 1fr;
-		grid-template-rows: auto auto auto;
-		column-gap: var(--sp-3);
-		align-items: center;
-		padding: var(--sp-4);
-		text-align: left;
-		border-radius: var(--radius-l);
-		border: 1px solid var(--line);
-		background: rgb(28 37 43 / 0.92);
-		transition:
-			border-color 0.15s,
-			background 0.15s;
-	}
-	.club :global(.crest) {
-		grid-row: 1 / 4;
-	}
-	.club:hover {
-		background: var(--surface-2);
-		border-color: var(--line-strong);
-	}
-	.club[data-active='true'] {
-		border-color: var(--emerald);
-		background: linear-gradient(160deg, rgb(16 185 129 / 0.14), rgb(28 37 43 / 0.95));
-		box-shadow: 0 0 0 1px var(--emerald);
-	}
-	.cname {
-		font-weight: 700;
-		font-size: var(--fs-sm);
-		line-height: 1.2;
-	}
-	.ccity {
-		font-size: var(--fs-xs);
 	}
 	@media (max-width: 960px) {
 		.modes,
