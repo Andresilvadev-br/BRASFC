@@ -1,11 +1,12 @@
 import { api, withCareerVersion } from '#lib/api.ts';
 import { invalidate } from '$app/navigation';
+import type { NegotiationLog } from '#lib/domain/management.ts';
 import type { Career } from '#lib/domain/career.ts';
 
 export interface ClubActionResult {
 	career: Career;
 	message: string;
-	negotiation: { club_answer: string; player_answer: string | null; message: string; done: boolean } | null;
+	negotiation: NegotiationLog | null;
 }
 
 /** Envia uma ação de gestão ao servidor (validada lá) e recarrega a carreira. Erros viram mensagem. */

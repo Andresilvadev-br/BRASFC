@@ -1,7 +1,7 @@
 {
   "name": "brasfc-desktop",
   "productName": "BRASFC",
-  "version": "1.4.4",
+  "version": "1.4.5",
   "description": "BRASFC para Windows — janela própria, tela cheia, modo offline e atualização automática.",
   "author": "BRASFC",
   "main": "main.js",

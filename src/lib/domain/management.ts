@@ -73,6 +73,12 @@ export interface NegotiationLog {
 	season: number;
 	round: number;
 	playerId: string;
+	playerName?: string;
+	gameDate?: string;
+	asking?: number;
+	demand?: number;
+	expired?: boolean;
+	op?: string;
 	club: string;
 	offer: NegotiationOffer;
 	club_answer: ClubAnswer['status'];
@@ -469,6 +475,7 @@ export interface ActionContext {
 	roster: RosterContext;
 	window: string | null;
 	gameDate: string;
+	additionalWages?: number;
 }
 
 export interface ActionResult {
@@ -487,8 +494,10 @@ function setOverride(m: MarketState, id: string, club: string | null, contract: 
 }
 
 /** Proposta do usuário por um atleta (compra, empréstimo ou jogador livre): clube e atleta respondem. */
-export function makeOffer(club: ClubState, market: MarketState, ctx: ActionContext, offer: NegotiationOffer): ActionResult {
+export function makeOffer(club: ClubState, market: MarketState, ctx: ActionContext, offer: NegotiationOffer, op?: string): ActionResult {
 	if (club.board.dismissed) throw new ManagementError('Você não comanda mais o clube.');
+	const prior = op && club.negotiations.find((entry) => entry.op === op);
+	if (prior) return { club, market, ledger: [], transfers: [], message: prior.message, negotiation: prior };
 	const st = structuredClone(club);
 	const mk = structuredClone(market);
 	let player: RosterPlayer | undefined;
@@ -509,12 +518,15 @@ export function makeOffer(club: ClubState, market: MarketState, ctx: ActionConte
 	if (myRoster.length >= 34) throw new ManagementError('Elenco cheio (máximo de 34 atletas).');
 	const fee = offer.kind === 'compra' ? Math.max(0, Math.round(offer.fee)) : 0;
 	if (fee > st.transferBudget || fee > Math.max(0, st.balance)) throw new ManagementError(`Valor acima do orçamento disponível (${formatMoney(Math.min(st.transferBudget, Math.max(0, st.balance)))}).`);
-	const log: NegotiationLog = { id: `${ctx.season}-${ctx.round}-${offer.playerId}-${st.negotiations.length}`, season: ctx.season, round: ctx.round, playerId: offer.playerId, club: seller ?? '', offer, club_answer: 'aceita', player_answer: null, message: '', done: false };
+	const prefix = `${ctx.season}-${ctx.round}-${offer.playerId}-`;
+	const sequence = 1 + Math.max(-1, ...st.negotiations.filter((entry) => entry.id.startsWith(prefix)).map((entry) => Number(entry.id.slice(prefix.length)) || 0));
+	const log: NegotiationLog = { id: prefix + sequence, op, season: ctx.season, round: ctx.round, gameDate: ctx.gameDate, playerId: offer.playerId, playerName: player.name, club: seller ?? '', offer, club_answer: 'aceita', player_answer: null, message: '', done: false };
 	if (seller) {
 		const sellerSquad = rosterOf(ctx.roster, seller);
 		const cash = (mk.clubCash[seller] ?? 0) + clubEconomy(seller, tierOfDivision(ctx.roster.divisionOf(seller))).tvAnnual * 0.05;
 		const ans = clubResponse(offer, player, sellerSquad, cash);
 		log.club_answer = ans.status;
+		if (ans.status === 'contraproposta' && offer.kind === 'compra') log.asking = ans.asking;
 		if (ans.status !== 'aceita') {
 			log.message = ans.reason;
 			st.negotiations = [...st.negotiations, log].slice(-30);
@@ -525,6 +537,7 @@ export function makeOffer(club: ClubState, market: MarketState, ctx: ActionConte
 	const starters = new Set([...myRoster].sort((a, b) => b.overall - a.overall).slice(0, 11).map((p) => p.id));
 	const pAns = playerResponse(offer, player, ctx.tier, rep, starters.has(player.id) || player.overall >= squadStrength(myRoster));
 	log.player_answer = pAns.status;
+	if (pAns.status === 'recusada' && offer.wage < pAns.demand && offer.kind !== 'emprestimo') log.demand = pAns.demand;
 	if (pAns.status !== 'aceita') {
 		log.message = pAns.reason;
 		st.negotiations = [...st.negotiations, log].slice(-30);
@@ -533,14 +546,15 @@ export function makeOffer(club: ClubState, market: MarketState, ctx: ActionConte
 	const wage = offer.kind === 'emprestimo' ? player.contract.wage : Math.round(offer.wage);
 	const wageShare = Math.max(0.5, Math.min(1, offer.wageShare ?? 1));
 	const myCost = offer.kind === 'emprestimo' ? Math.round(wage * wageShare) : wage;
-	const wages = payroll(myRoster);
+	if (offer.kind === 'livre' && wage > st.balance) throw new ManagementError('Saldo insuficiente para pagar as luvas.');
+	const wages = payroll(myRoster) + (ctx.additionalWages ?? 0);
 	if (!st.wageBudget) st.wageBudget = initialWageBudget(wages, clubEconomy(ctx.clubId, ctx.tier).tvAnnual);
 	if (wages + myCost > st.wageBudget) throw new ManagementError(`A folha passaria do teto mensal da diretoria (${formatMoney(st.wageBudget)}).`);
 	const ledger: LedgerLine[] = [];
 	if (offer.kind === 'emprestimo') {
 		setOverride(mk, player.id, ctx.clubId, player.contract, ctx.gameDate, { from: seller!, until: ctx.season, wageShare });
 	} else {
-		const contract: Contract = { wage, until: ctx.season + Math.max(1, Math.min(5, Math.round(offer.years))) - 1, role: offer.role };
+		const contract: Contract = { wage, since: ctx.gameDate, until: ctx.season + Math.max(1, Math.min(5, Math.round(offer.years))) - 1, role: offer.role };
 		setOverride(mk, player.id, ctx.clubId, contract, ctx.gameDate);
 		if (fee) {
 			st.transferBudget -= fee;
@@ -564,20 +578,43 @@ export function makeOffer(club: ClubState, market: MarketState, ctx: ActionConte
 	};
 }
 
+function incomingLog(offer: IncomingOffer, player: RosterPlayer | undefined, round: number, gameDate: string, status: 'aceita' | 'recusada' | 'expirada', message: string): NegotiationLog {
+	return {
+		id: 'recebida:' + offer.id, season: offer.season, round, gameDate,
+		playerId: offer.playerId, playerName: player?.name, club: offer.club,
+		offer: { playerId: offer.playerId, kind: offer.kind, fee: offer.fee, years: 3, wage: 0, role: 'titular' },
+		club_answer: status === 'aceita' ? 'aceita' : 'recusada', player_answer: null,
+		message, done: status === 'aceita', expired: status === 'expirada'
+	};
+}
+
+export function expireIncoming(club: ClubState, roster: RosterPlayer[], season: number, round: number, gameDate: string): ClubState {
+	const isExpired = (offer: IncomingOffer) => offer.season !== season || offer.expiresRound < round;
+	const expired = club.incoming.filter(isExpired);
+	if (!expired.length) return club;
+	const logs = expired.map((offer) => incomingLog(offer, roster.find((p) => p.id === offer.playerId), round, gameDate, 'expirada', 'O prazo da proposta terminou.'));
+	return { ...club, incoming: club.incoming.filter((offer) => !isExpired(offer)), negotiations: [...club.negotiations, ...logs].slice(-30) };
+}
+
 /** Responder proposta recebida por um atleta do usuário. */
 export function answerIncoming(club: ClubState, market: MarketState, ctx: ActionContext, offerId: string, accept: boolean): ActionResult {
 	const st = structuredClone(club);
 	const mk = structuredClone(market);
 	const inc = st.incoming.find((o) => o.id === offerId);
-	if (!inc) throw new ManagementError('Proposta não encontrada ou expirada.');
+	if (!inc || inc.season !== ctx.season || inc.expiresRound < ctx.round) throw new ManagementError('Proposta não encontrada ou expirada.');
 	st.incoming = st.incoming.filter((o) => o.id !== offerId);
-	if (!accept) return { club: st, market: mk, ledger: [], transfers: [], message: 'Proposta recusada.' };
+	const roster = rosterOf(ctx.roster, ctx.clubId);
+	const player = roster.find((p) => p.id === inc.playerId);
+	if (!accept) {
+		const negotiation = incomingLog(inc, player, ctx.round, ctx.gameDate, 'recusada', 'Proposta recusada.');
+		st.negotiations = [...st.negotiations, negotiation].slice(-30);
+		return { club: st, market: mk, ledger: [], transfers: [], message: negotiation.message, negotiation };
+	}
 	if (!ctx.window) throw new ManagementError('A janela de transferências está fechada.');
-	const player = rosterOf(ctx.roster, ctx.clubId).find((p) => p.id === inc.playerId);
 	if (!player) throw new ManagementError('O atleta não está mais no elenco.');
-	if (rosterOf(ctx.roster, ctx.clubId).length <= 16) throw new ManagementError('O elenco ficaria com menos de 16 atletas.');
+	if (roster.length <= 16) throw new ManagementError('O elenco ficaria com menos de 16 atletas.');
 	const tierBuyer = tierOfDivision(ctx.roster.divisionOf(inc.club));
-	const contract: Contract = { wage: Math.max(player.contract.wage, wageDemand(player, tierBuyer, getClub(inc.club)?.reputation ?? 2, 'titular', 3)), until: ctx.season + 2, role: 'titular' };
+	const contract: Contract = { since: ctx.gameDate, wage: Math.max(player.contract.wage, wageDemand(player, tierBuyer, getClub(inc.club)?.reputation ?? 2, 'titular', 3)), until: ctx.season + 2, role: 'titular' };
 	if (inc.kind === 'emprestimo') setOverride(mk, player.id, inc.club, player.contract, ctx.gameDate, { from: ctx.clubId, until: ctx.season, wageShare: 1 });
 	else setOverride(mk, player.id, inc.club, contract, ctx.gameDate);
 	mk.listed = mk.listed.filter((x) => x !== player.id);
@@ -585,7 +622,10 @@ export function answerIncoming(club: ClubState, market: MarketState, ctx: Action
 	const ledger: LedgerLine[] = inc.fee ? [{ category: 'transferencias', amount: inc.fee, description: `Venda de ${player.name}` }] : [];
 	st.balance += inc.fee;
 	st.transferBudget += Math.round(inc.fee * 0.5); // metade da venda volta ao orçamento
-	return { club: st, market: mk, ledger, transfers: [{ playerId: player.id, playerName: player.name, from: ctx.clubId, to: inc.club, kind: inc.kind === 'emprestimo' ? 'emprestimo' : 'venda', fee: inc.fee, wage: contract.wage }], message: `${player.name} foi negociado com ${getClub(inc.club)?.name ?? inc.club}.` };
+	const message = `${player.name} foi negociado com ${getClub(inc.club)?.name ?? inc.club}.`;
+	const negotiation = incomingLog(inc, player, ctx.round, ctx.gameDate, 'aceita', message);
+	st.negotiations = [...st.negotiations, negotiation].slice(-30);
+	return { club: st, market: mk, ledger, transfers: [{ playerId: player.id, playerName: player.name, from: ctx.clubId, to: inc.club, kind: inc.kind === 'emprestimo' ? 'emprestimo' : 'venda', fee: inc.fee, wage: inc.kind === 'emprestimo' ? player.contract.wage : contract.wage }], message, negotiation };
 }
 
 /** Renovação de contrato com um atleta do elenco. */
@@ -600,10 +640,10 @@ export function renewContract(club: ClubState, market: MarketState, ctx: ActionC
 	if (!Number.isFinite(wage) || wage < 500 || wage > 1e8) throw new ManagementError('Salário inválido.');
 	const demand = wageDemand(p, ctx.tier, getClub(ctx.clubId)?.reputation ?? 3, role, years);
 	if (wage < demand) return { club: st, market: mk, ledger: [], transfers: [], message: `${p.name} pede ${formatMoney(demand)} por mês para renovar.` };
-	const wages = payroll(roster);
+	const wages = payroll(roster) + (ctx.additionalWages ?? 0);
 	if (!st.wageBudget) st.wageBudget = initialWageBudget(wages, clubEconomy(ctx.clubId, ctx.tier).tvAnnual);
 	if (wages - p.contract.wage + wage > st.wageBudget) throw new ManagementError(`A folha passaria do teto (${formatMoney(st.wageBudget)}).`);
-	const contract: Contract = { wage: Math.round(wage), until: ctx.season + years, role };
+	const contract: Contract = { wage: Math.round(wage), since: ctx.gameDate, until: ctx.season + years, role };
 	setOverride(mk, p.id, ctx.clubId, contract, ctx.gameDate);
 	return { club: st, market: mk, ledger: [], transfers: [{ playerId: p.id, playerName: p.name, from: ctx.clubId, to: ctx.clubId, kind: 'renovacao', fee: 0, wage: contract.wage }], message: `${p.name} renovou até ${contract.until}.` };
 }

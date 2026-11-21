@@ -79,11 +79,11 @@ export interface TransferEntry extends TransferRow {
 	gameDate: string;
 }
 
-export async function listTransfers(db: Db, careerId: string, limit = 200): Promise<TransferEntry[]> {
+export async function listTransfers(db: Db, careerId: string, limit = 200, playerId?: string): Promise<TransferEntry[]> {
 	const rows = await db.query<{ season: number; game_date: string; player_id: string; player_name: string; from_club: string | null; to_club: string | null; kind: string; fee: string | number; wage: string | number }>(
 		`SELECT season, game_date::text AS game_date, player_id, player_name, from_club, to_club, kind, fee, wage FROM career_transfers
-		 WHERE career_id = $1 ORDER BY id DESC LIMIT $2`,
-		[careerId, limit]
+		 WHERE career_id = $1 AND ($3::text IS NULL OR player_id = $3) ORDER BY id DESC LIMIT $2`,
+		[careerId, limit, playerId ?? null]
 	);
 	return rows.map((r) => ({ season: r.season, gameDate: r.game_date, playerId: r.player_id, playerName: r.player_name, from: r.from_club, to: r.to_club, kind: r.kind, fee: Number(r.fee), wage: Number(r.wage) }));
 }

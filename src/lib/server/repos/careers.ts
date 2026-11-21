@@ -102,6 +102,16 @@ export async function getCareer(db: Db, profileId: string, id: string): Promise<
 	return rows[0] ? mapCareer(rows[0]) : null;
 }
 
+export async function getCareerForMarket(db: Db, profileId: string, id: string): Promise<Career | null> {
+	if (!isUuid(id)) return null;
+	const columns = COLUMNS.replace('c.data,', `jsonb_build_object(
+		'world', c.data->'world', 'league', c.data->'league', 'cup', c.data->'cup',
+		'rosterCatalog', c.data->'rosterCatalog', 'firstSeason', c.data->'firstSeason',
+		'market', c.data->'market', 'club', c.data->'club') AS data,`);
+	const [row] = await db.query<CareerRow>(`SELECT ${columns} FROM careers c WHERE c.id=$1 AND c.profile_id=$2`, [id, profileId]);
+	return row ? mapCareer(row) : null;
+}
+
 /**
  * Mescla campos em `data` com controle otimista de versão:
  * se outra aba salvou antes, a gravação é recusada em vez de sobrescrever.

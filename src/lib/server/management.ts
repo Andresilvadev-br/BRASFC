@@ -11,6 +11,7 @@ import {
 	dismissYouth,
 	fireScout,
 	generateIncoming,
+	expireIncoming,
 	hireScout,
 	makeOffer,
 	ManagementError,
@@ -28,7 +29,7 @@ import {
 	type LedgerLine,
 	type SeasonEnd
 } from '#lib/domain/management.ts';
-import { aiTransfers, formatMoney, rosterOf, squadNeeds, tierOfDivision, transferWindow, type MarketState, type RosterContext } from '#lib/domain/market.ts';
+import { aiTransfers, findPlayer, formatMoney, rosterOf, squadNeeds, tierOfDivision, transferWindow, type MarketState, type RosterContext } from '#lib/domain/market.ts';
 import { seasonObjectives } from '#lib/domain/club.ts';
 import { jobOffers } from '#lib/domain/careerlife.ts';
 import { squadStrength } from '#lib/domain/squad.ts';
@@ -111,7 +112,7 @@ export function weeklyManagement(o: {
 		const window = transferWindow(step.round);
 		const allClubs = Object.values(league.divisions).flat() as string[];
 		// Propostas recebidas expiram; novas chegam durante a janela.
-		club = { ...club, incoming: club.incoming.filter((x) => x.season === career.season && x.expiresRound >= step.round) };
+		club = expireIncoming(club, roster, career.season, step.round, career.gameDate);
 		if (window && career.mode === 'coach') {
 			const inc = generateIncoming(club, { ...o.roster, market }, career.clubId, allClubs, career.season, step.round, market.listed);
 			if (inc.length) {
@@ -129,7 +130,7 @@ export function weeklyManagement(o: {
 			if (moves.length) {
 				market = structuredClone(market);
 				for (const mv of moves) {
-					market.players[mv.playerId] = { club: mv.to, contract: { wage: mv.wage, until: mv.until, role: 'titular' }, since: career.gameDate };
+					market.players[mv.playerId] = { club: mv.to, contract: { wage: mv.wage, since: career.gameDate, until: mv.until, role: 'titular' }, since: career.gameDate };
 					market.clubCash[mv.from] = (market.clubCash[mv.from] ?? 0) + mv.fee;
 					market.clubCash[mv.to] = (market.clubCash[mv.to] ?? 0) - mv.fee;
 					const name = rosterOf({ ...o.roster, market }, mv.to).find((p) => p.id === mv.playerId)?.name ?? mv.playerId;
@@ -268,7 +269,7 @@ export function applyAction(club: ClubState, market: MarketState, ctx: ActionCon
 			if (!Number.isInteger(years) || years < 1 || years > 5) throw new ManagementError('Duração inválida (1 a 5 temporadas).');
 			const share = kind === 'emprestimo' ? num('wageShare') : 1;
 			if (kind === 'emprestimo' && (!Number.isFinite(share) || share < 0 || share > 1)) throw new ManagementError('Divisão de salário inválida.');
-			return makeOffer(club, market, ctx, { playerId: str('playerId'), fee, kind: kind as 'compra', wage: kind === 'emprestimo' ? 0 : wage, years, role: role as 'titular', wageShare: share });
+			return makeOffer(club, market, ctx, { playerId: str('playerId'), fee, kind: kind as 'compra', wage: kind === 'emprestimo' ? 0 : wage, years, role: role as 'titular', wageShare: share }, /^[a-f0-9-]{36}$/i.test(str('operation')) ? str('operation') : undefined);
 		}
 		case 'responder':
 			return answerIncoming(club, market, ctx, str('offerId'), body.accept === true);
@@ -288,8 +289,11 @@ export function applyAction(club: ClubState, market: MarketState, ctx: ActionCon
 		}
 		case 'observar': {
 			const id = str('playerId');
-			if (!id || id.length > 60) throw new ManagementError('Atleta inválido.');
-			const shortlist = market.shortlist.includes(id) ? market.shortlist.filter((x) => x !== id) : [...market.shortlist, id].slice(-40);
+			if (!id || id.length > 100) throw new ManagementError('Atleta inválido.');
+			const saved = market.shortlist.includes(id);
+			const observe = typeof body.value === 'boolean' ? body.value : !saved;
+			if (observe && !saved && !findPlayer(ctx.roster, id)) throw new ManagementError('Atleta indisponível.');
+			const shortlist = observe ? saved ? market.shortlist : [...market.shortlist, id].slice(-40) : market.shortlist.filter((x) => x !== id);
 			return { ...result(club, 'Lista de observação atualizada.'), market: { ...market, shortlist } };
 		}
 		case 'patrocinio':

@@ -3,6 +3,7 @@ import { careerStart, initialCareerData, validateCreateCareer, type Career, type
 import { DEFAULT_APPEARANCE, isAppearance, type Appearance } from '#lib/domain/appearance.ts';
 import { catalogClub, ROSTER_CATALOG, type RosterCatalogId } from '#lib/data/roster-catalog.ts';
 import { clubLineup, initialClubTactic } from '#lib/domain/club-selection.ts';
+import { clubEconomy } from '#lib/domain/club.ts';
 import { getClub } from '#lib/domain/clubs.ts';
 import { seasonSteps } from '#lib/domain/calendar.ts';
 import { initialCup, clubCupRun, cupView, prepareCup, cupFixtures, phaseOfMatchday, projectedCup, tieOutcome } from '#lib/domain/cup.ts';
@@ -11,7 +12,8 @@ import { DEFAULT_PLAN, applyTrainingWeek, recoverFitness, sanitizePlan } from '#
 import { initialLeague, divisionOf, effectiveRule, divisionStandings, prepareRound, seasonFixtures, closeSeason, seasonStartDate, type DivisionId, type LeagueState, type StoredRoundResult } from '#lib/domain/league.ts';
 import { aiTeam, matchSeed, simulateOtherFixtures } from '#lib/domain/matchday.ts';
 import { currentClubOf, emptyMarket, tierOfDivision, rosterOf, transferWindow, type MarketState } from '#lib/domain/market.ts';
-import { visibleSquadAge } from '#lib/domain/squad.ts';
+import { marketIndex, marketProfile, queryMarket, readMarketFilters } from './market-search.ts';
+import type { MarketProfile } from '#lib/domain/market-search.ts';
 import { hashString } from '#lib/domain/rng.ts';
 import { recoverTactic, sanitizeTactic, type Tactic } from '#lib/domain/tactics.ts';
 import { rosterContext, strengthMemo, clubStateOf } from '#lib/domain/world.ts';
@@ -19,7 +21,7 @@ import { engineFamiliarity, resolveRoles, sanitizeTacticalState, type TacticalSt
 import { sanitizeOffice } from '#lib/domain/office.ts';
 import { scoutCandidates } from '#lib/domain/academy.ts';
 import { staffCandidates, STAFF_ROLES } from '#lib/domain/staff.ts';
-import { closeClubSeason, processWeek, payroll, type ClubState } from '#lib/domain/management.ts';
+import { closeClubSeason, initialWageBudget, processWeek, payroll, type ClubState } from '#lib/domain/management.ts';
 import { playerAttributes, playerState, advancePlayerDays, assessPlayer, recordProgress } from '#lib/domain/player-development.ts';
 import { applyPlayerAction } from './player-actions.ts';
 import { actionContext, applyAction } from './management.ts';
@@ -42,16 +44,18 @@ type Assignment = {
 	ready: boolean; delegated?: boolean; matchDelegated?: boolean; athlete?: CareerData; appearance?: Appearance; notices?: Array<Msg & { id: string; date: string }>; history: Array<{ club: string; role: string; date: string }>;
 };
 type AthleteDeal = { profile: string; offer: string; from: string; to: string; approvals: string[] };
-type Deal = { id: string; from: string; to: string; player: string; fee: number };
-type SettledDeal = Deal & { status: 'aceita' | 'recusada' | 'encerrada'; name: string; date: string };
+type Deal = { id: string; from: string; to: string; player: string; fee: number; proposedAt?: string; expiresRound?: number; counter?: boolean };
+type SettledDeal = Deal & { status: 'aceita' | 'recusada' | 'encerrada' | 'expirada'; name: string; date: string };
 type Replay = RoundReplay;
-type Played = StoredRoundResult & { replay?: Replay; replayVersion?: string; athletes?: Record<string, { stats?: PlayerStats; selection: 'titular' | 'reserva' | 'fora' }>; events?: MatchEvent[] };
+type MarketStat = Pick<PlayerStats, 'minutes' | 'goals' | 'assists' | 'yellow' | 'red'>;
+type MarketTransfer = MarketProfile['transfers'][number] & { playerId: string };
+type Played = StoredRoundResult & { marketStats?: Record<string, MarketStat>; replay?: Replay; replayVersion?: string; athletes?: Record<string, { stats?: PlayerStats; selection: 'titular' | 'reserva' | 'fora' }>; events?: MatchEvent[] };
 type WorldState = {
 	rosterCatalog?: RosterCatalogId;
 	universe?: CareerData['universe']; league: LeagueState; cup: ReturnType<typeof initialCup> | null; date: string; step: number; firstSeason: number;
 	participants: Record<string, Assignment>; tactics: Record<string, Tactic>;
 	plans: Record<string, ReturnType<typeof sanitizePlan>>; mastery?: Record<string, TacticalState>; fitness?: Record<string, Record<string, number>>; clubs: Record<string, ClubState>;
-	market: MarketState; deals: Deal[]; dealHistory?: SettledDeal[]; athleteDeals?: AthleteDeal[]; vacancies: Record<string, string>; allowAbsent: boolean; inviteOpen: boolean;
+	market: MarketState; shortlists?: Record<string, string[]>; marketTransfers?: MarketTransfer[]; deals: Deal[]; dealHistory?: SettledDeal[]; athleteDeals?: AthleteDeal[]; vacancies: Record<string, string>; allowAbsent: boolean; inviteOpen: boolean;
 	last: Played[]; champions: Array<{ season: number; clubs: Record<string, string> }>;
 };
 type RecordRow = { revision: number; state: WorldState };
@@ -68,6 +72,21 @@ function initial(): WorldState {
 
 const schedule = (s: WorldState) => seasonSteps(s.league, s.cup);
 const stepOf = (s: WorldState) => schedule(s)[s.step] ?? null;
+const marketRound = (s: WorldState) => schedule(s).slice(s.step).find((entry) => entry.kind === 'league')?.round ?? 99;
+
+function rememberMarketTransfers(s: WorldState, transfers: MarketTransfer[]) {
+	if (transfers.length) s.marketTransfers = [...(s.marketTransfers ?? []), ...transfers].slice(-600);
+}
+
+function expireDeals(s: WorldState, room: Room, predicate: (deal: Deal) => boolean) {
+	const expired = s.deals.filter(predicate);
+	if (!expired.length) return;
+	s.dealHistory = [...(s.dealHistory ?? []), ...expired.map((deal): SettledDeal => ({
+		...deal, name: roster(room, s, deal.from).find((athlete) => athlete.id === deal.player)?.name ?? deal.player,
+		date: s.date, status: 'expirada'
+	}))].slice(-64);
+	s.deals = s.deals.filter((deal) => !expired.includes(deal));
+}
 const clubList = (s: WorldState) => Object.values(s.league.divisions).flatMap((clubs) => clubs ?? []);
 const athleteId = (member: Assignment) => `human-${member.profile}`;
 function moveAthlete(person: Assignment, club: string, date: string) {
@@ -98,7 +117,7 @@ function context(room: Room, s: WorldState, club: string, person?: Assignment): 
 }
 
 async function results(db: Db, room: Room, season: number, compact = false, steps: string[] | null = null): Promise<Played[]> {
-	const rows = await db.query<{ result: Played }>(`SELECT result - 'replay' ${compact ? "- 'events' - 'athletes'" : ''} AS result FROM room_world_matches WHERE room_id = $1 AND season = $2 AND ($3::text[] IS NULL OR step = ANY($3::text[]))`, [room.id, season, steps]);
+	const rows = await db.query<{ result: Played }>(`SELECT result - 'replay' - 'marketStats' ${compact ? "- 'events' - 'athletes'" : ''} AS result FROM room_world_matches WHERE room_id = $1 AND season = $2 AND ($3::text[] IS NULL OR step = ANY($3::text[]))`, [room.id, season, steps]);
 	return rows.map(({ result }) => typeof result === 'string' ? JSON.parse(result) : result);
 }
 
@@ -156,17 +175,11 @@ export async function worldSnapshot(db: Db, room: Room, profile: string) {
 			replay: Boolean(supportsEngineVersion(replayVersion ?? replay?.version) && current && [match.home, match.away].includes(current.club)),
 			events: current && [match.home, match.away].includes(current.club) ? events : undefined })),
 		allowAbsent: s.allowAbsent, inviteOpen: s.inviteOpen, champions: s.champions, news: s.universe?.news.slice(-5).reverse() ?? [],
+		marketWindow: coach && step ? transferWindow(marketRound(s)) : null,
 		deals: current ? s.deals.filter((d) => current.club === d.from || current.club === d.to).map((d) => ({
 			...d, name: roster(room, s, d.from).find((p) => p.id === d.player)?.name ?? d.player
 		})) : [],
 		dealHistory: current?.role === 'coach' ? (s.dealHistory ?? []).filter((deal) => [deal.from, deal.to].includes(current.club)).slice(-20).reverse() : [],
-		marketRoster: Object.fromEntries(current?.role === 'coach' ? Object.values(s.participants)
-			.filter((m) => m.role === 'coach' && m.club !== current.club)
-			.map((m) => [m.profile, roster(room, s, m.club).filter((p) => !p.id.startsWith('human-'))
-				.map((player) => {
-					const { id, name, position, overall, appearance } = player;
-					return { id, name, position, overall, age: visibleSquadAge(player), appearance };
-				})]) : []),
 		vacancies: s.vacancies[profile] ? [s.vacancies[profile]] : [],
 		roster: squad,
 		tactic, mastery: current && tactic ? s.mastery?.[current.club]?.formations[tactic.formation] : undefined,
@@ -175,7 +188,7 @@ export async function worldSnapshot(db: Db, room: Room, profile: string) {
 			budget: ownClub.transferBudget, wages: payroll(rosterOf(rosterContext({ ...context(room, s, coach.club), mode: 'player' }, s.league), coach.club)) + humanWages(s, coach.club),
 			wageBudget: ownClub.wageBudget, sponsors: ownClub.sponsors, board: ownClub.board, months: ownClub.months.slice(-12),
 			academy: ownClub.academy.map(({ id, name, position, age, overall, plan, appearance }) => ({ id, name, position, age, overall, plan, appearance })),
-			scouts: ownClub.scouts, reports: ownClub.reports, incoming: ownClub.incoming, scoutCandidates: scoutCandidates(seedOf(room), s.league.season),
+			scouts: ownClub.scouts, reports: ownClub.reports, incoming: ownClub.incoming, negotiations: ownClub.negotiations, listed: s.market.listed, scoutCandidates: scoutCandidates(seedOf(room), s.league.season),
 			staffCandidates: Object.fromEntries(STAFF_ROLES.map((role) => [role, staffCandidates(seedOf(room), s.league.season, half, role, tier)])),
 			office: sanitizeOffice(coach.athlete?.office, s.league.season, tier, ownClub.coachReputation)
 		} : null,
@@ -287,7 +300,8 @@ async function advance(tx: Db, room: Room, s: WorldState, run?: RoundRun) {
 		s.league = outcome.next;
 		s.cup = nextCup;
 		s.date = nextDate;
-		s.step = 0; s.deals = []; s.athleteDeals = []; s.last = [];
+		expireDeals(s, room, () => true);
+		s.step = 0; s.athleteDeals = []; s.last = [];
 		return;
 	}
 	const season = s.league.season;
@@ -361,8 +375,12 @@ async function advance(tx: Db, room: Room, s: WorldState, run?: RoundRun) {
 			p.athlete = { ...p.athlete, playerCareer: state };
 			athletes[id] = { stats, selection };
 		}
+		const marketStats = participatingClubs.has(f.home) || participatingClubs.has(f.away)
+			? Object.fromEntries(Object.entries(match.players).filter(([, stats]) => stats.minutes > 0)
+				.map(([id, { minutes, goals, assists, yellow, red }]) => [id, { minutes, goals, assists, yellow, red }]))
+			: undefined;
 		rows.push({ home: f.home, away: f.away, round, competition: f.competition,
-			homeGoals: match.homeGoals, awayGoals: match.awayGoals, athletes, replay,
+			homeGoals: match.homeGoals, awayGoals: match.awayGoals, athletes, replay, marketStats,
 			events: match.events.filter((e) => ['goal', 'goal_disallowed', 'yellow', 'red', 'injury', 'sub'].includes(e.type)).slice(0, 100) });
 		await new Promise<void>((resolve) => setImmediate(resolve));
 	}
@@ -423,9 +441,11 @@ async function advance(tx: Db, room: Room, s: WorldState, run?: RoundRun) {
 		s.universe = office.universe;
 		rememberNotices(person, office.news, step.date, `${season}:${step.key}`);
 	}
-	s.last = rows.map(({ replay, ...row }) => ({ ...row, replayVersion: replay?.version }));
+	s.last = rows.map(({ replay, marketStats: _stats, ...row }) => ({ ...row, replayVersion: replay?.version }));
 	s.date = addDays(step.date, 1);
 	s.step++;
+	const nextRound = marketRound(s);
+	expireDeals(s, room, (deal) => deal.expiresRound !== undefined && deal.expiresRound < nextRound);
 	return { simulationMs, roundWriteMs };
 }
 
@@ -454,6 +474,34 @@ export async function worldClubLineup(db: Db, room: Room, profile: string, club:
 		wageBudget: model.wageBudget,
 		coach: state.universe?.coaches[state.universe.clubs[club]?.coachId ?? '']?.name ?? opening?.coach
 	};
+}
+
+export async function worldMarket(db: Db, room: Room, profileId: string, params: URLSearchParams) {
+	const [row] = await db.query<RecordRow>(`SELECT w.revision,w.state - 'last' - 'universe' - 'plans' - 'mastery' - 'fitness' - 'tactics' AS state
+		FROM room_worlds w JOIN room_members m ON m.room_id=w.room_id
+		WHERE w.room_id=$1 AND m.profile_id=$2`, [room.id, profileId]);
+	if (!row) fail('Mercado indisponível neste universo.', 404);
+	const s = readState(row);
+	const coach = s.participants[profileId];
+	if (coach?.role !== 'coach') fail('O mercado do clube é gerenciado pelo treinador.', 403);
+	const career = context(room, s, coach.club, coach);
+	const ctx = rosterContext({ ...career, mode: 'player' }, s.league);
+	ctx.market.shortlist = s.shortlists?.[coach.club] ?? [];
+	const humans = new Map(Object.values(s.participants).filter((person) => person.role === 'coach').map((person) => [person.club, person.profile]));
+	const index = marketIndex(`world:${room.id}:${coach.club}:${row.revision}`, coach.club, ctx, s.league, clubStateOf(career, s.league), humans, s.cup ? Object.values(s.cup.entrants).flat() : []);
+	const id = params.get('player');
+	if (!id) return queryMarket(index, readMarketFilters(params));
+	const player = marketProfile(index, id);
+	if (!player) fail('Atleta indisponível neste mercado.', 404);
+	const stats = await db.query<{ season: number; games: number; minutes: number; goals: number; assists: number; yellow: number; red: number }>(
+		`SELECT season, count(*)::int AS games, sum((stats->>'minutes')::int)::int AS minutes,
+			sum((stats->>'goals')::int)::int AS goals, sum((stats->>'assists')::int)::int AS assists,
+			sum((stats->>'yellow')::int)::int AS yellow, sum((stats->>'red')::int)::int AS red
+		FROM (SELECT season, result->'marketStats'->$2::text AS stats FROM room_world_matches WHERE room_id=$1) m
+		WHERE stats IS NOT NULL GROUP BY season ORDER BY season DESC`, [room.id, id]);
+	player.stats = stats;
+	player.transfers = (s.marketTransfers ?? []).filter((transfer) => transfer.playerId === id).slice(-30).reverse();
+	return player;
 }
 
 export async function worldReplay(db: Db, room: Room, profile: string, home: string, away: string) {
@@ -548,41 +596,53 @@ export async function applyWorldCommand(db: Db, room: Room, profile: string, bod
 			if (typeof body.target !== 'string' || s.participants[body.target]?.role !== 'assistant' || typeof body.club !== 'string' || !clubList(s).includes(body.club) ||
 				Object.values(s.participants).some((x) => x.role === 'coach' && x.club === body.club)) fail('Vaga indisponível.');
 			s.vacancies[body.target] = body.club;
-		} else if (action === 'deal' || action === 'accept-deal' || action === 'reject-deal') {
+		} else if (action === 'deal' || action === 'accept-deal' || action === 'reject-deal' || action === 'counter-deal') {
 			const coach = managed();
-			const next = stepOf(s);
-			if (!next || !transferWindow(next.kind === 'league' ? next.round : schedule(s).slice(s.step).find((x) => x.kind === 'league')?.round ?? 99)) fail('Janela fechada.');
+			const window = stepOf(s) && transferWindow(marketRound(s));
+			if (!window) fail('Janela fechada.');
+			const validFee = (fee: unknown): fee is number => typeof fee === 'number' && Number.isInteger(fee) && fee >= 0 && fee <= 2e9;
 			if (action === 'deal') {
 				const seller = s.participants[String(body.target)], fee = body.fee, player = body.player;
-				if (!seller || seller.role !== 'coach' || seller.club === coach.club || typeof fee !== 'number' || !Number.isInteger(fee) || fee < 0 || fee > 2e9 ||
-					typeof player !== 'string' || !rosterOf(rosterContext({ ...context(room, s, seller.club), mode: 'player' }, s.league), seller.club).some((a) => a.id === player && !a.loan)) fail('Oferta inválida.');
+				if (!seller || seller.role !== 'coach' || seller.club === coach.club || !validFee(fee) ||
+					typeof player !== 'string' || !rosterOf(rosterContext({ ...context(room, s, seller.club), mode: 'player' }, s.league), seller.club).some((a) => a.id === player && !a.loan && !a.pending)) fail('Oferta inválida.');
 				if (s.deals.length >= 32 || s.deals.some((d) => d.to === coach.club && d.player === player)) fail('Já existe proposta ou o limite foi atingido.');
-				s.deals.push({ id: op, from: seller.club, to: coach.club, fee, player });
+				s.deals.push({ id: op, from: seller.club, to: coach.club, fee, player, proposedAt: s.date, expiresRound: window === 'pre-temporada' ? 8 : 27 });
 			} else {
-				const deal = s.deals.find((x) => x.id === body.id && x.from === coach.club);
+				const deal = s.deals.find((item) => item.id === body.id && (item.counter ? item.to : item.from) === coach.club);
 				if (!deal) fail('Proposta indisponível.', 409);
-				if (action === 'accept-deal') {
-					const buyer = clubStateOf(context(room, s, deal.to), s.league), seller = clubStateOf(context(room, s, deal.from), s.league);
-					const target = rosterOf(rosterContext({ ...context(room, s, deal.from), mode: 'player' }, s.league), deal.from).find((x) => x.id === deal.player && !x.loan);
-					const buyers = rosterOf(rosterContext({ ...context(room, s, deal.to), mode: 'player' }, s.league), deal.to);
-					if (target && (buyers.length >= 34 || (buyer.wageBudget > 0 && payroll(buyers) + humanWages(s, deal.to) + target.contract.wage > buyer.wageBudget))) fail('O comprador excederia o limite de elenco ou folha.', 409);
-					if (!target || buyer.balance < deal.fee || buyer.transferBudget < deal.fee) fail('Atleta ou orçamento indisponível.', 409);
-					s.clubs[deal.to] = { ...buyer, balance: buyer.balance - deal.fee, transferBudget: buyer.transferBudget - deal.fee };
-					s.clubs[deal.from] = { ...seller, balance: seller.balance + deal.fee };
-					s.market.players[deal.player] = { club: deal.to, since: s.date, contract: target.contract };
+				if (action === 'counter-deal') {
+					if (deal.counter || !validFee(body.fee)) fail('Contraproposta inválida.');
+					deal.fee = body.fee;
+					deal.counter = true;
+				} else {
+					const accepted = action === 'accept-deal';
+					if (accepted) {
+						const buyer = clubStateOf(context(room, s, deal.to), s.league), seller = clubStateOf(context(room, s, deal.from), s.league);
+						const target = rosterOf(rosterContext({ ...context(room, s, deal.from), mode: 'player' }, s.league), deal.from).find((x) => x.id === deal.player && !x.loan);
+						const buyers = rosterOf(rosterContext({ ...context(room, s, deal.to), mode: 'player' }, s.league), deal.to);
+						const wages = payroll(buyers) + humanWages(s, deal.to);
+						const limit = buyer.wageBudget || initialWageBudget(wages, clubEconomy(deal.to, tierOfDivision(divisionOf(s.league, deal.to))).tvAnnual);
+						if (target && (buyers.length >= 34 || wages + target.contract.wage > limit)) fail('O comprador excederia o limite de elenco ou folha.', 409);
+						if (!target || buyer.balance < deal.fee || buyer.transferBudget < deal.fee) fail('Atleta ou orçamento indisponível.', 409);
+						s.clubs[deal.to] = { ...buyer, balance: buyer.balance - deal.fee, transferBudget: buyer.transferBudget - deal.fee, wageBudget: limit };
+						s.clubs[deal.from] = { ...seller, balance: seller.balance + deal.fee, transferBudget: seller.transferBudget + Math.round(deal.fee / 2) };
+						s.market.players[deal.player] = { club: deal.to, since: s.date, contract: target.contract };
+						s.market.listed = s.market.listed.filter((id) => id !== deal.player);
+						rememberMarketTransfers(s, [{ playerId: deal.player, from: deal.from, to: deal.to, fee: deal.fee, kind: 'compra', gameDate: s.date }]);
+					}
+					const closed = s.deals.filter((item) => accepted ? item.player === deal.player : item.id === deal.id);
+					const name = roster(room, s, accepted ? deal.to : deal.from).find((p) => p.id === deal.player)?.name ?? deal.player;
+					s.dealHistory = [...(s.dealHistory ?? []), ...closed.map((item): SettledDeal => ({
+						...item, name, date: s.date, status: item.id === deal.id ? accepted ? 'aceita' : 'recusada' : 'encerrada'
+					}))].slice(-64);
+					s.deals = s.deals.filter((item) => !closed.includes(item));
 				}
-				const closed = s.deals.filter((item) => action === 'accept-deal' ? item.player === deal.player : item.id === deal.id);
-				const name = roster(room, s, action === 'accept-deal' ? deal.to : deal.from).find((p) => p.id === deal.player)?.name ?? deal.player;
-				s.dealHistory = [...(s.dealHistory ?? []), ...closed.map((item): SettledDeal => ({
-					...item, name, date: s.date, status: item.id === deal.id ? action === 'accept-deal' ? 'aceita' : 'recusada' : 'encerrada'
-				}))].slice(-64);
-				s.deals = s.deals.filter((item) => !closed.includes(item));
 			}
 		} else if (action === 'club') {
 			const coach = managed(), c = context(room, s, coach.club, coach);
 			const plan = careerView(c, await results(tx, room, s.league.season, true));
 			const club = clubStateOf(c, s.league);
-			const ctx = actionContext(c, s.league, rosterContext({ ...c, mode: 'player' }, s.league), plan.nextRound);
+			const ctx = { ...actionContext(c, s.league, rosterContext({ ...c, mode: 'player' }, s.league), plan.nextRound), additionalWages: humanWages(s, coach.club) };
 			const request = body.request;
 			if (!request || typeof request !== 'object' || Array.isArray(request)) fail('Ação do clube inválida.');
 			const change = request as Record<string, unknown>;
@@ -596,9 +656,12 @@ export async function applyWorldCommand(db: Db, room: Room, profile: string, bod
 				s.clubs[coach.club] = updated.club;
 				coach.athlete = { ...coach.athlete, office: updated.office };
 			} else {
-				const updated = applyAction(club, s.market, ctx, change);
-				s.market = updated.market;
+				const shortlist = s.shortlists?.[coach.club] ?? [];
+				const updated = applyAction(club, { ...s.market, shortlist }, ctx, change);
+				(s.shortlists ??= {})[coach.club] = updated.market.shortlist;
+				s.market = { ...updated.market, shortlist: s.market.shortlist };
 				s.clubs[coach.club] = updated.club;
+				rememberMarketTransfers(s, updated.transfers.map(({ playerId, from, to, kind, fee }) => ({ playerId, from, to, kind, fee, gameDate: s.date })));
 			}
 			coach.ready = false;
 		} else if (action === 'approve-athlete' || action === 'reject-athlete') {

@@ -1,5 +1,12 @@
 # Novidades
 
+## 0.8.5 — Mercado de transferências
+
+- Pesquisa paginada por atleta, clube e nacionalidade com filtros combináveis em todo o universo.
+- Fichas e comparação com estimativas de observação identificadas e histórico registrado.
+- Central de negociações com retomada de contrapropostas, decisões entre treinadores e montagem responsiva.
+- Migração aditiva de índice. O instalador Windows passa para 1.4.5.
+
 ## 0.8.4 — Seleção de clubes e elencos de abertura
 
 - Seleção responsiva das Séries A, B, C e D com setas, busca por clube, campo, banco e elenco.

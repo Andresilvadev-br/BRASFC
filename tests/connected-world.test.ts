@@ -4,7 +4,7 @@ import { createPgliteDb, createPostgresDb, type Db } from '#lib/server/db/index.
 import { runMigrations } from '#lib/server/db/migrate.ts';
 import { createGuestProfile } from '#lib/server/repos/profiles.ts';
 import { createRoom, getRoomByCode, joinRoom, leaveRoom } from '#lib/server/repos/rooms.ts';
-import { applyWorldCommand, worldClubLineup, worldReplay, worldSnapshot } from '#lib/server/connected-world.ts';
+import { applyWorldCommand, worldClubLineup, worldMarket, worldReplay, worldSnapshot } from '#lib/server/connected-world.ts';
 import { clubLineup } from '#lib/domain/club-selection.ts';
 import { catalogClub, ROSTER_CATALOG } from '#lib/data/roster-catalog.ts';
 import { DEFAULT_APPEARANCE } from '#lib/domain/appearance.ts';
@@ -43,9 +43,11 @@ describe('universo compartilhado', () => {
 		const opponent = (await get(owner)).fixture!;
 		const second = opponent.home === first ? opponent.away : opponent.home;
 		await command(rival, 'assign', { role: 'coach', club: second });
-	const flamengoMarket = (await get(rival)).marketRoster[owner];
-	expect(flamengoMarket.length).toBeGreaterThan(11);
-	expect(flamengoMarket.every((player) => player.age === null)).toBe(true);
+		const flamengoMarket = await worldMarket(db, room, rival, new URLSearchParams('club=flamengo'));
+		if (!('rows' in flamengoMarket)) throw new Error('Pesquisa indisponível');
+		expect(flamengoMarket.total).toBeGreaterThan(11);
+		expect(flamengoMarket.rows.every((player) => player.age === null)).toBe(true);
+		await expect(worldMarket(db, room, outsider, new URLSearchParams())).rejects.toMatchObject({ status: 404 });
 		await command(assistant, 'assign', { role: 'assistant', club: first });
 		const tactic = { ...(await get(owner)).tactic!, mentality: 'ofensiva' };
 		await expect(command(assistant, 'tactic', { tactic })).rejects.toMatchObject({ status: 403 });
@@ -72,11 +74,30 @@ describe('universo compartilhado', () => {
 		expect((await get(player)).roster.filter((p) => p.id.startsWith('human-'))).toHaveLength(2);
 		await command(player, 'jogador-treinar', { focus: 'finalizacao', date: '2026-01-12' });
 		expect((await get(player)).current?.athlete?.playerCareer?.daily.drills).toHaveLength(1);
-		const talent = (await get(owner)).marketRoster[rival][0];
+		const search = await worldMarket(db, room, owner, new URLSearchParams({ club: second }));
+		if (!('rows' in search)) throw new Error('Pesquisa indisponível');
+		const talent = search.rows[0];
+		const details = await worldMarket(db, room, owner, new URLSearchParams({ player: talent.id }));
+		expect(details).toMatchObject({ id: talent.id, humanSeller: rival, isMine: false });
+		await command(owner, 'club', { request: { action: 'observar', playerId: talent.id, value: true } });
+		expect(await worldMarket(db, room, owner, new URLSearchParams('observed=true'))).toMatchObject({ total: 1 });
+		expect(await worldMarket(db, room, rival, new URLSearchParams('observed=true'))).toMatchObject({ total: 0 });
 		await command(owner, 'deal', { target: rival, fee: 1000, player: talent.id });
+		await expect(command(owner, 'deal', { target: rival, fee: 1000, player: talent.id })).rejects.toMatchObject({ status: 422 });
 		const deal = (await get(rival)).deals[0];
 		await expect(command(owner, 'accept-deal', { id: deal.id })).rejects.toMatchObject({ status: 409 });
-		await command(rival, 'accept-deal', { id: deal.id });
+		await command(rival, 'counter-deal', { id: deal.id, fee: 2500 });
+		await expect(command(rival, 'accept-deal', { id: deal.id })).rejects.toMatchObject({ status: 409 });
+		const buyerBefore = await get(owner);
+		const sellerBefore = await get(rival);
+		const approval = { action: 'accept-deal', id: deal.id, op: randomUUID(), revision: buyerBefore.revision };
+		const attempts = await Promise.all([applyWorldCommand(db, room, owner, approval), applyWorldCommand(db, room, owner, approval)]);
+		expect(attempts.filter((item) => item.duplicate)).toHaveLength(1);
+		expect((await get(owner)).management?.budget).toBe(buyerBefore.management!.budget - 2500);
+		expect((await get(rival)).management?.budget).toBe(sellerBefore.management!.budget + 1250);
+		expect(await worldMarket(db, room, owner, new URLSearchParams({ player: talent.id }))).toMatchObject({
+			club: first, isMine: true, transfers: [{ from: second, to: first, fee: 2500 }]
+		});
 		expect((await get(owner)).roster.some((p) => p.id === talent.id)).toBe(true);
 		expect((await get(rival)).roster.some((p) => p.id === talent.id)).toBe(false);
 		expect((await get(rival)).dealHistory.find((entry) => entry.id === deal.id)?.status).toBe('aceita');
