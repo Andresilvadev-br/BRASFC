@@ -1,6 +1,6 @@
 <script lang="ts">
 	import CareerModeCards from '#lib/ui/career/CareerModeCards.svelte';
-	import { goto, invalidate, replaceState } from '$app/navigation';
+	import { goto, invalidate } from '$app/navigation';
 	import { onMount, tick } from 'svelte';
 	import { page } from '$app/state';
 	import { api } from '#lib/api.ts';
@@ -117,8 +117,7 @@
 		const { room } = await api<{ room: { code: string } }>(existing ? `/api/rooms/${existing.code}` : '/api/rooms',
 			{ method: existing ? 'PATCH' : 'POST', body });
 		try { sessionStorage.removeItem(draftId); } catch { /* o rascunho é opcional */ }
-		await invalidate('app:rooms').catch(() => {});
-		replaceState(`/multiplayer?aba=criar&modo=${mode}&liga=${room.code}`, page.state);
+		await goto(`/multiplayer?aba=criar&modo=${mode}&liga=${room.code}`, { replace: true, refreshAll: true, reset: false });
 		await goto(`/multiplayer/sala/${room.code}`);
 	}
 	async function join() {

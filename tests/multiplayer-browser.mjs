@@ -132,6 +132,14 @@ try {
 	assert.equal(await teammate.getByLabel('Código da liga').count(),0);
 	assert.deepEqual(errors, []);
 	console.log('Fluxos de treinador e atleta validados em Chromium com convites, retorno, recarga e quatro larguras.');
+} catch (error) {
+	for (const [index, context] of contexts.entries()) {
+		for (const page of context.pages()) {
+			console.error('Navegação final', page.url());
+			await page.screenshot({ path:`${output}/erro-${index}.png`, fullPage:true }).catch(() => {});
+		}
+	}
+	throw error;
 } finally {
 	await Promise.all(contexts.map((context) => context.close()));
 	await browser.close();
