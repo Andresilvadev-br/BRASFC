@@ -11,7 +11,7 @@ import { addDays } from '#lib/domain/dates.ts';
 import { DEFAULT_PLAN, applyTrainingWeek, recoverFitness, sanitizePlan } from '#lib/domain/drills.ts';
 import { initialLeague, divisionOf, effectiveRule, divisionStandings, prepareRound, seasonFixtures, closeSeason, seasonStartDate, type DivisionId, type LeagueState, type StoredRoundResult } from '#lib/domain/league.ts';
 import { aiTeam, matchSeed, simulateOtherFixtures } from '#lib/domain/matchday.ts';
-import { currentClubOf, emptyMarket, tierOfDivision, rosterOf, transferWindow, type MarketState } from '#lib/domain/market.ts';
+import { currentClubOf, emptyMarket, tierOfDivision, rosterOf, transferWindow, ROLE_LABELS, type ContractRole, type MarketState } from '#lib/domain/market.ts';
 import { marketIndex, marketProfile, queryMarket, readMarketFilters } from './market-search.ts';
 import type { MarketProfile } from '#lib/domain/market-search.ts';
 import { hashString } from '#lib/domain/rng.ts';
@@ -21,7 +21,7 @@ import { engineFamiliarity, resolveRoles, sanitizeTacticalState, type TacticalSt
 import { sanitizeOffice } from '#lib/domain/office.ts';
 import { scoutCandidates } from '#lib/domain/academy.ts';
 import { staffCandidates, STAFF_ROLES } from '#lib/domain/staff.ts';
-import { closeClubSeason, initialWageBudget, processWeek, payroll, type ClubState } from '#lib/domain/management.ts';
+import { closeClubSeason, initialWageBudget, makeOffer, processWeek, payroll, type ClubState } from '#lib/domain/management.ts';
 import { playerAttributes, playerState, advancePlayerDays, assessPlayer, recordProgress } from '#lib/domain/player-development.ts';
 import { applyPlayerAction } from './player-actions.ts';
 import { actionContext, applyAction } from './management.ts';
@@ -41,10 +41,10 @@ import { listMembers, RoomError, type Room } from './repos/rooms.ts';
 
 type Assignment = {
 	profile: string; name: string; club: string; role: 'coach' | 'assistant' | 'player';
-	ready: boolean; delegated?: boolean; matchDelegated?: boolean; athlete?: CareerData; appearance?: Appearance; notices?: Array<Msg & { id: string; date: string }>; history: Array<{ club: string; role: string; date: string }>;
+	ready: boolean; delegated?: boolean; matchDelegated?: boolean; lineupDelegated?: boolean; athlete?: CareerData; appearance?: Appearance; notices?: Array<Msg & { id: string; date: string }>; history: Array<{ club: string; role: string; date: string }>;
 };
 type AthleteDeal = { profile: string; offer: string; from: string; to: string; approvals: string[] };
-type Deal = { id: string; from: string; to: string; player: string; fee: number; proposedAt?: string; expiresRound?: number; counter?: boolean };
+type Deal = { id: string; from: string; to: string; player: string; fee: number; proposedAt?: string; expiresRound?: number; counter?: boolean; agreement?: boolean; contractMessage?: string };
 type SettledDeal = Deal & { status: 'aceita' | 'recusada' | 'encerrada' | 'expirada'; name: string; date: string };
 type Replay = RoundReplay;
 type MarketStat = Pick<PlayerStats, 'minutes' | 'goals' | 'assists' | 'yellow' | 'red'>;
@@ -160,13 +160,18 @@ export async function worldSnapshot(db: Db, room: Room, profile: string) {
 	const coach = current?.role === 'coach' ? current : null;
 	const tier = tierOfDivision(division);
 	const half = (schedule(s).slice(s.step).find((entry) => entry.kind === 'league')?.round ?? 38) <= 19 ? 1 : 2;
-	const [live] = await db.query('SELECT 1 FROM room_live_rounds WHERE room_id=$1', [room.id]);
-	return { live: !!live, revision: Number(row?.revision ?? 0), ownerId: room.ownerId, season: s.league.season, date: s.date, rosterCatalog: s.rosterCatalog,
+	const [[live], reservations] = await Promise.all([
+		db.query('SELECT 1 FROM room_live_rounds WHERE room_id=$1', [room.id]),
+		db.query<{ club: string; role: 'coach' | 'assistant'; mine: boolean }>(
+			"SELECT club,role,recipient=$2 AS mine FROM room_invitations WHERE room_id=$1 AND club IS NOT NULL AND status='pending' AND expires_at>now()",
+			[room.id, profile])
+	]);
+	return { reservations, entryMode: room.entryMode, started: room.started ?? true, assistantsRequired: room.assistantsRequired ?? true, live: !!live, revision: Number(row?.revision ?? 0), ownerId: room.ownerId, season: s.league.season, date: s.date, rosterCatalog: s.rosterCatalog,
 		next: step, fixture: current && step ? fixtures.find((f) => f.competition === (step.kind === 'cup' ? 'copa-do-brasil' : f.competition)
 			&& (step.kind === 'cup' || f.competition !== 'copa-do-brasil') && f.round === (step.kind === 'league' ? step.round : step.matchday)
 			&& [f.home, f.away].includes(current.club)) : null,
 		members: members.map((m) => { const p = s.participants[m.profileId]; return {
-			...m, assignment: p ? { club: p.club, role: p.role, ready: p.ready, delegated: p.delegated, matchDelegated: p.matchDelegated, appearance: p.appearance ?? p.athlete?.appearance } : null }; }),
+			...m, assignment: p ? { club: p.club, role: p.role, ready: p.ready, delegated: p.delegated, matchDelegated: p.matchDelegated, lineupDelegated: p.lineupDelegated ?? p.matchDelegated, appearance: p.appearance ?? p.athlete?.appearance } : null }; }),
 		clubs: Object.entries(s.league.divisions).flatMap(([division, ids]) =>
 			ids.map((id) => ({ id, name: getClub(id)?.name ?? id, division: division as DivisionId }))),
 		current, standings: division ? divisionStandings(s.league, division, past) : [],
@@ -483,7 +488,7 @@ export async function worldMarket(db: Db, room: Room, profileId: string, params:
 	if (!row) fail('Mercado indisponível neste universo.', 404);
 	const s = readState(row);
 	const coach = s.participants[profileId];
-	if (coach?.role !== 'coach') fail('O mercado do clube é gerenciado pelo treinador.', 403);
+	if (!coach || coach.role === 'player') fail('A busca de atletas é exclusiva da comissão técnica.', 403);
 	const career = context(room, s, coach.club, coach);
 	const ctx = rosterContext({ ...career, mode: 'player' }, s.league);
 	ctx.market.shortlist = s.shortlists?.[coach.club] ?? [];
@@ -523,7 +528,7 @@ export async function applyWorldCommand(db: Db, room: Room, profile: string, bod
 	const op = body.op;
 	if (typeof op !== 'string' || !isUuid(op) || !Number.isInteger(body.revision)) fail('Comando ou revisão inválida.', 400);
 	return db.transaction(async (tx) => {
-		const [identity] = await tx.query<{ owner_id: string; status: string }>('SELECT owner_id, status FROM rooms WHERE id = $1 FOR UPDATE', [room.id]);
+		const [identity] = await tx.query<{ owner_id: string; status: string; started: boolean; entry_mode: string; assistants_required: boolean }>('SELECT owner_id, status, started, entry_mode, assistants_required FROM rooms WHERE id = $1 FOR UPDATE', [room.id]);
 		const members = await listMembers(tx, room.id);
 		const member = members.find((m) => m.profileId === profile);
 		if (!identity || !member) fail('Universo não encontrado.', 404);
@@ -543,10 +548,17 @@ export async function applyWorldCommand(db: Db, room: Room, profile: string, bod
 		const managed = () => { if (!p || p.role !== 'coach') fail('Apenas o treinador principal pode realizar esta ação.', 403); return p; };
 		if (action === 'assign') {
 			const role = body.role, club = body.club;
+			if (owner && !p && identity.entry_mode !== 'mixed' && role !== identity.entry_mode) fail('A função do criador deve seguir o modo escolhido.');
 			if (role !== 'coach' && role !== 'assistant' && role !== 'player') fail('Escolha uma função.');
 			if (typeof club !== 'string' || !clubList(s).includes(club)) fail('Escolha um clube da temporada.');
 			if (p?.role === 'player') fail('Um atleta muda de clube pelo mercado.');
 			if (p && role === 'player') fail('Este participante já tem uma carreira técnica.');
+			if (role !== 'player') {
+				const [reserved] = await tx.query<{ recipient: string }>(`SELECT recipient FROM room_invitations
+					WHERE room_id=$1 AND club=$2 AND role=$3 AND status='pending' AND expires_at>now()`, [room.id, club, role]);
+				if (reserved && reserved.recipient !== profile) fail('A vaga está reservada para outro participante.', 409);
+				if (identity.entry_mode !== 'mixed' && role === 'assistant' && !reserved && (p?.role !== 'assistant' || p.club !== club)) fail('O treinador precisa convidar você para a comissão.', 403);
+			}
 			if (role !== 'player' && Object.values(s.participants).some((x) => x.profile !== profile && x.role === role && x.club === club)) fail('Esta função já está ocupada.', 409);
 			if (role === 'assistant' && !Object.values(s.participants).some((x) => x.role === 'coach' && x.club === club && x.profile !== profile)) fail('Escolha um clube com treinador humano.');
 			if (p?.role === 'assistant' && role === 'coach' && s.vacancies[profile] !== club) fail('Aceite uma proposta para assumir outro clube.');
@@ -573,7 +585,7 @@ export async function applyWorldCommand(db: Db, room: Room, profile: string, bod
 			p.ready = body.value;
 		} else if (action === 'tactic') {
 			const coach = Object.values(s.participants).find((person) => person.club === p?.club && person.role === 'coach');
-			if (!p || !coach || (p.role !== 'coach' && !(p.role === 'assistant' && p.matchDelegated))) {
+			if (!p || !coach || (p.role !== 'coach' && !(p.role === 'assistant' && (p.lineupDelegated ?? p.matchDelegated)))) {
 				fail('É necessária autorização para alterar a tática do clube.', 403);
 			}
 			const tactic = sanitizeTactic(body.tactic, roster(room, s, p.club));
@@ -590,13 +602,14 @@ export async function applyWorldCommand(db: Db, room: Room, profile: string, bod
 			const coach = managed(), assistant = typeof body.target === 'string' ? s.participants[body.target] : null;
 			if (!assistant || assistant.role !== 'assistant' || assistant.club !== coach.club || typeof body.value !== 'boolean') fail('Auxiliar inválido.');
 			if (body.area === 'match') assistant.matchDelegated = body.value;
+			else if (body.area === 'lineup') assistant.lineupDelegated = body.value;
 			else assistant.delegated = body.value;
 		} else if (action === 'vacancy') {
 			if (!owner) fail('Apenas o administrador pode oferecer uma vaga.', 403);
 			if (typeof body.target !== 'string' || s.participants[body.target]?.role !== 'assistant' || typeof body.club !== 'string' || !clubList(s).includes(body.club) ||
 				Object.values(s.participants).some((x) => x.role === 'coach' && x.club === body.club)) fail('Vaga indisponível.');
 			s.vacancies[body.target] = body.club;
-		} else if (action === 'deal' || action === 'accept-deal' || action === 'reject-deal' || action === 'counter-deal') {
+		} else if (action === 'deal' || action === 'accept-deal' || action === 'reject-deal' || action === 'counter-deal' || action === 'contract-deal') {
 			const coach = managed();
 			const window = stepOf(s) && transferWindow(marketRound(s));
 			if (!window) fail('Janela fechada.');
@@ -608,9 +621,32 @@ export async function applyWorldCommand(db: Db, room: Room, profile: string, bod
 				if (s.deals.length >= 32 || s.deals.some((d) => d.to === coach.club && d.player === player)) fail('Já existe proposta ou o limite foi atingido.');
 				s.deals.push({ id: op, from: seller.club, to: coach.club, fee, player, proposedAt: s.date, expiresRound: window === 'pre-temporada' ? 8 : 27 });
 			} else {
-				const deal = s.deals.find((item) => item.id === body.id && (item.counter ? item.to : item.from) === coach.club);
-				if (!deal) fail('Proposta indisponível.', 409);
-				if (action === 'counter-deal') {
+				const deal = s.deals.find((item) => item.id === body.id && (item.agreement ? item.to : item.counter ? item.to : item.from) === coach.club);
+				if (!deal || (deal.agreement && action !== 'contract-deal' && action !== 'reject-deal')) fail('Proposta indisponível.', 409);
+				if (action === 'contract-deal') {
+					if (!deal.agreement || !Object.values(s.participants).some((person) => person.role === 'coach' && person.club === deal.from)) fail('Acordo entre clubes indisponível.', 409);
+					const { wage, years, role } = body;
+					if (typeof wage !== 'number' || !Number.isInteger(wage) || wage < 500 || wage > 1e8 ||
+						typeof years !== 'number' || !Number.isInteger(years) || years < 1 || years > 5 ||
+						typeof role !== 'string' || !Object.hasOwn(ROLE_LABELS, role)) fail('Informe salário, duração e papel válidos.');
+					const buyer = context(room, s, deal.to), seller = clubStateOf(context(room, s, deal.from), s.league);
+					const ctx = { ...actionContext(buyer, s.league, rosterContext({ ...buyer, mode: 'player' }, s.league), marketRound(s)), additionalWages: humanWages(s, deal.to) };
+					const offer = makeOffer(clubStateOf(buyer, s.league), s.market, ctx,
+						{ playerId: deal.player, kind: 'compra', fee: deal.fee, wage, years, role: role as ContractRole }, op, deal.from);
+					if (!offer.negotiation?.done) deal.contractMessage = offer.message;
+					else {
+						s.clubs[deal.to] = { ...offer.club, negotiations: offer.club.negotiations.filter((entry) => entry.op !== op) };
+						s.clubs[deal.from] = { ...seller, balance: seller.balance + deal.fee, transferBudget: seller.transferBudget + Math.round(deal.fee / 2) };
+						s.market = offer.market;
+						s.market.listed = s.market.listed.filter((player) => player !== deal.player);
+						rememberMarketTransfers(s, [{ playerId: deal.player, from: deal.from, to: deal.to, fee: deal.fee, kind: 'compra', gameDate: s.date }]);
+						expireDeals(s, room, (other) => other.id !== deal.id && other.player === deal.player);
+						s.deals = s.deals.filter((other) => other.id !== deal.id);
+						s.dealHistory = [...(s.dealHistory ?? []), { ...deal, name: offer.negotiation.playerName ?? deal.player, date: s.date, status: 'aceita' as const }].slice(-64);
+					}
+				} else if (action === 'accept-deal' && identity.entry_mode !== 'mixed') {
+					deal.agreement = true;
+				} else if (action === 'counter-deal') {
 					if (deal.counter || !validFee(body.fee)) fail('Contraproposta inválida.');
 					deal.fee = body.fee;
 					deal.counter = true;
@@ -706,8 +742,13 @@ export async function applyWorldCommand(db: Db, room: Room, profile: string, bod
 			p.ready = false;
 		} else {
 			if (!owner) fail('Ação exclusiva do administrador.', 403);
-			if (action === 'advance') {
-				if (connection) timing = await beginLiveRound(tx, room, s, connection);
+			if (action === 'start') {
+				if (identity.started) fail('Esta liga já começou.', 409);
+				if (!p || members.some((m) => !s.participants[m.profileId])) fail('Todos os membros devem escolher seu clube e sua função.', 409);
+				await tx.query('UPDATE rooms SET started=true WHERE id=$1', [room.id]);
+			} else if (action === 'advance') {
+				if (!identity.started) fail('Inicie a temporada no lobby.', 409);
+				if (connection) timing = await beginLiveRound(tx, room, s, connection, identity.assistants_required);
 				else timing = await advance(tx, room, s);
 			}
 			else if (action === 'settings') {
@@ -725,12 +766,12 @@ export async function applyWorldCommand(db: Db, room: Room, profile: string, bod
 				}
 			} else fail('Ação desconhecida.', 400);
 		}
-		if (connection && ['assign', 'tactic', 'training', 'club', 'accept-deal', 'approve-athlete', 'jogador-renovar', 'jogador-aceitar', 'jogador-treinar', 'jogador-cancelar-treino'].includes(String(action))) {
+		if (connection && ['assign', 'tactic', 'training', 'club', 'accept-deal', 'contract-deal', 'approve-athlete', 'jogador-renovar', 'jogador-aceitar', 'jogador-treinar', 'jogador-cancelar-treino'].includes(String(action))) {
 			// Conservatively require a new collective confirmation after a match-relevant change.
 			for (const participant of Object.values(s.participants)) participant.ready = false;
 		}
-		if (connection && action === 'ready' && body.value === true && stepOf(s) && allReady(s, connection.online())) {
-			await beginLiveRound(tx, room, s, connection);
+		if (connection && action === 'ready' && body.value === true && identity.started && stepOf(s) && allReady(s, connection.online(), identity.assistants_required)) {
+			await beginLiveRound(tx, room, s, connection, identity.assistants_required);
 		}
 		if (!row) await tx.query('INSERT INTO room_worlds (room_id,revision,state) VALUES ($1,$2,$3::jsonb)', [room.id, revision + 1, JSON.stringify(s)]);
 		else await tx.query('UPDATE room_worlds SET revision=$2,state=$3::jsonb WHERE room_id=$1', [room.id, revision + 1, JSON.stringify(s)]);
@@ -739,19 +780,22 @@ export async function applyWorldCommand(db: Db, room: Room, profile: string, bod
 	});
 }
 
-function allReady(state: WorldState, online: ReadonlySet<string>) {
-	const members = Object.values(state.participants);
+function requiredForRound(state: WorldState, assistantsRequired: boolean) {
+	return Object.values(state.participants).filter((member) => member.role !== 'assistant' || assistantsRequired);
+}
+function allReady(state: WorldState, online: ReadonlySet<string>, assistantsRequired: boolean) {
+	const members = requiredForRound(state, assistantsRequired);
 	return members.length > 0 && members.every((p) => p.ready && online.has(p.profile));
 }
 
-async function beginLiveRound(tx: Db, room: Room, s: WorldState, connection: RoundConnection) {
-	if (!allReady(s, connection.online())) fail('Todos os participantes precisam estar online e prontos.', 409);
+async function beginLiveRound(tx: Db, room: Room, s: WorldState, connection: RoundConnection, assistantsRequired: boolean) {
+	if (!allReady(s, connection.online(), assistantsRequired)) fail('Todos os participantes precisam estar online e prontos.', 409);
 	const step = stepOf(s);
 	if (!step) return advance(tx, room, s);
 	const fixtures: LiveFixture[] = [];
 	await advance(tx, room, structuredClone(s), { prepare: fixtures });
 	const round = step.kind === 'cup' ? step.matchday : step.round;
-	const required = Object.keys(s.participants);
+	const required = requiredForRound(s, assistantsRequired).map((person) => person.profile);
 	const session = startRound(randomUUID(), s.league.season, step.key, round, step.date, fixtures, required, (connection.now ?? Date.now)());
 	await tx.query('INSERT INTO room_live_rounds (room_id,session_id,state,fixtures) VALUES ($1,$2,$3::jsonb,$4::jsonb)', [
 		room.id, session.id, JSON.stringify(checkpoint(session)), JSON.stringify(fixtures)
@@ -818,7 +862,7 @@ export async function updateLiveRound(db: Db, room: Room, profile: string, body:
 			"SELECT state->'participants' AS participants FROM room_worlds WHERE room_id=$1", [room.id]);
 		connection.timing?.('read', performance.now() - readStarted);
 		const player = participants[profile];
-		if (!player || !round.required.includes(profile)) fail('Você não participa desta rodada.', 403);
+		if (!player) fail('Você não participa desta rodada.', 403);
 		const online = connection.online();
 		const now = (connection.now ?? Date.now)();
 		const action = body.action;

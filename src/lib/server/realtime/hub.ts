@@ -4,12 +4,14 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import { parseClientMessage, REALTIME_PATH, type PresenceMember, type RoomActivity, type RoomSnapshot, type ServerMessage } from '#lib/realtime/protocol.ts';
 import { getDb, type Db } from '../db/index.ts';
 import { SESSION_COOKIE } from '../http.ts';
-import { findProfileByToken, type Profile } from '../repos/profiles.ts';
+import { findProfileByToken, hashToken, type Profile } from '../repos/profiles.ts';
 import { getRoomByCode, isMember, listMembers, normalizeCode, type Room } from '../repos/rooms.ts';
 
 interface Connection {
 	ws: WebSocket;
 	profile: Profile;
+	tokenHash?: string;
+	expiresCheck?: string;
 	roomId: string | null;
 	alive: boolean;
 	tokens: number;
@@ -53,7 +55,7 @@ export class RealtimeHub {
 					socket.destroy();
 					return;
 				}
-				this.wss.handleUpgrade(req, socket, head, (ws) => this.accept(ws, profile));
+				this.wss.handleUpgrade(req, socket, head, (ws) => this.accept(ws, profile, token ?? undefined));
 			})
 			.catch(() => {
 				socket.write('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');
@@ -66,10 +68,10 @@ export class RealtimeHub {
 		return findProfileByToken(await this.db(), token);
 	}
 
-	private accept(ws: WebSocket, profile: Profile) {
+	private accept(ws: WebSocket, profile: Profile, token?: string) {
 		const open = [...this.conns].filter((c) => c.profile.id === profile.id);
 		if (open.length >= MAX_CONNECTIONS_PER_PROFILE) open[0].ws.close(4008, 'Muitas conexões');
-		const conn: Connection = { ws, profile, roomId: null, alive: true, tokens: 20, lastRefill: Date.now() };
+		const conn: Connection = { ws, profile, tokenHash: token && hashToken(token), expiresCheck: profile.username ? token : undefined, roomId: null, alive: true, tokens: 20, lastRefill: Date.now() };
 		this.conns.add(conn);
 		ws.on('pong', () => (conn.alive = true));
 		ws.on('message', (data) => void this.onMessage(conn, data.toString()));
@@ -212,6 +214,29 @@ export class RealtimeHub {
 		}
 	}
 
+	publishInbox(...profiles: string[]) {
+		const targets = new Set(profiles);
+		for (const connection of this.conns) {
+			if (targets.has(connection.profile.id)) this.send(connection, { t: 'inbox', v: 1 });
+		}
+	}
+
+	async publishChat(roomId: string, club: string | null) {
+		const targets = [...this.conns].filter((connection) => connection.roomId === roomId);
+		if (!targets.length) return;
+		const rows = await (await this.db()).query<{ profile_id: string }>(`
+			SELECT m.profile_id FROM room_members m JOIN rooms r ON r.id=m.room_id AND r.status='open'
+			LEFT JOIN room_worlds w ON w.room_id=r.id WHERE m.room_id=$1 AND ($2::text IS NULL OR (
+				w.state->'participants'->(m.profile_id::text)->>'club'=$2
+				AND w.state->'participants'->(m.profile_id::text)->>'role' IN ('coach','assistant')))`, [roomId, club]);
+		const members = new Set(rows.map(({ profile_id }) => profile_id));
+		for (const connection of targets) {
+			if (connection.roomId === roomId && members.has(connection.profile.id)) {
+				this.send(connection, { t: 'chat', v: 1, channel: club ? 'staff' : 'league' });
+			}
+		}
+	}
+
 	/** Atualiza nomes exibidos depois que um perfil é renomeado. */
 	async profileRenamed(profileId: string) {
 		const rooms = new Set([...this.conns].filter((c) => c.profile.id === profileId && c.roomId).map((c) => c.roomId!));
@@ -226,6 +251,14 @@ export class RealtimeHub {
 		if (conn.ws.readyState === conn.ws.OPEN) conn.ws.send(JSON.stringify(msg));
 	}
 
+	revokeSession(hash: string) {
+		for (const connection of this.conns) if (connection.tokenHash === hash) connection.ws.terminate();
+	}
+
+	revokeProfile(profile: string) {
+		for (const connection of this.conns) if (connection.profile.id === profile) connection.ws.terminate();
+	}
+
 	private sweep() {
 		for (const c of this.conns) {
 			if (!c.alive) {
@@ -234,6 +267,9 @@ export class RealtimeHub {
 			}
 			c.alive = false;
 			c.ws.ping();
+			if (c.expiresCheck) void this.authenticate(c.expiresCheck).then((profile) => {
+				if (!profile) c.ws.terminate();
+			}).catch(() => c.ws.terminate());
 		}
 	}
 

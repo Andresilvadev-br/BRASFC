@@ -19,6 +19,13 @@ export interface Release {
 
 export const RELEASES: Release[] = [
 	{
+		version: '0.9.0', date: '2026-11-21', title: 'Ligas multiplayer', channel: 'desenvolvimento',
+		added: ['Conta BRASFC e sessões por dispositivo', 'Lobby, amizades e convites com função', 'Chat da liga e da comissão com sugestões táticas'],
+		improved: ['Central de carreira compartilhada', 'Contrato após acordo de transferência em ligas novas'],
+		compat: { database: 'migração aditiva 0009', saves: 'carreiras e ligas anteriores preservadas' },
+		next: []
+	},
+	{
 		version: '0.8.5', date: '2026-11-21', title: 'Mercado de transferências', channel: 'estavel',
 		added: ['Pesquisa paginada por nome, clube e nacionalidade', 'Filtros combináveis, fichas e comparação de atletas', 'Contrapropostas entre treinadores no multiplayer'],
 		improved: ['Mercado compacto no celular e ficha lado a lado no desktop', 'Central de negociações com histórico e próxima ação'],

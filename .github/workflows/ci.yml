@@ -43,6 +43,10 @@ jobs:
         run: npm test
         env:
           PG_TEST_URL: postgres://brasfc:brasfc@127.0.0.1:5432/brasfc_test
+      - name: Exercitar a migração e a colaboração no PostgreSQL
+        run: npm test -- tests/multiplayer-social.test.ts
+        env:
+          PG_WORLD_URL: postgres://brasfc:brasfc@127.0.0.1:5432/brasfc_test
       - name: Build de produção
         run: npm run build
         env:

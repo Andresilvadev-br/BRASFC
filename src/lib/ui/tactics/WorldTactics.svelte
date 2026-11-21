@@ -18,9 +18,9 @@
 	import PlayerOrders from './PlayerOrders.svelte';
 	import TacticalOverlay from './TacticalOverlay.svelte';
 
-	let { key, tactic, squad, club, mastery, canEdit, busy, onsave }: {
+	let { key, tactic, squad, club, mastery, canEdit, suggest = false, busy, onsave }: {
 		key: string; tactic: Tactic; squad: SquadPlayer[]; club: string; mastery?: number;
-		canEdit: boolean; busy: boolean; onsave: (value: Tactic, base: Tactic) => Promise<boolean>;
+		canEdit: boolean; suggest?: boolean; busy: boolean; onsave: (value: Tactic, base: Tactic) => Promise<boolean>;
 	} = $props();
 
 	let draft = $state<Tactic | null>(null);
@@ -110,8 +110,8 @@
 	<div class="actions">
 		{#if draft}
 			<Button variant="ghost" disabled={busy} onclick={discard}>Descartar</Button>
-			<Button variant="primary" icon="save" loading={busy} disabled={!changed} onclick={save}>Salvar tática</Button>
-		{:else if canEdit}<Button variant="primary" icon="tactics" onclick={edit}>Editar tática</Button>{/if}
+			<Button variant="primary" icon="save" loading={busy} disabled={!changed} onclick={save}>{suggest ? 'Enviar sugestão' : 'Salvar tática'}</Button>
+		{:else if canEdit}<Button variant="primary" icon="tactics" onclick={edit}>{suggest ? 'Sugerir tática' : 'Editar tática'}</Button>{/if}
 	</div>
 </div>
 

@@ -18,6 +18,13 @@
 	let { data } = $props();
 	const conn = createRoomConnection(untrack(() => data.room.code));
 	const s = conn.state;
+	let inboxSeen = 0;
+	$effect(() => {
+		const version = s.inboxVersion;
+		if (version > inboxSeen && data.profile?.username) notify({ icon: 'mail', title: 'Central social atualizada',
+			action: { label: 'Abrir convites', run: () => void goto('/multiplayer#social') } });
+		inboxSeen = version;
+	});
 	let leaveOpen = $state(false);
 	let leaving = $state(false);
 
@@ -32,10 +39,10 @@
 
 	onMount(() => { conn.start(); return conn.stop; });
 
-	async function copy() {
+	async function copy(link = false) {
 		try {
-			await navigator.clipboard.writeText(data.room.code);
-			notify({ icon: 'copy', tone: 'success', title: 'Código copiado', detail: data.room.code });
+			await navigator.clipboard.writeText(link ? new URL(`/multiplayer?codigo=${data.room.code}`, location.origin).href : data.room.code);
+			notify({ icon: 'copy', tone: 'success', title: link ? 'Link copiado' : 'Código copiado', detail: data.room.code });
 		} catch {
 			notify({ icon: 'info', tone: 'info', title: `Código: ${data.room.code}` });
 		}
@@ -67,8 +74,8 @@
 		</div>
 	</main>
 {:else}
-	<ConnectedWorld code={data.room.code} initial={data.world} profileId={data.profileId} revision={s.worldRevision}
-		membership={s.room?.members} online={s.status === 'online'} onactivity={conn.setActivity}>
+	<ConnectedWorld code={data.room.code} initial={data.world} profileId={data.profileId} revision={s.worldRevision} socialRevision={s.chatVersion.league}
+		leagueName={data.room.name} account={data.profile?.username} chatVersions={s.chatVersion} membership={s.room?.members} online={s.status === 'online'} onactivity={conn.setActivity}>
 		{#snippet connection()}
 			<div class="status" role="status">
 					<span class="conn" data-s={s.status}><span class="led"></span>{s.status === 'online' ? 'Conectado em tempo real' : s.status === 'reconnecting' ? 'Reconectando…' : s.status === 'offline' ? 'Sem conexão de rede' : s.status === 'unavailable' ? 'Servidor temporariamente indisponível' : 'Conectando…'}</span>
@@ -96,6 +103,7 @@
 							</div>
 							<strong>{m.displayName}{#if m.profileId === data.profileId} <small>(você)</small>{/if}</strong>
 							<span class="tags">
+								{#if assignment?.ready}<Badge tone="emerald">Pronto</Badge>{/if}
 								{#if assignment}<Badge tone="neutral">{assignment.role === 'coach' ? 'Treinador' : assignment.role === 'assistant' ? 'Auxiliar' : 'Jogador'}</Badge>{/if}
 								{#if m.role === 'owner'}<Badge tone="gold" icon="crown">Anfitrião</Badge>{/if}
 								<Badge tone={connected ? 'emerald' : 'neutral'}>{connected ? 'Online' : 'Offline'}</Badge>
@@ -108,12 +116,14 @@
 			</section>
 
 			<aside class="invite">
+				{#if data.room.inviteOnly}<p>Entrada por convite da conta BRASFC.</p>{:else}
 				<span class="eyebrow">Convide seus amigos</span>
-				<button class="code" onclick={copy} aria-label="Copiar código {data.room.code}">
+				<button class="code" onclick={() => copy()} aria-label="Copiar código {data.room.code}">
 					{#each data.room.code.split('') as ch, i (i)}<span>{ch}</span>{/each}
 				</button>
-				<Button variant="secondary" icon="copy" onclick={copy} full>Copiar código</Button>
-				<p class="muted small">Eles abrem Multiplayer → Entrar com código. Até {data.room.maxMembers} pessoas por sala.</p>
+				<Button variant="secondary" icon="copy" onclick={() => copy()} full>Copiar código</Button>
+				<Button variant="ghost" icon="link" onclick={() => copy(true)} full>Copiar link de convite</Button>
+				<p class="muted small">Eles abrem Multiplayer → Entrar com código. Até {data.room.maxMembers} pessoas por sala.</p>{/if}
 			</aside>
 		</div>
 		{/snippet}

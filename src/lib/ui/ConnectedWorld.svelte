@@ -1,4 +1,8 @@
 <script lang="ts">
+	import LeagueChat from '#lib/ui/career/LeagueChat.svelte';
+	import MarketSearch from '#lib/ui/market/MarketSearch.svelte';
+	import type { MarketProfile } from '#lib/domain/market-search.ts';
+	import LeagueInvite from '#lib/ui/career/LeagueInvite.svelte';
 	import { onMount, untrack, type Snippet } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -21,6 +25,7 @@
 	import { PRESS_ANSWERS, PRESS_QUESTIONS } from '#lib/domain/player-development.ts';
 	import { formatExactMoney } from '#lib/domain/market.ts';
 	import { markClean, markDirty } from '#lib/stores/unsaved.svelte.ts';
+	import { notify } from '#lib/stores/island.svelte.ts';
 	import { enter } from '#lib/motion/actions.ts';
 	import Button from './Button.svelte';
 	import type { IconName } from './icons.ts';
@@ -43,8 +48,8 @@
 
 	type World = Awaited<ReturnType<typeof worldSnapshot>>;
 	type Member = Pick<World['members'][number], 'profileId' | 'displayName' | 'role'>;
-	let { code, initial, profileId, revision, membership, online = false, onactivity, lobby, connection }: { code: string; initial: World; profileId: string; revision?: number;
-		membership?: PresenceMember[]; online?: boolean; onactivity?: (value: RoomActivity) => void; lobby?: Snippet<[World['members']]>; connection?: Snippet } = $props();
+	let { code, initial, profileId, revision, membership, online = false, onactivity, lobby, connection, leagueName, account, chatVersions, socialRevision }: { code: string; initial: World; profileId: string; revision?: number;
+		leagueName: string; socialRevision?: number; account?: string; chatVersions?: { league: number; staff: number }; membership?: PresenceMember[]; online?: boolean; onactivity?: (value: RoomActivity) => void; lobby?: Snippet<[World['members']]>; connection?: Snippet } = $props();
 	let loadingLive = $state(false);
 	let world = $state.raw<World>(untrack(() => initial));
 	const requested = $derived(page.url.searchParams.get('secao'));
@@ -101,11 +106,24 @@
 				link('comissao','Comissão técnica','whistle'),link('base','Base e olheiros','sparkle'),link('gabinete','Gabinete e mensagens','mail')] : [])] },
 		{ label: 'Mundo', items: [link('mundo','Notícias e mundo','globe'),link('competicoes','Competições','trophy'),link('calendario','Calendário','calendar'),
 			link('estatisticas','Estatísticas','field'),link('historia','História e conquistas','news')] },
-		{ label: 'Universo', items: [link('lobby','Lobby e convites','multiplayer')] }
+		{ label: 'Universo', items: [link('lobby','Lobby e convites','multiplayer'), link('comunicacao','Comunicação','mail')] }
 	]);
 	const leagueRow = $derived(world.standings.find((row) => row.clubId === current?.club));
 	const owner = $derived(world.ownerId === profileId);
 	const pc = $derived(current?.athlete?.playerCareer);
+	const pendingDeals = $derived(current?.role === 'coach' ? world.deals.filter((deal) =>
+		(deal.agreement || deal.counter ? deal.to : deal.from) === current.club) : []);
+	let seenDeals = new Set<string>();
+	let initializedDeals = false;
+	$effect(() => {
+		const keys = new Set(pendingDeals.map((deal) => deal.id + ':' + (deal.agreement ? 'contract' : deal.counter ? 'counter' : 'proposal')));
+		if (initializedDeals && [...keys].some((key) => !seenDeals.has(key))) {
+			notify({ icon: 'briefcase', title: 'Negociação pede sua atenção', action: { label: 'Abrir mercado', run: () => void goto(href('mercado')) } });
+		}
+		seenDeals = keys;
+		initializedDeals = true;
+	});
+
 	const progress = $derived(pc?.daily.progress.slice(-12) ?? []);
 	const upcoming = $derived(world.clubs.filter((c) => !world.members.some((m) => m.assignment?.role === 'coach' && m.assignment.club === c.id)));
 	const blockedClubs = $derived.by(() => {
@@ -118,6 +136,7 @@
 			if (role === 'assistant' && !coaches.has(team.id)) blocked[team.id] = 'O clube precisa de um treinador humano.';
 			else if (role === 'assistant' && assistants.has(team.id)) blocked[team.id] = 'Este clube já tem auxiliar.';
 		}
+		for (const reservation of world.reservations) if (reservation.role === role && !reservation.mine) blocked[reservation.club] = 'Vaga reservada por convite.';
 		return blocked;
 	});
 	const previews = new Map<string, Promise<ClubPreview>>();
@@ -169,7 +188,11 @@
 			activity: connected?.activity, activityUntil: connected?.activityUntil }];
 	}));
 	const names = $derived(Object.fromEntries(world.members.map((member) => [member.profileId, member.displayName])));
-	const everyoneReady = $derived(friends.length > 0 && friends.every((friend) => friend.online && friend.ready));
+	const required = $derived(friends.filter((friend) => world.assistantsRequired || friend.role !== labels.assistant));
+	const everyoneReady = $derived(required.length > 0 && required.every((friend) => friend.online && friend.ready));
+	const coach = $derived(current?.role === 'coach');
+	const ownStaff = $derived(friends.filter((friend) => friend.club === current?.club && friend.role !== labels.player));
+	const setupRole = $derived(owner && world.entryMode !== 'mixed' ? world.entryMode : null);
 	$effect(() => {
 		if (world.live) return;
 		onactivity?.(section === 'elenco' ? 'escalacao' : section === 'taticas' ? 'taticas'
@@ -178,6 +201,7 @@
 
 	const membershipKey = (members: Member[]) => JSON.stringify(members.map((m) => [m.profileId, m.displayName, m.role]).sort());
 	const liveMembers = $derived(membership && membershipKey(membership));
+	let observedSocial = 0;
 	let observedMembers = membershipKey(untrack(() => initial.members));
 
 	function clubName(id: string) { return world.clubs.find((c) => c.id === id)?.name ?? id; }
@@ -191,9 +215,11 @@
 	}
 	$effect(() => {
 		if (saving) return;
+		const socialUpdate = (socialRevision ?? 0) !== observedSocial;
+		observedSocial = socialRevision ?? 0;
 		const changedMembers = liveMembers && liveMembers !== observedMembers;
 		if (liveMembers) observedMembers = liveMembers;
-		if ((revision ?? 0) > world.revision || changedMembers) void refresh().catch(() => {});
+		if ((revision ?? 0) > world.revision || changedMembers || (socialUpdate && (!current || section === 'lobby'))) void refresh().catch(() => {});
 	});
 
 	onMount(() => {
@@ -252,11 +278,40 @@
 		catch (e) { failed = true; message = e instanceof Error ? e.message : 'Reprodução indisponível.'; }
 	}
 
+	async function recommend(player: MarketProfile) {
+		if (saving) return;
+		saving = true;
+		failed = false;
+		try {
+			await api(`/api/rooms/${code}/social`, { body: { action:'message', channel:'staff',
+				text: `Reforço recomendado: ${player.name} · ${player.position} · ${player.clubName}`, op: crypto.randomUUID() } });
+			message = 'Recomendação enviada à comissão técnica.';
+		} catch (error) {
+			failed = true;
+			message = error instanceof Error ? error.message : 'Não foi possível enviar a recomendação.';
+		} finally { saving = false; }
+	}
+
 	async function saveWorldTactic(tactic: Tactic, base: Tactic) {
 		if (!world.tactic || !sameTactic(world.tactic, base)) {
 			message = 'Outro responsável alterou a tática do clube. Compare a escalação oficial antes de salvar.';
 			failed = true;
 			return false;
+		}
+		if (current?.role === 'assistant' && !(current.lineupDelegated ?? current.matchDelegated)) {
+			if (saving) return false;
+			saving = true;
+			failed = false;
+			try {
+				await api(`/api/rooms/${code}/social`, { body: { action: 'suggest', channel: 'staff', tactic, revision: world.revision,
+					text: `Proposta de tática · ${tactic.formation}`, op: crypto.randomUUID() } });
+				message = 'Sugestão enviada à comissão técnica.';
+				return true;
+			} catch (error) {
+				failed = true;
+				message = error instanceof Error ? error.message : 'Não foi possível enviar a sugestão.';
+				return false;
+			} finally { saving = false; }
 		}
 		return send('tactic', { tactic });
 	}
@@ -288,7 +343,7 @@
 {:else}
 
 	{#if current && clubInfo}
-		<CareerShell {base} clubId={current.club} clubName={clubInfo.name} color={clubInfo.colors.primary} personName={current.name} roleLabel={labels[current.role]}
+		<CareerShell {base} clubId={current.club} clubName={clubInfo.name} color={clubInfo.colors.primary} personName={names[profileId] ?? current.name} roleLabel={labels[current.role]}
 			{groups} current={href(section)} date={world.date} season={world.season} cup={world.next?.kind === 'cup'}
 			stepLabel={world.next ? world.next.kind === 'cup' ? 'Copa do Brasil' : `Rodada ${world.next.round}` : 'Fim da temporada'}
 			balance={current.role === 'coach' ? world.balance : undefined} match={{ href: href('rodada'), label: 'Dia de jogo' }}
@@ -303,7 +358,7 @@
 		</CareerShell>
 	{:else}
 		<main class="setup-page">
-			<header><h1>Carreira compartilhada</h1></header>
+			<header><h1>{leagueName}</h1><a href="/multiplayer">Voltar às minhas ligas</a></header>
 			{@render careerContent()}
 			{#if lobby}{@render lobby(world.members)}{/if}
 		</main>
@@ -322,10 +377,32 @@
 	<div class="cards" use:enter>
 		{#if section === 'central' && current}
 			<article class="showcase">
-				<div><small>{labels[current.role]} · Temporada {world.season}</small><h1>{clubName(current.club)}</h1><strong>{current.name}</strong></div>
+				<div><small>{leagueName} · Temporada {world.season}</small><h1>{clubName(current.club)}</h1>
+					<strong>{names[profileId] ?? current.name} · {labels[current.role]}</strong>
+					<p>{friends.filter((person) => person.online).length} online · {world.started ? 'Temporada ativa' : 'Aguardando início'}</p>
+					<div class="actions"><Button size="sm" href={href('lobby')}>Lobby e convites</Button><Button size="sm" href={href('comunicacao')}>Comunicação</Button></div>
+				</div>
 				<Pixel variant="full" appearance={current.appearance ?? current.athlete?.appearance ?? DEFAULT_APPEARANCE} kit={current.role === 'player' ? playerKit(current.club, current.athlete?.position ?? 'ATA') : coachKit(current.club)} clubId={current.club} styled size={142} ball={current.role === 'player'} />
 			</article>
-			{#if world.fixture}<article class="wide"><FixtureCard fixture={world.fixture} clubId={current.club} today={world.date} /><Button href={href('rodada')} variant="primary" iconRight="arrowRight">Abrir dia de jogo</Button></article>{/if}
+			{#if !world.started}<article><h3>Preparação da liga</h3><p>{world.members.filter((member) => member.assignment).length} de {world.members.length} com clube e função</p>
+				<Button href={href('lobby')} variant="primary">Abrir lobby</Button></article>{/if}
+			{#if world.fixture}<article><FixtureCard fixture={world.fixture} clubId={current.club} today={world.date} />
+				<p>{required.filter((person) => person.online && person.ready).length} de {required.length} participantes prontos</p>
+				{#if world.started}<Button href={href('rodada')} variant="primary" iconRight="arrowRight">Abrir dia de jogo</Button>{/if}</article>{/if}
+			{#if current.role !== 'player'}<article><h3>Minha comissão</h3><div class="ready-team">
+				{#each ownStaff as person (person.id)}<div><strong>{person.name} · {person.role}</strong><small>{person.online ? 'Online' : 'Offline'}</small></div>{/each}
+				{#if coach && ownStaff.length === 1}<Button size="sm" href={href('lobby')}>Convidar auxiliar</Button>{/if}
+			</div></article>{/if}
+			<article><h3>Participantes da liga</h3><div class="ready-team">
+				{#each friends as person (person.id)}<div><Crest clubId={person.club} size={24} /><span><strong>{person.name}</strong><small>{clubName(person.club)} · {person.role}</small></span>
+					<small>{person.online ? 'Online' : 'Offline'} · {person.ready ? 'Pronto' : 'Sem confirmação'}</small></div>{/each}
+			</div></article>
+			<article><h3>Atividade da liga</h3>
+				{#each world.news.slice(0,3) as item}<p>{item.title}</p>{/each}
+				{#each world.deals.slice(0,4) as deal}<p>{deal.name} · {clubName(deal.from)} → {clubName(deal.to)}</p>{/each}
+				{#if !world.news.length && !world.deals.length}<p>A atividade da temporada aparecerá aqui.</p>{/if}
+				<Button size="sm" href={href('mercado')}>Abrir mercado</Button>
+			</article>
 			{#if pc}<article><h3>Perfil profissional</h3><p>{current.athlete?.position} · {current.athlete?.player?.age} anos</p>
 				<div class="lineup"><label>Confiança <meter min="0" max="100" value={pc.daily.trust}></meter></label>
 				<label>Condição <meter min="0" max="100" value={pc.daily.condition}></meter></label><label>Reputação <meter min="0" max="100" value={pc.reputation}></meter></label></div>
@@ -333,21 +410,23 @@
 			</article>{/if}
 			{#if leagueRow}<article><h3>Temporada em números</h3><div class="metrics"><span><strong>{leagueRow.position}º</strong>Posição</span><span><strong>{leagueRow.points}</strong>Pontos</span><span><strong>{leagueRow.won}</strong>Vitórias</span></div><a href={href('competicoes')}>Ver classificação</a></article>{/if}
 			{#if world.news.length}<article><h3>No noticiário</h3><strong>{world.news[0].title}</strong><p>{world.news[0].body}</p><a href={href('mundo')}>Abrir notícias</a></article>{/if}
+		{:else if section === 'comunicacao' && current}
+			<div class="wide"><LeagueChat {code} role={current.role} club={current.club} {online} versions={chatVersions} /></div>
 		{:else if section === 'rodada'}
 			<article>
 				<h3>{world.next ? (world.next.kind === 'cup' ? 'Copa do Brasil' : `Rodada ${world.next.round}`) : 'Encerramento da temporada'}</h3>
 				{#if world.fixture}
 					<FixtureCard fixture={world.fixture} clubId={current?.club ?? world.fixture.home} today={world.date} />
 				{:else}<p>{current ? 'Acompanhe os compromissos do universo neste passo.' : 'Selecione uma carreira para entrar na rodada.'}</p>{/if}
-				<p>{friends.filter((friend) => friend.ready && friend.online).length}/{friends.length} prontos · {friends.filter((friend) => friend.online).length}/{friends.length} online</p>
+				<p>{required.filter((friend) => friend.ready && friend.online).length} de {required.length} participantes prontos · {friends.filter((friend) => friend.online).length}/{friends.length} online</p>
 				<div class="ready-team">
 					{#each friends as friend (friend.id)}
-						<div><Crest clubId={friend.club} size={28} /><span><strong>{friend.name}</strong><small>{friend.role}</small></span><small>{friend.online ? friend.ready ? 'Pronto' : 'Em preparação' : 'Offline'}</small></div>
+						<div><Crest clubId={friend.club} size={28} /><span><strong>{friend.name}</strong><small>{friend.role}</small></span><small>{friend.online ? 'Online' : 'Offline'} · {friend.ready ? 'Pronto' : friend.role === labels.assistant && !world.assistantsRequired ? 'Opcional' : 'Pendente'}</small></div>
 					{/each}
 				</div>
 				<div class="actions">
-					{#if current}<Button disabled={saving || !online} onclick={() => send('ready', { value: !current.ready })}>{current.ready ? 'Cancelar confirmação' : 'Estou pronto'}</Button>{/if}
-					{#if owner}<Button variant="primary" loading={saving} disabled={!everyoneReady} onclick={() => send('advance')}>{world.next ? 'Simular rodada oficial' : 'Iniciar nova temporada'}</Button>{/if}
+					{#if current}<Button disabled={saving || !online || !world.started} onclick={() => send('ready', { value: !current.ready })}>{current.ready ? 'Cancelar confirmação' : 'Estou pronto'}</Button>{/if}
+					{#if owner}<Button variant="primary" loading={saving} disabled={!world.started || !everyoneReady} onclick={() => send('advance')}>{world.next ? 'Simular rodada oficial' : 'Iniciar nova temporada'}</Button>{/if}
 				</div>
 			</article>
 			{#if world.last.length}<article>
@@ -366,7 +445,7 @@
 			</article>{/if}
 		{:else if (section === 'elenco' || (section === 'taticas' && current?.role !== 'player')) && current}
 			{#if current.role !== 'player' && world.tactic}<div class="wide"><WorldTactics key={code} tactic={world.tactic} squad={world.roster} club={current.club} mastery={world.mastery}
-				canEdit={current.role === 'coach' || (current.role === 'assistant' && !!current.matchDelegated)} busy={saving} onsave={saveWorldTactic} /></div>{/if}
+				canEdit suggest={current.role === 'assistant' && !(current.lineupDelegated ?? current.matchDelegated)} busy={saving} onsave={saveWorldTactic} /></div>{/if}
 			{#if section === 'elenco'}<article class="wide"><h3>Elenco do clube</h3><div class="squad-grid">
 				{#each world.roster as athlete (athlete.id)}
 					<div class="squad-card"><Pixel appearance={athlete.appearance} kit={playerKit(current.club, athlete.position)} size={36} />
@@ -399,16 +478,16 @@
 				<div class="wide">
 					<h2>Como você quer jogar?</h2>
 					<div class="role-cards">
-						<button type="button" class="role-card" onclick={() => chooseRole('coach')} data-umx-press>
+						{#if setupRole !== 'player'}<button type="button" class="role-card" onclick={() => chooseRole('coach')} data-umx-press>
 							<Icon name="whistle" size={28} /><strong>Modo Treinador</strong>
 							<span>Comande o elenco, prepare a escalação e gerencie o clube.</span>
-						</button>
-						<button type="button" class="role-card" onclick={() => chooseRole('player')} data-umx-press>
+						</button>{/if}
+						{#if setupRole !== 'coach'}<button type="button" class="role-card" onclick={() => chooseRole('player')} data-umx-press>
 							<Icon name="user" size={28} /><strong>Modo Jogador</strong>
 							<span>Crie seu atleta e evolua com treinos, partidas e contratos.</span>
-						</button>
+						</button>{/if}
 					</div>
-					{#if world.members.some((member) => member.assignment?.role === 'coach')}
+					{#if !setupRole && world.entryMode === 'mixed' && world.members.some((member) => member.assignment?.role === 'coach')}
 						<Button variant="ghost" icon="multiplayer" onclick={() => chooseRole('assistant')}>Entrar como auxiliar técnico</Button>
 					{/if}
 				</div>
@@ -508,9 +587,16 @@
 				{#each pc.offers as offer}<p>{clubName(offer.clubId)} · {formatExactMoney(offer.wage)}/mês · {offer.kind ?? 'transferência'}</p>
 					<div class="actions">{#if world.athleteDeals.some((d) => d.offer === offer.id)}<span>Aguardando autorização</span>{:else}<Button disabled={saving} onclick={() => send('jogador-aceitar', { offerId: offer.id })}>Assinar proposta</Button>{/if}<Button disabled={saving} onclick={() => send('jogador-recusar', { offerId: offer.id })}>Recusar</Button></div>
 				{/each}</article>
-			{:else}<article><p>O mercado está disponível para treinadores e atletas.</p></article>{/if}
+			{:else if current?.role === 'assistant'}
+				<div class="wide"><h3>Pesquisa de reforços</h3><p>Envie recomendações ao seu treinador pela comissão técnica.</p>
+				<MarketSearch endpoint={path + '?market=1'} storageKey={`scouting:${code}:${profileId}`} revision={world.revision}
+					windowOpen={!!world.marketWindow} busy={saving} {recommend} /></div>
+			{:else}<article><p>Escolha sua função para acessar o mercado.</p></article>{/if}
 		{:else if section === 'lobby' || section === 'admin'}
 			{#if lobby}<div class="wide">{@render lobby(world.members)}</div>{/if}
+			{#if account && (owner || coach)}<article><LeagueInvite {code} {owner} {coach} teams={upcoming} /></article>{/if}
+			{#if owner && !world.started}<article><h3>Iniciar temporada</h3><p>Todos os participantes que entraram precisam escolher clube e função.</p>
+				<Button variant="primary" loading={saving} disabled={world.members.some((member) => !member.assignment)} onclick={() => send('start')}>Iniciar temporada</Button></article>{/if}
 			<article><h3>Participantes</h3>
 				{#each world.members as m (m.profileId)}
 					<p><strong>{m.displayName}</strong> · {m.assignment ? `${labels[m.assignment.role]} · ${clubName(m.assignment.club)}` : 'Sem função'}</p>
@@ -518,6 +604,7 @@
 						{#if current?.role === 'coach' && m.assignment?.role === 'assistant' && m.assignment.club === current.club}
 							<Button size="sm" disabled={saving} onclick={() => send('delegate', { target: m.profileId, value: !m.assignment?.delegated })}>{m.assignment.delegated ? 'Revogar treino' : 'Delegar treino'}</Button>
 							<Button size="sm" disabled={saving} onclick={() => send('delegate', { target: m.profileId, area: 'match', value: !m.assignment?.matchDelegated })}>{m.assignment.matchDelegated ? 'Revogar comando de partida' : 'Delegar comando de partida'}</Button>
+							<Button size="sm" disabled={saving} onclick={() => send('delegate', { target: m.profileId, area: 'lineup', value: !m.assignment?.lineupDelegated })}>{m.assignment.lineupDelegated ? 'Revogar escalação' : 'Delegar escalação'}</Button>
 						{/if}
 						{#if owner && m.profileId !== profileId}
 							<Button size="sm" disabled={saving} onclick={() => { if (confirm(`Transferir a administração para ${m.displayName}?`)) void send('transfer-owner', { target: m.profileId }); }}>Transferir administração</Button>

@@ -5,13 +5,16 @@ export interface Profile {
 	id: string;
 	displayName: string;
 	createdAt: string;
+	username?: string;
+	avatar?: number;
 }
 
-type Row = { id: string; display_name: string; created_at: Date | string };
+type Row = { id: string; display_name: string; created_at: Date | string; username?: string | null; avatar?: number };
 
 const map = (r: Row): Profile => ({
 	id: r.id,
 	displayName: r.display_name,
+	...(r.username ? { username: r.username, avatar: r.avatar } : {}),
 	createdAt: new Date(r.created_at).toISOString()
 });
 
@@ -42,8 +45,11 @@ export async function createGuestProfile(db: Db): Promise<{ profile: Profile; to
 export async function findProfileByToken(db: Db, token: string): Promise<Profile | null> {
 	if (!token || token.length > 128) return null;
 	const rows = await db.query<Row>(
-		`UPDATE profiles SET last_seen_at = now() WHERE token_hash = $1
-		 RETURNING id, display_name, created_at`,
+		`SELECT p.id, p.display_name, p.created_at, p.username, p.avatar
+		 FROM profile_sessions s JOIN profiles p ON p.id=s.profile_id
+		 WHERE s.token_hash=$1 AND s.expires_at>now()
+		 UNION ALL
+		 SELECT id, display_name, created_at, username, avatar FROM profiles WHERE token_hash=$1 AND username IS NULL`,
 		[hashToken(token)]
 	);
 	return rows[0] ? map(rows[0]) : null;
@@ -51,7 +57,7 @@ export async function findProfileByToken(db: Db, token: string): Promise<Profile
 
 export async function renameProfile(db: Db, id: string, displayName: string): Promise<Profile | null> {
 	const rows = await db.query<Row>(
-		'UPDATE profiles SET display_name = $2 WHERE id = $1 RETURNING id, display_name, created_at',
+		'UPDATE profiles SET display_name = $2 WHERE id = $1 RETURNING id, display_name, created_at, username, avatar',
 		[id, displayName]
 	);
 	return rows[0] ? map(rows[0]) : null;

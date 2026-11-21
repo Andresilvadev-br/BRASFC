@@ -56,13 +56,17 @@ sw.addEventListener('fetch', (event) => {
 		// Rede primeiro (dados sempre atuais); sem conexão, a última cópia ou o aviso de offline.
 		event.respondWith(
 			(async () => {
-				const cache = await caches.open(CACHE);
+				const privatePage = /^\/(?:conta|carreira|multiplayer|continuar|configuracoes|perfil)(?:\/|$)/.test(url.pathname);
+				const cache = privatePage ? null : await caches.open(CACHE);
 				try {
 					const res = await fetch(req);
-					if (res.ok && res.type === 'basic') void cache.put(req, res.clone());
+					if (cache && res.ok && res.type === 'basic') {
+						if (/private|no-store/i.test(res.headers.get('cache-control') ?? '')) void cache.delete(req);
+						else void cache.put(req, res.clone());
+					}
 					return res;
 				} catch {
-					return (await cache.match(req)) ?? new Response(OFFLINE, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+					return (await cache?.match(req)) ?? new Response(OFFLINE, { headers: { 'content-type': 'text/html; charset=utf-8' } });
 				}
 			})()
 		);

@@ -10,9 +10,9 @@
 	import Crest from '../Crest.svelte';
 	import Pixel from '../Pixel.svelte';
 
-	let { player, busy, windowOpen, comparison, observe, compare, propose }: {
+	let { player, busy, windowOpen, comparison, observe, compare, propose, recommend }: {
 		player: MarketProfile; busy: boolean; windowOpen: boolean; comparison: boolean;
-		observe: () => unknown; compare: () => unknown; propose: (kind: 'compra' | 'emprestimo' | 'livre') => unknown;
+		observe?: () => unknown; recommend?: () => unknown; compare: () => unknown; propose?: (kind: 'compra' | 'emprestimo' | 'livre') => unknown;
 	} = $props();
 
 	const groups = [
@@ -41,18 +41,19 @@
 		<div><span>Valor de mercado</span><strong>{formatExactMoney(player.value)}</strong></div>
 	</div>
 	<div class="buttons">
-		<Button size="sm" variant={player.observed ? 'secondary' : 'ghost'} disabled={busy} onclick={observe}>{player.observed ? 'Retirar da observação' : 'Observar'}</Button>
+		{#if observe}<Button size="sm" variant={player.observed ? 'secondary' : 'ghost'} disabled={busy} onclick={observe}>{player.observed ? 'Retirar da observação' : 'Observar'}</Button>{/if}
 		<Button size="sm" variant="ghost" onclick={compare}>{comparison ? 'Retirar da comparação' : 'Comparar'}</Button>
 	</div>
-	<div class="buttons negotiation">
-		<Button size="sm" variant="primary" disabled={busy || !!reason} onclick={() => propose(player.club ? 'compra' : 'livre')}>{player.club ? 'Fazer proposta' : 'Oferecer contrato'}</Button>
+	{#if recommend && !player.isMine}<Button size="sm" variant="primary" disabled={busy} onclick={recommend}>Recomendar à comissão</Button>{/if}
+	{#if propose}<div class="buttons negotiation">
+		<Button size="sm" variant="primary" disabled={busy || !!reason} onclick={() => propose?.(player.club ? 'compra' : 'livre')}>{player.club ? 'Fazer proposta' : 'Oferecer contrato'}</Button>
 		{#if player.club && !player.isMine}
-			<Button size="sm" variant="secondary" disabled={busy || !!reason || !player.loanable} onclick={() => propose('emprestimo')}>Pedir empréstimo</Button>
+			<Button size="sm" variant="secondary" disabled={busy || !!reason || !player.loanable} onclick={() => propose?.('emprestimo')}>Pedir empréstimo</Button>
 		{/if}
-	</div>
-	{#if reason}<p class="hint">{reason}</p>
-	{:else if player.humanSeller}<p class="hint">A compra depende da aprovação do outro treinador. Este acordo mantém o contrato atual.</p>
-	{:else if player.club && !player.loanable}<p class="hint">O clube não libera este atleta por empréstimo nas condições atuais.</p>{/if}
+	</div>{/if}
+	{#if propose && reason}<p class="hint">{reason}</p>
+	{:else if propose && player.humanSeller}<p class="hint">A compra depende da aprovação do outro treinador. Confira a próxima etapa em Negociações.</p>
+	{:else if propose && player.club && !player.loanable}<p class="hint">O clube não libera este atleta por empréstimo nas condições atuais.</p>{/if}
 	<div class="profile-tabs" role="group" aria-label="Informações do atleta">
 		{#each sections as item (item.id)}<button type="button" data-umx-press aria-pressed={section === item.id} onclick={() => section = item.id}>{item.label}</button>{/each}
 	</div>

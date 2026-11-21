@@ -16,10 +16,18 @@ export const POST: RequestHandler = async (event) => {
 	const name = normalizeRoomName(body.name);
 	if (!name) error(400, 'Dê um nome de 2 a 40 caracteres para a sala.');
 	const profile = await ensureProfile(event);
+	const configured = body.mode !== undefined;
+	if (configured && !profile.username) error(401, 'Crie sua conta BRASFC para abrir uma liga.');
+	const mode = body.mode, max = body.max;
+	if (configured && ((mode !== 'coach' && mode !== 'player') || typeof max !== 'number' || !Number.isInteger(max) || max < 2 || max > 16)) {
+		error(400, 'Escolha um modo e de 2 a 16 vagas.');
+	}
+	const options: Parameters<typeof createRoom>[3] = (mode === 'coach' || mode === 'player') && typeof max === 'number'
+		? { mode, max, inviteOnly: body.inviteOnly === true, assistantsRequired: body.assistantsRequired === true } : undefined;
 	const retry = createLimiter.retryAfter(profile.id);
 	if (retry) return limitedResponse(retry, 'Você criou muitas salas em pouco tempo.');
 	try {
-		return noStore({ room: await createRoom(await getDb(), profile.id, name) }, { status: 201 });
+		return noStore({ room: await createRoom(await getDb(), profile.id, name, options) }, { status: 201 });
 	} catch (e) {
 		if (e instanceof RoomError) error(e.status, e.message);
 		throw e;
