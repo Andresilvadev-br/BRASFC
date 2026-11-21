@@ -1,3 +1,4 @@
+import { playerDevelopmentFactor } from './player-profile.ts';
 import { computeOverall, generateAttributes, type AttributeKey } from '#lib/engine/attributes.ts';
 import type { PlayerStats } from '#lib/engine/types.ts';
 import type { Career, PlayerProfile } from './career.ts';
@@ -31,8 +32,13 @@ export function playerAttributes(seed: number, position: Position, profile: Play
 	const generated = generateAttributes(position, profile.overall, createRng(deriveSeed(seed, 'eu-attr')));
 	if (position === 'PD' || position === 'PE' || position === 'LD' || position === 'LE') {
 		const naturalSide = (profile.foot ?? 'direito') === 'direito' ? position === 'PD' || position === 'LD' : position === 'PE' || position === 'LE';
-		const key = naturalSide ? 'cruzamento' : 'finalizacao';
-		generated.attributes[key] = Math.min(99, generated.attributes[key] + 2);
+		if (profile.foot === 'ambidestro') {
+			generated.attributes.cruzamento = Math.min(99, generated.attributes.cruzamento + 1);
+			generated.attributes.finalizacao = Math.min(99, generated.attributes.finalizacao + 1);
+		} else {
+			const key = naturalSide ? 'cruzamento' : 'finalizacao';
+			generated.attributes[key] = Math.min(99, generated.attributes[key] + 2);
+		}
 	}
 	for (const [key, bonus] of Object.entries(daily?.gains ?? {}) as Array<[AttributeKey, number]>) {
 		generated.attributes[key] = Math.max(20, Math.min(99, Math.round(generated.attributes[key] + bonus)));
@@ -76,7 +82,7 @@ export function advancePlayerDays(c: Career, state: PlayerCareerState, until: st
 	const next = structuredClone(state);
 	const d = next.daily;
 	const age = c.data.player!.age;
-	const ageFactor = age <= 21 ? 1 : age <= 27 ? 0.7 : 0.4;
+	const ageFactor = playerDevelopmentFactor(age);
 	for (let date = c.gameDate; date < until; date = addDays(date, 1)) {
 		const session = d.drills.find((drill) => drill.date === date);
 		const recovering = !!d.injuryUntil && date < d.injuryUntil;

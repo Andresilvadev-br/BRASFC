@@ -360,14 +360,17 @@
 				</div>
 			</div>
 			<div class="pitch-wrap">
-				<LineupPitch>
+				<LineupPitch touchOnly move={(from, to) => {
+					selection = { kind: 'slot', index: Number(from) };
+					swap({ kind: 'slot', index: Number(to) });
+				}}>
 					{#if behavior}<TacticalOverlay formation={tactic.formation} mentality={tactic.mentality} style={tactic.style} instructions={tactic.instructions} roles={tactic.roles} legend={false} />{/if}
 					{#each slots as slot, i (i)}
 						{@const p = byId.get(tactic.lineup[i])}
 						<button
 							class="slot {fitTone(p, i)}"
 							class:sel={isSel('slot', i)}
-							data-slot={i}
+							data-slot={i} data-reposition={p ? i : undefined}
 							style="left:{slot.x}%; top:{slot.y}%"
 							draggable="true"
 							ondragstart={(e) => onDragStart(e, { kind: 'slot', index: i })}

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import PlayerIdentityFields from '#lib/ui/career/PlayerIdentityFields.svelte';
+	import { isStartAge, isNationality, isDominantFoot } from '#lib/domain/player-profile.ts';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -94,8 +96,9 @@
 		if (name.length < 2) errors.personName = 'Digite seu nome (pelo menos 2 letras).';
 		else if (name.length > 40) errors.personName = 'Use no máximo 40 caracteres.';
 		if (mode === 'player') {
-			if (age === undefined || !Number.isInteger(age) || age < 16 || age > 35) errors.age = 'Escolha uma idade entre 16 e 35 anos.';
-			if (nationality.trim().length < 2) errors.nationality = 'Informe sua nacionalidade.';
+			if (!isStartAge(age)) errors.age = 'Escolha uma idade entre 16 e 35 anos.';
+			if (!isNationality(nationality)) errors.nationality = 'Selecione uma nacionalidade disponível.';
+			if (!isDominantFoot(foot)) errors.foot = 'Escolha o pé dominante.';
 		}
 		return Object.keys(errors).length === 0;
 	}
@@ -217,15 +220,7 @@
 					</label>
 
 					{#if mode === 'player'}
-						<div class="profile-options">
-							<label class="field">Nacionalidade <input bind:value={nationality} maxlength="40" aria-invalid={!!errors.nationality} />
-								{#if errors.nationality}<small class="err" role="alert">{errors.nationality}</small>{/if}
-							</label>
-							<label class="field">Idade <input type="number" min="16" max="35" bind:value={age} aria-invalid={!!errors.age} />
-								{#if errors.age}<small class="err" role="alert">{errors.age}</small>{/if}
-							</label>
-							<label class="field">Pé dominante <select bind:value={foot}><option value="direito">Direito</option><option value="esquerdo">Esquerdo</option></select></label>
-						</div>
+						<PlayerIdentityFields bind:age bind:nationality bind:foot {errors} />
 						<fieldset class="field">
 							<legend>Onde você joga? <span class="muted">Toque na posição no campo</span></legend>
 							<PositionPicker bind:value={position} />
@@ -284,7 +279,6 @@
 {/if}
 
 <style>
-	.profile-options :is(input, select) { width: 100%; min-width: 0; padding: .65rem; color: var(--text); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; }
 	.turned { transform: scaleX(-1); }
 
 	.screen {

@@ -400,7 +400,7 @@ export function sanitizeDecisions(raw: unknown, side: 'home' | 'away' | null): A
 		if (!Number.isInteger(tick) || tick < 0 || tick > 7200) throw new RoundError('Momento da decisão inválido.', 400);
 		const decision = parseDecision(d.decision);
 		if (!decision) throw new RoundError('Decisão de tipo desconhecido.', 400);
-		out.push({ tick, side, decision });
+		out.push({ tick, side, decision, ...(decision.type === 'swap' && d.beforeTick === true ? { beforeTick: true } : {}) });
 	}
 	return out;
 }
@@ -411,6 +411,10 @@ export function parseDecision(raw: unknown): Decision | null {
 	if (!dec || typeof dec !== 'object') return null;
 	if (dec.type === 'individual' && typeof dec.playerId === 'string' && dec.playerId.length <= 128 && (dec.order === null || isPlayerOrder(dec.order))) return { type: 'individual', playerId: dec.playerId, order: dec.order };
 	if (dec.type === 'captains' && Array.isArray(dec.order) && dec.order.length <= 11 && dec.order.every((id) => typeof id === 'string' && id.length <= 128)) return { type: 'captains', order: dec.order };
+	if (dec.type === 'swap' && typeof dec.first === 'string' && typeof dec.second === 'string'
+		&& dec.first.length > 0 && dec.first.length <= 128 && dec.second.length > 0 && dec.second.length <= 128 && dec.first !== dec.second) {
+		return { type: 'swap', first: dec.first, second: dec.second };
+	}
 	if (dec.type === 'sub' && typeof dec.outId === 'string' && typeof dec.inId === 'string') return { type: 'sub', outId: dec.outId, inId: dec.inId };
 	if (dec.type === 'mentality' && normalizeMentality(dec.value)) return { type: 'mentality', value: normalizeMentality(dec.value)! };
 	if (dec.type === 'style' && normalizeStyle(dec.value)) return { type: 'style', value: normalizeStyle(dec.value)! };

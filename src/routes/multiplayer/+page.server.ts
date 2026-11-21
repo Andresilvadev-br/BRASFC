@@ -9,6 +9,6 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
 	const offline = process.env.BRASFC_OFFLINE === '1';
 	if (offline || !profile) return { rooms: [], social: null, offline };
 	const db = await getDb();
-	const [rooms, social] = await Promise.all([listRoomsForProfile(db, profile.id), profile.username ? socialInbox(db, profile.id) : null]);
+	const [rooms, social] = await Promise.all([listRoomsForProfile(db, profile.id, true), profile.username ? socialInbox(db, profile.id) : null]);
 	return { rooms, social, offline };
 };

@@ -7,7 +7,7 @@ import { isSocialId, roomAccess } from './social.ts';
 
 type Suggestion = { tactic: Tactic; tacticAtSend: Tactic };
 type Message = {
-	seq: string; author: string; display_name: string; body: string; created_at: Date;
+	seq: string; author: string; display_name: string; avatar: number; body: string; created_at: Date;
 	suggestion: Suggestion | null; status: 'pending' | 'approved' | 'declined' | null;
 };
 
@@ -26,8 +26,7 @@ export async function readRoomChat(db: Db, room: Room, profile: string, channel:
 	const club = channelClub(access, channel);
 	const [scope, values] = club ? ['m.club=$3', [room.id, seqOf(before), club]] : ['m.club IS NULL', [room.id, seqOf(before)]];
 	// The channel and membership are rechecked in the same SQL statement as the message read.
-	const messages = await db.query<Message>(`SELECT m.seq::text,m.author,p.display_name,m.body,m.created_at,
-		CASE WHEN m.suggestion IS NULL THEN NULL ELSE jsonb_build_object('formation',m.suggestion->'tactic'->'formation') END AS suggestion,m.status
+	const messages = await db.query<Message>(`SELECT m.seq::text,m.author,p.display_name,p.avatar,m.body,m.created_at,m.suggestion,m.status
 		FROM room_chat m JOIN profiles p ON p.id=m.author
 		WHERE m.room_id=$1 AND ($2::bigint IS NULL OR m.seq<$2) AND ${scope} AND EXISTS (
 			SELECT 1 FROM room_members rm JOIN rooms r ON r.id=rm.room_id
@@ -69,7 +68,10 @@ export async function writeRoomChat(db: Db, room: Room, profile: string, body: R
 				revision = (await applyWorldCommand(tx, room, profile, { action:'tactic', op: randomUUID(), revision: access.revision, tactic: message.suggestion.tactic })).revision;
 			}
 			await tx.query('UPDATE room_chat SET status=$2,decided_by=$3,decided_at=now() WHERE seq=$1', [seq, body.action === 'approve' ? 'approved' : 'declined', profile]);
-			return { club, changed: true, revision };
+			return { club, changed: true, revision, notice: {
+				profile: message.author, id: `tactic:${seq}:${body.action}`,
+				title: body.action === 'approve' ? 'Sua sugestão tática foi aprovada' : 'Sua sugestão tática foi recusada'
+			} };
 		}
 		const op = body.op;
 		const text = typeof body.text === 'string' ? body.text.trim() : '';
@@ -87,6 +89,13 @@ export async function writeRoomChat(db: Db, room: Room, profile: string, body: R
 		}
 		await tx.query(`INSERT INTO room_chat (room_id,author,operation,club,body,suggestion,status)
 			VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7)`, [room.id,profile,op,club,text,suggestion ? JSON.stringify(suggestion) : null,suggestion ? 'pending' : null]);
+		if (suggestion && club) {
+			const [coach] = await tx.query<{ profile: string }>(`
+				SELECT person.key AS profile FROM room_worlds w JOIN room_members m ON m.room_id=w.room_id,
+				LATERAL jsonb_each(w.state->'participants') person
+				WHERE w.room_id=$1 AND person.key=m.profile_id::text AND person.value->>'club'=$2 AND person.value->>'role'='coach'`, [room.id, club]);
+			if (coach) return { club, changed:true, notice: { profile:coach.profile, id:`tactic:${op}`, title:`Seu auxiliar enviou uma sugestão tática` } };
+		}
 		return { club, changed: true };
 	});
 }

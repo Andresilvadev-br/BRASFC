@@ -16,15 +16,11 @@
 	import ScreenHeader from '#lib/ui/ScreenHeader.svelte';
 
 	let { data } = $props();
-	const conn = createRoomConnection(untrack(() => data.room.code));
+	const conn = createRoomConnection(untrack(() => data.room.code), (notice) => notify({ id: notice.id, icon:'mail', title:notice.title, action: {
+		label: notice.destination === 'chat' ? 'Abrir comunicação' : 'Abrir Central social',
+		run: () => void goto(notice.destination === 'chat' && notice.code ? `/multiplayer/sala/${notice.code}?secao=comunicacao` : '/multiplayer#social')
+	} }));
 	const s = conn.state;
-	let inboxSeen = 0;
-	$effect(() => {
-		const version = s.inboxVersion;
-		if (version > inboxSeen && data.profile?.username) notify({ icon: 'mail', title: 'Central social atualizada',
-			action: { label: 'Abrir convites', run: () => void goto('/multiplayer#social') } });
-		inboxSeen = version;
-	});
 	let leaveOpen = $state(false);
 	let leaving = $state(false);
 

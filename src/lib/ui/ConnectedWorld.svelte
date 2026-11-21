@@ -1,7 +1,13 @@
 <script lang="ts">
+	import PlayerIdentityFields from '#lib/ui/career/PlayerIdentityFields.svelte';
 	import LeagueChat from '#lib/ui/career/LeagueChat.svelte';
 	import MarketSearch from '#lib/ui/market/MarketSearch.svelte';
 	import type { MarketProfile } from '#lib/domain/market-search.ts';
+	import FinanceDelegation from '#lib/ui/career/FinanceDelegation.svelte';
+	import StaffContractForm from '#lib/ui/career/StaffContractForm.svelte';
+	import MarketOffer from '#lib/ui/market/MarketOffer.svelte';
+	import Sheet from '#lib/ui/v4/Sheet.svelte';
+	import DeleteLeague from '#lib/ui/career/DeleteLeague.svelte';
 	import LeagueInvite from '#lib/ui/career/LeagueInvite.svelte';
 	import { onMount, untrack, type Snippet } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -51,9 +57,55 @@
 	let { code, initial, profileId, revision, membership, online = false, onactivity, lobby, connection, leagueName, account, chatVersions, socialRevision }: { code: string; initial: World; profileId: string; revision?: number;
 		leagueName: string; socialRevision?: number; account?: string; chatVersions?: { league: number; staff: number }; membership?: PresenceMember[]; online?: boolean; onactivity?: (value: RoomActivity) => void; lobby?: Snippet<[World['members']]>; connection?: Snippet } = $props();
 	let loadingLive = $state(false);
+	let livePanel = $state<'chat' | 'planning' | 'market'>();
+	let liveToolsOpen = $state(false);
+	let plannedTactic = $state.raw<{ club: string; draft: Tactic; base: Tactic }>();
+	let assistantOffer = $state.raw<{ player: MarketProfile; kind: 'compra' | 'livre' }>();
+	let assistantOfferOpen = $state(false);
+	let renewalPlayer = $state('');
+	const activityLabels: Record<string, string> = {
+		start: 'iniciou a temporada', assign: 'assumiu uma função', 'leave-commission': 'saiu da comissão',
+		tactic: 'alterou a tática', training: 'ajustou o treino', delegate: 'alterou permissões da comissão',
+		'delegate-finance': 'alterou permissões de mercado', vacancy: 'ofereceu uma vaga de treinador',
+		'decline-vacancy': 'recusou uma vaga de treinador', 'finance-requested': 'enviou uma solicitação para revisão',
+		'finance-approved': 'aprovou a execução de uma solicitação', 'finance-declined': 'recusou uma solicitação',
+		deal: 'enviou uma proposta', 'accept-deal': 'aceitou uma proposta', 'counter-deal': 'enviou uma contraproposta',
+		'reject-deal': 'recusou uma proposta', 'contract-deal': 'negociou um contrato', oferta: 'enviou uma oferta',
+		renovar: 'fez uma proposta de renovação', round: 'registrou a rodada', season: 'encerrou a temporada'
+	};
+	let seenActivity = new Set<string>();
+	let initializedActivity = false;
+	$effect(() => {
+		const events = world.activity;
+		if (initializedActivity) {
+			const next = events.find((event) => !seenActivity.has(event.id) && (
+				event.target === profileId || event.action === 'start' || event.action === 'finance-requested' && current?.role === 'coach'
+			));
+			if (next) {
+				const target = next.action.startsWith('finance-') ? 'mercado' : 'lobby';
+				notify({ id: next.id, icon: target === 'mercado' ? 'briefcase' : 'mail',
+					title: `${next.actor} ${activityLabels[next.action] ?? next.action}`,
+					action: { label: target === 'mercado' ? 'Abrir mercado' : 'Abrir lobby', run: () => {
+						if (world.live && target === 'mercado') openLiveTools('market');
+						else void goto(href(target));
+					} } });
+			}
+		}
+		seenActivity = new Set(events.map((event) => event.id));
+		initializedActivity = true;
+	});
+	function openLiveTools(panel: typeof livePanel) {
+		livePanel = panel;
+		liveToolsOpen = true;
+	}
+	function canAssistantPropose(player: MarketProfile) {
+		const grant = current?.finance;
+		return !!grant && (player.club ? grant.offers && (!!player.humanSeller || grant.contracts) : grant.contracts);
+	}
+
 	let world = $state.raw<World>(untrack(() => initial));
 	const requested = $derived(page.url.searchParams.get('secao'));
-	const section = $derived(world.current ? requested === 'carreira' ? 'central' : requested ?? 'central' : 'carreira');
+	const section = $derived(requested === 'lobby' || requested === 'admin' || requested === 'comunicacao' ? requested : world.current ? requested === 'carreira' ? 'central' : requested ?? 'central' : 'carreira');
 	let role = $state<'coach' | 'assistant' | 'player' | null>(null);
 	let club = $state<string | null>(null);
 	let lineup = $state.raw<ClubPreview>();
@@ -199,6 +251,9 @@
 			: section === 'mercado' ? current?.role === 'player' ? 'contratos' : 'mercado' : section === 'rodada' ? 'rodada' : 'carreira');
 	});
 
+	$effect(() => {
+		if (world.live && requested === 'comunicacao') openLiveTools('chat');
+	});
 	const membershipKey = (members: Member[]) => JSON.stringify(members.map((m) => [m.profileId, m.displayName, m.role]).sort());
 	const liveMembers = $derived(membership && membershipKey(membership));
 	let observedSocial = 0;
@@ -242,8 +297,8 @@
 		saving = true;
 		retry = null;
 		try {
-			await api<{ revision: number }>(path, { body: command });
-			message = 'Salvo no universo.';
+			const result = await api<{ revision: number; message?: string }>(path, { body: command });
+			message = result.message || 'Salvo no universo.';
 			if (command.action === 'archive') { location.assign('/multiplayer'); return true; }
 			try { await refresh(); } catch { message = 'Gravação confirmada. Reconectando para atualizar a tela.'; }
 			return true;
@@ -265,7 +320,7 @@
 		const command = seller ? { action: 'deal', target: seller, player: request.playerId, fee: request.fee }
 			: { action: 'club', request };
 		const ok = await execute({ ...command, op, revision: world.revision });
-		return { ok, log: ok ? world.management?.negotiations?.find((entry) => entry.op === request.operation) : null };
+		return { ok, log: ok ? (world.management?.negotiations ?? world.assistantMarket?.negotiations)?.find((entry) => entry.op === request.operation) : null };
 	}
 
 	async function saveTraining() {
@@ -292,13 +347,13 @@
 		} finally { saving = false; }
 	}
 
-	async function saveWorldTactic(tactic: Tactic, base: Tactic) {
+	async function saveWorldTactic(tactic: Tactic, base: Tactic, duringRound = false) {
 		if (!world.tactic || !sameTactic(world.tactic, base)) {
 			message = 'Outro responsável alterou a tática do clube. Compare a escalação oficial antes de salvar.';
 			failed = true;
 			return false;
 		}
-		if (current?.role === 'assistant' && !(current.lineupDelegated ?? current.matchDelegated)) {
+		if (current?.role === 'assistant' && (duringRound || !(current.lineupDelegated ?? current.matchDelegated))) {
 			if (saving) return false;
 			saving = true;
 			failed = false;
@@ -312,6 +367,11 @@
 				message = error instanceof Error ? error.message : 'Não foi possível enviar a sugestão.';
 				return false;
 			} finally { saving = false; }
+		}
+		if (duringRound && current?.role === 'coach') {
+			plannedTactic = { club: current.club, draft: tactic, base };
+			message = 'Rascunho preparado. Aplique depois que a rodada terminar.';
+			return true;
 		}
 		return send('tactic', { tactic });
 	}
@@ -339,7 +399,38 @@
 	<div class="room-island"><Island {friends} loading={world.live} /></div>
 {/if}
 {#if world.live}
-	<main class="page"><LiveMatch {path} profile={profileId} {names} {online} onchange={(loading) => (loadingLive = loading)} oncomplete={refresh} /></main>
+	<main class="page">
+		<nav class="live-tools" aria-label="Ferramentas durante a rodada">
+			<Button size="sm" icon="mail" onclick={() => openLiveTools('chat')}>Comunicação</Button>
+			{#if current}
+				<Button size="sm" icon="tactics" onclick={() => openLiveTools('planning')}>Planejamento</Button>
+				{#if current.role !== 'player'}<Button size="sm" icon="briefcase" onclick={() => openLiveTools('market')}>Pesquisar reforços</Button>{/if}
+			{/if}
+		</nav>
+		{#if current}<LiveMatch {path} profile={profileId} {names} {online} onchange={(loading) => (loadingLive = loading)} oncomplete={refresh} />
+		{:else}<p>A rodada está em andamento. Acompanhe a comunicação enquanto aguarda.</p>{/if}
+		<Sheet bind:open={liveToolsOpen} width={720} title={livePanel === 'planning' ? 'Planejamento' : livePanel === 'market' ? 'Pesquisa de reforços' : 'Comunicação na rodada'}>
+			{#if livePanel === 'chat'}
+				<LeagueChat {code} role={current?.role ?? 'member'} club={current?.club ?? ''} {online} versions={chatVersions} roster={world.roster} live />
+			{:else if livePanel === 'planning' && current}
+				{#if message}<p class:error={failed} role={failed ? 'alert' : 'status'}>{message}</p>{/if}
+				<p>A preparação nesta área vale para as próximas partidas. Para o jogo atual, use os comandos da partida.</p>
+				{#if current.role !== 'player' && world.tactic}
+					<WorldTactics key={`${code}:live`} tactic={plannedTactic?.club === current.club ? plannedTactic.draft : world.tactic}
+						squad={world.roster} club={current.club} busy={saving} canEdit suggest={current.role === 'assistant'}
+						onsave={(draft) => saveWorldTactic(draft, world.tactic!, true)} />
+				{/if}
+				<h3>Agenda do clube</h3>
+				{#each world.calendar.filter((entry) => !entry.score).slice(0, 5) as entry}
+					<p>{formatShort(entry.fixture.date)} · {clubName(entry.fixture.home)} × {clubName(entry.fixture.away)}</p>
+				{/each}
+			{:else if livePanel === 'market' && current && current.role !== 'player'}
+				<MarketSearch endpoint={path + '?market=1'} storageKey={`live-scouting:${code}:${profileId}`} revision={world.revision}
+					windowOpen={!!world.marketWindow} busy={saving} recommend={current.role === 'assistant' ? recommend : undefined} />
+				{#if message}<p class:error={failed} role={failed ? 'alert' : 'status'}>{message}</p>{/if}
+			{/if}
+		</Sheet>
+	</main>
 {:else}
 
 	{#if current && clubInfo}
@@ -359,6 +450,7 @@
 	{:else}
 		<main class="setup-page">
 			<header><h1>{leagueName}</h1><a href="/multiplayer">Voltar às minhas ligas</a></header>
+			<nav aria-label="Opções da liga"><Button href={href('carreira')}>Escolher clube</Button> <Button href={href('lobby')}>Lobby</Button> <Button href={href('comunicacao')}>Comunicação</Button></nav>
 			{@render careerContent()}
 			{#if lobby}{@render lobby(world.members)}{/if}
 		</main>
@@ -368,6 +460,13 @@
 {#snippet careerContent()}
 <section class="world" use:enter>
 	{#if message}<p class:error={failed} role={failed ? 'alert' : 'status'}>{message}</p>{/if}
+	{#if plannedTactic && plannedTactic.club === current?.club}
+		<div class="actions"><span>Tática preparada durante a rodada · {plannedTactic.draft.formation}</span>
+			<Button size="sm" disabled={saving} onclick={async () => {
+				if (plannedTactic && await saveWorldTactic(plannedTactic.draft, plannedTactic.base)) plannedTactic = undefined;
+			}}>Aplicar tática</Button><Button size="sm" onclick={() => plannedTactic = undefined}>Descartar</Button>
+		</div>
+	{/if}
 	{#if retry}<Button size="sm" disabled={saving} onclick={() => retry && execute(retry)}>Conferir o mesmo comando</Button>{/if}
 	{#if replay}
 		<Button onclick={() => (replay = null)}>Fechar reprodução</Button>
@@ -398,9 +497,12 @@
 					<small>{person.online ? 'Online' : 'Offline'} · {person.ready ? 'Pronto' : 'Sem confirmação'}</small></div>{/each}
 			</div></article>
 			<article><h3>Atividade da liga</h3>
+				{#each world.activity.slice(0, 6) as event (event.id)}
+					<p><strong>{event.actor}</strong> {activityLabels[event.action] ?? event.action}{event.club ? ' · ' + clubName(event.club) : ''} <small>· {formatShort(event.date)}</small></p>
+				{/each}
 				{#each world.news.slice(0,3) as item}<p>{item.title}</p>{/each}
 				{#each world.deals.slice(0,4) as deal}<p>{deal.name} · {clubName(deal.from)} → {clubName(deal.to)}</p>{/each}
-				{#if !world.news.length && !world.deals.length}<p>A atividade da temporada aparecerá aqui.</p>{/if}
+				{#if !world.news.length && !world.deals.length && !world.activity.length}<p>A atividade da temporada aparecerá aqui.</p>{/if}
 				<Button size="sm" href={href('mercado')}>Abrir mercado</Button>
 			</article>
 			{#if pc}<article><h3>Perfil profissional</h3><p>{current.athlete?.position} · {current.athlete?.player?.age} anos</p>
@@ -410,8 +512,8 @@
 			</article>{/if}
 			{#if leagueRow}<article><h3>Temporada em números</h3><div class="metrics"><span><strong>{leagueRow.position}º</strong>Posição</span><span><strong>{leagueRow.points}</strong>Pontos</span><span><strong>{leagueRow.won}</strong>Vitórias</span></div><a href={href('competicoes')}>Ver classificação</a></article>{/if}
 			{#if world.news.length}<article><h3>No noticiário</h3><strong>{world.news[0].title}</strong><p>{world.news[0].body}</p><a href={href('mundo')}>Abrir notícias</a></article>{/if}
-		{:else if section === 'comunicacao' && current}
-			<div class="wide"><LeagueChat {code} role={current.role} club={current.club} {online} versions={chatVersions} /></div>
+		{:else if section === 'comunicacao'}
+			<div class="wide"><LeagueChat {code} role={current?.role ?? 'member'} club={current?.club ?? ''} {online} versions={chatVersions} roster={world.roster} /></div>
 		{:else if section === 'rodada'}
 			<article>
 				<h3>{world.next ? (world.next.kind === 'cup' ? 'Copa do Brasil' : `Rodada ${world.next.round}`) : 'Encerramento da temporada'}</h3>
@@ -508,9 +610,7 @@
 							<div class="lineup">
 								<label>Nome<input bind:value={name} required maxlength="40" /></label>
 								<label>Posição<select aria-label="Posição" bind:value={position}>{#each POSITIONS as p}<option value={p}>{POSITION_INFO[p].label}</option>{/each}</select></label>
-								<label>Idade<input type="number" bind:value={age} min="16" max="35" required /></label>
-								<label>Nacionalidade<input bind:value={nationality} required maxlength="40" /></label>
-								<label>Pé dominante<select aria-label="Pé dominante" bind:value={foot}><option value="direito">Direito</option><option value="esquerdo">Esquerdo</option></select></label>
+								<PlayerIdentityFields bind:age bind:nationality bind:foot />
 							</div>
 						{/if}
 						<details><summary>Personalizar aparência</summary>
@@ -553,6 +653,24 @@
 				</article>{/if}
 			{/if}
 		{:else if section === 'mercado'}
+			{#if current?.role !== 'player' && world.financeDrafts.length}
+				<article class="wide"><h3>Solicitações da comissão</h3>
+					{#each world.financeDrafts as draft (draft.id)}
+						{@const details = draft.command.action === 'club' ? draft.command.request : draft.command}
+						<div class="finance-draft">
+							<strong>{draft.player} · {draft.authorName}</strong>
+							<p>{'fee' in details && details.fee ? formatExactMoney(details.fee) + ' · ' : ''}{'wage' in details ? formatExactMoney(details.wage) + '/mês · ' + details.years + ' temporada(s) · ' : ''}
+								{({pending:'Aguardando análise', approved:'Executada pelo mercado', declined:'Recusada pelo treinador', cancelled:'Cancelada'})[draft.status]}</p>
+							{#if current?.role === 'coach' && draft.status === 'pending'}
+								<div class="actions">
+									<Button size="sm" variant="primary" disabled={saving} onclick={() => send('finance-review', { id:draft.id, approve:true })}>Aprovar execução</Button>
+									<Button size="sm" disabled={saving} onclick={() => send('finance-review', { id:draft.id, approve:false })}>Recusar</Button>
+								</div>
+							{/if}
+						</div>
+					{/each}
+				</article>
+			{/if}
 			{#if current?.role === 'coach' && world.management}
 				<div class="wide">
 					{#key current.club}
@@ -588,9 +706,40 @@
 					<div class="actions">{#if world.athleteDeals.some((d) => d.offer === offer.id)}<span>Aguardando autorização</span>{:else}<Button disabled={saving} onclick={() => send('jogador-aceitar', { offerId: offer.id })}>Assinar proposta</Button>{/if}<Button disabled={saving} onclick={() => send('jogador-recusar', { offerId: offer.id })}>Recusar</Button></div>
 				{/each}</article>
 			{:else if current?.role === 'assistant'}
-				<div class="wide"><h3>Pesquisa de reforços</h3><p>Envie recomendações ao seu treinador pela comissão técnica.</p>
+				<div class="wide"><h3>Pesquisa de reforços</h3>
+				{#if current.finance}<p>{current.finance.mode === 'review' ? 'As negociações são encaminhadas ao treinador.' : 'Negocie dentro dos limites concedidos pelo treinador.'}</p>{/if}
 				<MarketSearch endpoint={path + '?market=1'} storageKey={`scouting:${code}:${profileId}`} revision={world.revision}
-					windowOpen={!!world.marketWindow} busy={saving} {recommend} /></div>
+					windowOpen={!!world.marketWindow} busy={saving} {recommend} canLoan={false} canPropose={canAssistantPropose}
+					propose={current.finance ? (player, kind) => { if (kind !== 'emprestimo') { assistantOffer = { player, kind }; assistantOfferOpen = true; } } : undefined} /></div>
+				{#if current.finance && world.assistantMarket && assistantOffer}
+					{#key assistantOffer.player.id + assistantOffer.kind}
+						<MarketOffer bind:open={assistantOfferOpen} player={assistantOffer.player} kind={assistantOffer.kind}
+							commit={marketCommit} budget={Math.min(world.assistantMarket.budget, current.finance.maxFee)} windowOpen={!!world.marketWindow}
+							review={current.finance.mode === 'review'} wageLimit={current.finance.maxWage} yearsLimit={current.finance.maxYears} />
+					{/key}
+				{/if}
+				{#if current.finance?.contracts}
+					{@const grant = current.finance}
+					<article><h3>Contratos</h3>
+						{#each world.deals.filter((deal) => deal.to === current?.club && deal.agreement) as deal (deal.id)}
+							<details><summary>{deal.name} · Acordo entre clubes</summary>
+								{#if deal.contractMessage}<p>{deal.contractMessage}</p>{/if}
+								<StaffContractForm {grant} busy={saving} submit={(values) => send('contract-deal', { id: deal.id, ...values })} />
+							</details>
+						{/each}
+						<details><summary>Renovar vínculo do elenco</summary>
+							<label>Atleta<select bind:value={renewalPlayer}><option value="">Selecione</option>
+								{#each world.roster.filter((player) => 'contract' in player && !player.loan && !player.pending) as player (player.id)}
+									<option value={player.id}>{player.name}</option>
+								{/each}
+							</select></label>
+							{#if renewalPlayer}
+								<StaffContractForm {grant} busy={saving} label="Propor renovação"
+									submit={(values) => send('club', { request: { action: 'renovar', playerId: renewalPlayer, ...values } })} />
+							{/if}
+						</details>
+					</article>
+				{/if}
 			{:else}<article><p>Escolha sua função para acessar o mercado.</p></article>{/if}
 		{:else if section === 'lobby' || section === 'admin'}
 			{#if lobby}<div class="wide">{@render lobby(world.members)}</div>{/if}
@@ -605,6 +754,9 @@
 							<Button size="sm" disabled={saving} onclick={() => send('delegate', { target: m.profileId, value: !m.assignment?.delegated })}>{m.assignment.delegated ? 'Revogar treino' : 'Delegar treino'}</Button>
 							<Button size="sm" disabled={saving} onclick={() => send('delegate', { target: m.profileId, area: 'match', value: !m.assignment?.matchDelegated })}>{m.assignment.matchDelegated ? 'Revogar comando de partida' : 'Delegar comando de partida'}</Button>
 							<Button size="sm" disabled={saving} onclick={() => send('delegate', { target: m.profileId, area: 'lineup', value: !m.assignment?.lineupDelegated })}>{m.assignment.lineupDelegated ? 'Revogar escalação' : 'Delegar escalação'}</Button>
+						{#key JSON.stringify(m.assignment.finance)}
+								<FinanceDelegation grant={m.assignment.finance} busy={saving} save={(grant) => send('delegate-finance', { target: m.profileId, grant })} />
+							{/key}
 						{/if}
 						{#if owner && m.profileId !== profileId}
 							<Button size="sm" disabled={saving} onclick={() => { if (confirm(`Transferir a administração para ${m.displayName}?`)) void send('transfer-owner', { target: m.profileId }); }}>Transferir administração</Button>
@@ -619,14 +771,21 @@
 					{#each world.vacancies as vacancy (vacancy)}
 						<p>Assumir o comando de {clubName(vacancy)}</p>
 						<Button disabled={saving} onclick={() => send('assign', { role: 'coach', club: vacancy })}>Aceitar proposta</Button>
+						<Button disabled={saving} onclick={() => send('decline-vacancy', { club: vacancy })}>Recusar proposta</Button>
 					{/each}
 				</article>
 			{/if}
+			{#if current?.role === 'assistant'}<article><h3>Minha comissão</h3>
+				<Button variant="danger" disabled={saving} onclick={() => { if (confirm('Sair da comissão técnica e permanecer na liga?')) void send('leave-commission'); }}>Sair da comissão</Button>
+			</article>{/if}
 			{#if owner}<article><h3>Regras do universo</h3>
+				<p>Temporada inicial {world.options.season} · Rodadas aos {world.options.calendar === 'saturday' ? 'sábados' : 'domingos'}</p>
+				<p>{world.options.competition === 'league' ? 'Séries A–D' : 'Séries A–D e Copa do Brasil'} · IA {({ accessible:'acessível', standard:'padrão', advanced:'avançada' })[world.options.difficulty]}</p>
 				<label>Clube para vaga<select bind:value={vacancyClub}><option value="">Selecione</option>{#each upcoming as c}<option value={c.id}>{c.name}</option>{/each}</select></label>
 				<div class="actions">
 					<Button disabled={saving} onclick={() => send('settings', { allowAbsent: world.allowAbsent, inviteOpen: !world.inviteOpen })}>{world.inviteOpen ? 'Fechar convites' : 'Abrir convites'}</Button>
 					<Button variant="danger" disabled={saving} onclick={() => { if (confirm('Arquivar o universo para todos?')) void send('archive'); }}>Arquivar</Button>
+					<DeleteLeague {code} name={leagueName} removed={() => goto('/multiplayer')} />
 				</div>
 			</article>{/if}
 		{:else}
@@ -639,6 +798,8 @@
 {/snippet}
 
 <style>
+	.live-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+	.finance-draft { padding-block: 8px; border-top: 1px solid var(--line); }
 	.room-island { position: relative; z-index: 32; }
 	.setup-page { max-width: 1240px; margin: auto; padding: 52px clamp(14px, 4vw, 48px) var(--sp-8); }
 	.setup-page h1 { margin: 0 0 var(--sp-4); }

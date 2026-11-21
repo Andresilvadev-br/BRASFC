@@ -10,6 +10,15 @@
 	let busy = $state(false);
 	let message = $state('');
 	let failed = $state(false);
+	let friends = $state<Array<{ username: string; display_name: string; accepted: boolean }>>();
+	let loadingFriends = $state(false);
+	async function loadFriends() {
+		if (loadingFriends) return;
+		loadingFriends = true;
+		try { friends = (await api<{ friends: NonNullable<typeof friends> }>('/api/social')).friends.filter((friend) => friend.accepted); }
+		catch (error) { message = error instanceof Error ? error.message : 'Lista de amigos indisponível.'; failed = true; }
+		finally { loadingFriends = false; }
+	}
 
 	async function invite(event: SubmitEvent) {
 		event.preventDefault();
@@ -32,6 +41,17 @@
 	<form onsubmit={invite} data-umx-enter>
 		<h3>Convidar participante</h3>
 		<label>Usuário BRASFC<input bind:value={username} placeholder="nome_de_usuario" minlength="3" maxlength="24" required autocapitalize="none" /></label>
+		<details ontoggle={(event) => { if (event.currentTarget.open) void loadFriends(); }}>
+			<summary>Escolher um amigo</summary>
+			{#if loadingFriends}<p role="status">Carregando amigos…</p>
+			{:else if friends?.length}<label>Amigo
+				<select value={friends.some((friend) => friend.username === username) ? username : ''}
+					onchange={(event) => username = event.currentTarget.value}>
+					<option value="">Selecione</option>
+					{#each friends as friend (friend.username)}<option value={friend.username}>{friend.display_name} · @{friend.username}</option>{/each}
+				</select></label>
+			{:else if friends}<p>Seus amigos aceitos aparecerão aqui.</p>{/if}
+		</details>
 		{#if owner}<label>Oferecer função<select bind:value={role}><option value="member">Participante · escolhe ao entrar</option>
 			<option value="coach">Treinador de outro clube</option>{#if coach}<option value="assistant">Auxiliar do meu clube</option>{/if}
 		</select></label>{:else}<p>Vaga de auxiliar técnico no seu clube.</p>{/if}

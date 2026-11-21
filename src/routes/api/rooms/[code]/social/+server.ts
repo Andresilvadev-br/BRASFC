@@ -1,3 +1,4 @@
+import { getClub } from '#lib/domain/clubs.ts';
 import { error } from '@sveltejs/kit';
 import { getDb } from '#lib/server/db/index.ts';
 import { noStore, readJson, requireProfile } from '#lib/server/http.ts';
@@ -32,12 +33,17 @@ export const POST: RequestHandler = async (event) => {
 		if (body.action === 'invite') {
 			if (!profile.username) error(401, 'Entre na sua conta BRASFC.');
 			const invite = await sendInvitation(db, room, profile.id, body);
-			hub.publishInbox(profile.id, invite.recipient);
-			void hub.publishChat(room.id, null).catch(() => {});
+			if (invite.changed) {
+				hub.publishInbox(profile.id, invite.recipient);
+				hub.publishNotice(invite.recipient, { id: invite.id, destination:'social',
+					title: invite.club ? `Convite para ${invite.role === 'assistant' ? 'auxiliar técnico' : 'treinador'} de ${getClub(invite.club)?.name ?? invite.club}` : `Convite para ${room.name}` });
+				void hub.publishChat(room.id, null).catch(() => {});
+			}
 			return noStore({ id: invite.id }, { status: 201 });
 		}
 		const result = await writeRoomChat(db, room, profile.id, body);
 		if (result.changed) void hub.publishChat(room.id, result.club).catch(() => {});
+		if (result.notice) hub.publishNotice(result.notice.profile, { id:result.notice.id, title:result.notice.title, code:room.code, destination:'chat' });
 		if (result.revision !== undefined) void hub.publishWorldRevision(room.id, result.revision).catch(() => {});
 		return noStore({ ok: true });
 	} catch (cause) {

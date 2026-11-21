@@ -2,12 +2,14 @@
 	import { goto, invalidate } from '$app/navigation';
 	import { onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
+	import { LEAGUE_SEASONS, DEFAULT_LEAGUE_OPTIONS, type LeagueOptions } from '#lib/domain/league-options.ts';
 	import { api } from '#lib/api.ts';
 	import { createRoomConnection } from '#lib/realtime/client.svelte.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { notify, setIslandContext } from '#lib/stores/island.svelte.ts';
 	import { enter } from '#lib/motion/actions.ts';
 	import Button from '#lib/ui/Button.svelte';
+	import DeleteLeague from '#lib/ui/career/DeleteLeague.svelte';
 	import Badge from '#lib/ui/Badge.svelte';
 	import Icon from '#lib/ui/Icon.svelte';
 	import ScreenHeader from '#lib/ui/ScreenHeader.svelte';
@@ -19,13 +21,17 @@
 	let code = $state(inviteCode);
 	let mode = $state<'coach' | 'player'>('coach');
 	let max = $state<number | undefined>(8);
+	let rules = $state<LeagueOptions>({ ...DEFAULT_LEAGUE_OPTIONS });
 	let inviteOnly = $state(false);
 	let assistantsRequired = $state(false);
 	let busy = $state(false);
 	let failure = $state('');
 	let query = $state('');
 	let users = $state<Array<{ id: string; username: string; display_name: string }>>([]);
-	const conn = createRoomConnection();
+	const conn = createRoomConnection(undefined, (notice) => notify({ id: notice.id, icon:'mail', title:notice.title, action: {
+		label: notice.destination === 'chat' ? 'Abrir comunicação' : 'Abrir Central social',
+		run: () => void goto(notice.destination === 'chat' && notice.code ? `/multiplayer/sala/${notice.code}?secao=comunicacao` : '/multiplayer#social')
+	} }));
 	const pending = $derived(data.social?.invites.filter((invite) => invite.recipient === data.profile?.id && invite.status === 'pending').length ?? 0);
 	const statuses = { pending:'Pendente', accepted:'Aceito', declined:'Recusado', cancelled:'Cancelado', expired:'Expirado' };
 
@@ -51,7 +57,7 @@
 	}
 
 	async function create() {
-		const { room } = await api<{ room: { code: string } }>('/api/rooms', { body: { name, mode, max, inviteOnly, assistantsRequired } });
+		const { room } = await api<{ room: { code: string } }>('/api/rooms', { body: { name, mode, max, inviteOnly, assistantsRequired, rules: $state.snapshot(rules) } });
 		await goto(`/multiplayer/sala/${room.code}`);
 	}
 	async function join() {
@@ -92,10 +98,17 @@
 					{#if panel === 'list'}
 						<h2>Minhas ligas</h2>
 						{#each data.rooms as room (room.id)}
-							<a class="row" href="/multiplayer/sala/{room.code}">
-								<Icon name="trophy" size={24} /><div><strong>{room.name}</strong><small>{room.members}/{room.maxMembers} participantes</small></div>
-								<Badge tone={room.started ? 'emerald' : 'gold'}>{room.started ? 'Temporada em andamento' : 'No lobby'}</Badge>
-							</a>
+							<div class="room-item">
+								{#if room.status === 'open'}
+									<a class="row" href="/multiplayer/sala/{room.code}">
+										<Icon name="trophy" size={24} /><div><strong>{room.name}</strong><small>{room.members}/{room.maxMembers} participantes</small></div>
+										<Badge tone={room.started ? 'emerald' : 'gold'}>{room.started ? 'Temporada em andamento' : 'No lobby'}</Badge>
+									</a>
+								{:else}<div class="row"><Icon name="trophy" size={24} /><div><strong>{room.name}</strong><small>Código {room.code}</small></div><Badge tone="neutral">Arquivada</Badge></div>{/if}
+								{#if room.ownerId === data.profile?.id}
+									<div class="room-action"><DeleteLeague code={room.code} name={room.name} removed={() => invalidate('app:rooms')} /></div>
+								{/if}
+							</div>
 						{:else}<p>Escolha criar uma liga ou entre usando um convite.</p>{/each}
 					{:else if panel === 'create'}
 						<h2>Criar uma liga</h2>
@@ -106,6 +119,14 @@
 								<label>Nome da liga<input bind:value={name} maxlength="40" minlength="2" required /></label>
 								<div class="options"><label>Vagas<input type="number" min="2" max="16" bind:value={max} required /></label>
 									<label>Entrada<select bind:value={inviteOnly}><option value={false}>Com código</option><option value={true}>Somente convidados</option></select></label></div>
+								<fieldset><legend>Temporada e competição</legend>
+									<label>Temporada inicial<select bind:value={rules.season}>{#each LEAGUE_SEASONS as season (season)}
+										<option value={season}>{season}{season === 2026 ? ' · base registrada' : ' · cenário simulado sobre a base de 2026'}</option>
+									{/each}</select></label>
+									<label>Calendário<select bind:value={rules.calendar}><option value="sunday">Ligas aos domingos · Copa às quartas</option><option value="saturday">Ligas aos sábados · Copa às terças</option></select></label>
+									<label>Competições<select bind:value={rules.competition}><option value="league-and-cup">Séries A–D e Copa do Brasil</option><option value="league">Somente Séries A–D</option></select></label>
+									<label>Dificuldade contra a IA<select bind:value={rules.difficulty}><option value="accessible">Acessível</option><option value="standard">Padrão</option><option value="advanced">Avançada</option></select></label>
+								</fieldset>
 								<label class="check"><input type="checkbox" bind:checked={assistantsRequired} /> Exigir prontidão dos auxiliares</label>
 								<Button type="submit" variant="primary" iconRight="arrowRight" loading={busy}>Continuar para escolha do clube</Button>
 							</form>
@@ -153,6 +174,8 @@
 </main>
 
 <style>
+	.room-action { display: flex; justify-content: flex-end; margin: 4px 0 10px; }
+	fieldset { display: grid; gap: .5rem; border: 1px solid var(--line); border-radius: .5rem; padding: .65rem; min-width: 0; }
 	.page { max-width: 1150px; margin: auto; padding: 42px clamp(14px, 3vw, 32px); }
 	.hero, .panel { padding: clamp(14px, 2.2vw, 22px); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
 	.hero { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; background: linear-gradient(120deg, rgb(16 185 129 / .13), var(--surface) 64%); }

@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { validateCreateCareer } from '#lib/domain/career.ts';
+import { initialCareerData, validateCreateCareer } from '#lib/domain/career.ts';
 import { addDays } from '#lib/domain/dates.ts';
 import { CAREER_PLAYER_ID, fixtureSetup, selectionOf } from '#lib/domain/matchday.ts';
-import { adjustedOverall, advancePlayerDays, playerState, trainBlock } from '#lib/domain/player-development.ts';
+import { SOUTH_AMERICAN_COUNTRIES, playerDevelopmentFactor } from '#lib/domain/player-profile.ts';
+import { adjustedOverall, playerAttributes, advancePlayerDays, playerState, trainBlock } from '#lib/domain/player-development.ts';
 import { playerHistory } from '#lib/domain/playerstats.ts';
 import { careerView } from '#lib/domain/view.ts';
 import { createPgliteDb, type Db } from '#lib/server/db/index.ts';
@@ -22,18 +23,42 @@ afterAll(() => db?.close());
 
 const input = {
 	mode: 'player', personName: 'Lia Prates', clubId: 'juriti', world: 'brasfc',
-	position: 'GOL', nationality: 'Portugal', foot: 'esquerdo', age: 29,
+	position: 'GOL', nationality: 'Uruguai', foot: 'esquerdo', age: 29,
 	appearance: { skin: 2, hairColor: 0, hairStyle: 'longo', sleeves: 'longa', shirt: 'fora', socks: 'alto' }
 };
 
 describe('Dev 0.6 · Carreira de Jogador', () => {
+	it('aceita somente as nacionalidades sul-americanas, idades inteiras dentro da faixa e os três pés', () => {
+		expect(SOUTH_AMERICAN_COUNTRIES).toHaveLength(12);
+		for (const nationality of SOUTH_AMERICAN_COUNTRIES) {
+			expect(validateCreateCareer({ ...input, nationality, foot:'ambidestro', age:16 })).toMatchObject({
+				ok:true, value:{ nationality, foot:'ambidestro', age:16 }
+			});
+		}
+		expect(validateCreateCareer({ ...input, nationality:'Portugal', age:'35', foot:'nenhum' })).toMatchObject({
+			ok:false, errors:{ nationality:expect.any(String), age:expect.any(String), foot:expect.any(String) }
+		});
+		expect(validateCreateCareer({ ...input, age:35 }).ok).toBe(true);
+		expect(validateCreateCareer({ ...input, age:36 }).ok).toBe(false);
+		expect(validateCreateCareer({ ...input, age:18.5 }).ok).toBe(false);
+		const right = initialCareerData({ ...input, mode:'player', world:'brasfc', position:'PD', foot:'direito', appearance:undefined, age:17 }, 532).player!;
+		const both = playerAttributes(532, 'PD', { ...right, foot:'ambidestro' }).attributes;
+		const open = playerAttributes(532, 'PD', right).attributes;
+		expect(both.cruzamento).toBe(open.cruzamento - 1);
+		expect(both.finalizacao).toBe(open.finalizacao + 1);
+		const older = initialCareerData({ ...input, mode:'player', world:'brasfc', position:'PD', foot:'direito', appearance:undefined, age:34 }, 532).player!;
+		expect(older.overall).toBeGreaterThan(right.overall);
+		expect(right.potential - right.overall).toBeGreaterThan(older.potential - older.overall);
+		expect(playerDevelopmentFactor(right.age)).toBeGreaterThan(playerDevelopmentFactor(older.age));
+	});
+
 	it('salva treinos, registra avaliação no motor, negocia e recarrega após transferência', async () => {
 		const parsed = validateCreateCareer(input);
 		if (!parsed.ok) throw new Error(JSON.stringify(parsed.errors));
 		expect(validateCreateCareer({ ...input, age: 12 }).ok).toBe(false);
 		const { profile } = await createGuestProfile(db);
 		let c = await createCareer(db, profile.id, parsed.value);
-		expect(c.data.player).toMatchObject({ age: 29, nationality: 'Portugal', foot: 'esquerdo' });
+		expect(c.data.player).toMatchObject({ age: 29, nationality: 'Uruguai', foot: 'esquerdo' });
 		expect(c.data.appearance).toMatchObject({ sleeves: 'longa', shirt: 'fora' });
 		const coach = await createCareer(db, profile.id, { ...parsed.value, mode: 'coach' });
 

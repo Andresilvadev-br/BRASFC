@@ -11,14 +11,14 @@ type Person = { id: string; username: string; display_name: string; avatar: numb
 type Invite = {
 	id: string; code: string; name: string; club: string | null; role: 'assistant' | 'coach' | null;
 	status: 'pending' | 'accepted' | 'declined' | 'cancelled' | 'expired';
-	sender: string; recipient: string; sender_name: string; recipient_name: string;
+	sender: string; recipient: string; sender_name: string; recipient_name: string; created_at: string;
 };
 
 function refuse(message: string, status = 400): never { throw new RoomError(message, status); }
 
 export async function socialInbox(db: Db, profile: string) {
 	return {
-		invites: await db.query<Invite>(`SELECT i.id,r.code,r.name,i.club,i.role,i.sender,i.recipient,
+		invites: await db.query<Invite>(`SELECT i.id,r.code,r.name,i.club,i.role,i.sender,i.recipient,i.created_at::text,
 			a.display_name AS sender_name,b.display_name AS recipient_name,
 			CASE WHEN i.status='pending' AND (i.expires_at <= now() OR r.status='closed') THEN 'expired' ELSE i.status END AS status
 			FROM room_invitations i JOIN rooms r ON r.id=i.room_id
@@ -85,7 +85,7 @@ export async function sendInvitation(db: Db, room: Room, profile: string, body: 
 		const [identical] = await tx.query<{ id: string }>(`SELECT id FROM room_invitations WHERE room_id=$1 AND sender=$2
 			AND recipient=$3 AND club IS NOT DISTINCT FROM $4 AND role IS NOT DISTINCT FROM $5
 			AND status='pending' AND expires_at>now()`, [room.id, profile, person.id, club, role]);
-		if (identical) return { id: identical.id, recipient: person.id };
+		if (identical) return { id: identical.id, recipient: person.id, role, club, changed: false };
 		if (role && (await tx.query(`SELECT 1 FROM room_worlds w, jsonb_each(w.state->'participants') p
 			WHERE w.room_id=$1 AND p.value->>'role'=$2 AND p.value->>'club'=$3`, [room.id, role, club])).length) refuse('A vaga já está ocupada.', 409);
 		if (role && (await tx.query(`SELECT 1 FROM room_invitations WHERE room_id=$1 AND role=$2 AND club=$3
@@ -96,7 +96,7 @@ export async function sendInvitation(db: Db, room: Room, profile: string, body: 
 			VALUES ($1,$2,$3,$4,$5,$6,now()+$7::int*interval '1 hour') ON CONFLICT DO NOTHING RETURNING id`,
 			[randomUUID(), room.id, profile, person.id, club, role, hours]);
 		if (!created) refuse('Este usuário já tem um convite pendente.', 409);
-		return { id: created.id, recipient: person.id };
+		return { id: created.id, recipient: person.id, role, club, changed: true };
 	});
 }
 
@@ -108,7 +108,7 @@ export async function answerInvitation(db: Db, profile: string, id: unknown, acc
 		if (!locked) refuse('Convite indisponível.', 404);
 		const [invite] = await tx.query<Invite & { expired: boolean }>(`SELECT id,sender,role,club,status,expires_at<=now() AS expired
 			FROM room_invitations WHERE id=$1 FOR UPDATE`, [id]);
-		if (invite.status === 'accepted' && accept) return { ...locked, sender: invite.sender };
+		if (invite.status === 'accepted' && accept) return { ...locked, sender: invite.sender, changed: false };
 		if (invite.status !== 'pending' || invite.expired) refuse('Convite expirado ou encerrado.', 410);
 		if (accept) {
 			const room = await joinRoom(tx, locked.code, profile, true);
@@ -123,6 +123,6 @@ export async function answerInvitation(db: Db, profile: string, id: unknown, acc
 			}
 		}
 		await tx.query('UPDATE room_invitations SET status=$2 WHERE id=$1', [id, accept ? 'accepted' : 'declined']);
-		return { ...locked, sender: invite.sender };
+		return { ...locked, sender: invite.sender, changed: true };
 	});
 }

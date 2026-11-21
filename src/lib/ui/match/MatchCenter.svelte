@@ -244,6 +244,7 @@
 		modalPreset = next;
 	});
 	function openTactic() {
+		intervalTab = 'elenco';
 		if (!control) return;
 		const t = match.teams[control].tactic;
 		mentality = t.mentality;
@@ -303,6 +304,11 @@
 			lineup.push(pick);
 		}
 		return lineup;
+	}
+	function swapPlayers(first: string, second: string) {
+		if (!control || finished) return;
+		intervalError = match.swapPositions(control, first, second) ?? '';
+		version++;
 	}
 	function doSub(outId: string, inId: string) {
 		if (!control) return;
@@ -409,6 +415,7 @@
 			bind:selected={selHome}
 			canSub={control === 'home' && !finished && match.subsLeft('home') > 0}
 			pendingOut={control === 'home' ? pendingOut : []}
+			onswap={control === 'home' && !finished ? swapPlayers : undefined}
 			onsub={doSub}
 		/>
 
@@ -507,6 +514,7 @@
 			bind:selected={selAway}
 			canSub={control === 'away' && !finished && match.subsLeft('away') > 0}
 			pendingOut={control === 'away' ? pendingOut : []}
+			onswap={control === 'away' && !finished ? swapPlayers : undefined}
 			onsub={doSub}
 		/>
 	</div>
@@ -515,12 +523,10 @@
 {#if control}
 	<Modal bind:open={tacticOpen} title={atInterval ? 'Intervalo · Escalação' : 'Ajuste tático'}
 		description={atInterval ? 'Revise a equipe e confirme quando estiver pronto para o segundo tempo.' : 'Mentalidade e estilo mudam na hora; a formação reorganiza os mesmos atletas.'} size="lg">
-		{#if atInterval}
-			<Segmented label="Intervalo" bind:value={intervalTab} options={[{ value: 'elenco', label: 'Escalação' }, { value: 'tatica', label: 'Tática' }]} />
-		{/if}
-		{#if atInterval && intervalTab === 'elenco'}
+		<Segmented label="Ajustes da equipe" bind:value={intervalTab} options={[{ value: 'elenco', label: 'Escalação' }, { value: 'tatica', label: 'Tática' }]} />
+		{#if intervalTab === 'elenco'}
 			<FormationBoard compact {match} side={control} color={colors[control].primary} {version} players={result.players}
-				bind:selected={intervalSelected} canSub={match.subsLeft(control) > 0} pendingOut={pendingOut} onsub={doSub} />
+				bind:selected={intervalSelected} canSub={match.subsLeft(control) > 0} pendingOut={pendingOut} onsub={doSub} onswap={!finished ? swapPlayers : undefined} />
 			{#if intervalError}<p role="status">{intervalError}</p>{/if}
 		{:else}
 		<div class="tac">

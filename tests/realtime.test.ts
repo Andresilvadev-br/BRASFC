@@ -9,7 +9,7 @@ import { runMigrations } from '#lib/server/db/migrate.ts';
 import { RateLimiter } from '#lib/server/http.ts';
 import { RealtimeHub } from '#lib/server/realtime/hub.ts';
 import { createGuestProfile } from '#lib/server/repos/profiles.ts';
-import { createRoom, joinRoom, leaveRoom } from '#lib/server/repos/rooms.ts';
+import { createRoom, deleteOnlineLeague, joinRoom, leaveRoom } from '#lib/server/repos/rooms.ts';
 
 let db: Db;
 let hub: RealtimeHub;
@@ -101,6 +101,29 @@ describe('hub de tempo real', () => {
 		const closed = await a.waitFor((m) => m.t === 'closed');
 		expect(closed.t).toBe('closed');
 		a.ws.close();
+	});
+
+	it('avisa os participantes conectados quando uma liga é excluída', async () => {
+		const owner = await createGuestProfile(db);
+		const guest = await createGuestProfile(db);
+		const room = await createRoom(db, owner.profile.id, 'Liga excluída');
+		await joinRoom(db, room.code, guest.profile.id);
+		const a = client(owner.token), b = client(guest.token);
+		try {
+			await Promise.all([a.opened, b.opened]);
+			a.send({ t:'join', code:room.code });
+			b.send({ t:'join', code:room.code });
+			const joined = (msg: ServerMessage) => msg.t === 'room' && msg.room.members.every((member) => member.online);
+			await Promise.all([a.waitFor(joined), b.waitFor(joined)]);
+			const notice = { id:'staff-contract', title:'Contrato aprovado', destination:'social' as const };
+			hub.publishNotice(guest.profile.id, notice);
+			expect(await b.waitFor((msg) => msg.t === 'notice')).toMatchObject({ notice });
+			const deleted = await deleteOnlineLeague(db, room.id, owner.profile.id, room.code);
+			hub.closeLeague(room.id, deleted.code, 'A liga foi excluída pelo anfitrião.');
+			const connected = await Promise.all([a, b].map((connection) => connection.waitFor((msg) => msg.t === 'closed')));
+			expect(connected).toEqual(Array(2).fill({ t:'closed', code:room.code, reason:'A liga foi excluída pelo anfitrião.' }));
+			expect(hub.onlineProfiles(room.id).size).toBe(0);
+		} finally { a.ws.close(); b.ws.close(); }
 	});
 
 	it('não deixa quem não é membro entrar na sala', async () => {

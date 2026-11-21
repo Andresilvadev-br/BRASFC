@@ -1,3 +1,4 @@
+import { leagueOptions } from '#lib/domain/league-options.ts';
 import { error } from '@sveltejs/kit';
 import { getDb } from '#lib/server/db/index.ts';
 import { ensureProfile, limitedResponse, noStore, RateLimiter, readJson } from '#lib/server/http.ts';
@@ -22,8 +23,10 @@ export const POST: RequestHandler = async (event) => {
 	if (configured && ((mode !== 'coach' && mode !== 'player') || typeof max !== 'number' || !Number.isInteger(max) || max < 2 || max > 16)) {
 		error(400, 'Escolha um modo e de 2 a 16 vagas.');
 	}
+	const rules = leagueOptions(body.rules);
+	if (configured && !rules) error(400, 'Configuração de temporada inválida.');
 	const options: Parameters<typeof createRoom>[3] = (mode === 'coach' || mode === 'player') && typeof max === 'number'
-		? { mode, max, inviteOnly: body.inviteOnly === true, assistantsRequired: body.assistantsRequired === true } : undefined;
+		? { mode, max, inviteOnly: body.inviteOnly === true, assistantsRequired: body.assistantsRequired === true, leagueOptions: rules ?? undefined } : undefined;
 	const retry = createLimiter.retryAfter(profile.id);
 	if (retry) return limitedResponse(retry, 'Você criou muitas salas em pouco tempo.');
 	try {

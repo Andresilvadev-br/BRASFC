@@ -10,9 +10,9 @@
 	import Crest from '../Crest.svelte';
 	import Pixel from '../Pixel.svelte';
 
-	let { player, busy, windowOpen, comparison, observe, compare, propose, recommend }: {
+	let { player, busy, windowOpen, comparison, observe, compare, propose, recommend, canPropose, canLoan = true }: {
 		player: MarketProfile; busy: boolean; windowOpen: boolean; comparison: boolean;
-		observe?: () => unknown; recommend?: () => unknown; compare: () => unknown; propose?: (kind: 'compra' | 'emprestimo' | 'livre') => unknown;
+		canLoan?: boolean; canPropose?: (player: MarketProfile) => boolean; observe?: () => unknown; recommend?: () => unknown; compare: () => unknown; propose?: (kind: 'compra' | 'emprestimo' | 'livre') => unknown;
 	} = $props();
 
 	const groups = [
@@ -45,15 +45,15 @@
 		<Button size="sm" variant="ghost" onclick={compare}>{comparison ? 'Retirar da comparação' : 'Comparar'}</Button>
 	</div>
 	{#if recommend && !player.isMine}<Button size="sm" variant="primary" disabled={busy} onclick={recommend}>Recomendar à comissão</Button>{/if}
-	{#if propose}<div class="buttons negotiation">
+	{#if propose && (!canPropose || canPropose(player))}<div class="buttons negotiation">
 		<Button size="sm" variant="primary" disabled={busy || !!reason} onclick={() => propose?.(player.club ? 'compra' : 'livre')}>{player.club ? 'Fazer proposta' : 'Oferecer contrato'}</Button>
-		{#if player.club && !player.isMine}
+		{#if canLoan && player.club && !player.isMine}
 			<Button size="sm" variant="secondary" disabled={busy || !!reason || !player.loanable} onclick={() => propose?.('emprestimo')}>Pedir empréstimo</Button>
 		{/if}
 	</div>{/if}
 	{#if propose && reason}<p class="hint">{reason}</p>
 	{:else if propose && player.humanSeller}<p class="hint">A compra depende da aprovação do outro treinador. Confira a próxima etapa em Negociações.</p>
-	{:else if propose && player.club && !player.loanable}<p class="hint">O clube não libera este atleta por empréstimo nas condições atuais.</p>{/if}
+	{:else if canLoan && propose && player.club && !player.loanable}<p class="hint">O clube não libera este atleta por empréstimo nas condições atuais.</p>{/if}
 	<div class="profile-tabs" role="group" aria-label="Informações do atleta">
 		{#each sections as item (item.id)}<button type="button" data-umx-press aria-pressed={section === item.id} onclick={() => section = item.id}>{item.label}</button>{/each}
 	</div>

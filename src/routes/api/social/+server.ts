@@ -26,8 +26,12 @@ export const POST: RequestHandler = async (event) => {
 	try {
 		if (body.action === 'accept' || body.action === 'decline') {
 			const result = await answerInvitation(db, profile, body.id, body.action === 'accept');
-			hub.publishInbox(profile, result.sender);
-			if (body.action === 'accept') void hub.broadcastRoom(result.room_id).catch(() => {});
+			if (result.changed) {
+				hub.publishInbox(profile, result.sender);
+				hub.publishNotice(result.sender, { id:`${body.id}:${body.action}`, destination:'social',
+					title: body.action === 'accept' ? 'Seu convite de liga foi aceito' : 'Seu convite de liga foi recusado' });
+				if (body.action === 'accept') void hub.broadcastRoom(result.room_id).catch(() => {});
+			}
 			return noStore({ code: result.code });
 		}
 		const result = await friendship(db, profile, body.action, body.target);

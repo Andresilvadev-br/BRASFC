@@ -86,6 +86,7 @@ export type Decision =
 	| { type: 'individual'; playerId: string; order: PlayerOrder | null }
 	| { type: 'captains'; order: string[] }
 	| { type: 'sub'; outId: string; inId: string }
+	| { type: 'swap'; first: string; second: string }
 	| { type: 'mentality'; value: Mentality }
 	| { type: 'style'; value: PlayStyle }
 	| { type: 'formation'; value: FormationId; lineup: string[]; roles?: RoleId[] }
@@ -95,6 +96,8 @@ export interface AppliedDecision {
 	tick: number;
 	side: Side;
 	decision: Decision;
+	/** Troca confirmada antes de iniciar o tick, inclusive se o relógio estiver pausado. */
+	beforeTick?: true;
 	/** decisão recusada (ex.: substituição inválida) */
 	rejected?: string;
 }

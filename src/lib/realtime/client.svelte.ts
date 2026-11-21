@@ -1,5 +1,5 @@
 import { retryDelay } from '#lib/api.ts';
-import { REALTIME_PATH, type ClientMessage, type RoomActivity, type RoomSnapshot, type ServerMessage } from './protocol.ts';
+import { REALTIME_PATH, type ClientMessage, type LeagueNotice, type RoomActivity, type RoomSnapshot, type ServerMessage } from './protocol.ts';
 
 export type ConnectionStatus = 'idle' | 'connecting' | 'online' | 'reconnecting' | 'offline' | 'unavailable' | 'closed';
 
@@ -7,7 +7,7 @@ export type ConnectionStatus = 'idle' | 'connecting' | 'online' | 'reconnecting'
  * Cliente do canal de tempo real de uma sala. O estado exibido vem sempre
  * do servidor (instantâneos completos); reconecta sozinho com espera crescente.
  */
-export function createRoomConnection(code?: string) {
+export function createRoomConnection(code?: string, onNotice?: (notice: LeagueNotice) => void) {
 	const state = $state({
 		status: 'idle' as ConnectionStatus,
 		room: null as RoomSnapshot | null,
@@ -59,6 +59,7 @@ export function createRoomConnection(code?: string) {
 					state.status = 'online';
 				}
 			} else if (msg.t === 'inbox' && msg.v === 1) state.inboxVersion++;
+			else if (msg.t === 'notice' && msg.v === 1) onNotice?.(msg.notice);
 			else if (msg.t === 'chat' && msg.v === 1) state.chatVersion[msg.channel]++;
 			else if (msg.t === 'room') {
 				state.room = msg.room;

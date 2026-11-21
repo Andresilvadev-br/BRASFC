@@ -15,6 +15,7 @@
 	import PitchCanvas from './PitchCanvas.svelte';
 	import PlayerOrders from '../tactics/PlayerOrders.svelte';
 	import BroadcastMoments from './BroadcastMoments.svelte';
+	import { reposition } from '../tactics/reposition.ts';
 	import LineupPresentation from './LineupPresentation.svelte';
 
 	type Session = NonNullable<Awaited<ReturnType<typeof updateLiveRound>>['session']>;
@@ -145,6 +146,16 @@
 	});
 
 	function decision(value: Decision) { void request(relevant?.canManage ? 'decision' : 'suggest', { decision: value }); }
+	function swapPlayers(first: string, second: string) {
+		if (pending || first === second) return;
+		decision({ type: 'swap', first, second });
+		outId = '';
+	}
+	function pickStarter(id: string) {
+		pickedPlayer = id;
+		if (outId && outId !== id && match?.players.some((player) => player.id === outId)) swapPlayers(outId, id);
+		else outId = outId === id ? '' : id;
+	}
 	function changeFormation(value: FormationId) {
 		if (!relevant || !own) return;
 		const squad = relevant.replay[relevant.side].players.filter((p) => match?.players.some((row) => row.id === p.id));
@@ -279,24 +290,22 @@
 			{/if}
 			{#if own && (relevant.canManage || suggestionRights) && ['FIRST_HALF','HALF_TIME','SECOND_HALF'].includes(session.phase)}
 				<div class="surface" use:enter>
-					{#if session.phase === 'HALF_TIME'}
-						<h3 tabindex="-1" bind:this={intervalHeading}>Intervalo · Escalação</h3>
-						<div class="board interval-board">
-							{#each FORMATIONS[own.tactic.formation] as slot, index (index)}
-								{@const id = own.tactic.lineup[index]}
-								{@const athlete = athletes.get(id)}
-								{@const state = match.players.find((player) => player.id === id)}
-								{#if athlete && state && !state.sentOff}
-									<button type="button" style:left={slot.x + '%'} style:top={slot.y + '%'} aria-pressed={outId === id}
-										onclick={() => { pickedPlayer = id; outId = id; }}>
-										<strong>{athlete.shortName}</strong><small>{slot.position} · {Math.round(state.condition)}%</small>
-									</button>
-								{/if}
-							{/each}
-						</div>
-					{:else}
-						<h3>{relevant.canManage ? 'Comando do time' : 'Sugestões ao treinador'}</h3>
-					{/if}
+					{#if session.phase === 'HALF_TIME'}<h3 tabindex="-1" bind:this={intervalHeading}>Intervalo · Escalação</h3>
+					{:else}<h3>{relevant.canManage ? 'Comando do time' : 'Sugestões ao treinador'}</h3>{/if}
+					<p>Arraste um atleta ou toque em dois titulares para {relevant.canManage ? 'trocar posições' : 'sugerir a troca de posições'}.</p>
+					<div class="board interval-board" use:reposition={{ move: !pending ? swapPlayers : undefined }} role="group" aria-label="Atletas em campo">
+						{#each FORMATIONS[own.tactic.formation] as slot, index (index)}
+							{@const id = own.tactic.lineup[index]}
+							{@const athlete = athletes.get(id)}
+							{@const state = match.players.find((player) => player.id === id)}
+							{#if athlete && state && !state.sentOff}
+								<button type="button" style:left={slot.x + '%'} style:top={slot.y + '%'} aria-pressed={outId === id}
+									data-reposition={!pending ? id : undefined} disabled={pending} onclick={() => pickStarter(id)}>
+									<strong>{athlete.shortName}</strong><small>{slot.position} · {Math.round(state.condition)}%</small>
+								</button>
+							{/if}
+						{/each}
+					</div>
 					<p>Capitão · {own.captain ? athletes.get(own.captain)?.name : 'Sem jogador elegível'}</p>
 					<PlayerOrders squad={relevant.replay[relevant.side].players} lineup={own.tactic.lineup.filter((id) => match.players.some((state) => state.id === id))} selected={pickedPlayer} slotPositions={own.tactic.lineup.filter((id) => match.players.some((state) => state.id === id)).map((id) => FORMATIONS[own.tactic.formation][own.tactic.lineup.indexOf(id)].position)}
 						order={own.tactic.captains} instructions={own.tactic.playerOrders} disabled={pending} oncaptains={(order) => decision({ type: 'captains', order })}
@@ -314,12 +323,12 @@
 						<Button disabled={pending || !inId || !outId || !own.subs} onclick={() => { decision({ type: 'sub', outId, inId }); outId = ''; inId = ''; }}>{relevant.canManage ? 'Solicitar substituição' : 'Sugerir substituição'}</Button>
 					</div>
 					{#each session.suggestions as suggestion (suggestion.id)}
-						<p>{names[suggestion.profile]} sugeriu {suggestion.decision.type}
+						<p>{names[suggestion.profile]} sugeriu {suggestion.decision.type === 'swap' ? 'uma troca de posições' : suggestion.decision.type}
 							{#if relevant.canManage}<Button size="sm" disabled={pending} onclick={() => decision(suggestion.decision)}>Aplicar</Button>{/if}
 						</p>
 					{/each}
 					{#each match.decisions.filter((item) => item.side === relevant.side).slice(-4) as item}
-						<p>{Math.floor(item.tick / 60)}′ · {item.decision.type} · {item.rejected ?? 'Aplicada'}</p>
+						<p>{Math.floor(item.tick / 60)}′ · {item.decision.type === 'swap' ? 'Troca de posições' : item.decision.type} · {item.rejected ?? 'Aplicada'}</p>
 					{/each}
 				</div>
 			{/if}
@@ -363,6 +372,8 @@
 	.board{position:relative;aspect-ratio:1.9;background:repeating-linear-gradient(90deg,#164935 0 10%,#1b543e 10% 20%);border:1px solid #b6e7cf;border-radius:8px;margin:10px 0;overflow:hidden}
 	.interval-board{width:min(100%,540px);min-height:300px}
 	.interval-board button{position:absolute;translate:-50% -50%;display:grid;justify-items:center;width:min(20%,92px);padding:3px;border:1px solid transparent;border-radius:6px;background:#07160f;color:#fff;font-size:var(--fs-xs)}
+	.interval-board button[data-reposition]{touch-action:none;cursor:grab}
+	.interval-board:global([data-dragging-position]) button[data-reposition]{cursor:grabbing}
 	.interval-board button[aria-pressed="true"]{border-color:var(--emerald)}
 	.interval-board strong{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 	.fixture{border:1px solid var(--line);border-radius:9px;padding:6px;justify-content:center}.fixtures{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:5px}.film{color:#ebd78c}

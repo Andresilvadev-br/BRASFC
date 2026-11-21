@@ -145,20 +145,22 @@ export class RealtimeHub {
 		}
 	}
 
+	closeLeague(roomId: string, code: string, reason: string) {
+		this.ready.delete(roomId);
+		for (const connection of this.conns) {
+			if (connection.roomId !== roomId) continue;
+			connection.roomId = null;
+			this.send(connection, { t: 'closed', code, reason });
+		}
+	}
+
 	/** Reenvia o estado completo da sala a todos os conectados nela. */
 	async broadcastRoom(roomId: string, known?: Room) {
 		const db = await this.db();
 		const room = known ?? (await db.query<{ code: string }>('SELECT code FROM rooms WHERE id = $1', [roomId]).then((r) => (r[0] ? getRoomByCode(db, r[0].code) : null)));
 		const targets = [...this.conns].filter((c) => c.roomId === roomId);
 		if (!room) return;
-		if (room.status !== 'open') {
-			this.ready.delete(roomId);
-			for (const c of targets) {
-				c.roomId = null;
-				this.send(c, { t: 'closed', code: room.code, reason: 'A sala foi encerrada pelo anfitrião.' });
-			}
-			return;
-		}
+		if (room.status !== 'open') return this.closeLeague(roomId, room.code, 'A sala foi encerrada pelo anfitrião.');
 		const [members, world] = await Promise.all([
 			listMembers(db, roomId),
 			db.query<{ revision: number }>('SELECT revision FROM room_worlds WHERE room_id = $1', [roomId])
@@ -211,6 +213,12 @@ export class RealtimeHub {
 		const ids = new Set(members.map((member) => member.profileId));
 		for (const connection of connected) {
 			if (connection.roomId === roomId && ids.has(connection.profile.id)) this.send(connection, { t: 'world', v: 1, revision });
+		}
+	}
+
+	publishNotice(profile: string, notice: import('#lib/realtime/protocol.ts').LeagueNotice) {
+		for (const connection of this.conns) {
+			if (connection.profile.id === profile) this.send(connection, { t: 'notice', v: 1, notice });
 		}
 	}
 
