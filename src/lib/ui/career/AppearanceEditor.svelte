@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { APPEARANCE_FIELDS, APPEARANCE_OPTIONS, HAIR_COLORS, HAIR_STYLES, HAIR_STYLE_LABELS, SKIN_TONES, type Appearance } from '#lib/domain/appearance.ts';
 	import { CLOTHING_COLORS, defaultOutfit, WARDROBE, type Outfit, type WardrobeCategory } from '#lib/domain/wardrobe.ts';
-	import { enter } from '#lib/motion/actions.ts';
+	import { enter, pop } from '#lib/motion/actions.ts';
 	import type { Kit } from '#lib/pixel/sprites.ts';
 	import Pixel from '../Pixel.svelte';
 	import Segmented from '../Segmented.svelte';
@@ -26,26 +26,29 @@
 </script>
 
 <div class="editor" class:with-preview={preview}>
-	{#if preview}<div class="preview"><Pixel {appearance} {kit} {clubId} styled variant="full" size={192} ball={false} label="Prévia do personagem" /></div>{/if}
+	{#if preview}<div class="preview"><span class="spot" aria-hidden="true"></span>{#key JSON.stringify(appearance)}<div class="figure" use:pop><Pixel {appearance} {kit} {clubId} styled variant="full" size={192} ball={false} label="Prévia do personagem" /></div>{/key}<span class="stage-label">Prévia ao vivo</span></div>{/if}
 	<div class="tools">
 		<Segmented label="Personalização" bind:value={tab} options={[{ value: 'vestuario', label: 'Vestuário' },
 			{ value: 'cabelo', label: 'Cabelo' }, { value: 'rosto', label: 'Rosto e corpo' }]} />
 		{#key tab}
 			<div class="options" use:enter>
 				{#if tab === 'vestuario'}
-					<div class="choices" aria-label="Categoria de roupa">
+					<div class="items" aria-label="Categoria de roupa">
 						{#each Object.entries(WARDROBE) as [key, category] (key)}
-							<button type="button" data-umx-press aria-pressed={outfit?.category === key} onclick={() => choose(key as WardrobeCategory)}>{category.label}</button>
+							<button type="button" class="item" data-umx-press aria-pressed={outfit?.category === key} onclick={() => choose(key as WardrobeCategory)}>
+								<Pixel appearance={{ ...appearance, wardrobe: defaultOutfit(key as WardrobeCategory) }} {kit} {clubId} styled variant="full" size={54} ball={false} /><span>{category.label}</span></button>
 						{/each}
-						<button type="button" data-umx-press aria-pressed={!outfit} onclick={() => appearance = { ...appearance, wardrobe: undefined }}>Padrão</button>
+						<button type="button" class="item" data-umx-press aria-pressed={!outfit} onclick={() => appearance = { ...appearance, wardrobe: undefined }}>
+							<Pixel appearance={{ ...appearance, wardrobe: undefined }} {kit} {clubId} styled variant="full" size={54} ball={false} /><span>Padrão</span></button>
 					</div>
 					{#if outfit && collection}
 						{#each [{ label: 'Parte de cima', key: 'top', items: collection.tops }, { label: 'Parte de baixo', key: 'bottom', items: collection.bottoms },
 							{ label: 'Calçado', key: 'shoes', items: collection.shoes }] as field (field.key)}
 							{@const locked = field.key !== 'top' && ['clubeTerno', 'uniforme'].includes(outfit.top)}
-							<fieldset><legend>{field.label}</legend><div class="choices">
+							<fieldset><legend>{field.label}</legend><div class="items">
 								{#each Object.entries(field.items) as [key, label] (key)}
-									<button type="button" data-umx-press aria-pressed={outfit[field.key as 'top' | 'bottom' | 'shoes'] === key} disabled={locked && outfit[field.key as 'bottom' | 'shoes'] !== key} onclick={() => setOutfit({ [field.key]: key })}>{label}</button>
+									<button type="button" class="item" data-umx-press aria-pressed={outfit[field.key as 'top' | 'bottom' | 'shoes'] === key} disabled={locked && outfit[field.key as 'bottom' | 'shoes'] !== key} onclick={() => setOutfit({ [field.key]: key })}>
+										<Pixel appearance={{ ...appearance, wardrobe: { ...outfit, [field.key]: key } }} {kit} {clubId} styled variant="full" size={54} ball={false} /><span>{label}</span></button>
 								{/each}
 							</div></fieldset>
 						{/each}
@@ -92,8 +95,14 @@
 <style>
 	.editor { display:grid; gap:12px; min-width:0; }
 	.editor.with-preview { grid-template-columns:minmax(125px,.56fr) minmax(0,1fr); }
-	.preview { display:grid; place-items:center; min-height:210px; border:1px solid var(--line); border-radius:var(--radius-l);
-		background:radial-gradient(80% 80% at 50% 62%,var(--emerald-soft),transparent),var(--surface-sunken); }
+	.preview { position:relative; display:grid; place-items:center; align-self:start; position:sticky; top:12px; min-height:260px; border:1px solid var(--line-strong); border-radius:var(--radius-l); overflow:hidden; isolation:isolate;
+		background:linear-gradient(180deg,transparent 62%,rgb(16 185 129 / .16) 62%,rgb(10 122 86 / .3)),radial-gradient(70% 60% at 50% 40%,rgb(52 211 153 / .14),transparent),var(--bg-deep); }
+	.spot { position:absolute; left:50%; bottom:22%; width:58%; height:16px; translate:-50% 50%; border-radius:50%; background:rgb(0 0 0 / .45); filter:blur(6px); z-index:-1; }
+	.figure { filter:drop-shadow(0 10px 14px rgb(0 0 0 / .4)); }
+	.stage-label { position:absolute; top:10px; left:12px; font-size:.6875rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--emerald-strong); }
+	.items { display:grid; grid-template-columns:repeat(auto-fill,minmax(82px,1fr)); gap:6px; }
+	button.item { display:grid; justify-items:center; align-content:space-between; gap:4px; min-height:96px; padding:8px 4px 6px; font-size:var(--fs-xs); font-weight:600; background:linear-gradient(180deg,var(--surface-2),var(--surface-sunken)); transition:border-color var(--dur-2) var(--ease-out),background var(--dur-2) var(--ease-out); }
+	button.item span { line-height:1.2; text-align:center; }
 	.tools,.options { min-width:0; }
 	.tools { display:grid; gap:10px; align-content:start; }
 	.options { display:grid; gap:10px; }
@@ -106,6 +115,7 @@
 	button.swatch { background:var(--color); width:36px; border:2px solid var(--surface); outline:1px solid var(--line); }
 	button.swatch[aria-pressed='true'] { outline:2px solid var(--emerald); }
 	.hair-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(75px,1fr)); gap:6px; }
+	.hair-grid button { background:linear-gradient(180deg,var(--surface-2),var(--surface-sunken)); }
 	.hair-grid button { display:grid; justify-items:center; align-content:space-between; gap:4px; min-height:70px; font-size:var(--fs-xs); }
-	@media(max-width:520px) { .editor.with-preview { grid-template-columns:minmax(0,1fr); } .preview { min-height:130px; } .preview :global(svg.pixel) { height:125px; width:auto; } }
+	@media(max-width:520px) { .editor.with-preview { grid-template-columns:minmax(0,1fr); } .preview { position:relative; top:0; min-height:150px; } .preview :global(svg.pixel) { height:125px; width:auto; } }
 </style>

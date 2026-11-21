@@ -1,5 +1,14 @@
 # Novidades
 
+## 0.10.0 — Visual premium
+
+- Biblioteca de cards esportivos (ação, seleção, indicador, confronto e destaque) com microinterações da Ultra Motion X.
+- Central do Jogador reconstruída: contrato e mercado em cards com disponibilidade explicada, foco de treino em cards e evolução real do geral.
+- Partida ao vivo com placar de TV, controles compactos, lances traduzidos sem repetição e placar da rodada agrupado por série.
+- Lobby com participantes em cards, presença online e prontidão animada; prontidão do intervalo no mesmo padrão.
+- Editor de personagem com prévia de cada peça, cards das ligas e campos de seleção unificados.
+- Correção do painel de exclusão de liga no celular (painel inferior com áreas seguras). Sem migração de banco.
+
 ## 0.9.1 — Criação de ligas e lobby
 
 - Cards de Treinador e Jogador na entrada, configuração compacta e modo de participação confirmado pelo servidor.

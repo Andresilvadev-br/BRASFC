@@ -120,12 +120,15 @@
 </script>
 
 <div class="moments">
-	<div class="toolbar">
-		<button type="button" aria-pressed={sound} onclick={toggleSound}>{sound ? 'Silenciar cenas' : 'Ativar som das cenas'}</button>
-		<button type="button" onclick={() => { enabled = !enabled; if (!enabled) { queue = []; showNext(); } }}>{enabled ? 'Ocultar cenas' : 'Exibir cenas'}</button>
+	<div class="toolbar" role="toolbar" aria-label="Cenas da transmissão">
+		<button type="button" aria-pressed={enabled} onclick={() => { enabled = !enabled; if (!enabled) { queue = []; showNext(); } }} title={enabled ? 'Ocultar cenas' : 'Exibir cenas'} data-umx-press>
+			<Icon name="eye" size={16} /><span>{enabled ? 'Cenas' : 'Cenas ocultas'}</span></button>
+		<button type="button" aria-pressed={sound} onclick={toggleSound} title={sound ? 'Silenciar cenas' : 'Ativar som das cenas'} data-umx-press>
+			<Icon name="bell" size={16} /><span>{sound ? 'Som' : 'Sem som'}</span></button>
 		{#if enabled}
-			<button type="button" aria-pressed={speed === 2} onclick={() => speed = speed === 1 ? 2 : 1}>Cenas {speed}×</button>
-			{#if active}<button type="button" onclick={showNext}>Pular lance</button>{/if}
+			<button type="button" aria-pressed={speed === 2} onclick={() => speed = speed === 1 ? 2 : 1} title="Velocidade das cenas" data-umx-press>
+				<Icon name="play" size={14} /><span class="num">{speed}×</span></button>
+			{#if active}<button type="button" onclick={showNext} title="Pular lance" data-umx-press><Icon name="skip" size={16} /><span>Pular</span></button>{/if}
 		{/if}
 	</div>
 	{#if active && info}
@@ -159,8 +162,11 @@
 </div>
 <style>
 	.moments { position:relative; min-height:100px; }
-	.toolbar {display:flex;gap:6px;flex-wrap:wrap;padding:4px 0;}
-	button {border:1px solid var(--line);background:var(--surface);font:inherit;font-size:.72rem;color:var(--text);border-radius:6px;padding:5px 8px;cursor:pointer}
+	.toolbar {display:inline-flex;gap:2px;flex-wrap:wrap;padding:3px;margin:6px 0;border-radius:999px;background:var(--surface-sunken);border:1px solid var(--line)}
+	.toolbar button {display:inline-flex;align-items:center;gap:6px;min-height:32px;border:0;background:transparent;font:inherit;font-size:.75rem;font-weight:600;color:var(--text-2);border-radius:999px;padding:4px 12px;cursor:pointer;transition:background var(--dur-2) var(--ease-out),color var(--dur-2) var(--ease-out)}
+	.toolbar button:hover {color:var(--text);background:rgb(231 237 240 / .06)}
+	.toolbar button[aria-pressed='true'] {color:var(--emerald-strong);background:var(--emerald-soft)}
+	@media (max-width:420px){.toolbar button span:not(.num){display:none}}
 	.ribbon {--mark:#66edd0;display:grid;grid-template-columns:64px 1fr;gap:13px;align-items:center;min-height:72px;overflow:hidden;border-left:4px solid var(--mark);border-radius:8px;background:linear-gradient(110deg,#162c31,#0d171b);color:#fff}
 	.review-field {width:100%;padding:5px;color:var(--mark);transform:skewX(15deg)} .review-flag {animation:pulse .55s ease-out both;transform-origin:center}
 	.copy {padding:7px 9px 7px 0;min-width:0;display:grid}.copy small{color:var(--mark);text-transform:uppercase;letter-spacing:.07em}.copy strong{font-size:clamp(1rem,3vw,1.5rem);line-height:1.02}.copy span{font-size:.75rem;color:#dee9e4}

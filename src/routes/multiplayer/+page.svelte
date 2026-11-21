@@ -163,20 +163,30 @@
 			<section class="panel" class:mode-step={panel === 'create' && !mode} use:enter>
 				{#if panel === 'list'}
 					<h2 tabindex="-1" bind:this={heading}>Minhas ligas</h2>
-					{#each data.rooms as room (room.id)}
-						<div class="room-item">
-							<div class="league-mark">{#if room.club}<Crest clubId={room.club} size={32} />{:else}<Icon name="trophy" size={23} />{/if}</div>
-							<div class="league-info"><strong>{room.name}</strong>
-								<small>{modeLabel(room.entryMode)}{room.season ? ` · ${room.season}` : ''} · {room.members}/{room.maxMembers}</small>
-								{#if room.club}<small>{room.athlete ? `${room.athlete} · ` : ''}{getClub(room.club)?.name ?? room.club}</small>{/if}
-							</div>
-							<div class="room-status"><Badge tone={room.status === 'closed' ? 'neutral' : room.started ? 'emerald' : 'gold'}>{room.status === 'closed' ? 'Arquivada' : room.started ? 'Em andamento' : 'Preparação'}</Badge></div>
-							<div class="room-action">
-								{#if room.status === 'open'}<Button href={`/multiplayer/sala/${room.code}`} size="sm" iconRight="arrowRight">Continuar</Button>{/if}
+					<div class="league-grid">
+					{#each data.rooms as room, index (room.id)}
+						{@const club = room.club ? getClub(room.club) : undefined}
+						<article class="league-card" class:archived={room.status === 'closed'} style:--club={club?.colors.primary ?? 'var(--emerald-deep)'} use:enter={{ index }}>
+							<header class="league-top">
+								<div class="league-mark">{#if room.club}<Crest clubId={room.club} size={40} />{:else}<Icon name="trophy" size={24} />{/if}</div>
+								<div class="league-info"><strong>{room.name}</strong>
+									<small>{room.club ? `${room.athlete ? `${room.athlete} · ` : ''}${club?.name ?? room.club}` : 'Sem clube definido'}</small>
+								</div>
+								<Badge tone={room.status === 'closed' ? 'neutral' : room.started ? 'emerald' : 'gold'}>{room.status === 'closed' ? 'Arquivada' : room.started ? 'Em andamento' : 'Preparação'}</Badge>
+							</header>
+							<dl class="league-facts">
+								<div><dt>Modalidade</dt><dd>{modeLabel(room.entryMode)}</dd></div>
+								{#if room.season}<div><dt>Temporada</dt><dd>{room.season}</dd></div>{/if}
+								<div><dt>Participantes</dt><dd>{room.members}/{room.maxMembers}</dd></div>
+							</dl>
+							<span class="seats" aria-hidden="true">{#each Array.from({ length: Math.min(room.maxMembers, 12) }, (_, i) => i) as seat (seat)}<i class:on={seat < room.members}></i>{/each}</span>
+							<footer class="room-action">
+								{#if room.status === 'open'}<Button href={`/multiplayer/sala/${room.code}`} size="sm" variant="primary" iconRight="arrowRight">Continuar</Button>{/if}
 								{#if room.ownerId === data.profile?.id}<DeleteLeague code={room.code} name={room.name} removed={() => invalidate('app:rooms')} />{/if}
-							</div>
-						</div>
-					{:else}<p>Crie uma liga ou entre usando um convite.</p>{/each}
+							</footer>
+						</article>
+					{:else}<p class="empty-leagues">Crie uma liga ou entre usando um convite.</p>{/each}
+					</div>
 				{:else if panel === 'create'}
 					{#if !data.profile?.username}
 						<h2 tabindex="-1" bind:this={heading}>Criar uma liga</h2>
@@ -286,24 +296,40 @@
 	p { margin: 0; }
 	small { display: block; }
 	label { gap: 4px; font-size: var(--fs-sm); font-weight: 600; }
-	input, select { width: 100%; min-width: 0; max-width: 100%; min-height: 44px; padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: 9px; color: var(--text); background: var(--surface-sunken); font-size: max(16px, var(--fs-base)); }
+	select { width: 100%; min-width: 0; min-height: 44px; }
+	input { width: 100%; min-width: 0; max-width: 100%; min-height: 44px; padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: 9px; color: var(--text); background: var(--surface-sunken); font-size: max(16px, var(--fs-base)); }
 	input:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid var(--emerald-strong); outline-offset: 2px; }
 	.options, .advanced-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 8px; }
 	.advanced-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 10px 0 3px; }
-	.advanced, .room-item, .item { min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; background: var(--surface-2); overflow-wrap: anywhere; }
+	.advanced, .item { min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; background: var(--surface-2); overflow-wrap: anywhere; }
 	.advanced summary { cursor: pointer; }
 	.check { display: flex; gap: 8px; align-items: center; min-height: 42px; }
 	.check input { width: 32px; min-height: 20px; accent-color: var(--emerald); }
-	.room-item { display: grid; grid-template-columns: auto minmax(0,1fr) auto auto; align-items: center; gap: 8px; }
-	.league-mark { display: grid; place-items: center; width: 36px; color: var(--emerald-strong); }
+	.league-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 10px; }
+	.league-card { position: relative; display: grid; gap: 12px; min-width: 0; padding: 14px; border-radius: 16px; border: 1px solid var(--line); overflow: hidden; isolation: isolate;
+		background: radial-gradient(120% 120% at 100% 0, color-mix(in srgb, var(--club) 30%, transparent), transparent 58%), linear-gradient(170deg, var(--surface-2), var(--surface-sunken)); }
+	.league-card::before { content: ''; position: absolute; inset: 0 0 auto; height: 3px; background: linear-gradient(90deg, var(--club), transparent); }
+	.league-card.archived { opacity: .72; filter: saturate(.6); }
+	.league-top { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+	.league-mark { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: rgb(0 0 0 / .25); color: var(--emerald-strong); }
+	.league-info { display: grid; min-width: 0; }
+	.league-info strong { font-family: var(--font-display); font-size: var(--fs-lg); text-transform: uppercase; letter-spacing: .02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.league-info small { color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.league-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 6px; margin: 0; }
+	.league-facts div { padding: 6px 8px; border-radius: 9px; background: rgb(0 0 0 / .2); }
+	.league-facts dt { font-size: .6875rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+	.league-facts dd { margin: 0; font-weight: 700; }
+	.seats { display: flex; gap: 3px; }
+	.seats i { flex: 1; height: 4px; border-radius: 4px; background: rgb(231 237 240 / .1); }
+	.seats i.on { background: var(--emerald-strong); }
+	.room-action { justify-content: flex-start; }
+	.empty-leagues { grid-column: 1 / -1; padding: 16px; border: 1px dashed var(--line-strong); border-radius: 12px; color: var(--text-2); }
 	.friend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 	.friend > span { flex: 1; }
 	.join, .lookup { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
 	.failure { color: #ff9d9d; margin: 8px 0; }
 	@media (max-width: 590px) {
 		.tabs a :global(.icon) { display: none; }
-		.room-item { grid-template-columns: auto minmax(0, 1fr) auto; }
-		.room-action { grid-column: 2 / -1; }
 		.advanced-fields, .join { grid-template-columns: minmax(0, 1fr); }
 	}
 </style>

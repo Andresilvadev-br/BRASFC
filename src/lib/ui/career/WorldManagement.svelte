@@ -123,7 +123,6 @@
 	.deal strong { font-size:var(--fs-lg); }
 	.row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; border-top:1px solid var(--line); padding:9px 0; }
 	label { display:grid; gap:4px; margin:6px 0; }
-	select { max-width:100%; padding:7px; color:var(--text); border:1px solid var(--line); border-radius:8px; background:var(--surface-sunken); }
 	details { padding:8px 0; border-top:1px solid var(--line); }
 	@media(max-width:1050px) { .management { grid-template-columns:minmax(0,1fr); } }
 </style>

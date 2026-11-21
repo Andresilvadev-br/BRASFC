@@ -67,7 +67,8 @@
 <style>
 	form, label { display: grid; gap: 8px; min-width: 0; }
 	form { gap: 10px; }
-	input, select { width: 100%; min-width: 0; max-width: 100%; min-height: 44px; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 9px; color: var(--text); background: var(--surface-sunken); font-size: max(16px, var(--fs-base)); }
+	select { width: 100%; min-width: 0; min-height: 44px; }
+	input { width: 100%; min-width: 0; max-width: 100%; min-height: 44px; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 9px; color: var(--text); background: var(--surface-sunken); font-size: max(16px, var(--fs-base)); }
 	input:focus-visible, select:focus-visible { outline: 2px solid var(--emerald-strong); outline-offset: 2px; }
 	h3, p { margin: 0; }
 	.failed { color: #ff9d9d; }

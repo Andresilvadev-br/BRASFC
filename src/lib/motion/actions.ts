@@ -116,3 +116,13 @@ export const reveal: Action<HTMLElement, { index?: number; y?: number } | undefi
 	io.observe(el);
 	return { destroy: () => io.disconnect() };
 };
+
+/**
+ * use:portal — move o elemento para o <body>. Painéis `position: fixed` dentro de cards com
+ * `transform` (inclinação 2.5D, entradas com mola) ficavam presos ao card em vez da tela.
+ */
+export const portal: Action<HTMLElement> = (el) => {
+	if (typeof document === 'undefined') return;
+	document.body.appendChild(el);
+	return { destroy: () => el.remove() };
+};

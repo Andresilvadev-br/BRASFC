@@ -74,8 +74,8 @@
 		border: 0;
 		background: transparent;
 		color: inherit;
-		max-width: calc(100vw - 32px);
-		max-height: calc(var(--app-h, 100vh) - 32px);
+		max-width: calc(100vw - 24px);
+		max-height: calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
 		overflow: visible;
 	}
 	dialog::backdrop {
@@ -94,7 +94,7 @@
 	.card {
 		display: flex;
 		flex-direction: column;
-		max-height: calc(var(--app-h, 100dvh) - 32px);
+		max-height: calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
 		background: var(--surface-2);
 		border: 1px solid var(--line-strong);
 		border-radius: var(--radius-xl);
@@ -135,6 +135,12 @@
 		overflow-y: auto;
 		overscroll-behavior: contain;
 		padding: var(--sp-2) var(--sp-6) var(--sp-5);
+	}
+	@media (max-width: 560px) {
+		header { padding: var(--sp-5) var(--sp-4) var(--sp-2); }
+		.content { padding: var(--sp-2) var(--sp-4) var(--sp-4); }
+		footer { padding: var(--sp-3) var(--sp-4); }
+		footer > :global(*) { flex: 1 1 auto; }
 	}
 	footer {
 		display: flex;

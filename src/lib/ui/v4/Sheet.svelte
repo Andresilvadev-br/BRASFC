@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack, type Snippet } from 'svelte';
 	import { animate } from '#lib/motion/motion.svelte.ts';
+	import { portal } from '#lib/motion/actions.ts';
 	import Icon from '../Icon.svelte';
 	/** Painel lateral com mola: abre detalhes sem perder o contexto da tela (Esc fecha). */
 	let { open = $bindable(false), title, subtitle = '', children, footer, width = 460 }: { open?: boolean; title: string; subtitle?: string; children: Snippet; footer?: Snippet; width?: number } = $props();
@@ -16,7 +17,8 @@
 			shown = true;
 			const frame = requestAnimationFrame(() => {
 				if (ticket !== generation) return;
-				void animate(panel, { x: 0, opacity: 1 }, { spring: 'capsule', from: { x: 60, opacity: 0 } });
+				const bottom = matchMedia('(max-width: 640px)').matches;
+				void animate(panel, { x: 0, y: 0, opacity: 1 }, { spring: 'capsule', from: bottom ? { y: 80, opacity: 0 } : { x: 60, opacity: 0 } });
 				panel?.focus();
 			});
 			return () => cancelAnimationFrame(frame);
@@ -24,7 +26,7 @@
 		if (untrack(() => shown)) {
 			const closing = untrack(() => panel);
 			const front = closing?.contains(document.activeElement);
-			void animate(closing, { x: 40, opacity: 0 }, { spring: 'critical' }).then(() => {
+			void animate(closing, matchMedia('(max-width: 640px)').matches ? { y: 60, opacity: 0 } : { x: 40, opacity: 0 }, { spring: 'critical' }).then(() => {
 				if (ticket !== generation) return;
 				shown = false;
 				if (front && (closing?.contains(document.activeElement) || document.activeElement === document.body)) opener?.focus();
@@ -48,6 +50,7 @@
 </script>
 
 {#if shown}
+	<div class="layer" use:portal>
 	<div class="scrim" class:on={open} role="presentation" onclick={() => (open = false)}></div>
 	<div class="sheet glass" bind:this={panel} style="--w:{width}px" inert={!open} role="dialog" aria-modal="true" aria-label={title} tabindex="-1" onkeydown={key}>
 		<header>
@@ -60,9 +63,11 @@
 		<div class="body">{@render children()}</div>
 		{#if footer}<footer>{@render footer()}</footer>{/if}
 	</div>
+	</div>
 {/if}
 
 <style>
+	.layer { display: contents; }
 	.scrim {
 		position: fixed;
 		inset: 0;
@@ -89,6 +94,31 @@
 		box-shadow: var(--shadow-2);
 		outline: none;
 	}
+	/* Celular: painel inferior que respeita a viewport dinâmica e as áreas seguras. */
+	@media (max-width: 640px) {
+		.sheet {
+			top: auto;
+			left: 0;
+			right: 0;
+			bottom: 0;
+			width: 100%;
+			max-height: min(92dvh, calc(var(--app-h, 100dvh) - env(safe-area-inset-top, 0px) - 12px));
+			border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+		}
+		.sheet::after {
+			content: '';
+			position: absolute;
+			top: 7px;
+			left: 50%;
+			width: 40px;
+			height: 4px;
+			margin-left: -20px;
+			border-radius: 4px;
+			background: var(--line-strong);
+		}
+		.sheet header { padding-top: var(--sp-6); }
+		footer > :global(*) { flex: 1 1 auto; }
+	}
 	header {
 		display: flex;
 		justify-content: space-between;
@@ -113,11 +143,13 @@
 	}
 	.body {
 		flex: 1;
+		min-height: 0;
 		overflow: auto;
+		overscroll-behavior: contain;
 		padding: 0 var(--sp-5) var(--sp-5);
 	}
 	footer {
-		padding: var(--sp-4) var(--sp-5);
+		padding: var(--sp-4) var(--sp-5) calc(var(--sp-4) + env(safe-area-inset-bottom, 0px));
 		border-top: 1px solid var(--line);
 		display: flex;
 		gap: var(--sp-2);

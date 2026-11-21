@@ -60,7 +60,7 @@ strong{color:#101418}
 </style><body>${out.join('\n')}</body></html>`;
 const htmlPath = resolve(src.replace(/\.md$/, '.html'));
 writeFileSync(htmlPath, html);
-const exe = ['C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', 'C:/Program Files/Microsoft/Edge/Application/msedge.exe', 'C:/Program Files/Google/Chrome/Application/chrome.exe'].find((p) => existsSync(p));
+const exe = ['C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', 'C:/Program Files/Microsoft/Edge/Application/msedge.exe', 'C:/Program Files/Google/Chrome/Application/chrome.exe', process.env.CHROME_PATH ?? '/opt/pw-browsers/chromium', '/usr/bin/chromium'].find((p) => existsSync(p));
 const pdf = resolve(src.replace(/\.md$/, '.pdf'));
-execFileSync(exe, ['--headless=new', '--disable-gpu', '--no-pdf-header-footer', `--print-to-pdf=${pdf}`, pathToFileURL(htmlPath).href], { stdio: 'ignore', timeout: 120000 });
+execFileSync(exe, ['--headless=new', '--disable-gpu', ...(process.platform === 'linux' ? ['--no-sandbox'] : []), '--no-pdf-header-footer', `--print-to-pdf=${pdf}`, pathToFileURL(htmlPath).href], { stdio: 'ignore', timeout: 120000 });
 console.log('PDF', pdf, existsSync(pdf));

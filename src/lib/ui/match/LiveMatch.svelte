@@ -17,6 +17,9 @@
 	import BroadcastMoments from './BroadcastMoments.svelte';
 	import { reposition } from '../tactics/reposition.ts';
 	import LineupPresentation from './LineupPresentation.svelte';
+	import MatchCard from '../cards/MatchCard.svelte';
+	import Icon from '../Icon.svelte';
+	import { competitionLabel, eventLabel, eventTone } from './event-labels.ts';
 
 	type Session = NonNullable<Awaited<ReturnType<typeof updateLiveRound>>['session']>;
 	type MatchDetail = NonNullable<NonNullable<Session['relevant']>['detail']>;
@@ -50,11 +53,6 @@
 	const match = $derived(relevant?.match);
 	const visual = $derived(replayIndex === null ? match : frameSet[replayIndex] ?? match);
 	const sides = ['home', 'away'] as const;
-	const labels: Record<string, string> = {
-		goal: 'Gol', goal_disallowed: 'Gol anulado', foul: 'Falta', free_kick: 'Cobrança de falta', corner: 'Escanteio', penalty: 'Pênalti', penalty_miss: 'Pênalti perdido',
-		yellow: 'Cartão amarelo', red: 'Cartão vermelho', sub: 'Substituição', offside: 'Impedimento', injury: 'Lesão', shot_saved: 'Defesa',
-		shot: 'Finalização', aerial: 'Disputa aérea', cross: 'Cruzamento', half_time: 'Intervalo', second_half: 'Segundo tempo', full_time: 'Fim de jogo', tactic: 'Ajuste tático'
-	};
 	const stages: Record<Session['phase'], string> = { LOADING: 'Carregamento', PRESENTATION: 'Apresentação', FIRST_HALF: 'Primeiro tempo',
 		HALF_TIME: 'Intervalo', SECOND_HALF: 'Segundo tempo', FULL_TIME: 'Fim de jogo · aguardando confirmação oficial' };
 	const athletes = $derived(new Map([...(relevant?.replay.home.players ?? []), ...(relevant?.replay.away.players ?? [])].map((p) => [p.id, p])));
@@ -75,7 +73,36 @@
 		}
 	});
 	const visibleKicks = $derived(relevant?.shootout?.kicks?.slice(0, Math.max(1, Math.floor((now - (session?.since ?? 0)) / 700) + 1)) ?? []);
-	const competition = (id?: string) => id === 'copa-do-brasil' ? 'Copa do Brasil' : id?.startsWith('serie-') ? `Brasileirão Série ${id.at(-1)?.toUpperCase()}` : 'BRASFC';
+	const competition = (id?: string) => (id?.startsWith('serie-') ? `Brasileirão ${competitionLabel(id)}` : competitionLabel(id));
+	/** Linha do tempo oficial sem repetições (o mesmo lance pode chegar em dois pulsos). */
+	const timeline = $derived.by(() => {
+		const seen = new Set<string>();
+		return [...(match?.events ?? [])].reverse().filter((event) => {
+			const key = `${event.tick}:${event.type}:${event.player ?? ''}:${event.other ?? ''}`;
+			if (seen.has(key)) return false;
+			seen.add(key);
+			return true;
+		});
+	});
+	/** Placar da rodada agrupado por competição: a sua primeiro, as demais recolhidas. */
+	const roundGroups = $derived.by(() => {
+		const groups = new Map<string, NonNullable<typeof session>['fixtures']>();
+		const seenGame = new Set<string>();
+		for (const game of session?.fixtures ?? []) {
+			const key = `${game.competition}:${game.home}:${game.away}`;
+			if (seenGame.has(key)) continue;
+			seenGame.add(key);
+			const list = groups.get(game.competition) ?? [];
+			list.push(game);
+			groups.set(game.competition, list);
+		}
+		const mine = relevant?.competition;
+		return [...groups.entries()].sort(([a], [b]) => (a === mine ? -1 : b === mine ? 1 : a.localeCompare(b))).map(([id, games]) => ({ id, games, mine: id === mine }));
+	});
+	const decisionLabels: Record<Decision['type'], string> = { individual: 'Instrução individual', captains: 'Ordem de capitães', sub: 'Substituição', swap: 'Troca de posições',
+		mentality: 'Mentalidade', style: 'Estilo de jogo', formation: 'Formação', instructions: 'Instruções coletivas' };
+	const phaseShort: Record<string, string> = { first_half: '1º tempo', half_time: 'Intervalo', second_half: '2º tempo', finished: 'Encerrado' };
+	const viewModes = [{ value: 'classico', label: 'Clássico', icon: 'field' }, { value: 'pixel', label: 'Pixel', icon: 'shirt' }, { value: 'narracao', label: 'Narração', icon: 'news' }] as const;
 
 	async function request(action: string, extra: Record<string, unknown> = {}) {
 		if (pending) return;
@@ -190,12 +217,18 @@
 			{/if}
 		</div>
 	{:else}
-		<header class="score surface">
-			<div><small>{competition(relevant?.competition)} · Rodada {session.round}</small><strong>{stages[session.phase]}</strong></div>
+		<header class="score" style:--home={relevant?.replay.home.colors.primary ?? '#1f6f50'} style:--away={relevant?.replay.away.colors.primary ?? '#26323a'}>
+			<div class="score-meta"><span>{competition(relevant?.competition)} · Rodada {session.round}</span><strong class:live-dot={session.phase === 'FIRST_HALF' || session.phase === 'SECOND_HALF'}>{stages[session.phase]}</strong></div>
 			{#if relevant && match}
-				<div class="clubs"><Crest clubId={relevant.replay.home.id} size={42} /><span>{relevant.replay.home.short}</span>
-					<strong>{match.score.home} × {match.score.away}</strong><span>{relevant.replay.away.short}</span><Crest clubId={relevant.replay.away.id} size={42} /></div>
-				<time>{match.minute}{#if match.phase === 'first_half' && match.added[0]} <small>+{match.added[0]} min</small>{:else if match.phase === 'second_half' && match.added[1]} <small>+{match.added[1]} min</small>{/if}</time>
+				<div class="scoreline">
+					<div class="side"><Crest clubId={relevant.replay.home.id} size={48} /><span class="club-name">{relevant.replay.home.short}</span></div>
+					<div class="board-score">
+						{#key match.score.home}<b use:pop>{match.score.home}</b>{/key}<i aria-hidden="true">×</i>{#key match.score.away}<b use:pop>{match.score.away}</b>{/key}
+						<time>{match.minute}{#if match.phase === 'first_half' && match.added[0]} <small>+{match.added[0]}</small>{:else if match.phase === 'second_half' && match.added[1]} <small>+{match.added[1]}</small>{/if}</time>
+					</div>
+					<div class="side away"><span class="club-name">{relevant.replay.away.short}</span><Crest clubId={relevant.replay.away.id} size={48} /></div>
+				</div>
+				<span class="sr-only" aria-live="polite">{relevant.replay.home.name} {match.score.home} a {match.score.away} {relevant.replay.away.name}</span>
 			{/if}
 		</header>
 		{#if session.waiting.length || !online}
@@ -237,8 +270,13 @@
 			{:else}
 				<div class="grid">
 					<div class="surface field">
-						<div class="controls"><label>Visualização <select bind:value={mode}><option value="classico">Clássico</option><option value="pixel">Pixel</option><option value="narracao">Narração</option></select></label>
-							{#if frameSet.length > 1}<Button size="sm" onclick={replay} disabled={replayIndex !== null}>Rever trecho</Button>{/if}
+						<div class="view-bar">
+							<div class="modes" role="radiogroup" aria-label="Visualização">
+								{#each viewModes as option (option.value)}
+									<button type="button" role="radio" aria-checked={mode === option.value} onclick={() => (mode = option.value)} data-umx-press><Icon name={option.icon} size={15} /><span>{option.label}</span></button>
+								{/each}
+							</div>
+							{#if frameSet.length > 1}<button type="button" class="replay" onclick={replay} disabled={replayIndex !== null} data-umx-press><Icon name="refresh" size={15} /><span>Rever trecho</span></button>{/if}
 						</div>
 						{#if mode !== 'narracao' && canvas}
 							<PitchCanvas match={canvas} {mode} colors={{ home: relevant.replay.home.colors, away: relevant.replay.away.colors }} version={visual?.tick} highlight={pickedPlayer || null} onpick={(id, side) => { if (side === relevant.side) pickedPlayer = id ?? ''; }} />
@@ -250,11 +288,13 @@
 						<BroadcastMoments events={match.events} sessionKey={session.id + ":" + relevant.replay.home.id} athleteName={(id) => athletes.get(id)?.name} />
 					</div>
 					<aside class="surface">
-						<h3>Lances oficiais</h3>
-						{#each [...match.events].reverse().slice(0, mode === 'narracao' ? 16 : 6) as event}
-							<p class="event"><time>{event.minute}</time><span>{labels[event.type] ?? event.type}<small>{namesOf(event)}</small></span></p>
-						{/each}
-						{#if !match.events.length}<p>Aguardando o primeiro lance.</p>{/if}
+						<h3 class="section-title">Lances oficiais</h3>
+						<ol class="timeline">
+							{#each timeline.slice(0, mode === 'narracao' ? 16 : 7) as event (`${event.tick}:${event.type}:${event.player ?? ''}`)}
+								<li class="event {eventTone(event.type)}" use:enter><time class="num">{event.minute}</time><span><b>{eventLabel(event.type)}</b>{#if namesOf(event)}<small>{namesOf(event)}</small>{/if}</span></li>
+							{/each}
+						</ol>
+						{#if !timeline.length}<p class="muted">Aguardando o primeiro lance.</p>{/if}
 					</aside>
 				</div>
 			{/if}
@@ -323,34 +363,50 @@
 						<Button disabled={pending || !inId || !outId || !own.subs} onclick={() => { decision({ type: 'sub', outId, inId }); outId = ''; inId = ''; }}>{relevant.canManage ? 'Solicitar substituição' : 'Sugerir substituição'}</Button>
 					</div>
 					{#each session.suggestions as suggestion (suggestion.id)}
-						<p>{names[suggestion.profile]} sugeriu {suggestion.decision.type === 'swap' ? 'uma troca de posições' : suggestion.decision.type}
+						<p>{names[suggestion.profile]} sugeriu: {decisionLabels[suggestion.decision.type].toLowerCase()}
 							{#if relevant.canManage}<Button size="sm" disabled={pending} onclick={() => decision(suggestion.decision)}>Aplicar</Button>{/if}
 						</p>
 					{/each}
 					{#each match.decisions.filter((item) => item.side === relevant.side).slice(-4) as item}
-						<p>{Math.floor(item.tick / 60)}′ · {item.decision.type === 'swap' ? 'Troca de posições' : item.decision.type} · {item.rejected ?? 'Aplicada'}</p>
+						<p>{Math.floor(item.tick / 60)}′ · {decisionLabels[item.decision.type]} · {item.rejected ?? 'Aplicada'}</p>
 					{/each}
 				</div>
 			{/if}
 		{/if}
 		{#if session.phase === 'HALF_TIME'}
-			<div class="surface waiting">
-				{#if !own || !(relevant?.canManage || suggestionRights)}
-					<h2 tabindex="-1" bind:this={intervalHeading}>{session.confirmed.length}/{session.required.length} prontos para o segundo tempo</h2>
-				{:else}
-					<h2>{session.confirmed.length}/{session.required.length} prontos para o segundo tempo</h2>
-				{/if}
-				<p>{session.required.map((id) => `${names[id] ?? 'Participante'} · ${session?.confirmed.includes(id) ? 'Pronto' : 'Aguardando'}`).join(' / ')}</p>
-				<Button disabled={pending || !online} onclick={() => request('confirm', { value: !session?.confirmed.includes(profile) })}>{session.confirmed.includes(profile) ? 'Cancelar confirmação' : 'Confirmar segundo tempo'}</Button>
+			{@const ready = session.confirmed.length}
+			{@const total = session.required.length}
+			<div class="surface readiness" use:enter>
+				<div class="ring" style:--p={total ? ready / total : 0} aria-hidden="true"><span class="num">{ready}/{total}</span></div>
+				<div class="ready-copy">
+					{#if !own || !(relevant?.canManage || suggestionRights)}
+						<h2 tabindex="-1" bind:this={intervalHeading}>{ready} de {total} prontos para o segundo tempo</h2>
+					{:else}
+						<h2>{ready} de {total} prontos para o segundo tempo</h2>
+					{/if}
+					<ul class="ready-list">
+						{#each session.required as id (id)}
+							{@const ok = session.confirmed.includes(id)}
+							<li class:ok><span class="dot" aria-hidden="true">{#if ok}<Icon name="check" size={12} stroke={3} />{/if}</span>{names[id] ?? 'Participante'}<small>{ok ? 'Pronto' : 'Aguardando'}</small></li>
+						{/each}
+					</ul>
+				</div>
+				<Button variant={session.confirmed.includes(profile) ? 'ghost' : 'primary'} disabled={pending || !online} onclick={() => request('confirm', { value: !session?.confirmed.includes(profile) })}>{session.confirmed.includes(profile) ? 'Cancelar confirmação' : 'Estou pronto'}</Button>
 			</div>
 		{/if}
-		<div class="surface">
-			<h3>Placar da rodada</h3>
-			<div class="fixtures">
-				{#each session.fixtures as game}
-					<div class="fixture"><Crest clubId={game.home} size={23} /><strong>{game.score.home} × {game.score.away}</strong><Crest clubId={game.away} size={23} /><small>{game.minute}</small></div>
-				{/each}
-			</div>
+		<div class="surface round">
+			<h3 class="section-title">Placar da rodada</h3>
+			{#each roundGroups as group (group.id)}
+				<details class="round-group" open={group.mine || roundGroups.length === 1}>
+					<summary><span>{competitionLabel(group.id)}</span><small>{group.games.length} {group.games.length === 1 ? 'jogo' : 'jogos'}</small><Icon name="chevronDown" size={16} /></summary>
+					<div class="fixtures">
+						{#each group.games as game (game.home + game.away)}
+							<MatchCard home={game.home} away={game.away} score={game.score} status={phaseShort[game.phase] === 'Encerrado' ? 'Encerrado' : game.minute}
+								live={game.phase === 'first_half' || game.phase === 'second_half'} highlight={!!relevant && [relevant.replay.home.id, relevant.replay.away.id].includes(game.home)} />
+						{/each}
+					</div>
+				</details>
+			{/each}
 		</div>
 	{/if}
 </section>
@@ -362,9 +418,48 @@
 	.crew small {color:var(--emerald-strong)}
 
 	.live{display:grid;gap:12px;min-width:0;margin-bottom:20px}.surface{border:1px solid var(--line);background:var(--surface);border-radius:16px;padding:clamp(9px,2vw,18px);min-width:0}
-	.score,.controls,.clubs,.fixture{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.score{justify-content:space-between;border-top:3px solid #3cde90}.score small,.score strong,.event small{display:block}.clubs strong{font-size:clamp(1.1rem,4vw,2.2rem)}
-	.score time,.event time{color:var(--emerald-strong);font-variant-numeric:tabular-nums}.grid{display:grid;grid-template-columns:minmax(0,3fr) minmax(190px,1fr);gap:10px}.field{overflow:hidden;position:relative}.controls{margin-bottom:10px}
-	.controls select{background:var(--surface-sunken);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:7px;max-width:100%}
+	.controls,.clubs{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.clubs strong{font-size:clamp(1.1rem,4vw,2.2rem)}
+	.score{position:relative;display:grid;gap:8px;padding:12px clamp(12px,3vw,22px) 14px;border-radius:18px;border:1px solid var(--line-strong);overflow:hidden;isolation:isolate;
+		background:linear-gradient(90deg,color-mix(in srgb,var(--home) 34%,transparent),transparent 38%,transparent 62%,color-mix(in srgb,var(--away) 34%,transparent)),linear-gradient(180deg,#141c21,var(--bg-deep))}
+	.score::before{content:'';position:absolute;inset:0 0 auto;height:3px;background:linear-gradient(90deg,var(--home),var(--emerald-strong),var(--away));z-index:-1}
+	.score-meta{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:var(--fs-xs);font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3)}
+	.score-meta strong{color:var(--text-2)}.live-dot{color:var(--emerald-strong)!important}.live-dot::before{content:'';display:inline-block;width:7px;height:7px;margin-inline-end:6px;border-radius:50%;background:var(--emerald-strong);animation:blink 1.4s ease-in-out infinite}
+	@keyframes blink{50%{opacity:.25}}
+	.scoreline{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:clamp(8px,2vw,20px)}
+	.side{display:flex;align-items:center;gap:10px;min-width:0}.side.away{justify-content:flex-end}
+	.club-name{font-family:var(--font-display);font-weight:800;font-size:clamp(1.1rem,3.4vw,1.9rem);text-transform:uppercase;letter-spacing:.03em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+	.board-score{display:grid;grid-template-columns:auto auto auto;align-items:center;justify-items:center;column-gap:8px;padding:6px 16px 4px;border-radius:12px;background:rgb(0 0 0 / .45);border:1px solid var(--line-strong)}
+	.board-score b{font-family:var(--font-display);font-weight:800;font-size:clamp(2rem,7vw,3.2rem);line-height:1;font-variant-numeric:tabular-nums}
+	.board-score i{font-style:normal;color:var(--text-3);font-size:1.4rem}
+	.board-score time{grid-column:1/-1;font-size:var(--fs-xs);font-weight:700;color:var(--emerald-strong);font-variant-numeric:tabular-nums;letter-spacing:.06em}
+	.event time{color:var(--emerald-strong);font-variant-numeric:tabular-nums}
+	.view-bar{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:10px}
+	.modes{display:inline-flex;gap:2px;padding:3px;border-radius:999px;background:var(--surface-sunken);border:1px solid var(--line)}
+	.modes button,.replay{display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:4px 12px;border:0;border-radius:999px;background:transparent;color:var(--text-2);font-size:var(--fs-xs);font-weight:700;cursor:pointer;transition:background var(--dur-2) var(--ease-out),color var(--dur-2) var(--ease-out)}
+	.modes button[aria-checked='true']{background:var(--emerald-soft);color:var(--emerald-strong)}
+	.replay{border:1px solid var(--line);background:var(--surface-sunken)}.replay:disabled{opacity:.5;cursor:default}
+	.timeline{list-style:none;margin:0;padding:0 0 0 10px;border-left:2px solid var(--line)}
+	.timeline .event{position:relative;margin:0;padding:7px 0 7px 12px;border:0}
+	.timeline .event::before{content:'';position:absolute;left:-16px;top:13px;width:10px;height:10px;border-radius:50%;background:var(--surface-3);border:2px solid var(--surface)}
+	.timeline .event b{display:block;font-size:var(--fs-sm)}
+	.event.goal::before{background:var(--emerald-strong)}.event.goal b{color:var(--emerald-strong)}
+	.event.card::before{background:var(--warning);border-radius:2px}.event.red::before{background:var(--danger);border-radius:2px}
+	.event.chance::before{background:var(--info)}.event.phase b{color:var(--text-2);text-transform:uppercase;letter-spacing:.06em;font-size:var(--fs-xs)}
+	.readiness{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:16px}
+	.ring{--p:0;display:grid;place-items:center;width:72px;height:72px;border-radius:50%;background:conic-gradient(var(--emerald-strong) calc(var(--p)*360deg),rgb(231 237 240 / .08) 0);transition:background .4s var(--ease-out)}
+	.ring span{display:grid;place-items:center;width:58px;height:58px;border-radius:50%;background:var(--surface);font-family:var(--font-display);font-weight:800;font-size:1.25rem}
+	.ready-copy h2{font-size:var(--fs-xl)}
+	.ready-list{display:flex;flex-wrap:wrap;gap:6px;list-style:none;margin:8px 0 0;padding:0}
+	.ready-list li{display:inline-flex;align-items:center;gap:6px;padding:4px 10px 4px 5px;border-radius:999px;background:var(--surface-sunken);border:1px solid var(--line);font-size:var(--fs-sm)}
+	.ready-list small{color:var(--text-3)}
+	.ready-list .dot{display:grid;place-items:center;width:18px;height:18px;border-radius:50%;border:2px dashed var(--line-strong)}
+	.ready-list li.ok{border-color:var(--emerald-line)}.ready-list li.ok small{color:var(--emerald-strong)}
+	.ready-list li.ok .dot{border:0;background:var(--emerald);color:#04130d}
+	.round-group{border-top:1px solid var(--line)}.round-group:first-of-type{border-top:0}
+	.round-group summary{display:flex;align-items:center;gap:10px;padding:10px 2px;cursor:pointer;list-style:none;font-weight:700}
+	.round-group summary::-webkit-details-marker{display:none}
+	.round-group summary small{color:var(--text-3);font-weight:600;margin-inline-start:auto}
+	.round-group summary :global(svg){transition:rotate var(--dur-2) var(--ease-out)}.round-group[open] summary :global(svg){rotate:180deg}.grid{display:grid;grid-template-columns:minmax(0,3fr) minmax(190px,1fr);gap:10px}.field{overflow:hidden;position:relative}.controls{margin-bottom:10px}
 	.event{display:flex;gap:8px;margin:.5rem 0;padding:.3rem 0;border-bottom:1px solid var(--line)}.event small{color:var(--text-3)}
 	.shootout{background:#132b21;border:1px solid #386c53;border-radius:10px;padding:12px}.shootout span{display:inline-block;margin:3px;padding:4px 8px;border-radius:6px;background:#512828}.shootout span.scored{background:#245339}
 	.broadcast{background:radial-gradient(ellipse at 52% 15%,#23765e 0%,#10261f 35%,#101711 72%);color:#fff}.opening,.waiting{text-align:center}.opening{padding:clamp(24px,8vw,90px) 0}.opening .clubs{justify-content:center;margin:20px 0}
@@ -376,6 +471,7 @@
 	.interval-board:global([data-dragging-position]) button[data-reposition]{cursor:grabbing}
 	.interval-board button[aria-pressed="true"]{border-color:var(--emerald)}
 	.interval-board strong{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-	.fixture{border:1px solid var(--line);border-radius:9px;padding:6px;justify-content:center}.fixtures{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:5px}.film{color:#ebd78c}
-	@media(max-width:740px){.grid{grid-template-columns:1fr}.clubs{gap:5px}}
+	.fixtures{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,230px),1fr));gap:6px;padding-bottom:10px}.film{color:#ebd78c}
+	@media(max-width:740px){.grid{grid-template-columns:1fr}.clubs{gap:5px}.readiness{grid-template-columns:auto minmax(0,1fr)}.readiness > :global(:last-child){grid-column:1/-1}}
+	@media(max-width:420px){.side :global(img),.side :global(svg){width:34px;height:34px}.modes button span{display:none}}
 </style>

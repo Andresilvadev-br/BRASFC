@@ -319,20 +319,30 @@
 		return () => window.clearInterval(interval);
 	});
 
+	let quiet = $state(false);
+	let quietTimer: ReturnType<typeof setTimeout> | undefined;
+	$effect(() => () => clearTimeout(quietTimer));
 	async function execute(command: Record<string, unknown>) {
 		if (saving) return false;
+		quiet = false;
 		message = '';
 		failed = false;
 		saving = true;
 		retry = null;
 		try {
 			const result = await api<{ revision: number; message?: string }>(path, { body: command });
-			message = result.message || 'Salvo no universo.';
+			// Confirmação discreta: some sozinha; mensagens do servidor (resultado da ação) ficam mais tempo.
+			const text = result.message || 'Alteração salva';
+			message = text;
+			quiet = true;
+			clearTimeout(quietTimer);
+			quietTimer = setTimeout(() => { if (message === text && !failed) message = ''; }, result.message ? 6000 : 2400);
 			if (command.action === 'archive') { location.assign('/multiplayer'); return true; }
-			try { await refresh(); } catch { message = 'Gravação confirmada. Reconectando para atualizar a tela.'; }
+			try { await refresh(); } catch { quiet = false; message = 'Gravação confirmada. Reconectando para atualizar a tela.'; }
 			return true;
 		} catch (e) {
 			failed = true;
+			quiet = false;
 			message = e instanceof Error ? e.message : 'Falha na sincronização.';
 			if (connectionIssue(e)) retry = command;
 			else if (e instanceof ApiError && e.status === 409) void refresh().catch(() => {});
@@ -445,7 +455,7 @@
 			{#if livePanel === 'chat'}
 				<LeagueChat {code} role={current?.role ?? 'member'} club={current?.club ?? ''} {online} versions={chatVersions} roster={world.roster} live />
 			{:else if livePanel === 'planning' && current}
-				{#if message}<p class:error={failed} role={failed ? 'alert' : 'status'}>{message}</p>{/if}
+				{#if message}<p class:error={failed} class:quiet={quiet && !failed} role={failed ? 'alert' : 'status'} use:enter={{ y: 6 }}>{message}</p>{/if}
 				<p>A preparação nesta área vale para as próximas partidas. Para o jogo atual, use os comandos da partida.</p>
 				{#if current.role !== 'player' && world.tactic}
 					<WorldTactics key={`${code}:live`} tactic={plannedTactic?.club === current.club ? plannedTactic.draft : world.tactic}
@@ -459,7 +469,7 @@
 			{:else if livePanel === 'market' && current && current.role !== 'player'}
 				<MarketSearch endpoint={path + '?market=1'} storageKey={`live-scouting:${code}:${profileId}`} revision={world.revision}
 					windowOpen={!!world.marketWindow} busy={saving} recommend={current.role === 'assistant' ? recommend : undefined} />
-				{#if message}<p class:error={failed} role={failed ? 'alert' : 'status'}>{message}</p>{/if}
+				{#if message}<p class:error={failed} class:quiet={quiet && !failed} role={failed ? 'alert' : 'status'} use:enter={{ y: 6 }}>{message}</p>{/if}
 			{/if}
 		</Sheet>
 	</main>
@@ -501,7 +511,7 @@
 
 {#snippet careerContent()}
 <section class="world" use:enter>
-	{#if message}<p class:error={failed} role={failed ? 'alert' : 'status'}>{message}</p>{/if}
+	{#if message}<p class:error={failed} class:quiet={quiet && !failed} role={failed ? 'alert' : 'status'} use:enter={{ y: 6 }}>{message}</p>{/if}
 	{#if plannedTactic && plannedTactic.club === current?.club}
 		<div class="actions"><span>Tática preparada durante a rodada · {plannedTactic.draft.formation}</span>
 			<Button size="sm" disabled={saving} onclick={async () => {
@@ -919,4 +929,6 @@
 	.table-wrap { overflow-x:auto; }
 	@media(max-width:480px) { .calendar-list > div { grid-template-columns:48px 1fr auto 1fr; font-size:var(--fs-xs); } .showcase { padding:12px; } }
 
+	p.quiet { display: inline-flex; align-items: center; gap: 6px; width: fit-content; padding: 4px 10px; border-radius: 99px; background: var(--emerald-soft); color: var(--emerald-strong); font-size: var(--fs-xs); font-weight: 700; }
+	p.quiet::before { content: '✓'; }
 </style>

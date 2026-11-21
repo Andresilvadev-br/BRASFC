@@ -36,7 +36,7 @@
 <style>
 	.identity-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr)); gap: 8px; }
 	label { min-width: 0; display: grid; gap: 5px; align-content: start; color: var(--text-2); font-size: var(--fs-sm); font-weight: 600; }
-	select { min-width: 0; max-width: 100%; width: 100%; padding: 9px; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--text); background: var(--surface-sunken); }
+	select { width: 100%; min-width: 0; }
 	.hint { grid-column: 1 / -1; color: var(--text-2); }
 	.error { color: #ff9999; }
 </style>

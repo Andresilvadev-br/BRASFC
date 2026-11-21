@@ -381,3 +381,89 @@ html.desktop-app:not(.desktop-full) body {
 .glass.pad {
 	padding: var(--sp-5);
 }
+
+/* ==========================================================================
+   BRASFC Premium (0.10) — tokens de movimento, superfícies de card e campos
+   ========================================================================== */
+:root {
+	--dur-1: 120ms; /* pressão, hover */
+	--dur-2: 220ms; /* troca de estado */
+	--dur-3: 380ms; /* entrada de painel */
+	--ease-spring: cubic-bezier(0.2, 0.9, 0.25, 1.15);
+	--card-bg: linear-gradient(165deg, var(--surface-2), var(--surface) 55%, var(--surface-sunken));
+	--card-line: rgb(231 237 240 / 0.08);
+	--safe-b: env(safe-area-inset-bottom, 0px);
+	--safe-t: env(safe-area-inset-top, 0px);
+	--tap: 44px;
+}
+
+/* Campos nativos com a mesma linguagem do jogo (baixa especificidade: componentes podem sobrescrever). */
+:where(select) {
+	appearance: none;
+	-webkit-appearance: none;
+	min-height: 38px;
+	max-width: 100%;
+	padding: 8px 34px 8px 12px;
+	border-radius: var(--radius-s);
+	border: 1px solid var(--line-strong);
+	background:
+		url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2334d399' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
+			no-repeat right 12px center / 12px,
+		linear-gradient(180deg, var(--surface-2), var(--surface-sunken));
+	color: var(--text);
+	font-weight: 600;
+	cursor: pointer;
+	transition: border-color var(--dur-2) var(--ease-out), box-shadow var(--dur-2) var(--ease-out);
+}
+:where(select):hover:not(:disabled) { border-color: var(--emerald-line); }
+:where(select):focus-visible { border-color: var(--emerald-strong); }
+:where(select):disabled { opacity: 0.55; cursor: not-allowed; }
+:where(select) option { background: var(--surface-2); color: var(--text); }
+:where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']), textarea) {
+	min-height: 40px;
+	padding: 9px 12px;
+	border-radius: var(--radius-s);
+	border: 1px solid var(--line-strong);
+	background: var(--surface-sunken);
+	color: var(--text);
+	transition: border-color var(--dur-2) var(--ease-out), background var(--dur-2) var(--ease-out);
+}
+:where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']), textarea):focus-visible {
+	border-color: var(--emerald-strong);
+	background: var(--surface);
+}
+:where(progress) {
+	appearance: none;
+	-webkit-appearance: none;
+	height: 6px;
+	border: 0;
+	border-radius: 99px;
+	background: rgb(231 237 240 / 0.08);
+	overflow: hidden;
+}
+:where(progress)::-webkit-progress-bar { background: rgb(231 237 240 / 0.08); border-radius: 99px; }
+:where(progress)::-webkit-progress-value { background: linear-gradient(90deg, var(--emerald-deep), var(--emerald-strong)); border-radius: 99px; }
+:where(progress)::-moz-progress-bar { background: linear-gradient(90deg, var(--emerald-deep), var(--emerald-strong)); border-radius: 99px; }
+
+/* Cabeçalho de seção esportivo (título + régua) reutilizável. */
+.section-title {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin: 0 0 12px;
+	font-family: var(--font-display);
+	font-size: var(--fs-xl);
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+}
+.section-title::after {
+	content: '';
+	flex: 1;
+	height: 1px;
+	background: linear-gradient(90deg, var(--line-strong), transparent);
+}
+.card-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--min, 220px)), 1fr));
+	gap: var(--gap, 12px);
+}

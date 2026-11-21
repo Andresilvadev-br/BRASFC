@@ -87,18 +87,33 @@
 		{@const coaches = new Set(members.filter((member) => member.assignment?.role === 'coach').map((member) => member.assignment?.club))}
 		{@const total = s.room?.maxMembers ?? data.room.maxMembers}
 		{@const participants = s.room?.members ?? members}
+		{@const seated = participants.map((m) => ({ id: m.profileId, name: m.displayName, assignment: members.find((member) => member.profileId === m.profileId)?.assignment })).filter((m) => m.assignment)}
+		{@const readyCount = seated.filter((m) => m.assignment?.ready).length}
 		<div class="layout">
 			<div class="lobby-main">
 				<section class="lobby" aria-label="Jogadores na sala">
 					<header class="lobby-title"><div><h2>Participantes</h2><span class="muted small">{participants.length}/{total} vagas</span></div>
 						{#if !isOwner}<Button variant="ghost" icon="exit" onclick={() => (leaveOpen = true)}>Sair do universo</Button>{/if}
 					</header>
+					{#if seated.length}
+						<div class="readiness" role="status" aria-live="polite">
+							<div class="ring" style:--p={readyCount / seated.length}><span>{readyCount}<small>/{seated.length}</small></span></div>
+							<div class="ready-copy">
+								<strong>{readyCount === seated.length ? 'Todos prontos' : `${readyCount} de ${seated.length} ${seated.length === 1 ? 'participante pronto' : 'participantes prontos'}`}</strong>
+								<span class="pips">
+									{#each seated as m (m.id)}
+										<span class="pip" class:ok={m.assignment?.ready} title="{m.name} · {m.assignment?.ready ? 'Pronto' : 'Aguardando'}">{#if m.assignment?.ready}<Icon name="check" size={11} stroke={3} />{/if}<em>{m.name}</em></span>
+									{/each}
+								</span>
+							</div>
+						</div>
+					{/if}
 					<div class="bench">
 						{#each participants as m, i (m.profileId)}
 							{@const assignment = members.find((member) => member.profileId === m.profileId)?.assignment}
 							{@const connected = s.status === 'online' && 'online' in m && m.online === true}
-							<div class="member" use:enter={{ index: i }} class:offline={!connected}>
-								<div class="spot">
+							<div class="member" use:enter={{ index: i }} class:offline={!connected} class:ready={assignment?.ready} style:--club={assignment ? getClub(assignment.club)?.colors.primary ?? 'var(--surface-3)' : 'var(--surface-3)'}>
+								<div class="spot"><span class="presence" class:on={connected} aria-hidden="true"></span>
 									<Pixel variant="full" appearance={assignment?.appearance ?? look(m.profileId)} clubId={assignment?.club} styled
 										kit={assignment ? assignment.role === 'player' ? clubKit(assignment.club) : coachKit(assignment.club)
 											: { shirt: SHIRTS[i % SHIRTS.length], trim: '#E7EDF0', shorts: '#101418', socks: SHIRTS[i % SHIRTS.length] }} size={68} ball={false} />
@@ -212,18 +227,38 @@
 		gap: 8px;
 	}
 	.member {
+		position: relative;
 		display: grid;
-		grid-template-columns: 48px minmax(0, 1fr);
-		gap: 4px 8px;
+		grid-template-columns: 56px minmax(0, 1fr);
+		gap: 4px 10px;
 		align-content: center;
-		padding: 8px;
+		padding: 10px;
 		min-width: 0;
 		border: 1px solid var(--line);
 		border-radius: var(--radius-m);
-		background: var(--surface-sunken);
+		background: linear-gradient(110deg, color-mix(in srgb, var(--club) 28%, transparent), transparent 55%), var(--surface-sunken);
+		overflow: hidden;
+		transition: border-color var(--dur-2) var(--ease-out);
 	}
+	.member::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--club); }
+	.member.ready { border-color: var(--emerald-line); }
 	.member.offline { opacity: 0.8; }
-	.spot { grid-row: span 3; align-self: center; justify-self: center; }
+	.spot { position: relative; grid-row: span 3; align-self: center; justify-self: center; display: grid; place-items: center; width: 56px; height: 60px; border-radius: 12px; background: radial-gradient(70% 60% at 50% 80%, rgb(255 255 255 / .08), transparent), rgb(0 0 0 / .25); }
+	.presence { position: absolute; right: 2px; bottom: 2px; width: 11px; height: 11px; border-radius: 50%; background: var(--text-3); border: 2px solid var(--surface-sunken); transition: background var(--dur-3) var(--ease-out); }
+	.presence.on { background: var(--emerald-strong); }
+	.readiness { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; margin: 0 auto 16px; padding: 12px 18px; max-width: 640px; border-radius: 16px; background: rgb(0 0 0 / .25); border: 1px solid var(--line); }
+	.ring { --p: 0; display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; background: conic-gradient(var(--emerald-strong) calc(var(--p) * 360deg), rgb(231 237 240 / .1) 0); transition: background .5s var(--ease-out); }
+	.ring span { display: grid; place-items: center; grid-auto-flow: column; align-items: baseline; width: 52px; height: 52px; border-radius: 50%; background: var(--surface); font-family: var(--font-display); font-weight: 800; font-size: 1.35rem; }
+	.ring small { font-size: .8rem; color: var(--text-3); }
+	.ready-copy { display: grid; gap: 6px; min-width: 0; }
+	.ready-copy strong { font-family: var(--font-display); font-size: var(--fs-xl); text-transform: uppercase; letter-spacing: .02em; }
+	.pips { display: flex; flex-wrap: wrap; gap: 5px; }
+	.pip { display: inline-flex; align-items: center; gap: 5px; max-width: 150px; padding: 2px 9px 2px 4px; border-radius: 99px; border: 1px dashed var(--line-strong); font-size: var(--fs-xs); color: var(--text-2); }
+	.pip::before { content: ''; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line-strong); }
+	.pip.ok { border-style: solid; border-color: var(--emerald-line); color: var(--emerald-strong); }
+	.pip.ok::before { display: none; }
+	.pip :global(svg) { width: 14px; height: 14px; padding: 1px; border-radius: 50%; background: var(--emerald); color: #04130d; }
+	.pip em { font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.spot :global(svg) { height: 52px; width: auto; }
 	.member strong {
 		font-size: var(--fs-sm);

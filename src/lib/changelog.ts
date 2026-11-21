@@ -19,6 +19,24 @@ export interface Release {
 
 export const RELEASES: Release[] = [
 	{
+		version: '0.10.0', date: '2026-11-21', title: 'Visual premium', channel: 'estavel',
+		added: ['Biblioteca de cards esportivos: ações, seleção, indicadores, confrontos e destaque',
+			'Central do Jogador com contratos, treino e evolução em cards', 'Prontidão animada no lobby e no intervalo'],
+		highlights: [
+			{ title: 'Central do Jogador renovada', text: 'Contrato, mercado, patrocínio e renovação viraram cards com o motivo de cada ação estar ou não disponível.', icon: 'briefcase' },
+			{ title: 'Treino por foco', text: 'Escolha o foco em cards com os atributos treinados e acompanhe a evolução real do geral, sem estimativas.', icon: 'training' },
+			{ title: 'Transmissão de TV', text: 'Placar com escudos e cronômetro, lances traduzidos na linha do tempo e placar da rodada separado por série.', icon: 'play' },
+			{ title: 'Lobby multiplayer', text: 'Participantes em cards com a cor do clube, presença online e um anel que mostra quantos já estão prontos.', icon: 'multiplayer' }
+		],
+		improved: ['Editor de personagem com cada peça mostrada no próprio personagem',
+			'Cards das ligas com modalidade, temporada e vagas', 'Campos de seleção com o visual do jogo em todas as telas',
+			'Controles compactos de visualização, som, velocidade e cenas na partida', 'Confirmação de salvamento discreta nas ligas'],
+		fixed: ['Painel de exclusão de liga preso dentro do card no celular', 'Lances como shot_off exibidos sem tradução',
+			'Placar da rodada misturando as quatro séries numa lista só', 'Confrontos repetidos na linha do tempo oficial'],
+		compat: { database: 'sem migração', saves: 'carreiras e ligas anteriores preservadas' },
+		next: []
+	},
+	{
 		version: '0.9.1', date: '2026-11-21', title: 'Criação de ligas e lobby', channel: 'estavel',
 		added: ['Configuração de liga por etapas e rascunho recuperável', 'Central Social e convites da liga em telas próprias'],
 		improved: ['Navegação mobile, preparação da participação e lobby'],

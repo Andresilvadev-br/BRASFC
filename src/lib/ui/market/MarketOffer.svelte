@@ -105,7 +105,8 @@
 <style>
 	form { display: grid; gap: .7rem; }
 	label { display: grid; gap: .3rem; color: var(--text-2); font-size: var(--fs-sm); }
-	input, select { min-width: 0; width: 100%; padding: .5rem; color: var(--text); background: var(--surface-sunken); border: 1px solid var(--line-strong); border-radius: 9px; }
+	select { width: 100%; min-width: 0; min-height: 44px; }
+	input { min-width: 0; width: 100%; padding: .5rem; color: var(--text); background: var(--surface-sunken); border: 1px solid var(--line-strong); border-radius: 9px; }
 	small { color: var(--text-2); }
 	p { margin: 0; }
 	.pair { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.6fr); gap: .65rem; }
