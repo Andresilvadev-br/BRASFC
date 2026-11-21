@@ -12,7 +12,7 @@ import { runMigrations } from '#lib/server/db/migrate.ts';
 import { loginAccount, registerAccount, rotateCredentials, listSessions } from '#lib/server/repos/accounts.ts';
 import { createGuestProfile, findProfileByToken } from '#lib/server/repos/profiles.ts';
 import { createRoom, getRoomByCode, joinRoom } from '#lib/server/repos/rooms.ts';
-import { applyWorldCommand, worldSnapshot } from '#lib/server/connected-world.ts';
+import { applyWorldCommand, updateLiveRound, worldSnapshot } from '#lib/server/connected-world.ts';
 import { answerInvitation, friendship, searchProfiles, sendInvitation, socialInbox } from '#lib/server/repos/social.ts';
 import { readRoomChat, writeRoomChat } from '#lib/server/repos/room-chat.ts';
 
@@ -122,6 +122,14 @@ describe('contas e ligas', () => {
 		expect(completed.management?.budget).toBe(buyer.management!.budget - 2500);
 		expect((await get(c.id)).management?.budget).toBe(seller.management!.budget + 1250);
 		expect(completed.dealHistory[0].status).toBe('aceita');
+		const connection = { online: () => new Set([a.id, c.id]), now: () => 1000 };
+		await applyWorldCommand(db, room, a.id, { action:'ready', value:true, op:randomUUID(), revision:completed.revision }, connection);
+		const prepared = await get(c.id);
+		expect(prepared.live).toBe(false);
+		await applyWorldCommand(db, room, c.id, { action:'ready', value:true, op:randomUUID(), revision:prepared.revision }, connection);
+		const { session } = await updateLiveRound(db, room, a.id, { action:'pulse' }, connection);
+		expect(new Set(session?.required)).toEqual(new Set([a.id,c.id]));
+		expect(session?.waiting).toEqual([]);
 	}, 30_000);
 });
 

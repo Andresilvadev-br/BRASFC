@@ -219,7 +219,8 @@ type OfficialResult = { replay: Replay; match: MatchResult };
 type RoundRun = { prepare: LiveFixture[]; finished?: never } | { finished: OfficialResult[]; prepare?: never };
 async function advance(tx: Db, room: Room, s: WorldState, run?: RoundRun) {
 	const active = Object.values(s.participants);
-	if (!active.length || (!s.allowAbsent && active.some((p) => !p.ready))) fail('Aguarde a confirmação dos participantes.', 409);
+	const required = requiredForRound(s, room.assistantsRequired ?? true);
+	if (!required.length || (!s.allowAbsent && required.some((p) => !p.ready))) fail('Aguarde a confirmação dos participantes.', 409);
 	const step = stepOf(s);
 	const previous = await results(tx, room, s.league.season, Boolean(step));
 	const seed = seedOf(room);
@@ -803,6 +804,11 @@ async function beginLiveRound(tx: Db, room: Room, s: WorldState, connection: Rou
 	rememberFixtures(session.id, fixtures);
 }
 
+function canManageRound(player: Assignment, participants: WorldState['participants']) {
+	return player.role === 'coach' || (player.role === 'assistant' && !!player.matchDelegated &&
+		Object.values(participants).some((coach) => coach.role === 'coach' && coach.club === player.club));
+}
+
 function viewLiveRound(round: LiveRound, player: Assignment, participants: WorldState['participants'], online: ReadonlySet<string>, known?: unknown) {
 	const matches = enginesFor(round);
 	const index = round.fixtures.findIndex(({ replay }) => [replay.home.id, replay.away.id].includes(player.club));
@@ -816,7 +822,7 @@ function viewLiveRound(round: LiveRound, player: Assignment, participants: World
 			detail: known === round.id ? undefined : { ...fixture, stadium: fixture.venue ?? getClub(fixture.replay.home.id)?.stadium,
 				crew: Object.values(participants).filter((p) => p.role !== 'player' && [fixture.replay.home.id, fixture.replay.away.id].includes(p.club))
 					.map(({ club, role, name, appearance }) => ({ club, role, name, appearance })) },
-			canManage: player.role === 'coach' || (player.role === 'assistant' && !!player.matchDelegated) } : null,
+			canManage: canManageRound(player, participants) } : null,
 		suggestions: round.suggestions.filter((item) => item.club === player.club),
 		role: player.role, athleteId: player.role === 'player' ? athleteId(player) : null,
 		fixtures: round.fixtures.map(({ competition, replay }, i) => ({ competition, home: replay.home.id, away: replay.away.id,
@@ -886,7 +892,7 @@ export async function updateLiveRound(db: Db, room: Room, profile: string, body:
 					round.suggestions.push({ profile, club: player.club, decision, id: String(body.op) });
 					round.confirmed = round.confirmed.filter((id) => id !== profile);
 				} else {
-					if (player.role !== 'coach' && !(player.role === 'assistant' && player.matchDelegated)) fail('Seu cargo não autoriza intervenções.', 403);
+					if (!canManageRound(player, participants)) fail('Seu cargo não autoriza intervenções.', 403);
 					if (body.sequence !== round.sequence) fail('A partida avançou. Revise a decisão.', 409);
 					const match = enginesFor(round)[index];
 					const side = round.fixtures[index].replay.home.id === player.club ? 'home' : 'away';

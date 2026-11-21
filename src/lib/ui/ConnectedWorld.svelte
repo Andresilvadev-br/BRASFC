@@ -184,7 +184,7 @@
 		if (!member.assignment) return [];
 		const connected = membership?.find((presence) => presence.profileId === member.profileId);
 		return [{ id: member.profileId, name: member.displayName, club: member.assignment.club, role: labels[member.assignment.role],
-			online: !!connected?.online && (member.profileId !== profileId || online), ready: member.assignment.ready,
+			online: online && !!connected?.online, ready: member.assignment.ready,
 			activity: connected?.activity, activityUntil: connected?.activityUntil }];
 	}));
 	const names = $derived(Object.fromEntries(world.members.map((member) => [member.profileId, member.displayName])));

@@ -94,7 +94,7 @@
 				<div class="bench">
 					{#each participants as m, i (m.profileId)}
 						{@const assignment = members.find((member) => member.profileId === m.profileId)?.assignment}
-						{@const connected = 'online' in m && m.online === true}
+						{@const connected = s.status === 'online' && 'online' in m && m.online === true}
 						<div class="member" class:offline={!connected}>
 							<div class="spot">
 								<Pixel variant="full" appearance={assignment?.appearance ?? look(m.profileId)} clubId={assignment?.club} styled
@@ -106,7 +106,7 @@
 								{#if assignment?.ready}<Badge tone="emerald">Pronto</Badge>{/if}
 								{#if assignment}<Badge tone="neutral">{assignment.role === 'coach' ? 'Treinador' : assignment.role === 'assistant' ? 'Auxiliar' : 'Jogador'}</Badge>{/if}
 								{#if m.role === 'owner'}<Badge tone="gold" icon="crown">Anfitrião</Badge>{/if}
-								<Badge tone={connected ? 'emerald' : 'neutral'}>{connected ? 'Online' : 'Offline'}</Badge>
+								<Badge tone={connected ? 'emerald' : 'neutral'}>{connected ? 'Online' : s.status === 'online' ? 'Offline' : 'Sem confirmação de presença'}</Badge>
 							</span>
 						</div>
 					{/each}
