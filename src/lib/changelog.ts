@@ -19,6 +19,14 @@ export interface Release {
 
 export const RELEASES: Release[] = [
 	{
+		version: '0.8.4', date: '2026-11-21', title: 'Seleção de clubes e elencos de abertura', channel: 'estavel',
+		added: ['Seleção das Séries A, B, C e D com busca, formação, banco e elenco', 'Elencos documentados de Palmeiras e Atlético-MG na abertura do Brasileirão 2026'],
+		improved: ['Prévia própria para treinador e jogador', 'Cache da escalação com antecipação dos clubes vizinhos'],
+		fixed: ['Campo de escalação completo em telas estreitas', 'Identificação de símbolos provisórios e de elencos com dados pendentes'],
+		compat: { database: 'mesmo esquema 0007, catálogo gravado nos novos saves', saves: 'carreiras e universos anteriores preservados' },
+		next: ['Ampliação da cobertura de elencos e autorizações de escudos']
+	},
+	{
 		version: '0.8.0', date: '2026-11-19', title: 'Ultimate Football Experience', channel: 'desenvolvimento',
 		added: ['Rodadas cooperativas e intervalo com decisões oficiais', 'Transmissão sincronizada com escalações e placares', 'Dynamic Island pré-partida com presença e atividade'],
 		improved: ['Recuperação de rodada a partir de checkpoints e decisões persistidas'],
