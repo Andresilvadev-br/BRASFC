@@ -1,6 +1,7 @@
 /** Ícones de traço 24×24 desenhados para o BRASFC (sem dependência externa). */
 export const ICONS = {
 	home: 'M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z',
+	search: 'M16 16l4.5 4.5M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13z',
 	squad: 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21v-1a6 6 0 0 1 6-6h2a6 6 0 0 1 6 6v1M16 3.5a4 4 0 0 1 0 7M22 21v-1a6 6 0 0 0-4-5.6',
 	tactics: 'M4 3h16v18H4zM4 12h16M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM9 3v3h6V3M9 21v-3h6v3',
 	training: 'M6 7v10M18 7v10M3 10v4M21 10v4M6 12h12',

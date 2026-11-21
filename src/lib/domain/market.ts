@@ -21,6 +21,7 @@ export type ContractRole = 'titular' | 'rotacao' | 'reserva' | 'jovem';
 export const ROLE_LABELS: Record<ContractRole, string> = { titular: 'Titular', rotacao: 'Rotação', reserva: 'Reserva', jovem: 'Jovem promessa' };
 
 export interface Contract {
+	since?: string;
 	/** salário mensal (R$) */
 	wage: number;
 	/** última temporada do contrato */

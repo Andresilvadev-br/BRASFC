@@ -1,30 +1,55 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import { untrack, type Snippet } from 'svelte';
 	import { animate } from '#lib/motion/motion.svelte.ts';
 	import Icon from '../Icon.svelte';
 	/** Painel lateral com mola: abre detalhes sem perder o contexto da tela (Esc fecha). */
 	let { open = $bindable(false), title, subtitle = '', children, footer, width = 460 }: { open?: boolean; title: string; subtitle?: string; children: Snippet; footer?: Snippet; width?: number } = $props();
 	let panel = $state<HTMLElement | null>(null);
 	let shown = $state(false);
+	let opener: HTMLElement | null = null;
+	let generation = 0;
 	$effect(() => {
+		const ticket = ++generation;
 		if (open) {
+			const focused = document.activeElement;
+			if (focused instanceof HTMLElement && !untrack(() => panel?.contains(focused))) opener = focused;
 			shown = true;
-			requestAnimationFrame(() => {
+			const frame = requestAnimationFrame(() => {
+				if (ticket !== generation) return;
 				void animate(panel, { x: 0, opacity: 1 }, { spring: 'capsule', from: { x: 60, opacity: 0 } });
 				panel?.focus();
 			});
-		} else if (shown) {
-			void animate(panel, { x: 40, opacity: 0 }, { spring: 'critical' }).then(() => (shown = false));
+			return () => cancelAnimationFrame(frame);
+		}
+		if (untrack(() => shown)) {
+			const closing = untrack(() => panel);
+			const front = closing?.contains(document.activeElement);
+			void animate(closing, { x: 40, opacity: 0 }, { spring: 'critical' }).then(() => {
+				if (ticket !== generation) return;
+				shown = false;
+				if (front && (closing?.contains(document.activeElement) || document.activeElement === document.body)) opener?.focus();
+			});
 		}
 	});
 	function key(e: KeyboardEvent) {
-		if (e.key === 'Escape') open = false;
+		if (e.key === 'Escape') { e.stopPropagation(); open = false; }
+		if (e.key !== 'Tab' || !panel || !open) return;
+		const targets = [...panel.querySelectorAll<HTMLElement>('button, a[href], input, select, textarea, summary, [tabindex="0"]')]
+			.filter((element) => !element.matches(':disabled') && element.getClientRects().length);
+		const first = targets[0], last = targets.at(-1);
+		if (e.shiftKey && (document.activeElement === first || document.activeElement === panel)) {
+			e.preventDefault();
+			last?.focus();
+		} else if (!e.shiftKey && document.activeElement === last) {
+			e.preventDefault();
+			first?.focus();
+		}
 	}
 </script>
 
 {#if shown}
 	<div class="scrim" class:on={open} role="presentation" onclick={() => (open = false)}></div>
-	<div class="sheet glass" bind:this={panel} style="--w:{width}px" role="dialog" aria-modal="true" aria-label={title} tabindex="-1" onkeydown={key}>
+	<div class="sheet glass" bind:this={panel} style="--w:{width}px" inert={!open} role="dialog" aria-modal="true" aria-label={title} tabindex="-1" onkeydown={key}>
 		<header>
 			<div>
 				<h2 class="display">{title}</h2>
@@ -47,6 +72,7 @@
 		opacity: 0;
 		transition: opacity 0.25s;
 	}
+	@media (prefers-reduced-motion: reduce) { .scrim { transition: none; } }
 	.scrim.on {
 		opacity: 1;
 	}

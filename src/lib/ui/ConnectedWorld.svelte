@@ -32,7 +32,9 @@
 	import FixtureCard from './career/FixtureCard.svelte';
 	import StandingsTable from './career/StandingsTable.svelte';
 	import WorldTactics from './tactics/WorldTactics.svelte';
-	import HumanMarket from './career/HumanMarket.svelte';
+	import MarketWorkspace from './market/MarketWorkspace.svelte';
+	import MarketSquad from './market/MarketSquad.svelte';
+	import type { NegotiationLog } from '#lib/domain/management.ts';
 	import WeekPlanner from './career/WeekPlanner.svelte';
 	import WorldManagement from './career/WorldManagement.svelte';
 	import MatchCenter from './match/MatchCenter.svelte';
@@ -231,6 +233,14 @@
 	}
 	const send = (action: string, values: Record<string, unknown> = {}) =>
 		execute({ ...values, action, revision: world.revision, op: crypto.randomUUID() });
+
+	async function marketCommit(request: Record<string, unknown>, seller?: string): Promise<{ ok: boolean; log?: NegotiationLog | null }> {
+		const op = typeof request.operation === 'string' ? request.operation : crypto.randomUUID();
+		const command = seller ? { action: 'deal', target: seller, player: request.playerId, fee: request.fee }
+			: { action: 'club', request };
+		const ok = await execute({ ...command, op, revision: world.revision });
+		return { ok, log: ok ? world.management?.negotiations?.find((entry) => entry.op === request.operation) : null };
+	}
 
 	async function saveTraining() {
 		if (await send('training', { plan: $state.snapshot(trainingPlan) })) trainingDraft = null;
@@ -464,8 +474,19 @@
 				</article>{/if}
 			{/if}
 		{:else if section === 'mercado'}
-			{#if current?.role === 'coach'}
-				<div class="wide market-style"><HumanMarket {world} club={current.club} busy={saving} {send} /></div>
+			{#if current?.role === 'coach' && world.management}
+				<div class="wide">
+					{#key current.club}
+						<MarketWorkspace endpoint={path + '?market=1'} storageKey={`market:${code}:${profileId}:${current.club}`} revision={world.revision}
+							clubId={current.club} budget={world.management.budget} wages={world.management.wages} wageBudget={world.management.wageBudget}
+							window={world.marketWindow} incoming={world.management.incoming} logs={world.management.negotiations ?? []}
+							humanDeals={[...world.deals, ...world.dealHistory]} names={(id) => world.roster.find((player) => player.id === id)?.name}
+							commit={marketCommit} humanReply={send}>
+							{#snippet own()}<MarketSquad players={world.roster} listed={world.management?.listed ?? []}
+								toggle={async (id) => (await marketCommit({ action: 'listar', playerId: id })).ok} />{/snippet}
+						</MarketWorkspace>
+					{/key}
+				</div>
 				<article><h3>Atletas humanos</h3>
 					{#each world.athleteDeals as proposal}
 						<p>{proposal.name} · {clubName(proposal.from)} → {clubName(proposal.to)}</p>
@@ -576,7 +597,6 @@
 	.calendar-list span { display:flex; align-items:center; gap:6px; min-width:0; overflow-wrap:anywhere; }
 	.calendar-list time { color:var(--text-2); }
 	.table-wrap { overflow-x:auto; }
-	.market-style { display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr)); align-items:start; }
 	@media(max-width:480px) { .calendar-list > div { grid-template-columns:48px 1fr auto 1fr; font-size:var(--fs-xs); } .showcase { padding:12px; } }
 
 </style>
