@@ -44,9 +44,13 @@ describe('universo compartilhado', () => {
 		const saved = await get(owner);
 		expect(saved.tactic?.mentality).toBe('ofensiva');
 		const preview = await worldClubLineup(db, room, player, first);
-		expect(preview).toEqual(clubLineup(saved.roster, saved.tactic));
+		expect(preview).toMatchObject(clubLineup(saved.roster, saved.tactic));
 		expect(preview.starters).toHaveLength(11);
-		expect(preview.starters.every((starter) => starter.name && starter.overall)).toBe(true);
+		expect(preview.coverage).toBe('incomplete');
+		expect(preview.starters.every((starter) => !starter.player)).toBe(true);
+		const confirmed = await worldClubLineup(db, room, player, 'palmeiras');
+		expect(confirmed.starters.map((starter) => starter.player?.cbfId)).toContain('633571');
+		expect(confirmed.bench).toHaveLength(12);
 		expect((await get(assistant)).management).toBeNull();
 		await expect(command(assistant, 'training', { plan: {} })).rejects.toMatchObject({ status: 403 });
 		await command(owner, 'delegate', { target: assistant, value: true });

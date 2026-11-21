@@ -1,3 +1,4 @@
+import { ROSTER_CATALOG, type RosterCatalogId } from '#lib/data/roster-catalog.ts';
 import type { UniverseState } from './universe.ts';
 import type { OfficeState } from './office.ts';
 import { isAppearance, type Appearance } from './appearance.ts';
@@ -38,6 +39,8 @@ export interface PlayerProfile {
 }
 
 export interface CareerData {
+/** Edição imutável do elenco inicial. Ausente em saves legados. */
+rosterCatalog?: RosterCatalogId;
 appearance?: Appearance;
 position?: Position;
 player?: PlayerProfile;
@@ -158,7 +161,7 @@ export function validateCreateCareer(input: unknown): ValidationResult<CreateCar
 export function initialCareerData(input: CreateCareerInput, seed: number): CareerData {
 	const world = input.world ?? 'brasfc';
 	const start = careerStart(world);
-	const data: CareerData = { appearance: input.appearance, world, firstSeason: start.season, league: initialLeague(world, start.season), ...(world === 'brasil' ? { cup: initialCup(start.season) } : {}) };
+	const data: CareerData = { appearance: input.appearance, world, firstSeason: start.season, league: initialLeague(world, start.season), ...(world === 'brasil' ? { cup: initialCup(start.season), rosterCatalog: ROSTER_CATALOG } : {}) };
 	if (input.mode === 'player' && input.position) {
 		const rng = createRng(deriveSeed(seed, 'player'));
 		const age = input.age ?? 18;
@@ -234,7 +237,7 @@ export function welcomeMessages(input: CreateCareerInput): NewMessage[] {
 		subject: 'Sobre os dados deste universo',
 		body:
 			world === 'brasil'
-				? 'Clubes e cidades das Séries A, B, C e D de 2026 e os participantes da Copa do Brasil 2026 foram conferidos em fontes públicas. Elencos reais e técnicos ainda não foram importados: os jogadores têm nomes fictícios e a força de cada clube é uma estimativa do BRASFC. Temporadas a partir de 2027 seguem as regras anunciadas pela CBF (Série C com 24 e 28 clubes) e projeções do BRASFC quando não há regulamento.'
+				? 'Clubes e cidades das Séries A, B, C e D de 2026 e os participantes da Copa do Brasil 2026 foram conferidos em fontes públicas. A seleção identifica os elencos verificados e informa quando o clube usa vagas simuladas. As notas, os contratos de jogo e a economia seguem o modelo do BRASFC. Temporadas a partir de 2027 seguem as regras anunciadas pela CBF (Série C com 24 e 28 clubes) e projeções do BRASFC quando não há regulamento.'
 				: 'Os clubes e elencos desta liga são fictícios. Partidas, táticas, treinos e resultados são simulados pelo motor do BRASFC e ficam salvos na sua carreira.',
 		gameDate: date
 	};

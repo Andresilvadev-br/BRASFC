@@ -11,7 +11,7 @@
 	import type { PresenceMember, RoomActivity } from '#lib/realtime/protocol.ts';
 	import Island from './Island.svelte';
 	import LiveMatch from './match/LiveMatch.svelte';
-	import type { worldReplay, worldSnapshot } from '#lib/server/connected-world.ts';
+	import type { worldClubLineup, worldReplay, worldSnapshot } from '#lib/server/connected-world.ts';
 	import { sameTactic, type Tactic } from '#lib/domain/tactics.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { formatShort } from '#lib/domain/dates.ts';
@@ -25,7 +25,7 @@
 	import Button from './Button.svelte';
 	import type { IconName } from './icons.ts';
 	import type { CareerGroup } from './career/navigation.ts';
-	import type { ClubLineup } from '#lib/domain/club-selection.ts';
+	type ClubPreview = Awaited<ReturnType<typeof worldClubLineup>>;
 	import ClubSelector from './career/ClubSelector.svelte';
 	import Icon from './Icon.svelte';
 	import CareerShell from './career/CareerShell.svelte';
@@ -49,7 +49,7 @@
 	const section = $derived(world.current ? requested === 'carreira' ? 'central' : requested ?? 'central' : 'carreira');
 	let role = $state<'coach' | 'assistant' | 'player' | null>(null);
 	let club = $state<string | null>(null);
-	let lineup = $state.raw<ClubLineup>();
+	let lineup = $state.raw<ClubPreview>();
 	let lineupKey = $state('');
 	let lineupError = $state('');
 	let lineupAttempt = $state(0);
@@ -118,26 +118,45 @@
 		}
 		return blocked;
 	});
+	const previews = new Map<string, Promise<ClubPreview>>();
 	const selectedLineupKey = $derived(JSON.stringify([path, club, world.revision, lineupAttempt]));
+
+	function readPreview(id: string, revision: number) {
+		const key = `${path}:${revision}:${id}`;
+		const cached = previews.get(key);
+		if (cached) return cached;
+		const query = new URLSearchParams({ clube: id });
+		const pending = api<ClubPreview>(`${path}?${query}`).catch((error) => {
+			if (previews.get(key) === pending) previews.delete(key);
+			throw error;
+		});
+		if (previews.size >= 24) {
+			const oldest = previews.keys().next().value;
+			if (oldest) previews.delete(oldest);
+		}
+		previews.set(key, pending);
+		return pending;
+	}
+
 	$effect(() => {
 		if (current || !role || !club || world.live) return;
-		const query = new URLSearchParams({ clube: club });
 		const key = selectedLineupKey;
-		const controller = new AbortController();
+		let active = true;
 		lineupError = '';
-		void api<ClubLineup>(`${path}?${query}`, { signal: controller.signal }).then((response) => {
-			if (controller.signal.aborted) return;
+		void readPreview(club, world.revision).then((response) => {
+			if (!active) return;
 			lineup = response;
 			lineupKey = key;
 		}).catch((error: unknown) => {
-			if (controller.signal.aborted) return;
+			if (!active) return;
 			lineup = undefined;
 			lineupError = error instanceof Error ? error.message : 'Escalação indisponível.';
 			lineupKey = key;
 		});
-		return () => controller.abort();
+		return () => { active = false; };
 	});
 
+	const selectedPreview = $derived(lineupKey === selectedLineupKey ? lineup : undefined);
 	const labels = { coach: 'Treinador', assistant: 'Auxiliar', player: 'Jogador' };
 
 	const friends = $derived(world.members.flatMap((member) => {
@@ -341,7 +360,7 @@
 			{#if section === 'elenco'}<article class="wide"><h3>Elenco do clube</h3><div class="squad-grid">
 				{#each world.roster as athlete (athlete.id)}
 					<div class="squad-card"><Pixel appearance={athlete.appearance} kit={playerKit(current.club, athlete.position)} size={36} />
-						<div><strong>{athlete.name}</strong><small>{athlete.position} · {athlete.age} anos</small></div><strong>{athlete.overall}</strong></div>
+						<div><strong>{athlete.name}</strong><small>{athlete.position} · {'cbfId' in athlete && athlete.cbfId && !('birthDate' in athlete && athlete.birthDate) ? 'Idade pendente' : `${athlete.age} anos`}</small></div><strong>{athlete.overall}</strong></div>
 				{/each}
 			</div></article>{/if}
 		{:else if section === 'competicoes' && current}
@@ -389,8 +408,10 @@
 						<h2>{role === 'assistant' ? 'Auxiliar técnico' : `Modo ${labels[role]}`}</h2>
 						<Button variant="ghost" icon="arrowLeft" disabled={saving} onclick={() => chooseRole(null)}>Trocar modo</Button>
 					</div>
-					<ClubSelector clubs={world.clubs} bind:clubId={club} blocked={blockedClubs}
-						lineup={lineupKey === selectedLineupKey ? lineup : undefined}
+					<ClubSelector clubs={world.clubs} bind:clubId={club} blocked={blockedClubs} mode={role} {position} playerOverall={role === 'player' ? 57 + Math.min(12, Math.max(0, ((age ?? 18) - 18) * 2)) : undefined}
+						season={world.season} busy={saving} coach={selectedPreview?.coach} transferBudget={selectedPreview?.transferBudget} wageBudget={selectedPreview?.wageBudget}
+						lineup={selectedPreview}
+						prefetch={(ids) => ids.forEach((id) => void readPreview(id, world.revision).catch(() => {}))}
 						error={lineupKey === selectedLineupKey ? lineupError : undefined}
 						loading={!!club && lineupKey !== selectedLineupKey} retry={() => lineupAttempt++} />
 					<form class="join-profile" onsubmit={roleForm}>
@@ -406,7 +427,7 @@
 						<details><summary>Personalizar aparência</summary>
 							<AppearanceEditor bind:appearance kit={role === 'player' && club ? playerKit(club, position) : coachKit(club ?? undefined)} clubId={club ?? undefined} uniformOptions={role === 'player'} preview />
 						</details>
-						<Button type="submit" variant="primary" iconRight="arrowRight" disabled={!club || !!blockedClubs[club]} loading={saving}>Entrar na carreira</Button>
+						<Button type="submit" variant="primary" iconRight="arrowRight" disabled={!club || !!blockedClubs[club]} loading={saving}>{role === 'player' ? 'Iniciar carreira de jogador' : role === 'coach' ? 'Iniciar carreira de treinador' : 'Entrar como auxiliar'}</Button>
 					</form>
 				</div>
 			{/if}

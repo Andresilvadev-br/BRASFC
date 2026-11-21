@@ -135,7 +135,8 @@ export function autoLineup(formation: FormationId, squad: SquadPlayer[]): string
 		let bestScore = -Infinity;
 		for (const id of available) {
 			const p = byId.get(id)!;
-			const score = positionFit(p.position, slots[i].position) * 100 + p.overall;
+			const fit = Math.max(positionFit(p.position, slots[i].position), p.secondary?.includes(slots[i].position) ? 0.92 : 0);
+			const score = fit * 100 + p.overall;
 			if (score > bestScore) {
 				best = p;
 				bestScore = score;

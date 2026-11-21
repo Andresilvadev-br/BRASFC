@@ -26,7 +26,7 @@
 	}: {
 		name: string;
 		position: Position;
-		age: number;
+		age: number | null;
 		overall: number | null;
 		overallRange?: [number, number] | null;
 		potential?: [number, number] | number | null;
@@ -53,7 +53,7 @@
 		{#if clubId}<span class="crest"><Crest {clubId} size={22} /></span>{/if}
 	</header>
 	<h3 title={name}>{name}</h3>
-	<p class="meta">{POSITION_INFO[position]?.label ?? position} · {age} anos</p>
+	<p class="meta">{POSITION_INFO[position]?.label ?? position} · {age === null ? 'Idade pendente' : `${age} anos`}</p>
 	<dl>
 		{#if value !== null}<div><dt>Valor</dt><dd>{value ? formatMoney(value) : '—'}</dd></div>{/if}
 		{#if pot}<div><dt>Potencial</dt><dd>{pot}</dd></div>{/if}

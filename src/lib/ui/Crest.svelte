@@ -1,10 +1,14 @@
 <script lang="ts">
+	import { IDENTIDADE } from '#lib/data/brasil.ts';
 	import { getClub, type Club } from '#lib/domain/clubs.ts';
 
 	/** Escudo genérico gerado a partir das cores do clube — nunca reproduz marcas reais. */
 	let { clubId, club: given, size = 40, title }: { clubId?: string; club?: Club; size?: number; title?: string } = $props();
 
 	const club = $derived(given ?? (clubId ? getClub(clubId) : undefined));
+	const entry = $derived(club && IDENTIDADE[club.id]);
+	const official = $derived(entry?.escudo);
+	let failed = $state('');
 	const uid = $props.id();
 	/** Sigla clara em fundos escuros e escura em fundos claros (ex.: camisas brancas). */
 	const ink = $derived.by(() => {
@@ -21,14 +25,17 @@
 	} as const;
 </script>
 
-{#if club}
+{#if club && official && failed !== official.path}
+	<img class="crest" src={official.path} width={size} height={size} loading="lazy" decoding="async"
+		alt={title ?? `Escudo do ${club.name}`} onerror={() => (failed = official.path)} />
+{:else if club}
 	<svg
 		class="crest"
 		width={size}
 		height={size}
 		viewBox="0 0 100 104"
 		role="img"
-		aria-label={title ?? `Escudo do ${club.name}`}
+		aria-label={title ?? (entry ? `Símbolo provisório de ${club.name}` : `Escudo fictício de ${club.name}`)}
 	>
 		<defs>
 			<clipPath id="clip-{uid}"><path d={SHAPES[club.crest.shape]} /></clipPath>
@@ -60,6 +67,7 @@
 <style>
 	.crest {
 		flex: none;
+		object-fit: contain;
 		filter: drop-shadow(0 2px 4px rgb(0 0 0 / 0.35));
 	}
 </style>

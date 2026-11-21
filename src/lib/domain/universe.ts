@@ -155,6 +155,7 @@ function newCoach(seed: number, key: string, season: number, style: CoachStyleId
 }
 
 export interface UniverseSetup {
+	coachNameFor?: (clubId: string) => string | undefined;
 	seed: number;
 	season: number;
 	firstSeason: number;
@@ -184,6 +185,7 @@ export function initialUniverse(s: UniverseSetup): UniverseState {
 			let coachId: string | null = null;
 			if (id !== s.userClub) {
 				const c = newCoach(s.seed, `${id}-${s.season}`, s.season - Math.min(legacy.tenure, 4), style, (TIER_REP[division] ?? 20) + rep * 3, id);
+				c.name = s.coachNameFor?.(id) ?? c.name;
 				coaches[c.id] = c;
 				coachId = c.id;
 			}

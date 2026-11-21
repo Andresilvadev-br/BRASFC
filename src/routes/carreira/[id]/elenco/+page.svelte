@@ -132,7 +132,7 @@
 				<PlayerCard
 					name={p.name}
 					position={p.position}
-					age={p.age}
+					age={p.cbfId && !p.birthDate ? null : p.age}
 					overall={p.overall}
 					potential={p.age <= 23 ? p.potential : null}
 					value={coach ? p.value : null}
@@ -151,7 +151,7 @@
 			<tbody>
 				{#each list as p (p.id)}
 					<tr onclick={() => open(p.id)} class:starter={v.tactic.lineup.includes(p.id)}>
-						<td class="num">{p.number}</td><td><strong>{p.name}</strong></td><td>{p.position}</td><td class="num">{p.age}</td><td class="num"><b>{p.overall}</b></td>
+						<td class="num">{p.number}</td><td><strong>{p.name}</strong></td><td>{p.position}</td><td class="num">{p.cbfId && !p.birthDate ? '—' : p.age}</td><td class="num"><b>{p.overall}</b></td>
 						<td><i class="bar" style="--c:{fit.get(p.id) ?? 95}%" class:low={(fit.get(p.id) ?? 95) < 75}></i></td>
 						<td>{MORALE_LABELS[p.morale]}</td>
 						{#if coach}<td class="num">{p.contract ? formatMoney(p.contract.wage) : '—'}</td><td class:warn={!!p.contract && p.contract.until <= c.season}>{p.contract?.until ?? '—'}</td><td class="r num">{formatMoney(p.value)}</td>{/if}
@@ -162,7 +162,7 @@
 	</div>
 {/if}
 
-<Sheet bind:open={sheet} title={sel?.name ?? ''} subtitle={sel ? `#${sel.number} · ${POSITION_INFO[sel.position].label} · ${sel.age} anos${sel.archetype ? ` · ${sel.archetype}` : ''}` : ''} width={520}>
+<Sheet bind:open={sheet} title={sel?.name ?? ''} subtitle={sel ? `#${sel.number} · ${POSITION_INFO[sel.position].label} · ${sel.cbfId && !sel.birthDate ? 'Idade pendente' : `${sel.age} anos`}${sel.archetype ? ` · ${sel.archetype}` : ''}` : ''} width={520}>
 	{#if sel}
 		<div class="top">
 			<Pixel variant="full" appearance={sel.appearance} kit={playerKit(c.clubId, sel.position)} size={120} />

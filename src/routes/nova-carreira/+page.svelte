@@ -5,12 +5,14 @@
 	import { api, ApiError } from '#lib/api.ts';
 	import { DEFAULT_APPEARANCE, type Appearance } from '#lib/domain/appearance.ts';
 	import AppearanceEditor from '#lib/ui/career/AppearanceEditor.svelte';
-	import { boardExpectation, careerStart, MODE_LABELS, type Career, type CareerMode, type DominantFoot } from '#lib/domain/career.ts';
+	import { careerStart, initialCareerData, MODE_LABELS, type Career, type CareerMode, type DominantFoot } from '#lib/domain/career.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import Segmented from '#lib/ui/Segmented.svelte';
-	import { initialLeague, DIVISION_LABELS, type DivisionId } from '#lib/domain/league.ts';
-	import { clubLineup } from '#lib/domain/club-selection.ts';
-	import { generateSquad } from '#lib/domain/squad.ts';
+	import { initialLeague, type DivisionId } from '#lib/domain/league.ts';
+	import { catalogClub, ROSTER_CATALOG } from '#lib/data/roster-catalog.ts';
+	import { initialClubState } from '#lib/domain/management.ts';
+	import { clubLineup, initialClubTactic } from '#lib/domain/club-selection.ts';
+	import { careerBaseSquad } from '#lib/domain/squad.ts';
 	import ClubSelector from '#lib/ui/career/ClubSelector.svelte';
 	import { POSITION_INFO, type Position } from '#lib/domain/positions.ts';
 	import { enter } from '#lib/motion/actions.ts';
@@ -60,7 +62,24 @@
 	const selectionClubs = $derived(Object.entries(league.divisions).flatMap(([division, ids]) =>
 		ids.map((id) => ({ id, division: division as DivisionId }))));
 	const clubDivision = $derived(selectionClubs.find((entry) => entry.id === clubId)?.division);
-	const lineup = $derived(step === 'clube' && clubId ? clubLineup(generateSquad(clubId, data.previewSeed)) : undefined);
+	const catalog = $derived(world === 'brasil' ? ROSTER_CATALOG : undefined);
+	const rosterCache = new Map<string, ReturnType<typeof clubLineup>>();
+	const lineup = $derived(step === 'clube' && clubId ? previewClub(clubId, data.previewSeed, catalog) : undefined);
+	const coach = $derived(clubId ? catalogClub(catalog, clubId)?.coach : undefined);
+	const finances = $derived(mode === 'coach' && clubId && step === 'clube' ? initialClubState(data.previewSeed, clubId, clubDivision ?? null, league.season) : undefined);
+	const playerOverall = $derived(mode === 'player' && clubId && step === 'clube'
+		? initialCareerData({ mode, clubId, personName, position, age, world }, data.previewSeed).player?.overall : undefined);
+
+	function previewClub(id: string, seed: number, version: typeof catalog) {
+		const key = `${id}:${seed}:${version}`;
+		let preview = rosterCache.get(key);
+		if (!preview) {
+			const squad = careerBaseSquad(id, seed, version);
+			preview = clubLineup(squad, initialClubTactic(version, id, squad));
+			rosterCache.set(key, preview);
+		}
+		return preview;
+	}
 
 	onMount(() => setIslandContext('Nova carreira'));
 
@@ -92,7 +111,7 @@
 	}
 
 	async function create() {
-		if (!mode || !clubId || saving) return;
+		if (!mode || !clubId || saving || created) return;
 		saving = true;
 		errors = {};
 		try {
@@ -235,8 +254,9 @@
 				<h1>Escolha seu clube</h1>
 			</div>
 			{#key world}
-				<ClubSelector clubs={selectionClubs} bind:clubId {lineup} previewLabel="Elenco inicial gerado"
-					summary={mode === 'coach' && club && clubDivision ? `Meta da diretoria · ${boardExpectation(club, DIVISION_LABELS[clubDivision])}` : undefined}>
+				<ClubSelector clubs={selectionClubs} bind:clubId {lineup} mode={mode ?? 'coach'} {position} {playerOverall} {coach}
+					season={league.season} transferBudget={finances?.transferBudget} wageBudget={finances?.wageBudget} busy={saving || !!created}
+					prefetch={(ids) => ids.forEach((id) => previewClub(id, data.previewSeed, catalog))}>
 					{#snippet top()}
 						<Segmented label="Base de clubes" bind:value={world} onchange={() => (clubId = null)}
 							options={[{ value: 'brasil', label: 'Clubes nacionais' }, { value: 'brasfc', label: 'Liga fictícia' }]} />
@@ -244,7 +264,7 @@
 				</ClubSelector>
 			{/key}
 			<div class="actions finish">
-				<Button variant="primary" size="lg" icon="play" disabled={!clubId} loading={saving} onclick={create}>Iniciar carreira</Button>
+				<Button variant="primary" size="lg" icon="play" disabled={!clubId} loading={saving} onclick={create}>{mode === 'player' ? 'Iniciar carreira de jogador' : 'Iniciar carreira de treinador'}</Button>
 			</div>
 		{/if}
 	</main>

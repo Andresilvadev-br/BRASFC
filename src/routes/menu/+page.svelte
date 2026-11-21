@@ -253,7 +253,7 @@
 	<footer class="keys">
 		<span><kbd>←</kbd><kbd>→</kbd> Navegar</span>
 		<span><kbd>Enter</kbd> Selecionar</span>
-		<span class="subtle">Clubes reais das Séries A–D 2026 (fontes públicas); elencos e atletas do universo BRASFC são fictícios.</span>
+		<span class="subtle">Clubes brasileiros das Séries A–D 2026. Elencos documentados e pendências aparecem na seleção de clube.</span>
 	</footer>
 </div>
 

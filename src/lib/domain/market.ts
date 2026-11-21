@@ -1,9 +1,10 @@
+import type { RosterCatalogId } from '#lib/data/roster-catalog.ts';
 import { computeOverall, generateAttributes, type Attributes } from '#lib/engine/attributes.ts';
 import { randomAppearance } from './appearance.ts';
 import { getClub } from './clubs.ts';
 import type { Position } from './positions.ts';
 import { createRng, deriveSeed } from './rng.ts';
-import { generateSquad, randomName, squadStrength, type SquadPlayer } from './squad.ts';
+import { careerBaseSquad, randomName, squadStrength, type SquadPlayer } from './squad.ts';
 
 /**
  * Mercado, contratos e evolução dos atletas (Dev 0.4).
@@ -174,6 +175,7 @@ export function retires(p: Pick<SquadPlayer, 'age' | 'overall'>): boolean {
 // ─────────────────────────────────────────────────────────────── elencos
 
 export interface RosterContext {
+	catalog?: RosterCatalogId;
 	seed: number;
 	firstSeason: number;
 	season: number;
@@ -195,11 +197,11 @@ export function originClub(playerId: string): string {
 const evolved = new Map<string, SquadPlayer[]>();
 
 /** Elenco-base do clube evoluído até a temporada, com jovens que repõem os aposentados (clubes da IA). */
-export function evolvedBase(seed: number, clubId: string, firstSeason: number, season: number, autoYouth: boolean, devBoost = 1): SquadPlayer[] {
-	const key = `${seed}:${clubId}:${firstSeason}:${season}:${autoYouth ? 1 : 0}:${devBoost}`;
+export function evolvedBase(seed: number, clubId: string, firstSeason: number, season: number, autoYouth: boolean, devBoost = 1, catalog?: RosterCatalogId): SquadPlayer[] {
+	const key = `${seed}:${clubId}:${firstSeason}:${season}:${autoYouth ? 1 : 0}:${devBoost}:${catalog ?? 'legacy'}`;
 	const hit = evolved.get(key);
 	if (hit) return hit;
-	let squad = generateSquad(clubId, seed);
+	let squad = careerBaseSquad(clubId, seed, catalog);
 	for (let s = firstSeason; s < season; s++) {
 		const next: SquadPlayer[] = [];
 		const gone: SquadPlayer[] = [];
@@ -208,7 +210,7 @@ export function evolvedBase(seed: number, clubId: string, firstSeason: number, s
 			if (retires(e)) gone.push(e);
 			else next.push(e);
 		}
-		if (autoYouth) gone.forEach((g, k) => next.push(regen(seed, clubId, s + 1, k, g.position)));
+		if (autoYouth) gone.forEach((g, k) => next.push(regen(seed, clubId, s + 1, k, g.position, g.pending)));
 		squad = next;
 	}
 	if (evolved.size > 3000) evolved.clear();
@@ -217,7 +219,7 @@ export function evolvedBase(seed: number, clubId: string, firstSeason: number, s
 }
 
 /** Jovem gerado pelo mundo (clubes da IA) para repor um aposentado. Nomes fictícios. */
-export function regen(seed: number, clubId: string, season: number, k: number, position: Position): SquadPlayer {
+export function regen(seed: number, clubId: string, season: number, k: number, position: Position, pending?: boolean): SquadPlayer {
 	const rng = createRng(deriveSeed(seed, 'regen', clubId, season, k));
 	const club = getClub(clubId);
 	const rep = club?.reputation ?? 2;
@@ -228,8 +230,9 @@ export function regen(seed: number, clubId: string, season: number, k: number, p
 	const n = randomName(rng);
 	return {
 		id: `${clubId}-j${season}${k}`,
-		name: n.name,
-		shortName: n.shortName,
+		name: pending ? `Vaga simulada · ${position} ${40 + k}` : n.name,
+		shortName: pending ? `${position} ${40 + k}` : n.shortName,
+		pending,
 		number: 40 + k,
 		position,
 		age,
@@ -246,7 +249,7 @@ export function regen(seed: number, clubId: string, season: number, k: number, p
 /** Contrato-base de um atleta (determinístico): vence entre 0 e 3 temporadas após a primeira. */
 export function baseContract(p: SquadPlayer, seed: number, firstSeason: number, season: number, tier: Tier, starter: boolean): Contract {
 	const rng = createRng(deriveSeed(seed, 'contrato', p.id));
-	let until = firstSeason + rng.int(0, 3);
+	let until = p.contractUntil ?? firstSeason + rng.int(0, 3);
 	// Clubes da IA renovam a maioria (renovações sucessivas, determinísticas).
 	while (until < season) until += 2 + (deriveSeed(seed, 'renova', p.id, until) % 2);
 	return { wage: expectedWage(p.overall, tier, p.age), until, role: starter ? 'titular' : p.age <= 20 ? 'jovem' : 'rotacao' };
@@ -267,7 +270,7 @@ export function findPlayer(ctx: RosterContext, playerId: string): SquadPlayer | 
 	const origin = originClub(playerId);
 	if (!getClub(origin)) return null;
 	const auto = origin !== ctx.userClub;
-	const base = evolvedBase(ctx.seed, origin, ctx.firstSeason, ctx.season, auto, auto ? 1 : (ctx.userDevBoost ?? 1));
+	const base = evolvedBase(ctx.seed, origin, ctx.firstSeason, ctx.season, auto, auto ? 1 : (ctx.userDevBoost ?? 1), ctx.catalog);
 	return base.find((p) => p.id === playerId) ?? null;
 }
 
@@ -275,7 +278,7 @@ export function findPlayer(ctx: RosterContext, playerId: string): SquadPlayer | 
 export function rosterOf(ctx: RosterContext, clubId: string): RosterPlayer[] {
 	const auto = clubId !== ctx.userClub;
 	const tier = tierOfDivision(ctx.divisionOf(clubId));
-	const base = evolvedBase(ctx.seed, clubId, ctx.firstSeason, ctx.season, auto, auto ? 1 : (ctx.userDevBoost ?? 1));
+	const base = evolvedBase(ctx.seed, clubId, ctx.firstSeason, ctx.season, auto, auto ? 1 : (ctx.userDevBoost ?? 1), ctx.catalog);
 	const strength = squadStrength(base);
 	const out: RosterPlayer[] = [];
 	for (const p of base) {

@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { careerStart, initialCareerData, validateCreateCareer, type Career, type CareerData } from '#lib/domain/career.ts';
 import { DEFAULT_APPEARANCE, isAppearance, type Appearance } from '#lib/domain/appearance.ts';
-import { clubLineup } from '#lib/domain/club-selection.ts';
+import { catalogClub, ROSTER_CATALOG, type RosterCatalogId } from '#lib/data/roster-catalog.ts';
+import { clubLineup, initialClubTactic } from '#lib/domain/club-selection.ts';
 import { getClub } from '#lib/domain/clubs.ts';
 import { seasonSteps } from '#lib/domain/calendar.ts';
 import { initialCup, clubCupRun, cupView, prepareCup, cupFixtures, phaseOfMatchday, projectedCup, tieOutcome } from '#lib/domain/cup.ts';
@@ -11,7 +12,7 @@ import { initialLeague, divisionOf, effectiveRule, divisionStandings, prepareRou
 import { aiTeam, matchSeed, simulateOtherFixtures } from '#lib/domain/matchday.ts';
 import { currentClubOf, emptyMarket, tierOfDivision, rosterOf, transferWindow, type MarketState } from '#lib/domain/market.ts';
 import { hashString } from '#lib/domain/rng.ts';
-import { defaultTactic, recoverTactic, sanitizeTactic, type Tactic } from '#lib/domain/tactics.ts';
+import { recoverTactic, sanitizeTactic, type Tactic } from '#lib/domain/tactics.ts';
 import { rosterContext, strengthMemo, clubStateOf } from '#lib/domain/world.ts';
 import { engineFamiliarity, resolveRoles, sanitizeTacticalState, type TacticalState } from '#lib/domain/tactical.ts';
 import { sanitizeOffice } from '#lib/domain/office.ts';
@@ -45,6 +46,7 @@ type SettledDeal = Deal & { status: 'aceita' | 'recusada' | 'encerrada'; name: s
 type Replay = RoundReplay;
 type Played = StoredRoundResult & { replay?: Replay; replayVersion?: string; athletes?: Record<string, { stats?: PlayerStats; selection: 'titular' | 'reserva' | 'fora' }>; events?: MatchEvent[] };
 type WorldState = {
+	rosterCatalog?: RosterCatalogId;
 	universe?: CareerData['universe']; league: LeagueState; cup: ReturnType<typeof initialCup> | null; date: string; step: number; firstSeason: number;
 	participants: Record<string, Assignment>; tactics: Record<string, Tactic>;
 	plans: Record<string, ReturnType<typeof sanitizePlan>>; mastery?: Record<string, TacticalState>; fitness?: Record<string, Record<string, number>>; clubs: Record<string, ClubState>;
@@ -58,7 +60,7 @@ const readState = (row: RecordRow): WorldState => typeof row.state === 'string' 
 
 function initial(): WorldState {
 	const { season, date } = careerStart('brasil');
-	return { league: initialLeague('brasil', season), cup: initialCup(season), date, step: 0, firstSeason: season,
+	return { rosterCatalog: ROSTER_CATALOG, league: initialLeague('brasil', season), cup: initialCup(season), date, step: 0, firstSeason: season,
 		participants: {}, tactics: {}, plans: {}, clubs: {}, market: emptyMarket(), deals: [], vacancies: {}, last: [],
 		allowAbsent: false, inviteOpen: true, champions: [] };
 }
@@ -90,7 +92,7 @@ function context(room: Room, s: WorldState, club: string, person?: Assignment): 
 	return { id: room.id, personName: person?.name ?? room.name, clubId: club, mode: person?.role === 'player' ? 'player' : 'coach',
 		seed: person?.role === 'player' ? hashString(room.id + person.profile) : seedOf(room), season: s.league.season,
 		gameDate: s.date, version: 0, createdAt: room.createdAt, updatedAt: room.createdAt,
-		data: { ...person?.athlete, world: 'brasil', firstSeason: s.firstSeason, league: s.league,
+		data: { ...person?.athlete, world: 'brasil', rosterCatalog: s.rosterCatalog, firstSeason: s.firstSeason, league: s.league,
 			cup: s.cup ?? undefined, universe: s.universe, market: s.market, club: s.clubs[club] } };
 }
 
@@ -130,7 +132,7 @@ export async function worldSnapshot(db: Db, room: Room, profile: string) {
 	const ownClub = current && current.role !== 'player' ? clubStateOf(context(room, s, current.club), s.league) : null;
 	const fixtures = [...seasonFixtures(s.league, seedOf(room)), ...(s.cup ? cupFixtures(s.cup) : [])];
 	const squad = current ? roster(room, s, current.club) : [];
-	const tactic = current ? recoverTactic(s.tactics[current.club], squad) ?? defaultTactic(squad) : undefined;
+	const tactic = current ? recoverTactic(s.tactics[current.club], squad) ?? initialClubTactic(s.rosterCatalog, current.club, squad) : undefined;
 	const clubCalendar = current ? fixtures.filter((fixture) => [fixture.home, fixture.away].includes(current.club))
 		.sort((a, b) => a.date.localeCompare(b.date)) : [];
 	const priorScores = new Map(past.filter((game) => current && [game.home, game.away].includes(current.club))
@@ -139,7 +141,7 @@ export async function worldSnapshot(db: Db, room: Room, profile: string) {
 	const tier = tierOfDivision(division);
 	const half = (schedule(s).slice(s.step).find((entry) => entry.kind === 'league')?.round ?? 38) <= 19 ? 1 : 2;
 	const [live] = await db.query('SELECT 1 FROM room_live_rounds WHERE room_id=$1', [room.id]);
-	return { live: !!live, revision: Number(row?.revision ?? 0), ownerId: room.ownerId, season: s.league.season, date: s.date,
+	return { live: !!live, revision: Number(row?.revision ?? 0), ownerId: room.ownerId, season: s.league.season, date: s.date, rosterCatalog: s.rosterCatalog,
 		next: step, fixture: current && step ? fixtures.find((f) => f.competition === (step.kind === 'cup' ? 'copa-do-brasil' : f.competition)
 			&& (step.kind === 'cup' || f.competition !== 'copa-do-brasil') && f.round === (step.kind === 'league' ? step.round : step.matchday)
 			&& [f.home, f.away].includes(current.club)) : null,
@@ -311,7 +313,10 @@ async function advance(tx: Db, room: Room, s: WorldState, run?: RoundRun) {
 			const projection = context(room, s, id);
 			const squad = roster(room, s, id);
 			const manager = active.find((p) => p.club === id && p.role === 'coach');
-			const saved = manager?.ready && s.tactics[id] ? recoverTactic(s.tactics[id], squad) : null;
+			const opening = s.league.season === s.firstSeason && step.kind === 'league' && round === 1 && catalogClub(s.rosterCatalog, id);
+			const saved = manager?.ready
+				? recoverTactic(s.tactics[id], squad) ?? (opening ? initialClubTactic(s.rosterCatalog, id, squad) : null)
+				: null;
 			const ai = aiTeam(projection, id, { season, firstSeason: s.firstSeason }, round).setup;
 			const tactical = saved ?? { ...ai.tactic, lineup: [], bench: undefined, formation: ai.tactic.formation };
 			const identity = getClub(id)!;
@@ -384,7 +389,7 @@ async function advance(tx: Db, room: Room, s: WorldState, run?: RoundRun) {
 		if (weekly) {
 			const plan = s.plans[club] ?? DEFAULT_PLAN;
 			const available = roster(room, s, club);
-			const tactic = recoverTactic(s.tactics[club], available) ?? defaultTactic(available);
+			const tactic = recoverTactic(s.tactics[club], available) ?? initialClubTactic(s.rosterCatalog, club, available);
 			const trained = sanitizeTacticalState(mastery[club], available, tactic.formation, tactic.style);
 			mastery[club] = applyTrainingWeek(trained, plan, { ...tactic, roles: resolveRoles(tactic.formation, tactic.roles), squad: available });
 			fitness[club] = recoverFitness(fitness[club] ?? {}, squad, plan);
@@ -436,7 +441,14 @@ export async function worldClubLineup(db: Db, room: Room, profile: string, club:
 	const state = row ? readState(row) : initial();
 	if (!divisionOf(state.league, club)) fail('Clube não participa desta temporada.', 404);
 	const squad = roster(room, state, club);
-	return clubLineup(squad, recoverTactic(state.tactics[club], squad) ?? defaultTactic(squad));
+	const career = context(room, state, club);
+	const model = clubStateOf(career, state.league);
+	return {
+		...clubLineup(squad, recoverTactic(state.tactics[club], squad) ?? initialClubTactic(state.rosterCatalog, club, squad)),
+		transferBudget: model.transferBudget,
+		wageBudget: model.wageBudget,
+		coach: state.universe?.coaches[state.universe.clubs[club]?.coachId ?? '']?.name ?? catalogClub(state.rosterCatalog, club)?.coach
+	};
 }
 
 export async function worldReplay(db: Db, room: Room, profile: string, home: string, away: string) {
