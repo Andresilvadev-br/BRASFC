@@ -65,7 +65,7 @@ jobs:
   multiplayer-browser:
     name: Fluxos multiplayer no navegador
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
@@ -74,7 +74,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - run: npm install --no-save --no-package-lock playwright@1.51.1
+      - run: npm install --no-save --no-package-lock playwright@1.62.1
       - run: npx playwright install --with-deps chromium
       - run: npm run build
       - name: Testar liga de treinador e de atleta
