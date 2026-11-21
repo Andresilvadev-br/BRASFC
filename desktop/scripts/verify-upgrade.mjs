@@ -120,14 +120,19 @@ try {
 	writeFileSync(preferences, JSON.stringify({ mode: 'offline', automatic: false, width: 1001 }));
 	assert.equal(installedVersion().split('.').slice(0, 3).join('.'), fromVersion);
 	await launch();
-	await until(() => evaluate("location.origin.startsWith('http://127.0.0.1:47615') && !!window.brasfcDesktop"));
+	await until(() => evaluate("location.origin.startsWith('http://127.0.0.1:47615') && location.pathname === '/menu' && !!window.brasfcDesktop"));
+	// Use the baseline's own session after its opening flow has completed. Starting
+	// another guest session during the opening can race the baseline's first cookie.
 	const old = await evaluate(`(async () => {
 		const post = (path, body) => fetch(path, {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json());
-		const profile = (await post('/api/session', {})).profile;
+		const { profile } = await fetch('/api/session').then(r => r.json());
+		if (!profile?.id) throw Error('A abertura da versão anterior não iniciou o perfil local');
 		const { career } = await post('/api/careers',{mode:'coach',personName:'Teste de atualização',clubId:'bahia',world:'brasil'});
 		if (!career?.id) throw Error('Falha ao criar save na versão anterior');
 		const round = await post('/api/careers/' + career.id + '/matches',{version:career.version,step:'league:1',decisions:[]});
 		if (!round.match) throw Error('Falha ao registrar o primeiro jogo');
+		const current = (await fetch('/api/session').then(r => r.json())).profile;
+		if (current?.id !== profile.id) throw Error('O perfil mudou durante a preparação do save inicial');
 		return { id:career.id, profile:profile.id, score:[round.match.homeGoals,round.match.awayGoals] };
 	})()`);
 	result.tests.push(`${fromVersion} instalado, perfil local e primeira partida oficial persistidos`);
