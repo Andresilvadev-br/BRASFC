@@ -60,7 +60,8 @@ it('recupera rodada com vários jogos, aplica substituições reais e espera tr�
 	expect(compact.relevant?.detail).toBeUndefined();
 	expect(session.relevant?.detail?.replay.home.players.length).toBeGreaterThan(11);
 	expect(compact.relevant?.match).toEqual(session.relevant?.match);
-	expect(JSON.stringify(compact).length).toBeLessThan(JSON.stringify(session).length / 2);
+	const suppressedBytes = JSON.stringify(session.relevant?.detail).length;
+	expect(JSON.stringify(compact).length).toBeLessThanOrEqual(JSON.stringify(session).length - suppressedBytes);
 	now += 13000;
 	session = (await pulse()).session!;
 	expect(session.phase).toBe('FIRST_HALF');

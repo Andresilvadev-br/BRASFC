@@ -44,7 +44,7 @@ export interface Fonte {
 export interface Identidade {
 	cores: { primaria: string; secundaria: string } | null;
 	status: string;
-	escudo: null;
+	escudo: { path: string; source: string; permission: string } | null;
 }
 
 /** Correção manual: altera um campo de um clube, com justificativa e fonte. */
@@ -114,6 +114,9 @@ export function validateDataset(clubes: RealClub[], fontes: Fonte[], identidade:
 		if (!id) err('Sem registro de identidade visual', c.id);
 		else if (id.cores && (!COLOR.test(id.cores.primaria) || !COLOR.test(id.cores.secundaria))) err('Cor inválida', c.id);
 		else if (!id.cores) warn('Cores pendentes (usará cores neutras)', c.id);
+		if (id?.escudo && (!/^\/escudos\/[a-z0-9.-]+\.(png|webp|svg)$/.test(id.escudo.path) || !id.escudo.source.startsWith('https://') || !id.escudo.permission.trim())) {
+			err('Escudo sem caminho local, fonte ou permissão válida', c.id);
+		}
 	}
 	for (const comp of temporada.competicoes) {
 		const esperado = divisionRule(comp.id as 'serie-a', temporada.temporada).size;
@@ -176,6 +179,7 @@ export const TEMPORADA_2026: Temporada = {
 };
 export const CORRECOES = correcoesRaw as Correcao[];
 export const CLUBES_2026: RealClub[] = applyCorrections(clubesRaw as RealClub[], CORRECOES);
+const realClubById = new Map(CLUBES_2026.map((club) => [club.id, club]));
 export const DATASET_ISSUES = validateDataset(CLUBES_2026, FONTES, IDENTIDADE, TEMPORADA_2026, CORRECOES);
 
 /** Cores PROVISÓRIAS (geradas pelo BRASFC) para clubes sem cores conferidas: nunca apresentadas como oficiais. */
@@ -223,5 +227,5 @@ export function toGameClub(c: RealClub): Club {
 registerClubs(CLUBES_2026.map(toGameClub));
 
 export function realClub(id: string): RealClub | undefined {
-	return CLUBES_2026.find((c) => c.id === id);
+	return realClubById.get(id);
 }

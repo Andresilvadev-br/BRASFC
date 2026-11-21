@@ -1,0 +1,465 @@
+{
+  "season": 2026,
+  "league": "serie-a",
+  "asOf": "2026-01-28",
+  "verifiedOn": "2026-11-21",
+  "sources": [
+    "https://conteudo.cbf.com.br/sumulas/2026/1426se.pdf",
+    "https://palmeiras.com.br/elenco/",
+    "https://www.palmeiras.com.br/noticias/atletico-mg-x-palmeiras-informacoes-estatisticas-e-curiosidades-8/",
+    "https://atletico.com.br/galo-estreia-com-empate-na-arena-mrv/",
+    "https://atletico.com.br/wp-content/uploads/2026/11/BOTAFOGO-X-ATLETICO-34a-RODADA-DO-BRASILEIRAO-2026.pdf"
+  ],
+  "clubs": {
+    "palmeiras": {
+      "formation": "4-2-3-1",
+      "coach": "Abel Ferreira",
+      "players": [
+        {
+          "playerId": "534596",
+          "number": 1,
+          "name": "Carlos Miguel",
+          "position": "GOL",
+          "birthDate": "1998-10-09",
+          "nationality": "Brasil",
+          "matchRole": "starter",
+          "profileSource": "https://palmeiras.com.br/jogador/?jogador=274779"
+        },
+        {
+          "playerId": "557878",
+          "number": 12,
+          "name": "Khellven",
+          "position": "LD",
+          "birthDate": "2001-02-25",
+          "nationality": "Brasil",
+          "matchRole": "starter",
+          "profileSource": "https://palmeiras.com.br/jogador/?jogador=274160"
+        },
+        {
+          "playerId": "633571",
+          "number": 15,
+          "name": "Gustavo Gómez",
+          "position": "ZAG",
+          "birthDate": "1993-05-06",
+          "nationality": "Paraguai",
+          "matchRole": "starter",
+          "profileSource": "https://palmeiras.com.br/jogador/?jogador=2297"
+        },
+        {
+          "playerId": "392224",
+          "number": 26,
+          "name": "Murilo",
+          "position": "ZAG",
+          "birthDate": "1997-03-27",
+          "nationality": "Brasil",
+          "matchRole": "starter",
+          "profileSource": "https://palmeiras.com.br/jogador/?jogador=215247"
+        },
+        {
+          "playerId": "725766",
+          "number": 22,
+          "name": "Joaquín Piquerez",
+          "position": "LE",
+          "birthDate": "1998-08-24",
+          "nationality": "Uruguai",
+          "matchRole": "starter",
+          "profileSource": "https://palmeiras.com.br/jogador/?jogador=200996"
+        },
+        {
+          "playerId": "405713",
+          "number": 27,
+          "name": "Marlon Freitas",
+          "position": "VOL",
+          "birthDate": "1995-03-27",
+          "nationality": "Brasil",
+          "matchRole": "starter",
+          "profileSource": "https://palmeiras.com.br/jogador/?jogador=279379"
+        },
+        {
+          "playerId": "729086",
+          "number": 8,
+          "name": "Andreas Pereira",
+          "position": "MC",
+          "secondary": [
+            "VOL"
+          ],
+          "birthDate": "1996-01-01",
+          "nationality": "Brasil / Bélgica",
+          "matchRole": "starter",
+          "profileSource": "https://palmeiras.com.br/jogador/?jogador=275250"
+        },
+        {
+          "playerId": "621642",
+          "number": 40,
+          "name": "Allan",
+          "position": "PD",
+          "secondary": [
+            "MC"
+          ],
+          "matchRole": "starter"
+        },
+        {
+          "playerId": "542337",
+          "number": 18,
+          "name": "Mauricio",
+          "position": "MEI",
+          "birthDate": "2001-06-22",
+          "matchRole": "starter",
+          "nationality": "Brasil",
+          "profileSource": "https://palmeiras.com.br/jogador/?jogador=258136"
+        },
+        {
+          "playerId": "923395",
+          "number": 19,
+          "name": "Ramón Sosa",
+          "position": "PE",
+          "birthDate": "1999-08-31",
+          "nationality": "Paraguai",
+          "matchRole": "starter",
+          "profileSource": "https://palmeiras.com.br/jogador/?jogador=273227"
+        },
+        {
+          "playerId": "773040",
+          "number": 42,
+          "name": "Flaco López",
+          "position": "ATA",
+          "birthDate": "2000-12-06",
+          "nationality": "Argentina",
+          "matchRole": "starter",
+          "profileSource": "https://palmeiras.com.br/jogador/?jogador=224097"
+        },
+        {
+          "playerId": "157264",
+          "number": 14,
+          "name": "Marcelo Lomba",
+          "position": "GOL",
+          "birthDate": "1986-12-18",
+          "nationality": "Brasil",
+          "matchRole": "bench",
+          "profileSource": "https://palmeiras.com.br/jogador/?jogador=214178"
+        },
+        {
+          "playerId": "401025",
+          "number": 3,
+          "name": "Bruno Fuchs",
+          "position": "ZAG",
+          "matchRole": "bench",
+          "birthDate": "1999-04-01",
+          "nationality": "Brasil",
+          "profileSource": "https://palmeiras.com.br/jogador/?jogador=267312"
+        },
+        {
+          "playerId": "869605",
+          "number": 4,
+          "name": "Agustín Giay",
+          "position": "LD",
+          "nationality": "Argentina",
+          "matchRole": "bench",
+          "birthDate": "2004-01-16",
+          "profileSource": "https://palmeiras.com.br/jogador/?jogador=258174"
+        },
+        {
+          "playerId": "652554",
+          "number": 6,
+          "name": "Jefté",
+          "position": "LE",
+          "matchRole": "bench",
+          "birthDate": "2003-12-21",
+          "nationality": "Brasil",
+          "profileSource": "https://palmeiras.com.br/jogador/?jogador=274785"
+        },
+        {
+          "playerId": "631735",
+          "number": 9,
+          "name": "Vitor Roque",
+          "position": "ATA",
+          "matchRole": "bench",
+          "birthDate": "2005-02-28",
+          "nationality": "Brasil",
+          "profileSource": "https://palmeiras.com.br/jogador/?jogador=267679"
+        },
+        {
+          "playerId": "308405",
+          "number": 23,
+          "name": "Raphael Veiga",
+          "position": "MEI",
+          "matchRole": "bench"
+        },
+        {
+          "playerId": "691624",
+          "number": 31,
+          "name": "Luighi",
+          "position": "ATA",
+          "matchRole": "bench"
+        },
+        {
+          "playerId": "731518",
+          "number": 32,
+          "name": "Emiliano Martínez",
+          "position": "VOL",
+          "nationality": "Uruguai",
+          "matchRole": "bench",
+          "birthDate": "1999-08-17",
+          "profileSource": "https://palmeiras.com.br/jogador/?jogador=266610"
+        },
+        {
+          "playerId": "696681",
+          "number": 37,
+          "name": "Riquelme Fillipi",
+          "position": "PD",
+          "matchRole": "bench"
+        },
+        {
+          "playerId": "726173",
+          "number": 48,
+          "name": "Larson",
+          "position": "VOL",
+          "matchRole": "bench",
+          "birthDate": "2005-07-10",
+          "nationality": "Brasil",
+          "profileSource": "https://palmeiras.com.br/jogador/?jogador=280023"
+        },
+        {
+          "playerId": "699165",
+          "number": 50,
+          "name": "Luis Pacheco",
+          "position": "VOL",
+          "matchRole": "bench"
+        },
+        {
+          "playerId": "680958",
+          "number": 56,
+          "name": "Arthur",
+          "position": "LE",
+          "matchRole": "bench",
+          "birthDate": "2005-09-04",
+          "nationality": "Brasil",
+          "profileSource": "https://palmeiras.com.br/jogador/?jogador=281739"
+        }
+      ]
+    },
+    "atletico-mg": {
+      "formation": "4-3-3",
+      "coach": "Jorge Sampaoli",
+      "players": [
+        {
+          "playerId": "188398",
+          "number": 22,
+          "name": "Everson",
+          "position": "GOL",
+          "matchRole": "starter",
+          "birthDate": "1990-07-22",
+          "nationality": "Brasil"
+        },
+        {
+          "playerId": "699171",
+          "number": 21,
+          "name": "Alan Franco",
+          "position": "VOL",
+          "secondary": [
+            "LD"
+          ],
+          "nationality": "Equador",
+          "matchRole": "starter",
+          "birthDate": "1998-08-21"
+        },
+        {
+          "playerId": "462332",
+          "number": 4,
+          "name": "Ruan Tressoldi",
+          "position": "ZAG",
+          "matchRole": "starter",
+          "birthDate": "1999-06-07",
+          "nationality": "Brasil"
+        },
+        {
+          "playerId": "699115",
+          "number": 6,
+          "name": "Júnior Alonso",
+          "position": "ZAG",
+          "nationality": "Paraguai",
+          "matchRole": "starter"
+        },
+        {
+          "playerId": "396433",
+          "number": 16,
+          "name": "Renan Lodi",
+          "position": "LE",
+          "matchRole": "starter",
+          "birthDate": "1998-04-08",
+          "nationality": "Brasil"
+        },
+        {
+          "playerId": "339242",
+          "number": 8,
+          "name": "Maycon",
+          "position": "VOL",
+          "matchRole": "starter",
+          "birthDate": "1997-07-15",
+          "nationality": "Brasil"
+        },
+        {
+          "playerId": "337713",
+          "number": 17,
+          "name": "Igor Gomes",
+          "position": "MC",
+          "secondary": [
+            "MEI"
+          ],
+          "matchRole": "starter",
+          "birthDate": "1999-03-17",
+          "nationality": "Brasil"
+        },
+        {
+          "playerId": "610109",
+          "number": 30,
+          "name": "Victor Hugo",
+          "position": "MC",
+          "secondary": [
+            "MEI"
+          ],
+          "matchRole": "starter",
+          "birthDate": "2004-05-11",
+          "nationality": "Brasil"
+        },
+        {
+          "playerId": "317567",
+          "number": 11,
+          "name": "Bernard",
+          "position": "MEI",
+          "secondary": [
+            "PD",
+            "PE"
+          ],
+          "matchRole": "starter",
+          "birthDate": "1992-09-08",
+          "nationality": "Brasil"
+        },
+        {
+          "playerId": "163056",
+          "number": 7,
+          "name": "Hulk",
+          "position": "ATA",
+          "matchRole": "starter"
+        },
+        {
+          "playerId": "291738",
+          "number": 92,
+          "name": "Dudu",
+          "position": "PE",
+          "matchRole": "starter",
+          "birthDate": "1992-01-07",
+          "nationality": "Brasil"
+        },
+        {
+          "playerId": "568494",
+          "number": 1,
+          "name": "Gabriel Delfim",
+          "position": "GOL",
+          "matchRole": "bench",
+          "birthDate": "2002-07-10",
+          "nationality": "Brasil"
+        },
+        {
+          "playerId": "559812",
+          "number": 2,
+          "name": "Natanael",
+          "position": "LD",
+          "matchRole": "bench",
+          "birthDate": "2002-01-05",
+          "nationality": "Brasil"
+        },
+        {
+          "playerId": "652450",
+          "number": 5,
+          "name": "Alexsander",
+          "position": "VOL",
+          "matchRole": "bench",
+          "birthDate": "2003-10-08",
+          "nationality": "Brasil"
+        },
+        {
+          "playerId": "313426",
+          "number": 10,
+          "name": "Gustavo Scarpa",
+          "position": "MEI",
+          "matchRole": "bench",
+          "birthDate": "1994-01-05",
+          "nationality": "Brasil"
+        },
+        {
+          "playerId": "300140",
+          "number": 14,
+          "name": "Vitor Hugo",
+          "position": "ZAG",
+          "matchRole": "bench",
+          "birthDate": "1991-05-20",
+          "nationality": "Brasil"
+        },
+        {
+          "playerId": "546383",
+          "number": 19,
+          "name": "Reinier",
+          "position": "MEI",
+          "matchRole": "bench",
+          "birthDate": "2002-01-19",
+          "nationality": "Brasil"
+        },
+        {
+          "playerId": "943523",
+          "number": 27,
+          "name": "Alan Minda",
+          "position": "PD",
+          "nationality": "Equador",
+          "matchRole": "bench",
+          "birthDate": "2003-05-14"
+        },
+        {
+          "playerId": "695547",
+          "number": 28,
+          "name": "Tomás Cuello",
+          "position": "PE",
+          "nationality": "Argentina",
+          "matchRole": "bench",
+          "birthDate": "2000-03-05"
+        },
+        {
+          "playerId": "718366",
+          "number": 36,
+          "name": "Kauã Pascini",
+          "position": "LE",
+          "matchRole": "bench",
+          "birthDate": "2008-03-05",
+          "nationality": "Brasil"
+        },
+        {
+          "playerId": "775631",
+          "number": 38,
+          "name": "Hendel",
+          "position": "VOL",
+          "matchRole": "bench",
+          "birthDate": "2008-04-03",
+          "nationality": "Brasil"
+        },
+        {
+          "playerId": "896299",
+          "number": 39,
+          "name": "Mamady Cissé",
+          "position": "MEI",
+          "nationality": "Guiné",
+          "matchRole": "bench",
+          "birthDate": "2007-01-01"
+        },
+        {
+          "playerId": "706135",
+          "number": 40,
+          "name": "Vitão",
+          "position": "ZAG",
+          "matchRole": "bench",
+          "birthDate": "2008-03-04",
+          "nationality": "Brasil"
+        }
+      ]
+    }
+  }
+}

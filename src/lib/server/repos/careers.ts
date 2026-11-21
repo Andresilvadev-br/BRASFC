@@ -49,9 +49,8 @@ export const MAX_CAREERS_PER_PROFILE = 12;
 export class CareerLimitError extends Error {}
 export class VersionConflictError extends Error {}
 
-export async function createCareer(db: Db, profileId: string, input: CreateCareerInput): Promise<Career> {
+export async function createCareer(db: Db, profileId: string, input: CreateCareerInput, seed = randomInt(1, 2 ** 31 - 1)): Promise<Career> {
 	const id = randomUUID();
-	const seed = randomInt(1, 2 ** 31 - 1);
 	const data = initialCareerData(input, seed);
 	return db.transaction(async (tx) => {
 		const [{ count }] = await tx.query<{ count: string | number }>(

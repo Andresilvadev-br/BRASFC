@@ -72,11 +72,11 @@ export interface CoachOverride {
 	since: number;
 }
 
-export function aiTeamPlan(careerSeed: number, clubId: string, season: number, firstSeason: number, squad: SquadPlayer[], scout?: Scouting, round = 0, override?: CoachOverride | null): AiTeamPlan {
+export function aiTeamPlan(careerSeed: number, clubId: string, season: number, firstSeason: number, squad: SquadPlayer[], scout?: Scouting, round = 0, override?: CoachOverride | null, initial?: Tactic): AiTeamPlan {
 	const coach: ClubCoach = override ? { profile: COACH_PROFILES[override.style], tenure: Math.max(0, season - override.since), changed: override.since === season } : clubCoach(careerSeed, clubId, season, firstSeason);
 	const p = coach.profile;
-	const formation = override?.formation ?? coachFormation(p, squad);
-	const lineup = autoLineup(formation, squad);
+	const formation = initial?.formation ?? override?.formation ?? coachFormation(p, squad);
+	const lineup = initial?.lineup ?? autoLineup(formation, squad);
 	const roles = bestRoles(formation, lineup, squad);
 	let instructions = presetInstructions(p.mentality, p.style);
 	const reasons: string[] = [];

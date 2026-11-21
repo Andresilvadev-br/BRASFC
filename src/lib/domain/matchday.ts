@@ -1,3 +1,5 @@
+import { catalogClub } from '#lib/data/roster-catalog.ts';
+import { initialClubTactic } from './club-selection.ts';
 import { computeOverall } from '#lib/engine/attributes.ts';
 import { Match, simulateMatch } from '#lib/engine/match.ts';
 import { buildTeamSetup } from '#lib/engine/teams.ts';
@@ -109,7 +111,10 @@ export function aiTeam(career: Career, clubId: string, ctx: Pick<MatchdayContext
 	const squad: SquadPlayer[] = rosterOf(rosterContext(career), clubId);
 	const scout = opponentObserved ? scoutFrom(opponentObserved, squad) : undefined;
 	const override = universeCoach(career, clubId);
-	const plan = aiTeamPlan(career.seed, clubId, ctx.season, ctx.firstSeason, squad, scout, round, override);
+	const catalog = career.data.rosterCatalog;
+	const opening = ctx.season === ctx.firstSeason && round === 1 && catalogClub(catalog, clubId)
+		? initialClubTactic(catalog, clubId, squad) : undefined;
+	const plan = aiTeamPlan(career.seed, clubId, ctx.season, ctx.firstSeason, squad, scout, round, override, opening);
 	const setup = buildTeamSetup(identity(clubId), squad, plan.tactic);
 	setup.tactic.instructions = plan.tactic.instructions;
 	setup.tactic.roles = plan.tactic.roles;
@@ -123,7 +128,10 @@ export function universeCoach(career: Pick<Career, 'data'>, clubId: string): Coa
 	const u = career.data.universe as UniverseState | undefined;
 	const mind = u?.clubs?.[clubId];
 	const coach = mind?.coachId ? u!.coaches?.[mind.coachId] : null;
-	if (!mind || !coach) return null;
+	if (!mind || !coach) {
+		const reference = catalogClub(career.data.rosterCatalog, clubId);
+		return reference?.coach ? { style: 'equilibrado', formation: reference.formation, execution: 55, name: reference.coach, since: 2026 } : null;
+	}
 	return { style: coach.style, formation: mind.formation, execution: aiExecution(u, clubId) ?? 55, name: coach.name, since: coach.since };
 }
 

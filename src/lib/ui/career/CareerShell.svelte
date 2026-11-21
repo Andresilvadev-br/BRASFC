@@ -30,7 +30,7 @@
 			{#each groups as g (g.label)}
 				<p class="group">{g.label}</p>
 				{#each g.items as t (t.href)}
-					<a href={t.href} aria-current={current === t.href ? 'page' : undefined} data-sveltekit-preload-data="off" data-sveltekit-preload-code="hover">
+					<a href={t.href} aria-current={current === t.href ? 'page' : undefined} data-sveltekit-preload-data="false" data-sveltekit-preload-code="hover">
 						<Icon name={t.icon} size={18} />
 						<span>{t.label}</span>
 						{#if t.badge}<span class="count" aria-label="{t.badge} pendentes">{t.badge}</span>{/if}
@@ -297,6 +297,7 @@
 			grid-template-rows: auto auto 1fr;
 		}
 		.rail {
+			grid-row: 1;
 			position: sticky;
 			top: var(--desk-bar, 0px);
 			z-index: 31;

@@ -3,6 +3,7 @@
 	import { scoutMargin, youthIntake } from '#lib/domain/club.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { currentClubOf, findPlayer, formatMoney } from '#lib/domain/market.ts';
+	import { formatSquadAge, visibleSquadAge } from '#lib/domain/squad.ts';
 	import { POSITION_INFO, type Position } from '#lib/domain/positions.ts';
 	import { reveal } from '#lib/motion/actions.ts';
 	import { clubAction } from '#lib/client/club.ts';
@@ -139,7 +140,7 @@
 				{#if r}
 					<div class="col">
 						<strong>{p?.name ?? id}</strong>
-						<small class="muted">{p ? `${p.position} · ${p.age} anos` : ''}</small>
+						<small class="muted">{p ? `${p.position} · ${formatSquadAge(visibleSquadAge(p))}` : ''}</small>
 						<div class="bar"><span>Nível</span><i style="--a:{r.overall[0]}%;--b:{r.overall[1]}%"></i><b>{r.overall[0]}–{r.overall[1]}</b></div>
 						<div class="bar pot"><span>Potencial</span><i style="--a:{r.potential[0]}%;--b:{r.potential[1]}%"></i><b>{r.potential[0]}–{r.potential[1]}</b></div>
 						<small>{PREC[r.precision ?? 'media']}</small>
@@ -157,7 +158,7 @@
 			<article class="report glass" data-verdict={r.verdict} use:reveal={{ index: i % 12 }}>
 				<div class="spread"><span class="verdict">{r.verdict}</span>{#if owner}<Crest clubId={owner} size={26} />{/if}</div>
 				<h3>{p?.name ?? r.playerId}</h3>
-				<p class="muted small">{p ? `${p.position} · ${p.age} anos` : ''} · {owner ? (getClub(owner)?.name ?? owner) : 'sem clube'}</p>
+				<p class="muted small">{p ? `${p.position} · ${formatSquadAge(visibleSquadAge(p))}` : ''} · {owner ? (getClub(owner)?.name ?? owner) : 'sem clube'}</p>
 				<div class="ranges"><div><span>Nível</span><b>{r.overall[0]}–{r.overall[1]}</b></div><div><span>Potencial</span><b>{r.potential[0]}–{r.potential[1]}</b></div></div>
 				<p>{r.note}{#if r.precision} <span class="prec {r.precision}">{PREC[r.precision]}</span>{/if}</p>
 				<div class="spread">

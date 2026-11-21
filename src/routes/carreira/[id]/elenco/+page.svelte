@@ -3,7 +3,7 @@
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { formatMoney, ROLE_LABELS, wageDemand, type ContractRole, type RosterPlayer } from '#lib/domain/market.ts';
 	import { POSITION_INFO, SECTOR_LABELS, type Sector } from '#lib/domain/positions.ts';
-	import { MORALE_LABELS, sectorOf } from '#lib/domain/squad.ts';
+	import { formatSquadAge, MORALE_LABELS, sectorOf, visibleSquadAge } from '#lib/domain/squad.ts';
 	import { FORMATIONS } from '#lib/domain/tactics.ts';
 	import { reveal } from '#lib/motion/actions.ts';
 	import { playerKit } from '#lib/pixel/kits.ts';
@@ -132,7 +132,7 @@
 				<PlayerCard
 					name={p.name}
 					position={p.position}
-					age={p.age}
+					age={visibleSquadAge(p)}
 					overall={p.overall}
 					potential={p.age <= 23 ? p.potential : null}
 					value={coach ? p.value : null}
@@ -151,7 +151,7 @@
 			<tbody>
 				{#each list as p (p.id)}
 					<tr onclick={() => open(p.id)} class:starter={v.tactic.lineup.includes(p.id)}>
-						<td class="num">{p.number}</td><td><strong>{p.name}</strong></td><td>{p.position}</td><td class="num">{p.age}</td><td class="num"><b>{p.overall}</b></td>
+						<td class="num">{p.number}</td><td><strong>{p.name}</strong></td><td>{p.position}</td><td class="num">{visibleSquadAge(p) ?? '—'}</td><td class="num"><b>{p.overall}</b></td>
 						<td><i class="bar" style="--c:{fit.get(p.id) ?? 95}%" class:low={(fit.get(p.id) ?? 95) < 75}></i></td>
 						<td>{MORALE_LABELS[p.morale]}</td>
 						{#if coach}<td class="num">{p.contract ? formatMoney(p.contract.wage) : '—'}</td><td class:warn={!!p.contract && p.contract.until <= c.season}>{p.contract?.until ?? '—'}</td><td class="r num">{formatMoney(p.value)}</td>{/if}
@@ -162,7 +162,7 @@
 	</div>
 {/if}
 
-<Sheet bind:open={sheet} title={sel?.name ?? ''} subtitle={sel ? `#${sel.number} · ${POSITION_INFO[sel.position].label} · ${sel.age} anos${sel.archetype ? ` · ${sel.archetype}` : ''}` : ''} width={520}>
+<Sheet bind:open={sheet} title={sel?.name ?? ''} subtitle={sel ? `#${sel.number} · ${POSITION_INFO[sel.position].label} · ${formatSquadAge(visibleSquadAge(sel))}${sel.archetype ? ` · ${sel.archetype}` : ''}` : ''} width={520}>
 	{#if sel}
 		<div class="top">
 			<Pixel variant="full" appearance={sel.appearance} kit={playerKit(c.clubId, sel.position)} size={120} />

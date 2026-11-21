@@ -22,7 +22,6 @@
 	let leaving = $state(false);
 
 	const isOwner = $derived((s.room?.ownerId ?? data.room.ownerId) === data.profileId);
-	const empty = $derived(Math.max(0, (s.room?.maxMembers ?? data.room.maxMembers) - (s.room?.members.length ?? 0)));
 
 	// Aparência estável por perfil (até a criação de avatar do multiplayer).
 	function look(id: string) {
@@ -78,34 +77,32 @@
 				</div>
 		{/snippet}
 		{#snippet lobby(members)}
+		{@const total = s.room?.maxMembers ?? data.room.maxMembers}
+		{@const participants = s.room?.members ?? members}
 		<div class="layout">
 			<section class="lobby" aria-label="Jogadores na sala">
-				<header class="lobby-title"><div><span class="eyebrow">Universo compartilhado</span><h2>{data.room.name}</h2></div>
+				<header class="lobby-title"><div><h2>{data.room.name}</h2><span class="muted small">{participants.length}/{total} participantes</span></div>
 					{#if !isOwner}<Button variant="ghost" icon="exit" onclick={() => (leaveOpen = true)}>Sair do universo</Button>{/if}
 				</header>
 				<div class="bench">
-					{#each s.room?.members ?? [] as m, i (m.profileId)}
+					{#each participants as m, i (m.profileId)}
 						{@const assignment = members.find((member) => member.profileId === m.profileId)?.assignment}
-						<div class="member" class:offline={!m.online}>
+						{@const connected = 'online' in m && m.online === true}
+						<div class="member" class:offline={!connected}>
 							<div class="spot">
 								<Pixel variant="full" appearance={assignment?.appearance ?? look(m.profileId)} clubId={assignment?.club} styled
 									kit={assignment ? assignment.role === 'player' ? clubKit(assignment.club) : coachKit(assignment.club)
-										: { shirt: SHIRTS[i % SHIRTS.length], trim: '#E7EDF0', shorts: '#101418', socks: SHIRTS[i % SHIRTS.length] }} size={130} ball={false} />
+										: { shirt: SHIRTS[i % SHIRTS.length], trim: '#E7EDF0', shorts: '#101418', socks: SHIRTS[i % SHIRTS.length] }} size={68} ball={false} />
 							</div>
-							<strong>{m.displayName}{#if m.profileId === s.me} <small>(você)</small>{/if}</strong>
+							<strong>{m.displayName}{#if m.profileId === data.profileId} <small>(você)</small>{/if}</strong>
 							<span class="tags">
 								{#if assignment}<Badge tone="neutral">{assignment.role === 'coach' ? 'Treinador' : assignment.role === 'assistant' ? 'Auxiliar' : 'Jogador'}</Badge>{/if}
 								{#if m.role === 'owner'}<Badge tone="gold" icon="crown">Anfitrião</Badge>{/if}
-								<Badge tone={m.online ? 'emerald' : 'neutral'}>{m.online ? 'Online' : 'Offline'}</Badge>
+								<Badge tone={connected ? 'emerald' : 'neutral'}>{connected ? 'Online' : 'Offline'}</Badge>
 							</span>
 						</div>
 					{/each}
-					{#each Array(Math.min(empty, 3)) as _, i (i)}
-						<div class="member placeholder" aria-hidden="true">
-							<div class="spot ghost"><Icon name="plus" size={28} /></div>
-							<strong>Vaga livre</strong>
-						</div>
-					{/each}
+
 				</div>
 
 			</section>
@@ -180,49 +177,27 @@
 		color: var(--danger);
 	}
 	.bench {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--sp-4);
-		justify-content: center;
-		min-height: 230px;
-		align-items: flex-end;
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+		gap: 8px;
 	}
 	.member {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 4px;
-		width: 140px;
-		text-align: center;
-		transition: opacity 0.2s;
-	}
-	.member.offline {
-		opacity: 0.45;
-	}
-	.spot {
-		position: relative;
-		filter: drop-shadow(0 12px 16px rgb(0 0 0 / 0.5));
-	}
-	.spot :global(svg) {
-		height: 130px;
-		width: auto;
-	}
-	.ghost {
 		display: grid;
-		place-items: center;
-		width: 90px;
-		height: 130px;
-		border-radius: var(--radius-l);
-		border: 2px dashed var(--line-strong);
-		color: var(--text-3);
-		filter: none;
+		grid-template-columns: 48px minmax(0, 1fr);
+		gap: 4px 8px;
+		align-content: center;
+		padding: 8px;
+		min-width: 0;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-m);
+		background: var(--surface-sunken);
 	}
-	.placeholder strong {
-		color: var(--text-3);
-		font-weight: 500;
-	}
+	.member.offline { opacity: 0.8; }
+	.spot { grid-row: span 2; align-self: center; justify-self: center; }
+	.spot :global(svg) { height: 52px; width: auto; }
 	.member strong {
 		font-size: var(--fs-sm);
+		overflow-wrap: anywhere;
 	}
 	.member small {
 		color: var(--text-3);
@@ -232,7 +207,6 @@
 		display: flex;
 		gap: 4px;
 		flex-wrap: wrap;
-		justify-content: center;
 	}
 	.invite {
 		display: flex;

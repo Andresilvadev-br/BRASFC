@@ -1,3 +1,4 @@
+import { catalogClub, type RosterCatalogId } from '#lib/data/roster-catalog.ts';
 import '#lib/data/brasil.ts'; // registra os clubes reais (generateSquad aceita qualquer clube)
 import { computeOverall, generateAttributes, type Attributes } from '#lib/engine/attributes.ts';
 import { randomAppearance, type Appearance } from './appearance.ts';
@@ -48,6 +49,12 @@ export interface SquadPlayer {
 	archetype: string;
 	/** vaga genérica de elenco real ainda não importado (sem nome de pessoa) */
 	pending?: boolean;
+	cbfId?: string;
+	birthDate?: string;
+	nationality?: string;
+	secondary?: Position[];
+	contractUntil?: number;
+	catalogRole?: 'starter' | 'bench' | 'reserve';
 }
 
 export const MORALE_LABELS: Record<Morale, string> = {
@@ -68,11 +75,42 @@ export function generateSquad(clubId: string, seed: number): SquadPlayer[] {
 	return generateSquadFor(requireClub(clubId), seed);
 }
 
+export function visibleSquadAge(player: Pick<SquadPlayer, 'age' | 'cbfId' | 'birthDate'>): number | null {
+	return player.cbfId && !player.birthDate ? null : player.age;
+}
+
+export function formatSquadAge(age: number | null): string {
+	return age === null ? 'Idade pendente' : `${age} anos`;
+}
+
+/** Usa a edição fixada no save. Sem edição, mantém os IDs e atletas legados. */
+export function careerBaseSquad(clubId: string, seed: number, version?: RosterCatalogId): SquadPlayer[] {
+	const club = requireClub(clubId);
+	if (!version) return generateSquad(clubId, seed);
+	const verified = catalogClub(version, clubId);
+	if (!verified) return generateSquadFor(club, seed, { pending: true });
+	return verified.players.map((player) => {
+		const rng = createRng(deriveSeed(2026, 'cbf', player.playerId));
+		const starter = player.matchRole === 'starter';
+		const target = 57 + club.reputation * 3 + (starter ? 3 : -2);
+		const { attributes, archetype } = generateAttributes(player.position, target, rng);
+		const overall = computeOverall(attributes, player.position);
+		const age = player.birthDate ? Number(verified.asOf.slice(0, 4)) - Number(player.birthDate.slice(0, 4))
+			- Number(verified.asOf.slice(5) < player.birthDate.slice(5)) : 25;
+		return {
+			id: `${clubId}-cbf${player.playerId}`, cbfId: player.playerId, name: player.name, shortName: player.name,
+			number: player.number, position: player.position, age, overall, potential: overall + (age < 23 ? 9 : 3),
+			condition: 100, morale: 'boa', appearance: randomAppearance(rng), attributes, archetype,
+			birthDate: player.birthDate, nationality: player.nationality, secondary: player.secondary,
+			contractUntil: player.contractUntil, catalogRole: player.matchRole
+		};
+	});
+}
+
 /**
  * Gera um elenco para qualquer clube (fictício ou real).
  * Com `pending`, o elenco real ainda não foi importado: os atletas recebem nomes
- * FICTÍCIOS (combinações aleatórias, marcados como `pending`) e a interface avisa
- * que não são jogadores reais do clube.
+ * por posição e número, identificados como vagas simuladas.
  */
 export function generateSquadFor(club: { id: string; reputation: number; tier?: number }, seed: number, opts: { pending?: boolean } = {}): SquadPlayer[] {
 	const clubId = club.id;
@@ -86,9 +124,9 @@ export function generateSquadFor(club: { id: string; reputation: number; tier?: 
 
 	for (const [position, count] of COMPOSITION) {
 		for (let k = 0; k < count; k++) {
-			let n = randomName(rng);
-			while (usedNames.has(n.name)) n = randomName(rng);
-			usedNames.add(n.name);
+			let n = opts.pending ? null : randomName(rng);
+			while (n && usedNames.has(n.name)) n = randomName(rng);
+			if (n) usedNames.add(n.name);
 
 			const starter = k === 0 || (position === 'ZAG' && k === 1);
 			const age = rng.int(18, 34);
@@ -97,8 +135,8 @@ export function generateSquadFor(club: { id: string; reputation: number; tier?: 
 			const number = pickNumber(position, k, usedNumbers, rng);
 			players.push({
 				id: `${clubId}-${String(index).padStart(2, '0')}`,
-				name: n.name,
-				shortName: n.shortName,
+				name: n?.name ?? `Vaga simulada · ${position} ${number}`,
+				shortName: n?.shortName ?? `${position} ${number}`,
 				number,
 				position,
 				age,

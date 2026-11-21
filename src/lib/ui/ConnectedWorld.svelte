@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, untrack, type Snippet } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { ApiError, api, connectionIssue } from '#lib/api.ts';
 	import { DEFAULT_APPEARANCE, type Appearance } from '#lib/domain/appearance.ts';
@@ -10,7 +11,7 @@
 	import type { PresenceMember, RoomActivity } from '#lib/realtime/protocol.ts';
 	import Island from './Island.svelte';
 	import LiveMatch from './match/LiveMatch.svelte';
-	import type { worldReplay, worldSnapshot } from '#lib/server/connected-world.ts';
+	import type { worldClubLineup, worldReplay, worldSnapshot } from '#lib/server/connected-world.ts';
 	import { sameTactic, type Tactic } from '#lib/domain/tactics.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { formatShort } from '#lib/domain/dates.ts';
@@ -24,6 +25,9 @@
 	import Button from './Button.svelte';
 	import type { IconName } from './icons.ts';
 	import type { CareerGroup } from './career/navigation.ts';
+	type ClubPreview = Awaited<ReturnType<typeof worldClubLineup>>;
+	import ClubSelector from './career/ClubSelector.svelte';
+	import Icon from './Icon.svelte';
 	import CareerShell from './career/CareerShell.svelte';
 	import FixtureCard from './career/FixtureCard.svelte';
 	import StandingsTable from './career/StandingsTable.svelte';
@@ -42,9 +46,13 @@
 	let loadingLive = $state(false);
 	let world = $state.raw<World>(untrack(() => initial));
 	const requested = $derived(page.url.searchParams.get('secao'));
-	const section = $derived(requested ?? (world.current ? 'central' : 'carreira'));
-	let role = $state<'coach' | 'assistant' | 'player'>('coach');
-	let club = $state('');
+	const section = $derived(world.current ? requested === 'carreira' ? 'central' : requested ?? 'central' : 'carreira');
+	let role = $state<'coach' | 'assistant' | 'player' | null>(null);
+	let club = $state<string | null>(null);
+	let lineup = $state.raw<ClubPreview>();
+	let lineupKey = $state('');
+	let lineupError = $state('');
+	let lineupAttempt = $state(0);
 	let vacancyClub = $state('');
 	let age = $state<number | undefined>(18);
 	let nationality = $state('Brasil');
@@ -83,19 +91,72 @@
 	const groups = $derived<CareerGroup[]>([
 		{ label: 'Jogo', items: [link('central', current?.role === 'player' ? 'Central do jogador' : 'Central da carreira', 'home'),
 			link('rodada', 'Dia de jogo', 'play')] },
-		{ label: 'Time', items: [link('elenco', 'Elenco e escalação', 'squad'), link('taticas', 'Táticas', 'tactics'), link('treinos', 'Treinos', 'training')] },
+		{ label: 'Time', items: current?.role === 'player'
+			? [link('elenco', 'Elenco do clube', 'squad'), link('treinos', 'Treino individual', 'training')]
+			: [link('elenco', 'Elenco e escalação', 'squad'), link('taticas', 'Táticas', 'tactics'), link('treinos', 'Treinos', 'training')] },
 		{ label: 'Clube', items: [link('mercado', current?.role === 'player' ? 'Contratos e mercado' : 'Mercado', 'briefcase'),
 			...(current?.role === 'coach' ? [link('financas','Finanças e patrocínio','chart'), link('clube','Clube e diretoria','crown'),
 				link('comissao','Comissão técnica','whistle'),link('base','Base e olheiros','sparkle'),link('gabinete','Gabinete e mensagens','mail')] : [])] },
 		{ label: 'Mundo', items: [link('mundo','Notícias e mundo','globe'),link('competicoes','Competições','trophy'),link('calendario','Calendário','calendar'),
 			link('estatisticas','Estatísticas','field'),link('historia','História e conquistas','news')] },
-		{ label: 'Universo', items: [link('lobby','Lobby e convites','multiplayer'), link('carreira','Função no universo','user')] }
+		{ label: 'Universo', items: [link('lobby','Lobby e convites','multiplayer')] }
 	]);
 	const leagueRow = $derived(world.standings.find((row) => row.clubId === current?.club));
 	const owner = $derived(world.ownerId === profileId);
 	const pc = $derived(current?.athlete?.playerCareer);
 	const progress = $derived(pc?.daily.progress.slice(-12) ?? []);
 	const upcoming = $derived(world.clubs.filter((c) => !world.members.some((m) => m.assignment?.role === 'coach' && m.assignment.club === c.id)));
+	const blockedClubs = $derived.by(() => {
+		if (role !== 'coach' && role !== 'assistant') return {};
+		const coaches = new Set(world.members.filter((member) => member.assignment?.role === 'coach').map((member) => member.assignment?.club));
+		const assistants = new Set(world.members.filter((member) => member.assignment?.role === 'assistant').map((member) => member.assignment?.club));
+		const blocked: Record<string, string> = {};
+		for (const team of world.clubs) {
+			if (role === 'coach' && coaches.has(team.id)) blocked[team.id] = 'Este clube já tem treinador.';
+			if (role === 'assistant' && !coaches.has(team.id)) blocked[team.id] = 'O clube precisa de um treinador humano.';
+			else if (role === 'assistant' && assistants.has(team.id)) blocked[team.id] = 'Este clube já tem auxiliar.';
+		}
+		return blocked;
+	});
+	const previews = new Map<string, Promise<ClubPreview>>();
+	const selectedLineupKey = $derived(JSON.stringify([path, club, world.revision, lineupAttempt]));
+
+	function readPreview(id: string, revision: number) {
+		const key = `${path}:${revision}:${id}`;
+		const cached = previews.get(key);
+		if (cached) return cached;
+		const query = new URLSearchParams({ clube: id });
+		const pending = api<ClubPreview>(`${path}?${query}`).catch((error) => {
+			if (previews.get(key) === pending) previews.delete(key);
+			throw error;
+		});
+		if (previews.size >= 24) {
+			const oldest = previews.keys().next().value;
+			if (oldest) previews.delete(oldest);
+		}
+		previews.set(key, pending);
+		return pending;
+	}
+
+	$effect(() => {
+		if (current || !role || !club || world.live) return;
+		const key = selectedLineupKey;
+		let active = true;
+		lineupError = '';
+		void readPreview(club, world.revision).then((response) => {
+			if (!active) return;
+			lineup = response;
+			lineupKey = key;
+		}).catch((error: unknown) => {
+			if (!active) return;
+			lineup = undefined;
+			lineupError = error instanceof Error ? error.message : 'Escalação indisponível.';
+			lineupKey = key;
+		});
+		return () => { active = false; };
+	});
+
+	const selectedPreview = $derived(lineupKey === selectedLineupKey ? lineup : undefined);
 	const labels = { coach: 'Treinador', assistant: 'Auxiliar', player: 'Jogador' };
 
 	const friends = $derived(world.members.flatMap((member) => {
@@ -190,14 +251,27 @@
 		return send('tactic', { tactic });
 	}
 
-	function roleForm(event: SubmitEvent) {
-		event.preventDefault();
-		void send('assign', { role, club, personName: name, position, age, nationality, foot, appearance: $state.snapshot(appearance) });
+	function chooseRole(next: typeof role) {
+		role = next;
+		club = null;
+		lineup = undefined;
+		lineupKey = '';
+		message = '';
+		failed = false;
+		retry = null;
 	}
+
+	async function roleForm(event: SubmitEvent) {
+		event.preventDefault();
+		if (current || !role || !club || blockedClubs[club]) return;
+		const ok = await send('assign', { role, club, personName: name, position, age, nationality, foot, appearance: $state.snapshot(appearance) });
+		if (ok && page.url.searchParams.has('secao')) await goto(href('central'), { replaceState: true });
+	}
+
 </script>
 
 {#if friends.length && (!world.live || loadingLive)}
-	<Island {friends} loading={world.live} />
+	<div class="room-island"><Island {friends} loading={world.live} /></div>
 {/if}
 {#if world.live}
 	<main class="page"><LiveMatch {path} profile={profileId} {names} {online} onchange={(loading) => (loadingLive = loading)} oncomplete={refresh} /></main>
@@ -218,8 +292,8 @@
 			{@render careerContent()}
 		</CareerShell>
 	{:else}
-		<main class="page">
-			<h1>Entre na carreira compartilhada</h1>
+		<main class="setup-page">
+			<header><h1>Carreira compartilhada</h1></header>
 			{@render careerContent()}
 			{#if lobby}{@render lobby(world.members)}{/if}
 		</main>
@@ -228,7 +302,7 @@
 
 {#snippet careerContent()}
 <section class="world" use:enter>
-	<p class:error={failed} role={failed ? 'alert' : 'status'}>{message}</p>
+	{#if message}<p class:error={failed} role={failed ? 'alert' : 'status'}>{message}</p>{/if}
 	{#if retry}<Button size="sm" disabled={saving} onclick={() => retry && execute(retry)}>Conferir o mesmo comando</Button>{/if}
 	{#if replay}
 		<Button onclick={() => (replay = null)}>Fechar reprodução</Button>
@@ -280,13 +354,13 @@
 					{#each world.last as row}<p>{clubName(row.home)} {row.homeGoals} × {row.awayGoals} {clubName(row.away)}</p>{/each}
 				</details>
 			</article>{/if}
-		{:else if (section === 'taticas' || section === 'elenco') && current && world.tactic}
-			<div class="wide"><WorldTactics key={code} tactic={world.tactic} squad={world.roster} club={current.club} mastery={world.mastery}
-				canEdit={current.role === 'coach' || (current.role === 'assistant' && !!current.matchDelegated)} busy={saving} onsave={saveWorldTactic} /></div>
+		{:else if (section === 'elenco' || (section === 'taticas' && current?.role !== 'player')) && current}
+			{#if current.role !== 'player' && world.tactic}<div class="wide"><WorldTactics key={code} tactic={world.tactic} squad={world.roster} club={current.club} mastery={world.mastery}
+				canEdit={current.role === 'coach' || (current.role === 'assistant' && !!current.matchDelegated)} busy={saving} onsave={saveWorldTactic} /></div>{/if}
 			{#if section === 'elenco'}<article class="wide"><h3>Elenco do clube</h3><div class="squad-grid">
 				{#each world.roster as athlete (athlete.id)}
 					<div class="squad-card"><Pixel appearance={athlete.appearance} kit={playerKit(current.club, athlete.position)} size={36} />
-						<div><strong>{athlete.name}</strong><small>{athlete.position} · {athlete.age} anos</small></div><strong>{athlete.overall}</strong></div>
+						<div><strong>{athlete.name}</strong><small>{athlete.position} · {'cbfId' in athlete && athlete.cbfId && !('birthDate' in athlete && athlete.birthDate) ? 'Idade pendente' : `${athlete.age} anos`}</small></div><strong>{athlete.overall}</strong></div>
 				{/each}
 			</div></article>{/if}
 		{:else if section === 'competicoes' && current}
@@ -310,12 +384,37 @@
 		{:else if world.management && ['financas', 'clube', 'comissao', 'base', 'gabinete'].includes(section)}
 			<div class="wide"><WorldManagement {section} data={world.management} sponsors={world.sponsors ?? []} staff={world.staff ?? {}} balance={world.balance ?? 0} busy={saving}
 				notices={current?.notices ?? []} onaction={(request) => send('club', { request })} /></div>
-		{:else if section === 'carreira'}
-			{#if current?.role !== 'player'}
-				<article><h3>{current ? 'Mudar de função' : 'Escolher clube e função'}</h3>
-					<form onsubmit={roleForm}>
-						<label>Clube<select aria-label="Clube" bind:value={club} required><option value="">Selecione</option>{#each world.clubs as c}<option value={c.id}>{c.name}</option>{/each}</select></label>
-						<label>Função<select aria-label="Função" bind:value={role}><option value="coach">Treinador</option><option value="assistant">Auxiliar</option>{#if !current}<option value="player">Jogador</option>{/if}</select></label>
+		{:else if section === 'carreira' && !current}
+			{#if !role}
+				<div class="wide">
+					<h2>Como você quer jogar?</h2>
+					<div class="role-cards">
+						<button type="button" class="role-card" onclick={() => chooseRole('coach')} data-umx-press>
+							<Icon name="whistle" size={28} /><strong>Modo Treinador</strong>
+							<span>Comande o elenco, prepare a escalação e gerencie o clube.</span>
+						</button>
+						<button type="button" class="role-card" onclick={() => chooseRole('player')} data-umx-press>
+							<Icon name="user" size={28} /><strong>Modo Jogador</strong>
+							<span>Crie seu atleta e evolua com treinos, partidas e contratos.</span>
+						</button>
+					</div>
+					{#if world.members.some((member) => member.assignment?.role === 'coach')}
+						<Button variant="ghost" icon="multiplayer" onclick={() => chooseRole('assistant')}>Entrar como auxiliar técnico</Button>
+					{/if}
+				</div>
+			{:else}
+				<div class="wide">
+					<div class="setup-heading">
+						<h2>{role === 'assistant' ? 'Auxiliar técnico' : `Modo ${labels[role]}`}</h2>
+						<Button variant="ghost" icon="arrowLeft" disabled={saving} onclick={() => chooseRole(null)}>Trocar modo</Button>
+					</div>
+					<ClubSelector clubs={world.clubs} bind:clubId={club} blocked={blockedClubs} mode={role} {position} playerOverall={role === 'player' ? 57 + Math.min(12, Math.max(0, ((age ?? 18) - 18) * 2)) : undefined}
+						season={world.season} busy={saving} coach={selectedPreview?.coach} transferBudget={selectedPreview?.transferBudget} wageBudget={selectedPreview?.wageBudget}
+						lineup={selectedPreview}
+						prefetch={(ids) => ids.forEach((id) => void readPreview(id, world.revision).catch(() => {}))}
+						error={lineupKey === selectedLineupKey ? lineupError : undefined}
+						loading={!!club && lineupKey !== selectedLineupKey} retry={() => lineupAttempt++} />
+					<form class="join-profile" onsubmit={roleForm}>
 						{#if role === 'player'}
 							<div class="lineup">
 								<label>Nome<input bind:value={name} required maxlength="40" /></label>
@@ -326,12 +425,11 @@
 							</div>
 						{/if}
 						<details><summary>Personalizar aparência</summary>
-							<AppearanceEditor bind:appearance kit={role === 'player' ? playerKit(club, position) : coachKit(club)} clubId={club} uniformOptions={role === 'player'} preview />
+							<AppearanceEditor bind:appearance kit={role === 'player' && club ? playerKit(club, position) : coachKit(club ?? undefined)} clubId={club ?? undefined} uniformOptions={role === 'player'} preview />
 						</details>
-						<Button type="submit" loading={saving}>Confirmar função</Button>
+						<Button type="submit" variant="primary" iconRight="arrowRight" disabled={!club || !!blockedClubs[club]} loading={saving}>{role === 'player' ? 'Iniciar carreira de jogador' : role === 'coach' ? 'Iniciar carreira de treinador' : 'Entrar como auxiliar'}</Button>
 					</form>
-					{#each world.vacancies as vacancy}<p>Proposta para treinar {clubName(vacancy)}</p><Button disabled={saving} onclick={() => send('assign', { role: 'coach', club: vacancy })}>Aceitar proposta</Button>{/each}
-				</article>
+				</div>
 			{/if}
 		{:else if section === 'treinos'}
 			{#if current?.role === 'coach' || current?.delegated}
@@ -408,6 +506,14 @@
 					</div>
 				{/each}
 			</article>
+			{#if current?.role === 'assistant' && world.vacancies.length}
+				<article><h3>Propostas para treinador</h3>
+					{#each world.vacancies as vacancy (vacancy)}
+						<p>Assumir o comando de {clubName(vacancy)}</p>
+						<Button disabled={saving} onclick={() => send('assign', { role: 'coach', club: vacancy })}>Aceitar proposta</Button>
+					{/each}
+				</article>
+			{/if}
 			{#if owner}<article><h3>Regras do universo</h3>
 				<label>Clube para vaga<select bind:value={vacancyClub}><option value="">Selecione</option>{#each upcoming as c}<option value={c.id}>{c.name}</option>{/each}</select></label>
 				<div class="actions">
@@ -425,6 +531,19 @@
 {/snippet}
 
 <style>
+	.room-island { position: relative; z-index: 32; }
+	.setup-page { max-width: 1240px; margin: auto; padding: 52px clamp(14px, 4vw, 48px) var(--sp-8); }
+	.setup-page h1 { margin: 0 0 var(--sp-4); }
+	.setup-heading { display:flex; gap:8px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:12px; }
+	.setup-heading h2 { margin:0; }
+	.role-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); gap:12px; margin:12px 0; }
+	.role-card { display:grid; gap:8px; padding:18px; text-align:left; border:1px solid var(--line-strong); border-radius:var(--radius-l); background:linear-gradient(130deg,var(--emerald-soft),transparent),var(--surface); color:var(--text); }
+	.role-card:hover, .role-card:focus-visible { border-color:var(--emerald); }
+	.role-card strong { font:700 var(--fs-2xl) var(--font-display); }
+	.role-card span { color:var(--text-2); }
+	.role-card :global(.icon) { color:var(--emerald-strong); }
+	.join-profile { display:grid; gap:12px; padding:12px 0; }
+	.join-profile > :global(button) { justify-self:start; }
 	.world { display: grid; gap: 12px; margin-bottom: 20px; min-width: 0; }
 	.actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 	.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 12px; align-items: start; }

@@ -15,6 +15,7 @@ export function rosterContext(career: Pick<Career, 'seed' | 'season' | 'clubId' 
 	const ct = (career.data.club as { infra?: { ct?: { level?: number } } } | undefined)?.infra?.ct?.level ?? 2;
 	return {
 		seed: career.seed,
+		catalog: career.data.rosterCatalog,
 		firstSeason: career.data.firstSeason ?? career.season,
 		season: career.season,
 		market: sanitizeMarket(career.data.market),

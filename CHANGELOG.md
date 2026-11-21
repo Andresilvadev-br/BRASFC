@@ -1,5 +1,13 @@
 # Novidades
 
+## 0.8.4 — Seleção de clubes e elencos de abertura
+
+- Seleção responsiva das Séries A, B, C e D com setas, busca por clube, campo, banco e elenco.
+- Os 156 clubes das Séries A–D usam 3.442 atletas das súmulas de abertura de 2026. Cada clube indica sua fonte, e as notas e posições estimadas são identificadas na prévia.
+- Clubes com dados pendentes recebem aviso e vagas de simulação identificadas. A identidade provisória é sinalizada enquanto a autorização dos escudos estiver pendente.
+- Novas carreiras e novos universos fixam a edição do catálogo. Saves anteriores conservam seus elencos, contratos e escalações.
+- O instalador Windows fica preparado para a versão 1.4.4.
+
 ## 0.8.3 — Apresentação pré-jogo
 
 - Na carreira individual, a abertura mostra o confronto, as duas escalações com capitães e banco, e o apito inicial. A partida começa automaticamente e a apresentação pode ser pulada pelo botão ou com Esc.
