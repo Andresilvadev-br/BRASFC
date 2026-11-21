@@ -2,6 +2,7 @@
 	import type { worldSnapshot } from '#lib/server/connected-world.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { formatShort } from '#lib/domain/dates.ts';
+	import { formatSquadAge } from '#lib/domain/squad.ts';
 	import { formatExactMoney } from '#lib/domain/market.ts';
 	import { playerKit } from '#lib/pixel/kits.ts';
 	import { enter } from '#lib/motion/actions.ts';
@@ -50,7 +51,7 @@
 				{#each matches.slice(0, show) as athlete (athlete.id)}
 					<button type="button" class="athlete" data-umx-press onclick={() => negotiate(athlete.id)}>
 						<Pixel appearance={athlete.appearance} kit={playerKit(rival, athlete.position)} size={38} />
-						<span><strong>{athlete.name}</strong><small>{athlete.position} · {athlete.age} anos</small></span>
+						<span><strong>{athlete.name}</strong><small>{athlete.position} · {formatSquadAge(athlete.age)}</small></span>
 						<b>{athlete.overall}</b>
 					</button>
 				{:else}<p>Nenhum atleta corresponde ao filtro.</p>{/each}
@@ -81,7 +82,7 @@
 </Panel>
 
 {#if player && rival}
-	<Modal bind:open title={player.name} description={`${name(rival)} · ${player.position} · ${player.age} anos`}>
+	<Modal bind:open title={player.name} description={`${name(rival)} · ${player.position} · ${formatSquadAge(player.age)}`}>
 		<label class="search">Valor da proposta (R$)<input type="number" min="0" step="1" bind:value={fee} placeholder="Informe o valor" /></label>
 		{#snippet footer()}
 			<Button variant="ghost" disabled={busy} onclick={() => open = false}>Cancelar</Button>

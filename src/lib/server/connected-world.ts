@@ -11,6 +11,7 @@ import { DEFAULT_PLAN, applyTrainingWeek, recoverFitness, sanitizePlan } from '#
 import { initialLeague, divisionOf, effectiveRule, divisionStandings, prepareRound, seasonFixtures, closeSeason, seasonStartDate, type DivisionId, type LeagueState, type StoredRoundResult } from '#lib/domain/league.ts';
 import { aiTeam, matchSeed, simulateOtherFixtures } from '#lib/domain/matchday.ts';
 import { currentClubOf, emptyMarket, tierOfDivision, rosterOf, transferWindow, type MarketState } from '#lib/domain/market.ts';
+import { visibleSquadAge } from '#lib/domain/squad.ts';
 import { hashString } from '#lib/domain/rng.ts';
 import { recoverTactic, sanitizeTactic, type Tactic } from '#lib/domain/tactics.ts';
 import { rosterContext, strengthMemo, clubStateOf } from '#lib/domain/world.ts';
@@ -162,7 +163,10 @@ export async function worldSnapshot(db: Db, room: Room, profile: string) {
 		marketRoster: Object.fromEntries(current?.role === 'coach' ? Object.values(s.participants)
 			.filter((m) => m.role === 'coach' && m.club !== current.club)
 			.map((m) => [m.profile, roster(room, s, m.club).filter((p) => !p.id.startsWith('human-'))
-				.map(({ id, name, position, overall, age, appearance }) => ({ id, name, position, overall, age, appearance }))]) : []),
+				.map((player) => {
+					const { id, name, position, overall, appearance } = player;
+					return { id, name, position, overall, age: visibleSquadAge(player), appearance };
+				})]) : []),
 		vacancies: s.vacancies[profile] ? [s.vacancies[profile]] : [],
 		roster: squad,
 		tactic, mastery: current && tactic ? s.mastery?.[current.club]?.formations[tactic.formation] : undefined,
@@ -443,11 +447,12 @@ export async function worldClubLineup(db: Db, room: Room, profile: string, club:
 	const squad = roster(room, state, club);
 	const career = context(room, state, club);
 	const model = clubStateOf(career, state.league);
+	const opening = catalogClub(state.rosterCatalog, club);
 	return {
-		...clubLineup(squad, recoverTactic(state.tactics[club], squad) ?? initialClubTactic(state.rosterCatalog, club, squad)),
+		...clubLineup(squad, recoverTactic(state.tactics[club], squad) ?? initialClubTactic(state.rosterCatalog, club, squad), opening),
 		transferBudget: model.transferBudget,
 		wageBudget: model.wageBudget,
-		coach: state.universe?.coaches[state.universe.clubs[club]?.coachId ?? '']?.name ?? catalogClub(state.rosterCatalog, club)?.coach
+		coach: state.universe?.coaches[state.universe.clubs[club]?.coachId ?? '']?.name ?? opening?.coach
 	};
 }
 

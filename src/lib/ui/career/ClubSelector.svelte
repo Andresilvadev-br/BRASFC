@@ -3,7 +3,6 @@
 	import { boardExpectation } from '#lib/domain/career.ts';
 	import { getClub, LEAGUE } from '#lib/domain/clubs.ts';
 	import { COPA_2026, IDENTIDADE, realClub } from '#lib/data/brasil.ts';
-	import { OPENING_2026 } from '#lib/data/roster-catalog.ts';
 	import { BRASIL_DIVISIONS, DIVISION_LABELS, type DivisionId } from '#lib/domain/league.ts';
 	import type { ClubLineup } from '#lib/domain/club-selection.ts';
 	import { formatMoney } from '#lib/domain/market.ts';
@@ -122,7 +121,7 @@
 				<dl class="facts">
 					<div><dt>Estádio</dt><dd>{institution ? institution.estadio ?? 'Pendente' : club.stadium}</dd></div>
 					<div><dt>Força do elenco</dt><dd>{lineup?.strength ?? '—'}</dd></div>
-					{#if coach}<div><dt>Técnico no recorte</dt><dd>{coach}</dd></div>{/if}
+					{#if coach || lineup?.opening}<div><dt>Técnico</dt><dd>{coach ?? 'Indisponível na súmula'}</dd></div>{/if}
 					{#if mode === 'coach'}
 						<div><dt>Objetivo da diretoria</dt><dd>{boardExpectation(club, DIVISION_LABELS[active])}</dd></div>
 						{#if transferBudget !== undefined}<div><dt>Transferências</dt><dd>{formatMoney(transferBudget)}</dd></div>{/if}
@@ -148,7 +147,16 @@
 			</div>
 			{#if lineup && lineup.coverage !== 'incomplete'}
 				<div class="tabs"><Segmented label="Visualização do elenco" options={rosterTabs} bind:value={tab} /></div>
-				<p class="quiet">{lineup.coverage === 'documented' ? 'Base da estreia de 2026 · Notas BRASFC' : 'Elenco de simulação · Notas BRASFC'}{#if lineup.coverage === 'documented'} · <a href={OPENING_2026.sources[0]} target="_blank" rel="noreferrer">Súmula</a>{/if}</p>
+				<p class="quiet">
+					{#if lineup.opening}
+						<a href={lineup.opening.source} target="_blank" rel="noreferrer">Súmula de {lineup.opening.asOf.split('-').reverse().join('/')}</a>
+						{#if lineup.opening.modeledTactics} · Posições de jogo estimadas{/if}
+						{#if lineup.opening.lineupAdjusted} · Titulares ajustados por mudança de clube{/if}
+					{:else if lineup.coverage === 'simulation'}
+						Elenco de simulação
+					{/if}
+					 · Notas BRASFC
+				</p>
 				{#if tab === 'starters'}
 					{#key clubId}
 						<div class="pitch" use:enter={{ y: 4 }}>

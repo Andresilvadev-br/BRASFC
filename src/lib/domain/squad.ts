@@ -1,4 +1,4 @@
-import { catalogClub, OPENING_2026, type RosterCatalogId } from '#lib/data/roster-catalog.ts';
+import { catalogClub, type RosterCatalogId } from '#lib/data/roster-catalog.ts';
 import '#lib/data/brasil.ts'; // registra os clubes reais (generateSquad aceita qualquer clube)
 import { computeOverall, generateAttributes, type Attributes } from '#lib/engine/attributes.ts';
 import { randomAppearance, type Appearance } from './appearance.ts';
@@ -75,6 +75,14 @@ export function generateSquad(clubId: string, seed: number): SquadPlayer[] {
 	return generateSquadFor(requireClub(clubId), seed);
 }
 
+export function visibleSquadAge(player: Pick<SquadPlayer, 'age' | 'cbfId' | 'birthDate'>): number | null {
+	return player.cbfId && !player.birthDate ? null : player.age;
+}
+
+export function formatSquadAge(age: number | null): string {
+	return age === null ? 'Idade pendente' : `${age} anos`;
+}
+
 /** Usa a edição fixada no save. Sem edição, mantém os IDs e atletas legados. */
 export function careerBaseSquad(clubId: string, seed: number, version?: RosterCatalogId): SquadPlayer[] {
 	const club = requireClub(clubId);
@@ -87,8 +95,8 @@ export function careerBaseSquad(clubId: string, seed: number, version?: RosterCa
 		const target = 57 + club.reputation * 3 + (starter ? 3 : -2);
 		const { attributes, archetype } = generateAttributes(player.position, target, rng);
 		const overall = computeOverall(attributes, player.position);
-		const age = player.birthDate ? Number(OPENING_2026.asOf.slice(0, 4)) - Number(player.birthDate.slice(0, 4))
-			- Number(OPENING_2026.asOf.slice(5) < player.birthDate.slice(5)) : 25;
+		const age = player.birthDate ? Number(verified.asOf.slice(0, 4)) - Number(player.birthDate.slice(0, 4))
+			- Number(verified.asOf.slice(5) < player.birthDate.slice(5)) : 25;
 		return {
 			id: `${clubId}-cbf${player.playerId}`, cbfId: player.playerId, name: player.name, shortName: player.name,
 			number: player.number, position: player.position, age, overall, potential: overall + (age < 23 ? 9 : 3),

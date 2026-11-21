@@ -6,6 +6,7 @@ import { createGuestProfile } from '#lib/server/repos/profiles.ts';
 import { createRoom, getRoomByCode, joinRoom, leaveRoom } from '#lib/server/repos/rooms.ts';
 import { applyWorldCommand, worldClubLineup, worldReplay, worldSnapshot } from '#lib/server/connected-world.ts';
 import { clubLineup } from '#lib/domain/club-selection.ts';
+import { catalogClub, ROSTER_CATALOG } from '#lib/data/roster-catalog.ts';
 import { DEFAULT_APPEARANCE } from '#lib/domain/appearance.ts';
 import { defaultOutfit } from '#lib/domain/wardrobe.ts';
 import { simulateMatch } from '#lib/engine/match.ts';
@@ -21,7 +22,13 @@ describe('universo compartilhado', () => {
 		const empty = await worldSnapshot(db, room, owner);
 		const first = empty.clubs.find((c) => c.id === 'flamengo')!.id;
 		expect(new Set(empty.clubs.map((club) => club.division))).toEqual(new Set(['serie-a', 'serie-b', 'serie-c', 'serie-d']));
-		expect(await worldClubLineup(db, room, owner, first)).toMatchObject({ starters: expect.any(Array) });
+		for (const division of ['serie-a', 'serie-b', 'serie-c', 'serie-d']) {
+			const id = empty.clubs.find((club) => club.division === division)!.id;
+			const opening = catalogClub(ROSTER_CATALOG, id)!;
+			const lineup = await worldClubLineup(db, room, owner, id);
+			expect(lineup.opening?.source).toBe(opening.source);
+			expect(lineup.starters.map((slot) => slot.player?.cbfId)).toEqual(opening.players.filter((player) => player.matchRole === 'starter').map((player) => player.playerId));
+		}
 		await expect(worldClubLineup(db, room, outsider, first)).rejects.toMatchObject({ status: 404 });
 		await expect(worldClubLineup(db, room, owner, 'inexistente')).rejects.toMatchObject({ status: 404 });
 		for (const profile of [rival, assistant, player, teammate]) await joinRoom(db, room.code, profile);
@@ -36,6 +43,9 @@ describe('universo compartilhado', () => {
 		const opponent = (await get(owner)).fixture!;
 		const second = opponent.home === first ? opponent.away : opponent.home;
 		await command(rival, 'assign', { role: 'coach', club: second });
+	const flamengoMarket = (await get(rival)).marketRoster[owner];
+	expect(flamengoMarket.length).toBeGreaterThan(11);
+	expect(flamengoMarket.every((player) => player.age === null)).toBe(true);
 		await command(assistant, 'assign', { role: 'assistant', club: first });
 		const tactic = { ...(await get(owner)).tactic!, mentality: 'ofensiva' };
 		await expect(command(assistant, 'tactic', { tactic })).rejects.toMatchObject({ status: 403 });
@@ -46,8 +56,9 @@ describe('universo compartilhado', () => {
 		const preview = await worldClubLineup(db, room, player, first);
 		expect(preview).toMatchObject(clubLineup(saved.roster, saved.tactic));
 		expect(preview.starters).toHaveLength(11);
-		expect(preview.coverage).toBe('incomplete');
-		expect(preview.starters.every((starter) => !starter.player)).toBe(true);
+		expect(preview.coverage).toBe('documented');
+		expect(preview.starters.every((starter) => starter.player?.cbfId)).toBe(true);
+		expect(preview.opening?.source).toContain('/1423se.pdf');
 		const confirmed = await worldClubLineup(db, room, player, 'palmeiras');
 		expect(confirmed.starters.map((starter) => starter.player?.cbfId)).toContain('633571');
 		expect(confirmed.bench).toHaveLength(12);

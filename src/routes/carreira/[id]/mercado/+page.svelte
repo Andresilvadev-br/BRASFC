@@ -4,6 +4,7 @@
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { DIVISION_LABELS, type DivisionId } from '#lib/domain/league.ts';
 	import { expectedWage, formatMoney, rosterOf, ROLE_LABELS, type ContractRole, type RosterPlayer } from '#lib/domain/market.ts';
+	import { formatSquadAge, visibleSquadAge } from '#lib/domain/squad.ts';
 	import type { Position } from '#lib/domain/positions.ts';
 	import { reveal } from '#lib/motion/actions.ts';
 	import { celebrate } from '#lib/motion/motion.svelte.ts';
@@ -178,7 +179,7 @@
 				<PlayerCard
 					name={p.name}
 					position={p.position}
-					age={p.age}
+					age={visibleSquadAge(p)}
 					overall={k.ovr}
 					overallRange={k.range}
 					potential={k.pot}
@@ -200,7 +201,7 @@
 			<article class="offer glass" use:reveal>
 				<div class="spread"><Crest clubId={o.club} size={36} /><span class="chip">{o.kind === 'emprestimo' ? 'Empréstimo' : 'Compra'}</span></div>
 				<h3>{getClub(o.club)?.name ?? o.club}</h3>
-				<p>quer <strong>{p?.name ?? 'atleta'}</strong> ({p?.position}, {p?.age} anos)</p>
+				<p>quer <strong>{p?.name ?? 'atleta'}</strong> {#if p} ({p.position}, {formatSquadAge(visibleSquadAge(p))}){/if}</p>
 				<p class="num-xl">{o.fee ? formatMoney(o.fee) : 'Sem custo'}</p>
 				<p class="muted">Valor estimado: {p ? formatMoney(p.value) : '—'} · expira na rodada {o.expiresRound}</p>
 				<div class="row">
@@ -229,7 +230,7 @@
 	<div class="grid-auto" style="--min:220px">
 		{#each [...m.roster].sort((a, b) => b.value - a.value) as p, i (p.id)}
 			<div use:reveal={{ index: i % 12 }}>
-				<PlayerCard name={p.name} position={p.position} age={p.age} overall={p.overall} value={p.value} contract="{ROLE_LABELS[p.contract.role]} · {formatMoney(p.contract.wage)}/mês · até {p.contract.until}" tags={[...(m.market.listed.includes(p.id) ? ['À venda'] : []), ...(p.loan ? ['Emprestado'] : [])]}>
+				<PlayerCard name={p.name} position={p.position} age={visibleSquadAge(p)} overall={p.overall} value={p.value} contract="{ROLE_LABELS[p.contract.role]} · {formatMoney(p.contract.wage)}/mês · até {p.contract.until}" tags={[...(m.market.listed.includes(p.id) ? ['À venda'] : []), ...(p.loan ? ['Emprestado'] : [])]}>
 					{#snippet actions()}
 						<Button size="sm" variant={m.market.listed.includes(p.id) ? 'secondary' : 'ghost'} disabled={busy || p.id === 'eu'} onclick={() => act({ action: 'listar', playerId: p.id })}>{m.market.listed.includes(p.id) ? 'Retirar da venda' : 'Pôr à venda'}</Button>
 					{/snippet}
@@ -241,7 +242,7 @@
 	<div class="grid-auto" style="--min:220px">
 		{#each shortlisted as p (p.id)}
 			{@const k = known(p)}
-			<PlayerCard name={p.name} position={p.position} age={p.age} overall={k.ovr} overallRange={k.range} potential={k.pot} value={p.value} clubId={p.club} onclick={() => open(p)} />
+			<PlayerCard name={p.name} position={p.position} age={visibleSquadAge(p)} overall={k.ovr} overallRange={k.range} potential={k.pot} value={p.value} clubId={p.club} onclick={() => open(p)} />
 		{:else}
 			<p class="empty glass">Use “Observar” na negociação para acompanhar atletas aqui.</p>
 		{/each}
@@ -250,14 +251,14 @@
 	<div class="grid-auto" style="--min:220px">
 		{#each free as p (p.id)}
 			{@const k = known(p)}
-			<PlayerCard name={p.name} position={p.position} age={p.age} overall={k.ovr} overallRange={k.range} potential={k.pot} value={null} contract="Sem clube · pede cerca de {formatMoney(expectedWage(p.overall, m.tier, p.age))}/mês" onclick={() => open(p, 'livre')} />
+			<PlayerCard name={p.name} position={p.position} age={visibleSquadAge(p)} overall={k.ovr} overallRange={k.range} potential={k.pot} value={null} contract="Sem clube · pede cerca de {formatMoney(expectedWage(p.overall, m.tier, p.age))}/mês" onclick={() => open(p, 'livre')} />
 		{:else}
 			<p class="empty glass">Nenhum jogador livre no momento. Contratos que terminam sem renovação liberam atletas aqui.</p>
 		{/each}
 	</div>
 {/if}
 
-<Sheet bind:open={sheet} title={target?.name ?? ''} subtitle={target ? `${target.position} · ${target.age} anos · ${target.club ? (getClub(target.club)?.name ?? '') : 'sem clube'}` : ''}>
+<Sheet bind:open={sheet} title={target?.name ?? ''} subtitle={target ? `${target.position} · ${formatSquadAge(visibleSquadAge(target))} · ${target.club ? (getClub(target.club)?.name ?? '') : 'sem clube'}` : ''}>
 	{#if target}
 		{@const k = known(target)}
 		<div class="facts">

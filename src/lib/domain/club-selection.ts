@@ -1,4 +1,4 @@
-import { catalogClub, type RosterCatalogId } from '#lib/data/roster-catalog.ts';
+import { catalogClub, type ClubRoster, type RosterCatalogId } from '#lib/data/roster-catalog.ts';
 import { defaultTactic, FORMATIONS, recoverTactic, type Tactic } from './tactics.ts';
 import { squadStrength, type SquadPlayer } from './squad.ts';
 
@@ -16,7 +16,7 @@ function playerCard(player: SquadPlayer) {
 	return { id, name, shortName, overall, number, position, nationality, secondary, cbfId, contractUntil, age: birthDate ? player.age : undefined };
 }
 
-export function clubLineup(squad: SquadPlayer[], tactic: Tactic = defaultTactic(squad)) {
+export function clubLineup(squad: SquadPlayer[], tactic: Tactic = defaultTactic(squad), opening?: ClubRoster) {
 	const players = new Map(squad.map((player) => [player.id, player]));
 	const remaining = squad.filter((player) => !tactic.lineup.includes(player.id) && !player.pending);
 	const bench = tactic.bench
@@ -26,6 +26,7 @@ export function clubLineup(squad: SquadPlayer[], tactic: Tactic = defaultTactic(
 	const visible = squad.filter((player) => !player.pending);
 	return {
 		formation: tactic.formation,
+		...(opening && { opening: { source: opening.source, asOf: opening.asOf, modeledTactics: opening.modeledTactics, lineupAdjusted: opening.lineupAdjusted } }),
 		strength: visible.length >= 11 ? squadStrength(visible) : null,
 		starters: FORMATIONS[tactic.formation].map((slot, index) => {
 			const player = players.get(tactic.lineup[index]);

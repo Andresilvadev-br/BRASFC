@@ -1,9 +1,13 @@
 import opening2026 from './brasil/2026/elencos-abertura-v1.json' with { type: 'json' };
+import serieA from './brasil/2026/elencos-abertura-v2-a.json' with { type: 'json' };
+import serieB from './brasil/2026/elencos-abertura-v2-b.json' with { type: 'json' };
+import serieC from './brasil/2026/elencos-abertura-v2-c.json' with { type: 'json' };
+import serieD from './brasil/2026/elencos-abertura-v2-d.json' with { type: 'json' };
 import type { Position } from '#lib/domain/positions.ts';
 import type { FormationId } from '#lib/domain/tactics.ts';
 
-export const ROSTER_CATALOG = 'brasil-2026-abertura-v1' as const;
-export type RosterCatalogId = typeof ROSTER_CATALOG;
+export const ROSTER_CATALOG = 'brasil-2026-abertura-v2' as const;
+export type RosterCatalogId = 'brasil-2026-abertura-v1' | typeof ROSTER_CATALOG;
 
 export interface CatalogPlayer {
 	playerId: string;
@@ -19,16 +23,27 @@ export interface CatalogPlayer {
 	matchRole: 'starter' | 'bench' | 'reserve';
 }
 
-interface ClubRoster {
+export interface ClubRoster {
 	formation: FormationId;
-	coach: string;
+	coach?: string;
+	league: string;
+	asOf: string;
+	source: string;
+	modeledTactics: boolean;
+	tacticsSource?: string;
+	lineupAdjusted?: boolean;
 	players: CatalogPlayer[];
 }
 
-export const OPENING_2026 = opening2026 as typeof opening2026 & { clubs: Record<string, ClubRoster | undefined> };
-const versions = { [ROSTER_CATALOG]: OPENING_2026 };
+const openingV1 = Object.fromEntries(Object.entries(opening2026.clubs).map(([id, roster]) => [id, {
+	...roster, league: opening2026.league, asOf: opening2026.asOf, source: opening2026.sources[0], modeledTactics: false
+}])) as Record<string, ClubRoster | undefined>;
+const versions: Record<RosterCatalogId, Record<string, ClubRoster | undefined>> = {
+	'brasil-2026-abertura-v1': openingV1,
+	[ROSTER_CATALOG]: { ...serieA, ...serieB, ...serieC, ...serieD } as Record<string, ClubRoster | undefined>
+};
 
 export function catalogClub(version: RosterCatalogId | undefined, clubId: string): ClubRoster | undefined {
 	if (!version) return undefined;
-	return versions[version]?.clubs[clubId];
+	return versions[version]?.[clubId];
 }

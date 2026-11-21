@@ -75,7 +75,7 @@
 		let preview = rosterCache.get(key);
 		if (!preview) {
 			const squad = careerBaseSquad(id, seed, version);
-			preview = clubLineup(squad, initialClubTactic(version, id, squad));
+			preview = clubLineup(squad, initialClubTactic(version, id, squad), catalogClub(version, id));
 			rosterCache.set(key, preview);
 		}
 		return preview;

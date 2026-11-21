@@ -130,7 +130,7 @@ export function universeCoach(career: Pick<Career, 'data'>, clubId: string): Coa
 	const coach = mind?.coachId ? u!.coaches?.[mind.coachId] : null;
 	if (!mind || !coach) {
 		const reference = catalogClub(career.data.rosterCatalog, clubId);
-		return reference ? { style: 'equilibrado', formation: reference.formation, execution: 55, name: reference.coach, since: 2026 } : null;
+		return reference?.coach ? { style: 'equilibrado', formation: reference.formation, execution: 55, name: reference.coach, since: 2026 } : null;
 	}
 	return { style: coach.style, formation: mind.formation, execution: aiExecution(u, clubId) ?? 55, name: coach.name, since: coach.since };
 }

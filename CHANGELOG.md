@@ -3,7 +3,7 @@
 ## 0.8.4 — Seleção de clubes e elencos de abertura
 
 - Seleção responsiva das Séries A, B, C e D com setas, busca por clube, campo, banco e elenco.
-- Palmeiras e Atlético-MG usam os 46 atletas relacionados na estreia do Brasileirão 2026, com titulares e técnicos documentados. As notas refletem o modelo do BRASFC.
+- Os 156 clubes das Séries A–D usam 3.442 atletas das súmulas de abertura de 2026. Cada clube indica sua fonte, e as notas e posições estimadas são identificadas na prévia.
 - Clubes com dados pendentes recebem aviso e vagas de simulação identificadas. A identidade provisória é sinalizada enquanto a autorização dos escudos estiver pendente.
 - Novas carreiras e novos universos fixam a edição do catálogo. Saves anteriores conservam seus elencos, contratos e escalações.
 - O instalador Windows fica preparado para a versão 1.4.4.
