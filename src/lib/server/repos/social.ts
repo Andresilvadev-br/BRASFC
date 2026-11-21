@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Db } from '../db/index.ts';
 import { applyWorldCommand } from '../connected-world.ts';
-import { joinRoom, RoomError, type Room } from './rooms.ts';
+import { joinRoom, roleMatchesMode, RoomError, type Room } from './rooms.ts';
 import { usernameOf } from './accounts.ts';
 
 export const isSocialId = (value: unknown): value is string =>
@@ -9,7 +9,7 @@ export const isSocialId = (value: unknown): value is string =>
 
 type Person = { id: string; username: string; display_name: string; avatar: number };
 type Invite = {
-	id: string; code: string; name: string; club: string | null; role: 'assistant' | 'coach' | null;
+	id: string; code: string; name: string; mode: Room['entryMode']; club: string | null; role: 'assistant' | 'coach' | null;
 	status: 'pending' | 'accepted' | 'declined' | 'cancelled' | 'expired';
 	sender: string; recipient: string; sender_name: string; recipient_name: string; created_at: string;
 };
@@ -18,7 +18,7 @@ function refuse(message: string, status = 400): never { throw new RoomError(mess
 
 export async function socialInbox(db: Db, profile: string) {
 	return {
-		invites: await db.query<Invite>(`SELECT i.id,r.code,r.name,i.club,i.role,i.sender,i.recipient,i.created_at::text,
+		invites: await db.query<Invite>(`SELECT i.id,r.code,r.name,r.entry_mode AS mode,i.club,i.role,i.sender,i.recipient,i.created_at::text,
 			a.display_name AS sender_name,b.display_name AS recipient_name,
 			CASE WHEN i.status='pending' AND (i.expires_at <= now() OR r.status='closed') THEN 'expired' ELSE i.status END AS status
 			FROM room_invitations i JOIN rooms r ON r.id=i.room_id
@@ -55,10 +55,10 @@ export async function friendship(db: Db, profile: string, action: unknown, targe
 	return { target, changed: true };
 }
 
-type WorldAccess = { revision: number; role: string | null; club: string | null; invite_open: string | null };
+type WorldAccess = { revision: number; mode: Room['entryMode']; role: string | null; club: string | null; invite_open: string | null };
 export async function roomAccess(db: Db, room: Room, profile: string, lock = false) {
 	const [row] = await db.query<WorldAccess & { status: string; owner_id: string }>(`
-		SELECT r.status,r.owner_id,COALESCE(w.revision,0) AS revision,
+		SELECT r.status,r.owner_id,r.entry_mode AS mode,COALESCE(w.revision,0) AS revision,
 			w.state->'participants'->$2::text->>'role' AS role,w.state->'participants'->$2::text->>'club' AS club,
 			w.state->>'inviteOpen' AS invite_open
 		FROM rooms r JOIN room_members m ON m.room_id=r.id AND m.profile_id=($2::text)::uuid
@@ -74,6 +74,8 @@ export async function sendInvitation(db: Db, room: Room, profile: string, body: 
 	if (!target || typeof hours !== 'number' || !Number.isInteger(hours) || hours < 1 || hours > 168) refuse('Convite inválido.');
 	return db.transaction(async (tx) => {
 		const access = await roomAccess(tx, room, profile, true);
+		if (role && !roleMatchesMode(access.mode, role)) refuse('A função não pertence ao modo desta liga.', 403);
+		if (access.mode !== 'mixed' && !access.role) refuse('Confirme sua participação antes de convidar.', 409);
 		const [person] = await tx.query<Person>('SELECT id FROM profiles WHERE username=$1 AND id<>$2', [target, profile]);
 		if (!person) refuse('Conta BRASFC não encontrada.', 404);
 		const club = role === 'assistant' ? access.club : role === 'coach' && typeof body.club === 'string' ? body.club : null;
@@ -113,6 +115,7 @@ export async function answerInvitation(db: Db, profile: string, id: unknown, acc
 		if (accept) {
 			const room = await joinRoom(tx, locked.code, profile, true);
 			const sender = await roomAccess(tx, room, invite.sender);
+			if (invite.role && !roleMatchesMode(sender.mode, invite.role)) refuse('Este convite oferece uma função incompatível com a liga.', 409);
 			if (sender.invite_open === 'false') refuse('A liga fechou os convites.', 403);
 			if (invite.role === 'assistant' && (sender.role !== 'coach' || sender.club !== invite.club)) refuse('O técnico já deixou este clube.', 409);
 			if (invite.role !== 'assistant' && sender.owner_id !== invite.sender) refuse('O responsável pelo convite mudou.', 409);

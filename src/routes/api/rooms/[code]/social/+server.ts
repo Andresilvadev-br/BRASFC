@@ -36,7 +36,7 @@ export const POST: RequestHandler = async (event) => {
 			if (invite.changed) {
 				hub.publishInbox(profile.id, invite.recipient);
 				hub.publishNotice(invite.recipient, { id: invite.id, destination:'social',
-					title: invite.club ? `Convite para ${invite.role === 'assistant' ? 'auxiliar técnico' : 'treinador'} de ${getClub(invite.club)?.name ?? invite.club}` : `Convite para ${room.name}` });
+					title: invite.club ? `Convite para ${invite.role === 'assistant' ? 'auxiliar técnico' : 'treinador'} de ${getClub(invite.club)?.name ?? invite.club}` : room.entryMode === 'player' ? `Convite para jogar como atleta em ${room.name}` : `Convite para ${room.name}` });
 				void hub.publishChat(room.id, null).catch(() => {});
 			}
 			return noStore({ id: invite.id }, { status: 201 });
