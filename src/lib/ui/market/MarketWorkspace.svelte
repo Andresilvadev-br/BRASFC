@@ -11,7 +11,7 @@
 	import Offer from './MarketOffer.svelte';
 	import Negotiations, { type MarketDealRow } from './MarketNegotiations.svelte';
 
-	export type HumanDeal = { id: string; from: string; to: string; player: string; name: string; fee: number; proposedAt?: string; date?: string; expiresRound?: number; counter?: boolean; status?: 'aceita' | 'recusada' | 'encerrada' | 'expirada' };
+	export type HumanDeal = { id: string; from: string; to: string; player: string; name: string; fee: number; proposedAt?: string; date?: string; expiresRound?: number; counter?: boolean; agreement?: boolean; contractMessage?: string; status?: 'aceita' | 'recusada' | 'encerrada' | 'expirada' };
 
 	let { endpoint, storageKey, revision, clubId, budget, wages, wageBudget, window, incoming, logs, humanDeals = [], names, commit, humanReply, own }: {
 		endpoint: string; storageKey: string; revision: number; clubId: string; budget: number; wages: number; wageBudget: number;
@@ -32,7 +32,7 @@
 	let offer = $state<{ player: MarketProfile; kind: 'compra' | 'emprestimo' | 'livre'; resume?: NegotiationLog }>();
 	let offerKey = $state(0);
 	const windowLabel = $derived(window === 'pre-temporada' ? 'Aberta · pré-temporada' : window === 'meio-do-ano' ? 'Aberta · meio do ano' : 'Fechada');
-	const pending = $derived(incoming.length + humanDeals.filter((deal) => !deal.status && (deal.counter ? deal.to : deal.from) === clubId).length);
+	const pending = $derived(incoming.length + humanDeals.filter((deal) => !deal.status && (deal.agreement || deal.counter ? deal.to : deal.from) === clubId).length);
 	const sections = $derived< { id: Tab; label: string }[]>([
 		{ id: 'buscar', label: 'Buscar' }, { id: 'observados', label: 'Observados' },
 		{ id: 'negociacoes', label: pending ? `Negociações (${pending})` : 'Negociações' },
@@ -46,9 +46,9 @@
 			id: p.id, player: p.player, name: p.name, club: p.to === clubId ? p.from : p.to, fee: p.fee,
 			kind: 'Compra entre treinadores', date: p.date ?? p.proposedAt, deadline: p.status ? undefined : p.expiresRound,
 			status: p.status === 'aceita' ? 'Transferência concluída' : p.status === 'recusada' ? 'Recusada' : p.status === 'expirada' ? 'Expirada' :
-				p.status === 'encerrada' ? 'Encerrada' : p.counter && p.to === clubId ? 'Contraproposta recebida' : 'Aguardando resposta',
-			action: p.status ? undefined : p.counter ? p.to === clubId ? 'human-counter' : undefined : p.from === clubId ? 'human' : undefined,
-			description: p.status ? undefined : (p.counter ? p.to : p.from) === clubId ? 'Sua decisão é necessária.' : 'A proposta está com o outro treinador.'
+				p.status === 'encerrada' ? 'Encerrada' : p.agreement ? 'Negociação contratual' : p.counter && p.to === clubId ? 'Contraproposta recebida' : 'Aguardando resposta',
+			action: p.status ? undefined : p.agreement ? p.to === clubId ? 'human-contract' : undefined : p.counter ? p.to === clubId ? 'human-counter' : undefined : p.from === clubId ? 'human' : undefined,
+			description: p.status ? undefined : p.agreement ? p.contractMessage ?? 'Clubes em acordo. O comprador negocia o contrato do atleta.' : (p.counter ? p.to : p.from) === clubId ? 'Sua decisão é necessária.' : 'A proposta está com o outro treinador.'
 		})),
 		...[...logs].reverse().map((p): MarketDealRow => ({ id: p.id, player: p.playerId, name: p.playerName ?? names(p.playerId) ?? 'Atleta negociado', club: p.club,
 			fee: p.offer.fee, date: p.gameDate, description: p.message, log: p,
@@ -98,11 +98,11 @@
 		});
 	}
 
-	async function reply(row: MarketDealRow, kind: 'accept' | 'reject' | 'counter', fee?: number) {
+	async function reply(row: MarketDealRow, kind: 'accept' | 'reject' | 'counter' | 'contract', details?: Record<string, unknown>) {
 		return run(async () => {
 			const ok = row.action === 'ia'
 				? (await commit({ action: 'responder', offerId: row.id, accept: kind === 'accept' })).ok
-				: await humanReply?.(`${kind}-deal`, { id: row.id, ...(fee !== undefined ? { fee } : {}) });
+				: await humanReply?.(`${kind}-deal`, { id: row.id, ...details });
 			if (ok) notice = 'Negociação atualizada.';
 			return Boolean(ok);
 		});

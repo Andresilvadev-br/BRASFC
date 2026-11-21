@@ -1,9 +1,10 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	let { children }: { children: Snippet } = $props();
+	import { reposition } from './reposition.ts';
+	let { children, move, touchOnly = false }: { children: Snippet; move?: (from: string, to: string) => void; touchOnly?: boolean } = $props();
 </script>
 
-<div class="pitch" role="group" aria-label="Campo com titulares">
+<div class="pitch" use:reposition={{ move, touchOnly }} role="group" aria-label="Campo com titulares">
 	<svg class="lines" viewBox="0 0 68 105" preserveAspectRatio="none" aria-hidden="true">
 		<rect x="1" y="1" width="66" height="103" />
 		<line x1="1" y1="52.5" x2="67" y2="52.5" />
@@ -29,6 +30,8 @@
 		overflow: hidden;
 		box-shadow: inset 0 0 60px rgb(0 0 0 / 0.45);
 	}
+	.pitch :global([data-reposition]) { touch-action: none; cursor: grab; }
+	.pitch:global([data-dragging-position]) :global([data-reposition]) { cursor: grabbing; }
 	.lines {
 		position: absolute;
 		inset: 0;

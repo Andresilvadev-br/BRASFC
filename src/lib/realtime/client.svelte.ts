@@ -1,5 +1,5 @@
 import { retryDelay } from '#lib/api.ts';
-import { REALTIME_PATH, type ClientMessage, type RoomActivity, type RoomSnapshot, type ServerMessage } from './protocol.ts';
+import { REALTIME_PATH, type ClientMessage, type LeagueNotice, type RoomActivity, type RoomSnapshot, type ServerMessage } from './protocol.ts';
 
 export type ConnectionStatus = 'idle' | 'connecting' | 'online' | 'reconnecting' | 'offline' | 'unavailable' | 'closed';
 
@@ -7,11 +7,13 @@ export type ConnectionStatus = 'idle' | 'connecting' | 'online' | 'reconnecting'
  * Cliente do canal de tempo real de uma sala. O estado exibido vem sempre
  * do servidor (instantâneos completos); reconecta sozinho com espera crescente.
  */
-export function createRoomConnection(code: string) {
+export function createRoomConnection(code?: string, onNotice?: (notice: LeagueNotice) => void) {
 	const state = $state({
 		status: 'idle' as ConnectionStatus,
 		room: null as RoomSnapshot | null,
 		worldRevision: 0,
+		inboxVersion: 0,
+		chatVersion: { league: 0, staff: 0 },
 		me: null as string | null,
 		error: null as string | null,
 		closedReason: null as string | null
@@ -39,8 +41,8 @@ export function createRoomConnection(code: string) {
 		ws = socket;
 		joinTimer = setTimeout(() => socket.close(), 10_000);
 		socket.onopen = () => {
-			send({ t: 'join', code });
-			ping = setInterval(() => { send({ t: 'ping' }); send({ t: 'activity', value: activity }); }, 20_000);
+			if (code) send({ t: 'join', code });
+			ping = setInterval(() => { send({ t: 'ping' }); if (code) send({ t: 'activity', value: activity }); }, 20_000);
 		};
 		socket.onmessage = (ev) => {
 			let msg: ServerMessage;
@@ -49,7 +51,16 @@ export function createRoomConnection(code: string) {
 			} catch {
 				return;
 			}
-			if (msg.t === 'welcome') state.me = msg.profileId;
+			if (msg.t === 'welcome') {
+				state.me = msg.profileId;
+				if (!code) {
+					clearTimeout(joinTimer);
+					attempts = 0;
+					state.status = 'online';
+				}
+			} else if (msg.t === 'inbox' && msg.v === 1) state.inboxVersion++;
+			else if (msg.t === 'notice' && msg.v === 1) onNotice?.(msg.notice);
+			else if (msg.t === 'chat' && msg.v === 1) state.chatVersion[msg.channel]++;
 			else if (msg.t === 'room') {
 				state.room = msg.room;
 				state.worldRevision = Math.max(state.worldRevision, msg.room.worldRevision ?? 0);
@@ -95,6 +106,7 @@ export function createRoomConnection(code: string) {
 	}
 
 	function start() {
+		stopped = false;
 		if (!watching) {
 			watching = true;
 			window.addEventListener('online', resume);
@@ -105,6 +117,7 @@ export function createRoomConnection(code: string) {
 
 	function stop() {
 		stopped = true;
+		watching = false;
 		window.removeEventListener('online', resume);
 		window.removeEventListener('offline', networkLost);
 		if (timer) clearTimeout(timer);

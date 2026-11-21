@@ -494,7 +494,7 @@ function setOverride(m: MarketState, id: string, club: string | null, contract: 
 }
 
 /** Proposta do usuário por um atleta (compra, empréstimo ou jogador livre): clube e atleta respondem. */
-export function makeOffer(club: ClubState, market: MarketState, ctx: ActionContext, offer: NegotiationOffer, op?: string): ActionResult {
+export function makeOffer(club: ClubState, market: MarketState, ctx: ActionContext, offer: NegotiationOffer, op?: string, agreedSeller?: string): ActionResult {
 	if (club.board.dismissed) throw new ManagementError('Você não comanda mais o clube.');
 	const prior = op && club.negotiations.find((entry) => entry.op === op);
 	if (prior) return { club, market, ledger: [], transfers: [], message: prior.message, negotiation: prior };
@@ -514,6 +514,7 @@ export function makeOffer(club: ClubState, market: MarketState, ctx: ActionConte
 		if (!player) throw new ManagementError('Atleta não encontrado.');
 		if (player.loan) throw new ManagementError('Atleta emprestado: não pode ser negociado agora.');
 	}
+	if (agreedSeller && (seller !== agreedSeller || offer.kind !== 'compra')) throw new ManagementError('O clube vendedor mudou.');
 	const myRoster = rosterOf(ctx.roster, ctx.clubId);
 	if (myRoster.length >= 34) throw new ManagementError('Elenco cheio (máximo de 34 atletas).');
 	const fee = offer.kind === 'compra' ? Math.max(0, Math.round(offer.fee)) : 0;
@@ -521,7 +522,7 @@ export function makeOffer(club: ClubState, market: MarketState, ctx: ActionConte
 	const prefix = `${ctx.season}-${ctx.round}-${offer.playerId}-`;
 	const sequence = 1 + Math.max(-1, ...st.negotiations.filter((entry) => entry.id.startsWith(prefix)).map((entry) => Number(entry.id.slice(prefix.length)) || 0));
 	const log: NegotiationLog = { id: prefix + sequence, op, season: ctx.season, round: ctx.round, gameDate: ctx.gameDate, playerId: offer.playerId, playerName: player.name, club: seller ?? '', offer, club_answer: 'aceita', player_answer: null, message: '', done: false };
-	if (seller) {
+	if (seller && !agreedSeller) {
 		const sellerSquad = rosterOf(ctx.roster, seller);
 		const cash = (mk.clubCash[seller] ?? 0) + clubEconomy(seller, tierOfDivision(ctx.roster.divisionOf(seller))).tvAnnual * 0.05;
 		const ans = clubResponse(offer, player, sellerSquad, cash);
@@ -559,7 +560,7 @@ export function makeOffer(club: ClubState, market: MarketState, ctx: ActionConte
 		if (fee) {
 			st.transferBudget -= fee;
 			ledger.push({ category: 'transferencias', amount: -fee, description: `Compra de ${player.name}` });
-			mk.clubCash[seller!] = (mk.clubCash[seller!] ?? 0) + fee;
+			if (!agreedSeller) mk.clubCash[seller!] = (mk.clubCash[seller!] ?? 0) + fee;
 		}
 		if (offer.kind === 'livre') ledger.push({ category: 'transferencias', amount: -wage, description: `Luvas de ${player.name}` });
 	}

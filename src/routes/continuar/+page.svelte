@@ -46,10 +46,11 @@
 <svelte:head><title>Continuar · BRASFC</title></svelte:head>
 
 <div class="page">
-	<ScreenHeader title="Suas carreiras" eyebrow="{data.careers.length} salva(s) neste perfil">
+	<ScreenHeader title="Carreiras individuais" eyebrow="{data.careers.length} salva(s) neste perfil">
 		{#snippet actions()}<Button variant="primary" icon="plus" href="/nova-carreira">Nova carreira</Button>{/snippet}
 	</ScreenHeader>
 
+	<p><a href="/multiplayer">Abrir minhas ligas multiplayer →</a></p>
 	{#if data.careers.length === 0}
 		<div class="empty" data-umx-enter>
 			<p class="muted">Você ainda não tem carreiras neste perfil.</p>

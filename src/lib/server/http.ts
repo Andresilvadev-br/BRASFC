@@ -5,13 +5,13 @@ import { createGuestProfile, findProfileByToken, type Profile } from './repos/pr
 export const SESSION_COOKIE = 'brasfc_sid';
 const ONE_YEAR = 60 * 60 * 24 * 365;
 
-export function setSessionCookie(cookies: Cookies, token: string, secure: boolean) {
+export function setSessionCookie(cookies: Cookies, token: string, secure: boolean, maxAge = ONE_YEAR) {
 	cookies.set(SESSION_COOKIE, token, {
 		path: '/',
 		httpOnly: true,
 		sameSite: 'lax',
 		secure,
-		maxAge: ONE_YEAR
+		maxAge
 	});
 }
 

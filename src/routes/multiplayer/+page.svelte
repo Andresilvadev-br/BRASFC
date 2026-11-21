@@ -1,281 +1,202 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { goto, invalidate } from '$app/navigation';
+	import { onMount, untrack } from 'svelte';
+	import { page } from '$app/state';
+	import { LEAGUE_SEASONS, DEFAULT_LEAGUE_OPTIONS, type LeagueOptions } from '#lib/domain/league-options.ts';
 	import { api } from '#lib/api.ts';
+	import { createRoomConnection } from '#lib/realtime/client.svelte.ts';
+	import { getClub } from '#lib/domain/clubs.ts';
 	import { notify, setIslandContext } from '#lib/stores/island.svelte.ts';
-	import Badge from '#lib/ui/Badge.svelte';
+	import { enter } from '#lib/motion/actions.ts';
 	import Button from '#lib/ui/Button.svelte';
+	import DeleteLeague from '#lib/ui/career/DeleteLeague.svelte';
+	import Badge from '#lib/ui/Badge.svelte';
 	import Icon from '#lib/ui/Icon.svelte';
-	import Panel from '#lib/ui/Panel.svelte';
-	import Pixel from '#lib/ui/Pixel.svelte';
 	import ScreenHeader from '#lib/ui/ScreenHeader.svelte';
-	import Unavailable from '#lib/ui/Unavailable.svelte';
 
 	let { data } = $props();
-
-	let roomName = $state('');
-	let code = $state('');
-	let creating = $state(false);
-	let joining = $state(false);
-	let createError = $state<string | null>(null);
-	let joinError = $state<string | null>(null);
+	const inviteCode = untrack(() => page.url.searchParams.get('codigo') ?? '');
+	let panel = $state<'list' | 'create' | 'join'>(inviteCode ? 'join' : 'list');
+	let name = $state('');
+	let code = $state(inviteCode);
+	let mode = $state<'coach' | 'player'>('coach');
+	let max = $state<number | undefined>(8);
+	let rules = $state<LeagueOptions>({ ...DEFAULT_LEAGUE_OPTIONS });
+	let inviteOnly = $state(false);
+	let assistantsRequired = $state(false);
+	let busy = $state(false);
+	let failure = $state('');
+	let query = $state('');
+	let users = $state<Array<{ id: string; username: string; display_name: string }>>([]);
+	const conn = createRoomConnection(undefined, (notice) => notify({ id: notice.id, icon:'mail', title:notice.title, action: {
+		label: notice.destination === 'chat' ? 'Abrir comunicação' : 'Abrir Central social',
+		run: () => void goto(notice.destination === 'chat' && notice.code ? `/multiplayer/sala/${notice.code}?secao=comunicacao` : '/multiplayer#social')
+	} }));
+	const pending = $derived(data.social?.invites.filter((invite) => invite.recipient === data.profile?.id && invite.status === 'pending').length ?? 0);
+	const statuses = { pending:'Pendente', accepted:'Aceito', declined:'Recusado', cancelled:'Cancelado', expired:'Expirado' };
 
 	$effect(() => setIslandContext('Multiplayer'));
-
-	async function create(e: SubmitEvent) {
-		e.preventDefault();
-		createError = null;
-		creating = true;
-		try {
-			const res = await api<{ room: { code: string } }>('/api/rooms', { body: { name: roomName } });
-			notify({ icon: 'multiplayer', tone: 'success', title: 'Sala criada', detail: `Código ${res.room.code}` });
-			await goto(`/multiplayer/sala/${res.room.code}`, { invalidateAll: true });
-		} catch (err) {
-			createError = err instanceof Error ? err.message : 'Falha ao criar a sala.';
-		} finally {
-			creating = false;
+	onMount(() => {
+		if (data.profile?.username) conn.start();
+		return conn.stop;
+	});
+	$effect(() => {
+		if (conn.state.status === 'online') {
+			conn.state.inboxVersion;
+			void invalidate('app:rooms').catch(() => {});
 		}
+	});
+
+	async function act(run: () => Promise<void>) {
+		if (busy) return;
+		busy = true;
+		failure = '';
+		try { await run(); }
+		catch (error) { failure = error instanceof Error ? error.message : 'Não foi possível concluir.'; }
+		finally { busy = false; }
 	}
 
-	async function join(e: SubmitEvent) {
-		e.preventDefault();
-		joinError = null;
-		const clean = code.toUpperCase().replace(/[^A-Z0-9]/g, '');
-		if (clean.length !== 6) {
-			joinError = 'O código tem 6 letras e números.';
-			return;
-		}
-		joining = true;
-		try {
-			await api(`/api/rooms/${clean}`, { method: 'POST' });
-			await goto(`/multiplayer/sala/${clean}`, { invalidateAll: true });
-		} catch (err) {
-			joinError = err instanceof Error ? err.message : 'Não foi possível entrar.';
-		} finally {
-			joining = false;
+	async function create() {
+		const { room } = await api<{ room: { code: string } }>('/api/rooms', { body: { name, mode, max, inviteOnly, assistantsRequired, rules: $state.snapshot(rules) } });
+		await goto(`/multiplayer/sala/${room.code}`);
+	}
+	async function join() {
+		const clean = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+		if (clean.length !== 6) throw new Error('O código tem 6 caracteres.');
+		await api(`/api/rooms/${clean}`, { method: 'POST' });
+		await goto(`/multiplayer/sala/${clean}`);
+	}
+	async function social(body: Record<string, unknown>) {
+		const response = await api<{ code?: string }>('/api/social', { body });
+		if (body.action === 'accept' && response.code) await goto(`/multiplayer/sala/${response.code}`);
+		else {
+			await invalidate('app:rooms');
+			notify({ icon:'check', tone:'success', title:'Ação confirmada' });
 		}
 	}
-
-	const friends = [
-		{ skin: 1, hairColor: 3, hairStyle: 'cacheado' as const, shirt: '#0E7490' },
-		{ skin: 4, hairColor: 0, hairStyle: 'raspado' as const, shirt: '#B45309' },
-		{ skin: 2, hairColor: 1, hairStyle: 'espetado' as const, shirt: '#10B981' }
-	];
 </script>
 
 <svelte:head><title>Multiplayer · BRASFC</title></svelte:head>
-
-<div class="page">
-	<ScreenHeader title="Multiplayer" eyebrow="Connected World · salas privadas" />
-
-	<section class="hero" data-umx-enter>
-		<div class="squad" aria-hidden="true">
-			{#each friends as f, i (i)}
-				<div class="f" style="--i:{i}"><Pixel variant="full" appearance={{ skin: f.skin, hairColor: f.hairColor, hairStyle: f.hairStyle }} kit={{ shirt: f.shirt, trim: '#E7EDF0', shorts: '#101418', socks: f.shirt }} size={150} ball={i === 2} /></div>
+<main class="page">
+	<ScreenHeader title="Multiplayer" back="/menu" />
+	{#if data.offline}
+		<section class="panel"><h2>Universos compartilhados</h2><p>Conecte o aplicativo ao modo online para acessar suas ligas.</p></section>
+	{:else}
+		<header class="hero" use:enter>
+			<div><h2>Carreiras compartilhadas</h2><p>Organize sua comissão, dispute a temporada com amigos e acompanhe sua liga.</p></div>
+			<Button href="/conta" variant="secondary" icon="user">{data.profile?.username ? data.profile.displayName : 'Entrar na conta'}</Button>
+		</header>
+		<nav class="tabs" aria-label="Ações multiplayer">
+			{#each [{ id:'list', label:'Minhas ligas' }, { id:'create', label:'Criar uma liga' }, { id:'join', label:'Entrar em uma liga' }] as option (option.id)}
+				<button type="button" aria-pressed={panel === option.id} onclick={() => { panel = option.id as typeof panel; failure = ''; }} data-umx-press>{option.label}</button>
 			{/each}
-		</div>
-		<div class="copy">
-			<h2>Jogue com seus amigos</h2>
-			<p class="muted">Crie um universo, convide seus amigos e disputem a mesma temporada como treinadores, auxiliares ou jogadores.</p>
-			<div class="works">
-				<Badge tone="emerald" icon="check">Salas privadas com código</Badge>
-				<Badge tone="emerald" icon="check">Presença em tempo real</Badge>
-				<Badge tone="emerald" icon="check">Servidor autoritativo</Badge>
+		</nav>
+		{#if failure}<p class="failure" role="alert">{failure}</p>{/if}
+		{#key panel}
+			<div class="grid" use:enter>
+				<section class="panel">
+					{#if panel === 'list'}
+						<h2>Minhas ligas</h2>
+						{#each data.rooms as room (room.id)}
+							<div class="room-item">
+								{#if room.status === 'open'}
+									<a class="row" href="/multiplayer/sala/{room.code}">
+										<Icon name="trophy" size={24} /><div><strong>{room.name}</strong><small>{room.members}/{room.maxMembers} participantes</small></div>
+										<Badge tone={room.started ? 'emerald' : 'gold'}>{room.started ? 'Temporada em andamento' : 'No lobby'}</Badge>
+									</a>
+								{:else}<div class="row"><Icon name="trophy" size={24} /><div><strong>{room.name}</strong><small>Código {room.code}</small></div><Badge tone="neutral">Arquivada</Badge></div>{/if}
+								{#if room.ownerId === data.profile?.id}
+									<div class="room-action"><DeleteLeague code={room.code} name={room.name} removed={() => invalidate('app:rooms')} /></div>
+								{/if}
+							</div>
+						{:else}<p>Escolha criar uma liga ou entre usando um convite.</p>{/each}
+					{:else if panel === 'create'}
+						<h2>Criar uma liga</h2>
+						{#if !data.profile?.username}<Button href="/conta" variant="primary">Entrar ou criar conta</Button>
+						{:else}
+							<form onsubmit={(event) => { event.preventDefault(); void act(create); }}>
+								<label>Modo inicial<select bind:value={mode}><option value="coach">Carreira de treinador</option><option value="player">Carreira de jogador</option></select></label>
+								<label>Nome da liga<input bind:value={name} maxlength="40" minlength="2" required /></label>
+								<div class="options"><label>Vagas<input type="number" min="2" max="16" bind:value={max} required /></label>
+									<label>Entrada<select bind:value={inviteOnly}><option value={false}>Com código</option><option value={true}>Somente convidados</option></select></label></div>
+								<fieldset><legend>Temporada e competição</legend>
+									<label>Temporada inicial<select bind:value={rules.season}>{#each LEAGUE_SEASONS as season (season)}
+										<option value={season}>{season}{season === 2026 ? ' · base registrada' : ' · cenário simulado sobre a base de 2026'}</option>
+									{/each}</select></label>
+									<label>Calendário<select bind:value={rules.calendar}><option value="sunday">Ligas aos domingos · Copa às quartas</option><option value="saturday">Ligas aos sábados · Copa às terças</option></select></label>
+									<label>Competições<select bind:value={rules.competition}><option value="league-and-cup">Séries A–D e Copa do Brasil</option><option value="league">Somente Séries A–D</option></select></label>
+									<label>Dificuldade contra a IA<select bind:value={rules.difficulty}><option value="accessible">Acessível</option><option value="standard">Padrão</option><option value="advanced">Avançada</option></select></label>
+								</fieldset>
+								<label class="check"><input type="checkbox" bind:checked={assistantsRequired} /> Exigir prontidão dos auxiliares</label>
+								<Button type="submit" variant="primary" iconRight="arrowRight" loading={busy}>Continuar para escolha do clube</Button>
+							</form>
+						{/if}
+					{:else}
+						<h2>Entrar com código</h2>
+						<form onsubmit={(event) => { event.preventDefault(); void act(join); }}>
+							<label>Código da liga<input bind:value={code} maxlength="8" required placeholder="ABC123" autocomplete="off" autocapitalize="characters" /></label>
+							<Button type="submit" variant="primary" loading={busy}>Entrar na liga</Button>
+						</form>
+					{/if}
+				</section>
+				{#if data.social}
+					<section class="panel" id="social">
+						<div class="headline"><h2>Central social</h2>{#if pending}<Badge tone="emerald">{pending} convite(s) pendente(s)</Badge>{/if}</div>
+						{#each data.social.invites as invite (invite.id)}
+							<div class="item"><strong>{invite.name} · {statuses[invite.status]}</strong>
+								<small>{invite.recipient === data.profile?.id ? invite.sender_name : 'Para ' + invite.recipient_name}
+									· {invite.role === 'assistant' ? 'Auxiliar técnico' : invite.role === 'coach' ? 'Treinador' : 'Participante'}
+									{invite.club ? ' · ' + (getClub(invite.club)?.name ?? invite.club) : ''}</small>
+								{#if invite.status === 'pending' && invite.recipient === data.profile?.id}
+									<div class="actions"><Button size="sm" variant="primary" disabled={busy} onclick={() => act(() => social({ action:'accept', id:invite.id }))}>Aceitar</Button><Button size="sm" disabled={busy} onclick={() => act(() => social({ action:'decline', id:invite.id }))}>Recusar</Button></div>
+								{/if}
+							</div>
+						{/each}
+						<h3>Amigos</h3>
+						<form class="lookup" onsubmit={(event) => { event.preventDefault(); void act(async () => { users = (await api<{ users: typeof users }>(`/api/social?q=${encodeURIComponent(query)}`)).users; if (!users.length) failure = 'Nenhum usuário encontrado.'; }); }}>
+							<label>Buscar por usuário<input bind:value={query} minlength="3" maxlength="24" required /></label>
+							<Button type="submit" size="sm" disabled={busy}>Buscar</Button>
+						</form>
+						{#each users.filter((user) => !data.social?.friends.some((friend) => friend.id === user.id)) as user (user.id)}
+							<div class="item friend"><span><a href="/perfil/{user.username}">{user.display_name}</a> <small>@{user.username}</small></span><Button size="sm" disabled={busy} onclick={() => act(() => social({ action:'friend', target:user.id }))}>Adicionar</Button></div>
+						{/each}
+						{#each data.social.friends as friend (friend.id)}
+							<div class="item friend"><span><a href="/perfil/{friend.username}">{friend.display_name}</a><small>@{friend.username} · {friend.accepted ? 'Amigo' : 'Solicitação pendente'}</small></span>
+								<div class="actions">{#if friend.incoming && !friend.accepted}<Button size="sm" disabled={busy} onclick={() => act(() => social({ action:'friend-accept', target:friend.id }))}>Aceitar</Button>{/if}
+								<Button size="sm" variant="ghost" disabled={busy} onclick={() => act(() => social({ action:'friend-remove', target:friend.id }))}>{friend.accepted ? 'Remover' : friend.incoming ? 'Recusar' : 'Cancelar'}</Button></div>
+							</div>
+						{/each}
+					</section>
+				{/if}
 			</div>
-		</div>
-	</section>
-
-	<div class="actions">
-		<Panel title="Criar sala" icon="plus" index={1}>
-			<form onsubmit={create}>
-				<label>
-					<span>Nome da sala</span>
-					<input bind:value={roomName} maxlength="40" placeholder="Ex.: Liga da firma" required minlength="2" />
-				</label>
-				{#if createError}<small class="err" role="alert">{createError}</small>{/if}
-				<Button type="submit" variant="primary" icon="plus" loading={creating} full>Criar e convidar</Button>
-			</form>
-		</Panel>
-		<Panel title="Entrar com código" icon="link" index={2}>
-			<form onsubmit={join}>
-				<label>
-					<span>Código de 6 caracteres</span>
-					<input class="code" bind:value={code} maxlength="7" placeholder="ABC123" autocomplete="off" autocapitalize="characters" spellcheck="false" />
-				</label>
-				{#if joinError}<small class="err" role="alert">{joinError}</small>{/if}
-				<Button type="submit" variant="secondary" icon="arrowRight" loading={joining} full>Entrar na sala</Button>
-			</form>
-		</Panel>
-		<Panel title="Suas salas abertas" icon="multiplayer" index={3}>
-			{#if data.rooms.length}
-				<div class="rooms">
-					{#each data.rooms as r (r.id)}
-						<a href="/multiplayer/sala/{r.code}" data-umx-hover>
-							<span class="rc">{r.code}</span>
-							<span class="rn">{r.name}</span>
-							<span class="rm"><Icon name="squad" size={14} /> {r.members}/{r.maxMembers}</span>
-						</a>
-					{/each}
-				</div>
-			{:else}
-				<p class="muted small">Nenhuma sala aberta ainda.</p>
-			{/if}
-		</Panel>
-	</div>
-
-	<h3 class="soon-title">Chegando nas próximas etapas</h3>
-	<div class="soon">
-		<Unavailable title="Carreiras compartilhadas" detail="Mesmo mundo, calendário sincronizado" icon="globe" />
-		<Unavailable title="Técnico e auxiliar no mesmo clube" icon="squad" />
-		<Unavailable title="Treinadores de clubes diferentes" icon="trophy" />
-		<Unavailable title="Convites e propostas profissionais" icon="briefcase" />
-		<Unavailable title="Carreira de jogador multiplayer" icon="user" />
-		<Unavailable title="Salvamento contínuo da sala" icon="save" />
-	</div>
-</div>
+		{/key}
+	{/if}
+</main>
 
 <style>
-	.page {
-		max-width: 1240px;
-		margin: 0 auto;
-		padding: 60px clamp(16px, 3vw, 40px) var(--sp-8);
-	}
-	.hero {
-		display: flex;
-		align-items: flex-end;
-		gap: var(--sp-7);
-		padding: var(--sp-6) var(--sp-7) 0;
-		margin-bottom: var(--sp-5);
-		border-radius: var(--radius-xl);
-		background:
-			radial-gradient(70% 120% at 20% 100%, rgb(16 185 129 / 0.2), transparent 60%),
-			linear-gradient(180deg, var(--surface-2), var(--surface));
-		border: 1px solid var(--line);
-		overflow: hidden;
-	}
-	.squad {
-		display: flex;
-		align-items: flex-end;
-	}
-	.f {
-		margin-left: calc(var(--i) * -26px);
-	}
-	.f :global(svg) {
-		height: 150px;
-		width: auto;
-	}
-	.copy {
-		padding-bottom: var(--sp-6);
-		display: flex;
-		flex-direction: column;
-		gap: var(--sp-3);
-	}
-	.copy h2 {
-		font-size: var(--fs-3xl);
-		text-transform: uppercase;
-	}
-	.copy p {
-		max-width: 56ch;
-	}
-	.works {
-		display: flex;
-		gap: var(--sp-2);
-		flex-wrap: wrap;
-	}
-	.actions {
-		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-		gap: var(--sp-4);
-	}
-	form {
-		display: flex;
-		flex-direction: column;
-		gap: var(--sp-3);
-	}
-	label {
-		display: flex;
-		flex-direction: column;
-		gap: var(--sp-2);
-		font-size: var(--fs-sm);
-		font-weight: 600;
-	}
-	input {
-		height: 46px;
-		padding: 0 var(--sp-4);
-		border-radius: var(--radius-m);
-		border: 1px solid var(--line-strong);
-		background: var(--surface-sunken);
-		font-size: var(--fs-md);
-	}
-	input:focus {
-		outline: none;
-		border-color: var(--emerald);
-		box-shadow: 0 0 0 3px var(--emerald-soft);
-	}
-	.code {
-		font-family: var(--font-display);
-		font-size: var(--fs-xl);
-		letter-spacing: 0.3em;
-		text-transform: uppercase;
-	}
-	.err {
-		color: var(--danger);
-		font-size: var(--fs-sm);
-	}
-	.rooms {
-		display: grid;
-		gap: var(--sp-2);
-	}
-	.rooms a {
-		display: grid;
-		grid-template-columns: auto 1fr auto;
-		gap: var(--sp-3);
-		align-items: center;
-		padding: var(--sp-3);
-		border-radius: var(--radius-m);
-		background: var(--surface-2);
-	}
-	.rc {
-		font-family: var(--font-display);
-		font-weight: 700;
-		letter-spacing: 0.12em;
-		color: var(--emerald-strong);
-	}
-	.rn {
-		font-weight: 600;
-		font-size: var(--fs-sm);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.rm {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		font-size: var(--fs-xs);
-		color: var(--text-3);
-	}
-	.small {
-		font-size: var(--fs-sm);
-	}
-	.soon-title {
-		margin: var(--sp-7) 0 var(--sp-3);
-		font-size: var(--fs-xl);
-		text-transform: uppercase;
-	}
-	.soon {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-		gap: var(--sp-2);
-	}
-	@media (max-width: 1000px) {
-		.actions {
-			grid-template-columns: 1fr;
-		}
-		.squad {
-			display: none;
-		}
-		.hero {
-			padding: var(--sp-6);
-		}
-	}
+	.room-action { display: flex; justify-content: flex-end; margin: 4px 0 10px; }
+	fieldset { display: grid; gap: .5rem; border: 1px solid var(--line); border-radius: .5rem; padding: .65rem; min-width: 0; }
+	.page { max-width: 1150px; margin: auto; padding: 42px clamp(14px, 3vw, 32px); }
+	.hero, .panel { padding: clamp(14px, 2.2vw, 22px); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+	.hero { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; background: linear-gradient(120deg, rgb(16 185 129 / .13), var(--surface) 64%); }
+	h2 { text-transform: uppercase; }
+	p, small { color: var(--muted); }
+	small { display: block; }
+	.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0; }
+	.tabs button { border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; cursor: pointer; }
+	.tabs button[aria-pressed=true] { border-color: var(--emerald); color: var(--emerald); background: rgb(16 185 129 / .10); }
+	.grid { display: grid; grid-template-columns: 1.35fr 1fr; align-items: start; gap: 12px; }
+	.panel, form, form label { min-width: 0; display: grid; gap: 9px; }
+	form { gap: 12px; }
+	.options { display: grid; grid-template-columns: 1fr 2fr; gap: 8px; }
+	form .check { display: flex; align-items: center; }
+	.check input { width: auto; }
+	.row, .item { min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 10px; overflow-wrap: anywhere; }
+	.row, .headline, .friend { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+	.row > div, .friend > span { flex: 1; }
+	.row:hover { border-color: var(--emerald); }
+	.actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; }
+	.lookup { display: grid; grid-template-columns: 1fr auto; align-items: end; }
+	.failure { color: #ff9d9d; margin: 8px 0; }
+	@media (max-width: 720px) { .grid { grid-template-columns: 1fr; } .page { padding-top: 22px; } }
 </style>

@@ -38,11 +38,12 @@ export const handle: Handle = async ({ event, resolve }) => {
 		response.headers.set('permissions-policy', 'camera=(), microphone=(), geolocation=(), payment=()');
 		response.headers.set('cross-origin-opener-policy', 'same-origin');
 		if (isApi) response.headers.append('server-timing', `request;dur=${(performance.now() - started).toFixed(1)}`);
-		if (isApi && !response.headers.has('cache-control')) response.headers.set('cache-control', 'no-store');
+		if (event.locals.profile) response.headers.set('cache-control', 'private, no-store');
+		else if (isApi && !response.headers.has('cache-control')) response.headers.set('cache-control', 'no-store');
 		return response;
 	}
 
-	if (process.env.BRASFC_OFFLINE === '1' && pathname.startsWith('/api/rooms')) {
+	if (process.env.BRASFC_OFFLINE === '1' && (pathname.startsWith('/api/rooms') || pathname.startsWith('/api/account') || pathname.startsWith('/api/social'))) {
 		return finish(noStore({ message: 'Universos compartilhados exigem o modo online.' }, { status: 503 }));
 	}
 	let address = 'local';

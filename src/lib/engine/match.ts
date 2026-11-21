@@ -322,6 +322,13 @@ export class Match {
 		this.queue[side].push(decision);
 	}
 
+	/** A troca de posições entre titulares não depende de uma parada nem consome uma substituição. */
+	swapPositions(side: Side, first: string, second: string): string | undefined {
+		if (this.finished || this.replay) return 'Este confronto já terminou ou é uma reprodução.';
+		this.applyDecision(side, { type: 'swap', first, second }, false, true);
+		return this.applied.at(-1)?.rejected;
+	}
+
 	/** Confere e prepara uma mudança no intervalo sem avançar o relógio. */
 	prepareInterval(side: Side, decision: Decision): string | undefined {
 		if (this.phase !== 'half_time' || this.replay) return 'O confronto ainda não está no intervalo.';
@@ -432,9 +439,12 @@ export class Match {
 		// Na reprodução, o treinador automático roda de novo (é determinístico);
 		// só as decisões dos lados humanos vêm do registro.
 		const replayed = this.replay?.get(this.tick) ?? [];
+		for (const d of replayed) {
+			if (d.beforeTick && !d.rejected && !this.teams[d.side].ai) this.applyDecision(d.side, d.decision, true, true);
+		}
 		for (const side of ['home', 'away'] as const) {
 			if (this.replay && !this.teams[side].ai) {
-				for (const d of replayed) if (d.side === side && !d.rejected) this.applyDecision(side, d.decision, true);
+				for (const d of replayed) if (d.side === side && !d.beforeTick && !d.rejected) this.applyDecision(side, d.decision, true);
 				continue;
 			}
 			if (this.teams[side].ai) this.aiManager(side);
@@ -449,10 +459,10 @@ export class Match {
 		}
 	}
 
-	private applyDecision(side: Side, d: Decision, fromReplay: boolean) {
+	private applyDecision(side: Side, d: Decision, fromReplay: boolean, beforeTick?: true) {
 		const t = this.teams[side];
 		this.fitCache.clear();
-		const record = (rejected?: string) => this.applied.push({ tick: this.tick, side, decision: d, ...(rejected ? { rejected } : {}) });
+		const record = (rejected?: string) => this.applied.push({ tick: this.tick, side, decision: d, ...(beforeTick ? { beforeTick } : {}), ...(rejected ? { rejected } : {}) });
 		if (d.type === 'individual') {
 			const player = this.states.get(d.playerId);
 			const info = t.byId.get(d.playerId);
@@ -513,6 +523,20 @@ export class Match {
 			});
 			record();
 			this.emit('tactic', { side, data: { kind: 'formation', value: d.value } });
+			return;
+		}
+		if (d.type === 'swap') {
+			const first = this.states.get(d.first);
+			const second = this.states.get(d.second);
+			if (!first?.onPitch || !second?.onPitch || first.side !== side || second.side !== side ||
+				first === second || first.sentOff || second.sentOff || t.tactic.lineup[first.slot] !== first.id ||
+				t.tactic.lineup[second.slot] !== second.id) return record('Escolha dois atletas do seu time que estejam em campo');
+			[t.tactic.lineup[first.slot], t.tactic.lineup[second.slot]] = [second.id, first.id];
+			[first.slot, second.slot] = [second.slot, first.slot];
+			if (t.gkId === first.id) t.gkId = second.id;
+			else if (t.gkId === second.id) t.gkId = first.id;
+			record();
+			this.emit('tactic', { side, player: first.id, other: second.id, data: { kind: 'swap' } });
 			return;
 		}
 		// Substituição
