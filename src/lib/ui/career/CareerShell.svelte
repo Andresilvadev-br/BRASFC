@@ -11,7 +11,7 @@
 		balance, match, exit = { href: '/menu', label: 'Menu' }, status, children }: {
 		base: string; clubId: string; clubName: string; color: string; personName: string; roleLabel: string; groups: CareerGroup[];
 		current: string | null; date: string; season: number; cup?: boolean; stepLabel: string; balance?: number;
-		match: { href: string; label: string; hint?: string }; exit?: { href: string; label: string }; status?: Snippet; children: Snippet;
+		match?: { href: string; label: string; hint?: string }; exit?: { href: string; label: string }; status?: Snippet; children: Snippet;
 	} = $props();
 </script>
 
@@ -59,11 +59,13 @@
 			<span class="step" class:cup={cup}>{stepLabel}</span>
 		</div>
 		{#if status}{@render status()}{/if}
+		{#if match && current !== match.href}
 		<a class="advance" href={match.href} data-umx-press data-umx-magnet="0.25" aria-describedby="advance-hint">
 			{match.label}
 			<Icon name="chevronRight" size={18} />
 		</a>
 		<span id="advance-hint" class="hint">{match.hint ?? "Abre o próximo passo do calendário."}</span>
+		{/if}
 	</header>
 
 	<main class="content">

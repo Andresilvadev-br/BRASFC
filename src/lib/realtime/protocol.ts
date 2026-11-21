@@ -31,12 +31,22 @@ export interface RoomSnapshot {
 	members: PresenceMember[];
 }
 
+export type LeagueNotice = {
+	id: string;
+	title: string;
+	destination: 'social' | 'chat';
+	code?: string;
+};
+
 export type ServerMessage =
 	| { t: 'welcome'; profileId: string; displayName: string }
 	| { t: 'room'; room: RoomSnapshot }
 	| { t: 'world'; v: 1; revision: number }
 	| { t: 'closed'; code: string; reason: string }
 	| { t: 'error'; code: string; message: string }
+	| { t: 'inbox'; v: 1 }
+	| { t: 'notice'; v: 1; notice: LeagueNotice }
+	| { t: 'chat'; v: 1; channel: 'league' | 'staff' }
 	| { t: 'pong' };
 
 export function parseClientMessage(raw: string): ClientMessage | null {

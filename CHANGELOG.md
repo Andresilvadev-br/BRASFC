@@ -1,5 +1,21 @@
 # Novidades
 
+## 0.9.0 — Ligas multiplayer (desenvolvimento)
+
+- Conta online com sessões por dispositivo, recuperação por código e conversão de perfil convidado.
+- Ligas com lobby persistente, convites por função, vagas reservadas, amizade e central da carreira compartilhada.
+- Canais da liga e da comissão com histórico e decisão de propostas táticas.
+- Negociação contratual após acordo de transferência entre técnicos em novas ligas.
+- Escolha de temporada inicial, calendário, competições e dificuldade na criação de novas ligas.
+- Convites pela lista de amigos, prévia de sugestões táticas e histórico social e esportivo do perfil.
+- Permissões do auxiliar para propostas, renovações e contratos, com limites e revisão opcional pelo treinador.
+- Comunicação, pesquisa de reforços e planejamento da próxima partida durante uma rodada.
+- Saída da comissão mantendo acesso à liga e exclusão individual de ligas pelo anfitrião com confirmação.
+- Criação de atletas com 12 nacionalidades sul-americanas, idade inicial de 16 a 35 anos e pé dominante incluindo ambidestro.
+- Troca de posições entre titulares por arraste ou toque, antes do jogo e durante a partida, inclusive no intervalo.
+- Removido o atalho redundante de entrada na própria tela do dia de jogo.
+- Migrações aditivas 0009 e 0010 e ferramenta administrativa de reset com backup validado.
+
 ## 0.8.5 — Mercado de transferências
 
 - Pesquisa paginada por atleta, clube e nacionalidade com filtros combináveis em todo o universo.

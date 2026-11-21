@@ -192,6 +192,29 @@ describe('táticas salvas (regressão do Dev 0.2)', () => {
 });
 
 describe('comandos individuais e capitães', () => {
+	it('troca posições em tempo real e no intervalo sem gastar substituições e reproduz as decisões', () => {
+		const home = team(mid[0]), away = team(mid[1]);
+		const setup = { home, away, seed: 11, ai: { home:false, away:true }, rules: { halfMinutes: 2 } };
+		const match = new Match(setup);
+		const a = home.tactic.lineup[7], b = home.tactic.lineup[9];
+		const subs = match.subsLeft('home');
+		for (let i = 0; i < 10; i++) match.step();
+		expect(match.swapPositions('home', a, b)).toBeUndefined();
+		expect(match.states.get(a)?.slot).toBe(9);
+		expect(match.states.get(b)?.slot).toBe(7);
+		expect(match.subsLeft('home')).toBe(subs);
+		expect(match.swapPositions('home', a, away.tactic.lineup[2])).toMatch(/seu time/);
+		expect(match.swapPositions('home', a, match.bench('home')[0].id)).toMatch(/em campo/);
+		while (match.phase !== 'half_time') match.step();
+		expect(match.prepareInterval('home', { type:'swap', first:a, second:b })).toBeUndefined();
+		expect(match.states.get(a)?.slot).toBe(7);
+		const result = match.runToEnd();
+		const replay = new Match({ ...setup, replay:result.decisions }).runToEnd();
+		expect(replay.homeGoals).toBe(result.homeGoals);
+		expect(replay.awayGoals).toBe(result.awayGoals);
+		expect(replay.events).toEqual(result.events);
+	});
+
 	it('preserva a hierarquia e avança para o vice em substituição ou expulsão', () => {
 		const home = team(mid[0]);
 		const [captain, vice, next] = home.tactic.lineup.slice(1);

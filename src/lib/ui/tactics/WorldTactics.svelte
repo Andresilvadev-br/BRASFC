@@ -18,9 +18,9 @@
 	import PlayerOrders from './PlayerOrders.svelte';
 	import TacticalOverlay from './TacticalOverlay.svelte';
 
-	let { key, tactic, squad, club, mastery, canEdit, busy, onsave }: {
+	let { key, tactic, squad, club, mastery, canEdit, suggest = false, busy, onsave }: {
 		key: string; tactic: Tactic; squad: SquadPlayer[]; club: string; mastery?: number;
-		canEdit: boolean; busy: boolean; onsave: (value: Tactic, base: Tactic) => Promise<boolean>;
+		canEdit: boolean; suggest?: boolean; busy: boolean; onsave: (value: Tactic, base: Tactic) => Promise<boolean>;
 	} = $props();
 
 	let draft = $state<Tactic | null>(null);
@@ -67,13 +67,18 @@
 		slot = null;
 		substitute = null;
 	}
+	function moveStarter(from: number, to: number) {
+		if (!draft || busy || from === to || !draft.lineup[from] || !draft.lineup[to]) return;
+		const lineup = [...draft.lineup];
+		[lineup[from], lineup[to]] = [lineup[to], lineup[from]];
+		if (sanitizeTactic({ ...draft, lineup }, squad)) draft.lineup = lineup;
+	}
 	function choose(index: number) {
 		substitute = null;
-		if (!draft || slot === index || slot === null) { slot = index; return; }
-		const lineup = [...draft.lineup];
-		[lineup[slot], lineup[index]] = [lineup[index], lineup[slot]];
-		if (sanitizeTactic({ ...draft, lineup }, squad)) draft.lineup = lineup;
-		slot = index;
+		if (draft && slot !== null && slot !== index) {
+			moveStarter(slot, index);
+			slot = null;
+		} else slot = slot === index ? null : index;
 	}
 	function replace(id: string) {
 		if (!draft || slot === null) return;
@@ -110,8 +115,8 @@
 	<div class="actions">
 		{#if draft}
 			<Button variant="ghost" disabled={busy} onclick={discard}>Descartar</Button>
-			<Button variant="primary" icon="save" loading={busy} disabled={!changed} onclick={save}>Salvar tática</Button>
-		{:else if canEdit}<Button variant="primary" icon="tactics" onclick={edit}>Editar tática</Button>{/if}
+			<Button variant="primary" icon="save" loading={busy} disabled={!changed} onclick={save}>{suggest ? 'Enviar sugestão' : 'Salvar tática'}</Button>
+		{:else if canEdit}<Button variant="primary" icon="tactics" onclick={edit}>{suggest ? 'Sugerir tática' : 'Editar tática'}</Button>{/if}
 	</div>
 </div>
 
@@ -122,13 +127,13 @@
 			{#if mastery !== undefined}<Meter value={mastery} label="Domínio da formação" />{/if}
 			<button type="button" class="shape" aria-pressed={showShape} onclick={() => showShape = !showShape}>Mapa de comportamento</button>
 		</div>
-		<LineupPitch>
+		<LineupPitch move={draft && !busy ? (from, to) => { moveStarter(Number(from), Number(to)); slot = null; substitute = null; } : undefined}>
 			{#if showShape}<TacticalOverlay formation={official.formation} mentality={official.mentality} style={official.style} {instructions} roles={resolveRoles(official.formation, official.roles)} legend={false} />{/if}
 			{#each slots as field, i (i)}
 				{@const player = players.get(official.lineup[i])}
 				<button type="button" class="slot" class:active={slot === i} style:left={field.x + '%'} style:top={field.y + '%'}
 					aria-label={`${field.position}: ${player ? `Overall ${player.overall} · ${player.name}` : 'vaga'}`}
-					aria-pressed={slot === i} onclick={() => choose(i)}>
+					data-reposition={draft && !busy && player ? i : undefined} aria-pressed={slot === i} onclick={() => choose(i)}>
 					{#if player}
 						<Pixel appearance={player.appearance} kit={playerKit(club, player.position)} size={36} />
 						<span>{player.shortName}</span>
@@ -144,7 +149,7 @@
 	<section class="options">
 		<Segmented label="Ferramentas de tática" bind:value={panel} options={[{ value: 'elenco', label: 'Convocação' }, { value: 'coletivo', label: 'Coletivo' }, { value: 'atleta', label: 'Por atleta' }]} />
 		{#if panel === 'elenco'}
-			{#if draft}<p>{slot !== null ? `Escolha quem entra no lugar de ${players.get(official.lineup[slot])?.name}.` : substitute ? 'Escolha um reserva para trocar com o suplente selecionado.' : 'Selecione um titular no campo ou um suplente no banco para fazer a troca.'}</p>{/if}
+			{#if draft}<p>{slot !== null ? `Toque em outro titular para trocar posições ou escolha quem entra no lugar de ${players.get(official.lineup[slot])?.name}.` : substitute ? 'Escolha um reserva para trocar com o suplente selecionado.' : 'Arraste um titular ou toque em dois atletas para trocar posições. Use o banco para trocar quem entra.'}</p>{/if}
 			<h3>Banco de suplentes · {bench.length}/{MATCH_BENCH_SIZE}</h3>
 			<div class="bench" aria-label="Banco de suplentes">
 				{#each bench as id (id)}

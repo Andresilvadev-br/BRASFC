@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { FORMATIONS, MENTALITY_LABELS, STYLE_LABELS } from '#lib/domain/tactics.ts';
+	import { reposition } from '../tactics/reposition.ts';
 	import type { Match } from '#lib/engine/match.ts';
 	import type { PlayerStats, Side } from '#lib/engine/types.ts';
 
@@ -19,7 +20,8 @@
 		compact = false,
 		pendingOut = [],
 		color: kit,
-		onsub
+		onsub,
+		onswap
 	}: {
 		match: Match;
 		side: Side;
@@ -32,6 +34,7 @@
 		/** cor do uniforme em uso (resolve choque de cores) */
 		color?: string;
 		onsub?: (outId: string, inId: string) => void;
+		onswap?: (first: string, second: string) => void;
 	} = $props();
 
 	const team = $derived.by(() => {
@@ -61,8 +64,14 @@
 	function tone(r: number) {
 		return r >= 7.5 ? 'great' : r >= 6.8 ? 'good' : r >= 6 ? 'ok' : 'bad';
 	}
+	function swap(first: string, second: string) {
+		onswap?.(first, second);
+		selected = null;
+	}
 	function pick(id: string) {
-		selected = selected === id ? null : id;
+		if (onswap && mineSelected && selected && selected !== id && slots.some((slot) => slot.id === id && slot.st?.onPitch)) {
+			swap(selected, id);
+		} else selected = selected === id ? null : id;
 	}
 </script>
 
@@ -72,7 +81,7 @@
 		<span>{team.tactic.formation} · {MENTALITY_LABELS[team.tactic.mentality]} · {STYLE_LABELS[team.tactic.style]}</span>
 	</header>
 
-	<div class="field">
+	<div class="field" use:reposition={{ move: onswap ? swap : undefined }}>
 		<span class="mid"></span>
 		<span class="box"></span>
 		{#each slots as s (s.id)}
@@ -87,6 +96,7 @@
 				style="left:{s.x}%;top:{s.y}%"
 				onclick={() => pick(s.id)}
 				aria-pressed={selected === s.id}
+				data-reposition={onswap && s.st?.onPitch ? s.id : undefined}
 				title="{p?.name} · {s.pos} · nota {r.toFixed(1)} · condição {Math.round(st?.condition ?? 0)}%"
 			>
 				<span class="top">
@@ -105,6 +115,7 @@
 	</div>
 
 	<div class="bench">
+		{#if onswap}<small class="lbl">Arraste um atleta ou toque em dois titulares para trocar posições.</small>{/if}
 		<span class="lbl">
 			{#if canSub && mineSelected}
 				Toque num reserva para entrar no lugar de <b>{match.player(selected!)?.shortName}</b>
@@ -201,6 +212,8 @@
 		cursor: pointer;
 		transition: transform 0.15s ease, box-shadow 0.15s ease;
 	}
+	.chip[data-reposition] { cursor: grab; touch-action: none; }
+	.field:global([data-dragging-position]) .chip[data-reposition] { cursor: grabbing; }
 	.chip:hover {
 		transform: translate(-50%, -50%) scale(1.06);
 		z-index: 2;

@@ -1,3 +1,4 @@
+import { isDominantFoot, isNationality, isStartAge, MIN_START_AGE, MAX_START_AGE, type DominantFoot } from './player-profile.ts';
 import { ROSTER_CATALOG, type RosterCatalogId } from '#lib/data/roster-catalog.ts';
 import type { UniverseState } from './universe.ts';
 import type { OfficeState } from './office.ts';
@@ -26,7 +27,7 @@ export const MODE_LABELS: Record<CareerMode, string> = {
 	player: 'Carreira de Jogador'
 };
 
-export type DominantFoot = 'direito' | 'esquerdo';
+export type { DominantFoot } from './player-profile.ts';
 
 export interface PlayerProfile {
 	nationality?: string;
@@ -140,21 +141,21 @@ export function validateCreateCareer(input: unknown): ValidationResult<CreateCar
 	}
 
 	let position: Position | undefined;
-	const age = v.age === undefined ? 18 : Number.isInteger(v.age) ? Number(v.age) : 0;
+	const age = v.age === undefined ? 18 : v.age;
 	const nationality = v.nationality === undefined ? 'Brasil' : typeof v.nationality === 'string' ? normalizeName(v.nationality) : '';
 	const foot = v.foot === undefined ? 'direito' : v.foot;
 
 	if (mode === 'player') {
-		if (age < 16 || age > 35) errors.age = 'Escolha uma idade entre 16 e 35 anos.';
-		if (nationality.length < 2 || nationality.length > 40 || !NAME_PATTERN.test(nationality)) errors.nationality = 'Informe sua nacionalidade.';
-		if (foot !== 'esquerdo' && foot !== 'direito') errors.foot = 'Escolha o pé dominante.';
+		if (!isStartAge(age)) errors.age = `Escolha uma idade entre ${MIN_START_AGE} e ${MAX_START_AGE} anos.`;
+		if (!isNationality(nationality)) errors.nationality = 'Selecione uma nacionalidade disponível na América do Sul.';
+		if (!isDominantFoot(foot)) errors.foot = 'Escolha o pé dominante.';
 		if (isPosition(v.position)) position = v.position;
 		else errors.position = 'Escolha a posição do seu jogador.';
 		if (!appearance) errors.appearance ??= 'Defina a aparência do seu jogador.';
 	}
 
 	if (Object.keys(errors).length) return { ok: false, errors };
-	return { ok: true, value: { mode: mode as CareerMode, personName, clubId, appearance, position, world, ...(mode === 'player' ? { age, nationality, foot: foot as DominantFoot } : {}) } };
+	return { ok: true, value: { mode: mode as CareerMode, personName, clubId, appearance, position, world, ...(mode === 'player' ? { age: age as number, nationality, foot: foot as DominantFoot } : {}) } };
 }
 
 /** Dados iniciais persistidos de uma carreira nova. */

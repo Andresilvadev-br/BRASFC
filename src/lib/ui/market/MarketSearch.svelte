@@ -14,9 +14,9 @@
 	import Profile from './MarketProfile.svelte';
 	import Comparison from './MarketComparison.svelte';
 
-	let { endpoint, storageKey, revision, observedOnly = false, windowOpen, busy, watch, propose, selected = $bindable() }: {
+	let { endpoint, storageKey, revision, observedOnly = false, windowOpen, busy, watch, propose, recommend, canPropose, canLoan = true, selected = $bindable() }: {
 		endpoint: string; storageKey: string; revision: number; observedOnly?: boolean; windowOpen: boolean; busy: boolean;
-		watch: (player: MarketProfile) => Promise<unknown>; propose: (player: MarketProfile, kind: 'compra' | 'emprestimo' | 'livre') => unknown; selected?: string;
+		canLoan?: boolean; canPropose?: (player: MarketProfile) => boolean; watch?: (player: MarketProfile) => Promise<unknown>; recommend?: (player: MarketProfile) => Promise<unknown>; propose?: (player: MarketProfile, kind: 'compra' | 'emprestimo' | 'livre') => unknown; selected?: string;
 	} = $props();
 
 	let f: MarketFilters = $state({});
@@ -225,8 +225,8 @@
 	{#if profile && !profileError}
 		{#key profile.id}
 			<div use:enter={{ y: 4 }}><Profile player={profile} {busy} {windowOpen} comparison={comparisons.includes(profile.id)}
-				observe={() => profile && watch(profile)} compare={() => profile && toggleCompare(profile)}
-				propose={(kind) => { if (profile) { profileOpen = false; propose(profile, kind); } }} /></div>
+				observe={watch ? () => profile && watch?.(profile) : undefined} recommend={recommend ? () => profile && recommend?.(profile) : undefined} compare={() => profile && toggleCompare(profile)}
+				{canLoan} {canPropose} propose={propose ? (kind) => { if (profile) { profileOpen = false; propose?.(profile, kind); } } : undefined} /></div>
 		{/key}
 	{:else if profileError}
 		<div class="empty" role="alert"><p>{profileError}</p><Button size="sm" variant="secondary" onclick={() => profileAttempt += 1}>Tentar novamente</Button></div>

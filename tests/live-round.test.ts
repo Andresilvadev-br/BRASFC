@@ -82,6 +82,13 @@ it('recupera rodada com vários jogos, aplica substituições reais e espera tr�
 	const outgoing = session.relevant!.match.players.filter((p) => p.side === side).slice(1, 3);
 	const bench = session.relevant!.match.teams[side].bench.filter((p) => p.position !== 'GOL').slice(0, 2);
 	const firstSub = { type: 'sub', outId: outgoing[0].id, inId: bench[0].id };
+	const [first, second] = outgoing;
+	const exchange = { type:'swap', first:first.id, second:second.id };
+	await expect(issue(athlete, 'decision', { decision:exchange })).rejects.toMatchObject({ status:403 });
+	await issue(assistant, 'suggest', { decision:exchange });
+	await issue(coach, 'decision', { decision:exchange });
+	expect(session.relevant!.match.players.find((player) => player.id === first.id)?.slot).toBe(second.slot);
+	expect(session.relevant!.match.players.find((player) => player.id === second.id)?.slot).toBe(first.slot);
 	await expect(issue(assistant, 'decision', { decision: firstSub })).rejects.toMatchObject({ status: 403 });
 	await expect(issue(athlete, 'decision', { decision: firstSub })).rejects.toMatchObject({ status: 403 });
 	await issue(assistant, 'suggest', { decision: { type: 'mentality', value: 'ofensiva' } });
@@ -128,10 +135,12 @@ it('migra uma cópia de sala da Dev 0.7 sem modificar membros e progresso', asyn
 		const { MIGRATIONS } = await import('#lib/server/db/migrate.ts');
 		await runMigrations(old, MIGRATIONS.filter((m) => m.version < '0007'));
 		const profile = (await createGuestProfile(old)).profile.id;
-		const room = await createRoom(old, profile, 'Universo anterior');
+		const room = { id: randomUUID() };
+		await old.query("INSERT INTO rooms (id,code,name,owner_id) VALUES ($1,'ABC234','Universo anterior',$2)", [room.id, profile]);
+		await old.query("INSERT INTO room_members (room_id,profile_id,role) VALUES ($1,$2,'owner')", [room.id, profile]);
 		const saved = { date: '2027-02-04', step: 3, participants: { [profile]: { role: 'coach', ready: false, club: 'flamengo' } } };
 		await old.query('INSERT INTO room_worlds (room_id,revision,state) VALUES ($1,4,$2::jsonb)', [room.id, JSON.stringify(saved)]);
-		expect(await runMigrations(old)).toEqual(['0007_live_rounds', '0008_market_lookup']);
+		expect(await runMigrations(old)).toEqual(['0007_live_rounds', '0008_market_lookup', '0009_league_social', '0010_league_options']);
 		expect(await old.query('SELECT revision,state FROM room_worlds WHERE room_id=$1', [room.id])).toEqual([{ revision: 4, state: saved }]);
 		expect(await old.query('SELECT profile_id FROM room_members WHERE room_id=$1', [room.id])).toEqual([{ profile_id: profile }]);
 		expect(await runMigrations(old)).toEqual([]);

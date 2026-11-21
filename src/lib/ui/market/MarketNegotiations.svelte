@@ -11,23 +11,27 @@
 	type Status = 'Aguardando resposta' | 'Contraproposta recebida' | 'Acordo com clube' | 'Negociação contratual' | 'Transferência concluída' | 'Recusada' | 'Expirada' | 'Encerrada';
 	export interface MarketDealRow {
 		id: string; player: string; name: string; club: string; fee: number; date?: string; deadline?: number; description?: string;
-		status: Status; kind: string; log?: NegotiationLog; action?: 'ia' | 'human' | 'human-counter';
+		status: Status; kind: string; log?: NegotiationLog; action?: 'ia' | 'human' | 'human-counter' | 'human-contract';
 	}
 
 	let { entries, busy, windowOpen, action, resume, browse }: {
 		entries: MarketDealRow[]; busy: boolean; windowOpen: boolean;
-		action: (row: MarketDealRow, kind: 'accept' | 'reject' | 'counter', value?: number) => Promise<boolean>;
+		action: (row: MarketDealRow, kind: 'accept' | 'reject' | 'counter' | 'contract', value?: Record<string, unknown>) => Promise<boolean>;
 		resume: (log: NegotiationLog) => unknown; browse: () => void;
 	} = $props();
 	let view = $state<'all' | 'active' | 'history'>('all');
 	let counterId = $state('');
 	let counter = $state<number | undefined>();
+	let contractId = $state('');
+	let wage = $state<number | undefined>();
+	let years = $state(3);
+	let role = $state('rotacao');
 	const terminal = new Set<Status>(['Transferência concluída', 'Recusada', 'Expirada', 'Encerrada']);
 	const filtered = $derived(entries.filter((row) => view === 'all' || terminal.has(row.status) === (view === 'history')));
 	const canResume = (log?: NegotiationLog) => log && !log.done && (log.asking !== undefined || log.demand !== undefined);
 	async function submitCounter(row: MarketDealRow) {
 		if (busy || counter === undefined || counter < 0 || !Number.isInteger(counter)) return;
-		if (await action(row, 'counter', counter)) counterId = '';
+		if (await action(row, 'counter', { fee: counter })) counterId = '';
 	}
 </script>
 
@@ -52,10 +56,20 @@
 						{#if row.description}<p>{row.description}</p>{/if}
 						{#if row.action}
 							<div class="actions">
-								<Button size="sm" variant="primary" disabled={busy || !windowOpen} onclick={() => action(row, 'accept')}>{row.action === 'human-counter' ? 'Aceitar contraproposta' : 'Aceitar proposta'}</Button>
+								{#if row.action === 'human-contract'}
+									<Button size="sm" variant="primary" disabled={busy || !windowOpen} onclick={() => { contractId = row.id; wage = undefined; }}>Propor contrato</Button>
+								{:else}<Button size="sm" variant="primary" disabled={busy || !windowOpen} onclick={() => action(row, 'accept')}>{row.action === 'human-counter' ? 'Aceitar contraproposta' : 'Aceitar proposta'}</Button>{/if}
 								<Button size="sm" variant="ghost" disabled={busy || (row.action !== 'ia' && !windowOpen)} onclick={() => action(row, 'reject')}>Recusar</Button>
 								{#if row.action === 'human'}<Button size="sm" variant="secondary" disabled={busy || !windowOpen} onclick={() => { counterId = row.id; counter = row.fee; }}>Contrapropor</Button>{/if}
 							</div>
+							{#if contractId === row.id && row.action === 'human-contract'}
+								<form onsubmit={async (event) => { event.preventDefault(); if (await action(row,'contract',{ wage, years, role })) contractId = ''; }}>
+									<label>Salário mensal (R$)<input type="number" min="500" max="100000000" step="1" required bind:value={wage} /></label>
+									<label>Temporadas<input type="number" min="1" max="5" step="1" required bind:value={years} /></label>
+									<label>Papel<select bind:value={role}><option value="titular">Titular</option><option value="rotacao">Rotação</option><option value="reserva">Reserva</option><option value="jovem">Jovem promessa</option></select></label>
+									<Button size="sm" variant="primary" type="submit" disabled={busy || !windowOpen}>Enviar termos</Button>
+								</form>
+							{/if}
 							{#if counterId === row.id}
 								<form onsubmit={(event) => { event.preventDefault(); void submitCounter(row); }}>
 									<label>Contraproposta (R$)<input type="number" min="0" max="2000000000" step="1" required bind:value={counter} /></label>
