@@ -1,4 +1,5 @@
 <script lang="ts">
+	import CareerModeCards from '#lib/ui/career/CareerModeCards.svelte';
 	import { goto, invalidate } from '$app/navigation';
 	import { onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
@@ -18,7 +19,7 @@
 	let panel = $state<'list' | 'create' | 'join'>(inviteCode ? 'join' : 'list');
 	let name = $state('');
 	let code = $state(inviteCode);
-	let mode = $state<'coach' | 'player'>('coach');
+	let mode = $state<'coach' | 'player' | null>(null);
 	let max = $state<number | undefined>(8);
 	let inviteOnly = $state(false);
 	let assistantsRequired = $state(false);
@@ -55,6 +56,7 @@
 	}
 
 	async function create() {
+		if (!mode) return;
 		const { room } = await api<{ room: { code: string } }>('/api/rooms', { body: { name, mode, max, inviteOnly, assistantsRequired } });
 		await goto(`/multiplayer/sala/${room.code}`);
 	}
@@ -86,12 +88,12 @@
 		</header>
 		<nav class="tabs" aria-label="Ações multiplayer">
 			{#each [{ id:'list', label:'Minhas ligas' }, { id:'create', label:'Criar uma liga' }, { id:'join', label:'Entrar em uma liga' }] as option (option.id)}
-				<button type="button" aria-pressed={panel === option.id} onclick={() => { panel = option.id as typeof panel; failure = ''; }} data-umx-press>{option.label}</button>
+				<button type="button" aria-pressed={panel === option.id} onclick={() => { panel = option.id as typeof panel; if (panel === 'create') mode = null; failure = ''; }} data-umx-press>{option.label}</button>
 			{/each}
 		</nav>
 		{#if failure}<p class="failure" role="alert">{failure}</p>{/if}
 		{#key panel}
-			<div class="grid" use:enter>
+			<div class="grid" class:mode-step={panel === 'create' && !mode} use:enter>
 				<section class="panel">
 					{#if panel === 'list'}
 						<h2>Minhas ligas</h2>
@@ -111,9 +113,12 @@
 					{:else if panel === 'create'}
 						<h2>Criar uma liga</h2>
 						{#if !data.profile?.username}<Button href="/conta" variant="primary">Entrar ou criar conta</Button>
+						{:else if !mode}
+							<CareerModeCards chooseMode={(choice) => mode = choice} />
 						{:else}
+							<Button size="sm" variant="ghost" icon="arrowLeft" disabled={busy} onclick={() => { mode = null; failure = ''; }}>Voltar aos modos</Button>
+							<p>{mode === 'coach' ? 'Carreira de treinador' : 'Carreira de jogador'}</p>
 							<form onsubmit={(event) => { event.preventDefault(); void act(create); }}>
-								<label>Modo inicial<select bind:value={mode}><option value="coach">Carreira de treinador</option><option value="player">Carreira de jogador</option></select></label>
 								<label>Nome da liga<input bind:value={name} maxlength="40" minlength="2" required /></label>
 								<div class="options"><label>Vagas<input type="number" min="2" max="16" bind:value={max} required /></label>
 									<label>Entrada<select bind:value={inviteOnly}><option value={false}>Com código</option><option value={true}>Somente convidados</option></select></label></div>
@@ -129,7 +134,7 @@
 						</form>
 					{/if}
 				</section>
-				{#if data.social}
+				{#if data.social && !(panel === 'create' && !mode)}
 					<section class="panel" id="social">
 						<div class="headline"><h2>Central social</h2>{#if pending}<Badge tone="emerald">{pending} convite(s) pendente(s)</Badge>{/if}</div>
 						{#each data.social.invites as invite (invite.id)}
@@ -164,6 +169,7 @@
 </main>
 
 <style>
+	.grid.mode-step { grid-template-columns: minmax(0, 1fr); }
 	.room-action { display: flex; justify-content: flex-end; margin: 4px 0 10px; }
 	.page { max-width: 1150px; margin: auto; padding: 42px clamp(14px, 3vw, 32px); }
 	.hero, .panel { padding: clamp(14px, 2.2vw, 22px); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
