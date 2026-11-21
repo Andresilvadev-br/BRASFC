@@ -5,7 +5,7 @@ import { catalogClub, ROSTER_CATALOG, type RosterCatalogId } from '#lib/data/ros
 import { clubLineup, initialClubTactic } from '#lib/domain/club-selection.ts';
 import { clubEconomy } from '#lib/domain/club.ts';
 import { getClub } from '#lib/domain/clubs.ts';
-import { DEFAULT_LEAGUE_OPTIONS, type LeagueOptions } from '#lib/domain/league-options.ts';
+import { leagueOptions, DEFAULT_LEAGUE_OPTIONS, type LeagueOptions } from '#lib/domain/league-options.ts';
 import { seasonSteps } from '#lib/domain/calendar.ts';
 import { initialCup, clubCupRun, cupView, prepareCup, cupFixtures, phaseOfMatchday, projectedCup, tieOutcome } from '#lib/domain/cup.ts';
 import { addDays } from '#lib/domain/dates.ts';
@@ -38,7 +38,7 @@ import { canCommitRound, checkpoint, enginesFor, forgetRound, keepEngines, match
 import { parseDecision } from './rounds.ts';
 import type { Db } from './db/index.ts';
 import { isUuid } from './repos/careers.ts';
-import { listMembers, RoomError, type Room } from './repos/rooms.ts';
+import { listMembers, roleMatchesMode, RoomError, type Room } from './repos/rooms.ts';
 
 import type { FinanceDraft, FinanceGrant, FinancialCommand } from '#lib/domain/staff-finance.ts';
 import { delegatedFinancialCommand, sanitizeFinanceGrant } from './staff-finance.ts';
@@ -178,13 +178,17 @@ export async function worldSnapshot(db: Db, room: Room, profile: string) {
 		? current : null;
 	const tier = tierOfDivision(division);
 	const half = (schedule(s).slice(s.step).find((entry) => entry.kind === 'league')?.round ?? 38) <= 19 ? 1 : 2;
-	const [[live], reservations] = await Promise.all([
+	const [[live], reservations, outgoing] = await Promise.all([
 		db.query('SELECT 1 FROM room_live_rounds WHERE room_id=$1', [room.id]),
 		db.query<{ club: string; role: 'coach' | 'assistant'; mine: boolean }>(
 			"SELECT club,role,recipient=$2 AS mine FROM room_invitations WHERE room_id=$1 AND club IS NOT NULL AND status='pending' AND expires_at>now()",
+			[room.id, profile]),
+		db.query<{ id: string; username: string; role: 'coach' | 'assistant' | null; club: string | null }>(
+			`SELECT i.id,p.username,i.role,i.club FROM room_invitations i JOIN profiles p ON p.id=i.recipient
+			WHERE i.room_id=$1 AND i.sender=$2 AND i.status='pending' AND i.expires_at>now() ORDER BY i.created_at DESC`,
 			[room.id, profile])
 	]);
-	return { reservations, options: s.options ?? DEFAULT_LEAGUE_OPTIONS, entryMode: room.entryMode, started: room.started ?? true, assistantsRequired: room.assistantsRequired ?? true, live: !!live, revision: Number(row?.revision ?? 0), ownerId: room.ownerId, season: s.league.season, date: s.date, rosterCatalog: s.rosterCatalog,
+	return { reservations, outgoing, editableDraft: room.ownerId === profile && !room.started && !row && members.length === 1 && outgoing.length === 0, options: s.options ?? DEFAULT_LEAGUE_OPTIONS, entryMode: room.entryMode, started: room.started ?? true, assistantsRequired: room.assistantsRequired ?? true, live: !!live, revision: Number(row?.revision ?? 0), ownerId: room.ownerId, season: s.league.season, date: s.date, rosterCatalog: s.rosterCatalog,
 		next: step, fixture: current && step ? fixtures.find((f) => f.competition === (step.kind === 'cup' ? 'copa-do-brasil' : f.competition)
 			&& (step.kind === 'cup' || f.competition !== 'copa-do-brasil') && f.round === (step.kind === 'league' ? step.round : step.matchday)
 			&& [f.home, f.away].includes(current.club)) : null,
@@ -581,7 +585,7 @@ export async function applyWorldCommand(db: Db, room: Room, profile: string, bod
 	const op = body.op;
 	if (typeof op !== 'string' || !isUuid(op) || !Number.isInteger(body.revision)) fail('Comando ou revisão inválida.', 400);
 	return db.transaction(async (tx) => {
-		const [identity] = await tx.query<{ owner_id: string; status: string; started: boolean; entry_mode: string; assistants_required: boolean }>('SELECT owner_id, status, started, entry_mode, assistants_required FROM rooms WHERE id = $1 FOR UPDATE', [room.id]);
+		const [identity] = await tx.query<{ owner_id: string; status: string; started: boolean; entry_mode: Room['entryMode']; assistants_required: boolean; league_options: unknown }>('SELECT owner_id, status, started, entry_mode, assistants_required, league_options FROM rooms WHERE id = $1 FOR UPDATE', [room.id]);
 		const members = await listMembers(tx, room.id);
 		const member = members.find((m) => m.profileId === profile);
 		if (!identity || !member) fail('Universo não encontrado.', 404);
@@ -591,7 +595,7 @@ export async function applyWorldCommand(db: Db, room: Room, profile: string, bod
 		if (receipt) return { revision: Number(receipt.revision), duplicate: true };
 		const revision = Number(row?.revision ?? 0);
 		if (body.revision !== revision) fail('O universo mudou. Revise o estado atualizado antes de tentar novamente.', 409);
-		const s = row ? readState(row) : initial(room);
+		const s = row ? readState(row) : initial({ ...room, leagueOptions: leagueOptions(identity.league_options) ?? undefined });
 		const p = s.participants[profile];
 		const owner = identity.owner_id === profile;
 		const requested = body.action;
@@ -665,6 +669,7 @@ export async function applyWorldCommand(db: Db, room: Room, profile: string, bod
 			const role = body.role, club = body.club;
 			if (owner && !p && identity.entry_mode !== 'mixed' && role !== identity.entry_mode) fail('A função do criador deve seguir o modo escolhido.');
 			if (role !== 'coach' && role !== 'assistant' && role !== 'player') fail('Escolha uma função.');
+			if (!roleMatchesMode(identity.entry_mode, role)) fail('A função não pertence ao modo desta liga.', 403);
 			if (typeof club !== 'string' || !clubList(s).includes(club)) fail('Escolha um clube da temporada.');
 			if (p?.role === 'player') fail('Um atleta muda de clube pelo mercado.');
 			if (p && role === 'player') fail('Este participante já tem uma carreira técnica.');

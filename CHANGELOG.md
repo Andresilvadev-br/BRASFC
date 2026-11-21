@@ -1,5 +1,12 @@
 # Novidades
 
+## 0.9.1 — Criação de ligas e lobby
+
+- Cards de Treinador e Jogador na entrada, configuração compacta e modo de participação confirmado pelo servidor.
+- Seleção do clube ou preparação do atleta antes de abrir o lobby, com retorno à configuração e recuperação do rascunho.
+- Central Social separada, convites com funções compatíveis e navegação adaptada ao celular.
+- Migração aditiva 0011 para recuperar uma criação repetida. Instalador Windows 1.4.7.
+
 ## 0.9.0 — Ligas multiplayer (desenvolvimento)
 
 - Conta online com sessões por dispositivo, recuperação por código e conversão de perfil convidado.

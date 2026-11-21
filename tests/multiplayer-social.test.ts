@@ -11,7 +11,7 @@ import { createPgliteDb, createPostgresDb, type Db } from '#lib/server/db/index.
 import { runMigrations } from '#lib/server/db/migrate.ts';
 import { loginAccount, registerAccount, rotateCredentials, listSessions } from '#lib/server/repos/accounts.ts';
 import { createGuestProfile, findProfileByToken } from '#lib/server/repos/profiles.ts';
-import { createRoom, deleteOnlineLeague, getRoomByCode, joinRoom, listRoomsForProfile } from '#lib/server/repos/rooms.ts';
+import { configureLeagueDraft, createRoom, deleteOnlineLeague, getRoomByCode, joinRoom, listRoomsForProfile } from '#lib/server/repos/rooms.ts';
 import { applyWorldCommand, updateLiveRound, worldSnapshot } from '#lib/server/connected-world.ts';
 import { answerInvitation, friendship, searchProfiles, sendInvitation, socialInbox } from '#lib/server/repos/social.ts';
 import { readRoomChat, writeRoomChat } from '#lib/server/repos/room-chat.ts';
@@ -49,6 +49,42 @@ describe('contas e ligas', () => {
 		expect(await findProfileByToken(db, mobile)).toBeNull();
 		expect(await findProfileByToken(db, rotated.token)).toMatchObject({ id: guest.id });
 		await expect(rotateCredentials(db, null, { username: body.username, current: recovery, password }, '')).rejects.toMatchObject({ status: 401 });
+	});
+
+	it('recupera a mesma liga ao repetir a criação, salva o rascunho e mantém os modos separados', async () => {
+		const host = await registered('modos_host'), guest = await registered('modos_guest');
+		const config = { mode:'player', max:4, inviteOnly:true, assistantsRequired:true } as const;
+		const key = randomUUID();
+		const created = await Promise.all([
+			createRoom(db, host.id, 'Atletas online', config, key),
+			createRoom(db, host.id, 'Atletas online', config, key)
+		]);
+		const [room] = created;
+		expect(created[1].id).toBe(room.id);
+		expect(room.assistantsRequired).toBe(false);
+		const leagueOptions = { season:2028, calendar:'saturday', competition:'league', difficulty:'advanced' } as const;
+		await expect(configureLeagueDraft(db, room.code, guest.id, 'Sem permissão', config)).rejects.toMatchObject({ status:404 });
+		const patched = await configureLeagueDraft(db, room.code, host.id, 'Atletas 2028', { ...config, assistantsRequired:false, leagueOptions });
+		expect(patched).toMatchObject({ id:room.id, name:'Atletas 2028', entryMode:'player' });
+		expect(await listRoomsForProfile(db, host.id)).toMatchObject([{ code:room.code, season:2028, editable:true }]);
+		const player = { action:'assign', role:'player', club:'atletico-mg', personName:'Atleta BRASFC', position:'ATA' };
+		const send = async (profile: string, body: Record<string, unknown>) => applyWorldCommand(db, room, profile, {
+			...body, revision:(await worldSnapshot(db, room, profile)).revision, op:randomUUID()
+		});
+		await send(host.id, player);
+		const league = await worldSnapshot(db, patched, host.id);
+		expect(league).toMatchObject({ season:2028, editableDraft:false, current:{ role:'player' } });
+		await expect(configureLeagueDraft(db, room.code, host.id, 'Mudança tardia', config)).rejects.toMatchObject({ status:409 });
+		await expect(sendInvitation(db, room, host.id, { role:'coach', club:'santos', username:guest.username })).rejects.toMatchObject({ status:403 });
+		const invite = await sendInvitation(db, room, host.id, { role:'member', username:guest.username });
+		expect((await socialInbox(db, guest.id)).invites[0]).toMatchObject({ mode:'player' });
+		await answerInvitation(db, guest.id, invite.id, true);
+		await expect(send(guest.id, { action:'assign', role:'coach', club:'santos' })).rejects.toMatchObject({ status:403 });
+		await send(guest.id, { ...player, club:'santos', personName:'Outro Atleta' });
+		expect((await worldSnapshot(db, patched, guest.id)).members.map((member) => member.assignment?.role)).toEqual(['player','player']);
+		const coaching = await createRoom(db, host.id, 'Comissão exclusiva', { ...config, mode:'coach', inviteOnly:false });
+		await joinRoom(db, coaching.code, guest.id);
+		await expect(applyWorldCommand(db, coaching, guest.id, { ...player, op:randomUUID(), revision:0 })).rejects.toMatchObject({ status:403 });
 	});
 
 	it('persiste regras de criação e restringe a exclusão individual ao anfitrião com confirmação', async () => {

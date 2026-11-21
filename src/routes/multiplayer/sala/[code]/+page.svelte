@@ -6,6 +6,9 @@
 	import { clubKit, coachKit } from '#lib/pixel/kits.ts';
 	import { createRng, hashString } from '#lib/domain/rng.ts';
 	import { createRoomConnection } from '#lib/realtime/client.svelte.ts';
+	import LeagueInvite from '#lib/ui/career/LeagueInvite.svelte';
+	import { getClub } from '#lib/domain/clubs.ts';
+	import { enter } from '#lib/motion/actions.ts';
 	import { notify } from '#lib/stores/island.svelte.ts';
 	import ConnectedWorld from '#lib/ui/ConnectedWorld.svelte';
 	import Badge from '#lib/ui/Badge.svelte';
@@ -71,7 +74,7 @@
 	</main>
 {:else}
 	<ConnectedWorld code={data.room.code} initial={data.world} profileId={data.profileId} revision={s.worldRevision} socialRevision={s.chatVersion.league}
-		leagueName={data.room.name} account={data.profile?.username} chatVersions={s.chatVersion} membership={s.room?.members} online={s.status === 'online'} onactivity={conn.setActivity}>
+		leagueName={data.room.name} chatVersions={s.chatVersion} membership={s.room?.members} online={s.status === 'online'} onactivity={conn.setActivity}>
 		{#snippet connection()}
 			<div class="status" role="status">
 					<span class="conn" data-s={s.status}><span class="led"></span>{s.status === 'online' ? 'Conectado em tempo real' : s.status === 'reconnecting' ? 'Reconectando…' : s.status === 'offline' ? 'Sem conexão de rede' : s.status === 'unavailable' ? 'Servidor temporariamente indisponível' : 'Conectando…'}</span>
@@ -79,47 +82,68 @@
 					{#if s.error}<span class="err">{s.error}</span>{/if}
 				</div>
 		{/snippet}
-		{#snippet lobby(members)}
+		{#snippet lobby(world, controls)}
+		{@const members = world.members}
+		{@const coaches = new Set(members.filter((member) => member.assignment?.role === 'coach').map((member) => member.assignment?.club))}
 		{@const total = s.room?.maxMembers ?? data.room.maxMembers}
 		{@const participants = s.room?.members ?? members}
 		<div class="layout">
-			<section class="lobby" aria-label="Jogadores na sala">
-				<header class="lobby-title"><div><h2>{data.room.name}</h2><span class="muted small">{participants.length}/{total} participantes</span></div>
-					{#if !isOwner}<Button variant="ghost" icon="exit" onclick={() => (leaveOpen = true)}>Sair do universo</Button>{/if}
-				</header>
-				<div class="bench">
-					{#each participants as m, i (m.profileId)}
-						{@const assignment = members.find((member) => member.profileId === m.profileId)?.assignment}
-						{@const connected = s.status === 'online' && 'online' in m && m.online === true}
-						<div class="member" class:offline={!connected}>
-							<div class="spot">
-								<Pixel variant="full" appearance={assignment?.appearance ?? look(m.profileId)} clubId={assignment?.club} styled
-									kit={assignment ? assignment.role === 'player' ? clubKit(assignment.club) : coachKit(assignment.club)
-										: { shirt: SHIRTS[i % SHIRTS.length], trim: '#E7EDF0', shorts: '#101418', socks: SHIRTS[i % SHIRTS.length] }} size={68} ball={false} />
+			<div class="lobby-main">
+				<section class="lobby" aria-label="Jogadores na sala">
+					<header class="lobby-title"><div><h2>Participantes</h2><span class="muted small">{participants.length}/{total} vagas</span></div>
+						{#if !isOwner}<Button variant="ghost" icon="exit" onclick={() => (leaveOpen = true)}>Sair do universo</Button>{/if}
+					</header>
+					<div class="bench">
+						{#each participants as m, i (m.profileId)}
+							{@const assignment = members.find((member) => member.profileId === m.profileId)?.assignment}
+							{@const connected = s.status === 'online' && 'online' in m && m.online === true}
+							<div class="member" use:enter={{ index: i }} class:offline={!connected}>
+								<div class="spot">
+									<Pixel variant="full" appearance={assignment?.appearance ?? look(m.profileId)} clubId={assignment?.club} styled
+										kit={assignment ? assignment.role === 'player' ? clubKit(assignment.club) : coachKit(assignment.club)
+											: { shirt: SHIRTS[i % SHIRTS.length], trim: '#E7EDF0', shorts: '#101418', socks: SHIRTS[i % SHIRTS.length] }} size={68} ball={false} />
+								</div>
+								<strong>{m.displayName}{#if m.profileId === data.profileId} <small>(você)</small>{/if}</strong>
+								<small class="member-club">{assignment ? getClub(assignment.club)?.name ?? assignment.club : 'Participação pendente'}</small>
+								<span class="tags">
+									{#if assignment}<Badge tone={assignment.ready ? 'emerald' : 'neutral'}>{assignment.ready ? 'Pronto' : 'Aguardando prontidão'}</Badge>{/if}
+									{#if assignment}<Badge tone="neutral">{assignment.role === 'coach' ? 'Treinador' : assignment.role === 'assistant' ? 'Auxiliar' : 'Jogador'}</Badge>{/if}
+									{#if m.role === 'owner'}<Badge tone="gold" icon="crown">Anfitrião</Badge>{/if}
+									<Badge tone={connected ? 'emerald' : 'neutral'}>{connected ? 'Online' : s.status === 'online' ? 'Offline' : 'Sem confirmação de presença'}</Badge>
+								</span>
 							</div>
-							<strong>{m.displayName}{#if m.profileId === data.profileId} <small>(você)</small>{/if}</strong>
-							<span class="tags">
-								{#if assignment?.ready}<Badge tone="emerald">Pronto</Badge>{/if}
-								{#if assignment}<Badge tone="neutral">{assignment.role === 'coach' ? 'Treinador' : assignment.role === 'assistant' ? 'Auxiliar' : 'Jogador'}</Badge>{/if}
-								{#if m.role === 'owner'}<Badge tone="gold" icon="crown">Anfitrião</Badge>{/if}
-								<Badge tone={connected ? 'emerald' : 'neutral'}>{connected ? 'Online' : s.status === 'online' ? 'Offline' : 'Sem confirmação de presença'}</Badge>
-							</span>
-						</div>
-					{/each}
+						{/each}
 
-				</div>
+					</div>
 
-			</section>
+				</section>
+				{@render controls()}
+			</div>
 
 			<aside class="invite">
-				{#if data.room.inviteOnly}<p>Entrada por convite da conta BRASFC.</p>{:else}
-				<span class="eyebrow">Convide seus amigos</span>
-				<button class="code" onclick={() => copy()} aria-label="Copiar código {data.room.code}">
-					{#each data.room.code.split('') as ch, i (i)}<span>{ch}</span>{/each}
-				</button>
-				<Button variant="secondary" icon="copy" onclick={() => copy()} full>Copiar código</Button>
-				<Button variant="ghost" icon="link" onclick={() => copy(true)} full>Copiar link de convite</Button>
-				<p class="muted small">Eles abrem Multiplayer → Entrar com código. Até {data.room.maxMembers} pessoas por sala.</p>{/if}
+				<h2>Convites da liga</h2>
+				{#if !world.inviteOpen}<p class="muted small">Convites fechados pelo anfitrião.</p>
+				{:else if data.room.inviteOnly}<p class="muted small">Entrada por convite da conta BRASFC.</p>
+				{:else}
+					<div class="code" aria-label="Código da liga {data.room.code}">{#each data.room.code.split('') as ch}<span>{ch}</span>{/each}</div>
+					<div class="invite-actions">
+						<Button size="sm" variant="secondary" icon="copy" onclick={() => copy()}>Copiar código</Button>
+						<Button size="sm" variant="ghost" icon="link" onclick={() => copy(true)}>Copiar link</Button>
+					</div>
+				{/if}
+				{#if world.inviteOpen && data.profile?.username && world.current && (isOwner || world.current.role === 'coach')}
+					<details><summary>Convidar amigos</summary>
+						<LeagueInvite code={data.room.code} owner={isOwner} coach={world.current.role === 'coach'} mode={world.entryMode}
+							teams={world.clubs.filter((team) => !coaches.has(team.id) && !world.reservations.some((item) => item.club === team.id && item.role === 'coach'))} />
+					</details>
+				{/if}
+				{#if world.outgoing.length}
+					<details><summary>Pendentes · {world.outgoing.length}</summary>
+						{#each world.outgoing as item (item.id)}
+							<p class="muted small">@{item.username} · {item.role === 'assistant' ? 'Auxiliar técnico' : item.role === 'coach' || world.entryMode === 'coach' ? 'Treinador' : world.entryMode === 'player' ? 'Atleta' : 'Participante'}{item.club ? ` · ${getClub(item.club)?.name ?? item.club}` : ''}</p>
+						{/each}
+					</details>
+				{/if}
 			</aside>
 		</div>
 		{/snippet}
@@ -142,9 +166,10 @@
 	.layout {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) 300px;
-		gap: var(--sp-4);
+		gap: 10px;
 		align-items: start;
 	}
+	.lobby-main { display: grid; align-content: start; gap: 10px; min-width: 0; }
 	.lobby {
 		padding: var(--sp-5);
 		border-radius: var(--radius-xl);
@@ -160,7 +185,6 @@
 		display: flex;
 		justify-content: space-between;
 		gap: var(--sp-3);
-		margin-bottom: var(--sp-4);
 		font-size: var(--fs-sm);
 	}
 	.conn {
@@ -199,7 +223,7 @@
 		background: var(--surface-sunken);
 	}
 	.member.offline { opacity: 0.8; }
-	.spot { grid-row: span 2; align-self: center; justify-self: center; }
+	.spot { grid-row: span 3; align-self: center; justify-self: center; }
 	.spot :global(svg) { height: 52px; width: auto; }
 	.member strong {
 		font-size: var(--fs-sm);
@@ -223,6 +247,11 @@
 		border: 1px solid var(--line);
 		background: var(--surface);
 	}
+	.invite h2, .invite p { margin: 0; }
+	.invite h2 { font-size: var(--fs-xl); }
+	.invite summary { cursor: pointer; font-weight: 600; }
+	.invite details[open] > :global(form), .invite details p { margin-top: 9px; }
+	.invite-actions { display: flex; flex-wrap: wrap; gap: 5px; }
 	.code {
 		display: flex;
 		justify-content: center;
@@ -235,8 +264,8 @@
 	.code span {
 		display: grid;
 		place-items: center;
-		width: 36px;
-		height: 48px;
+		width: clamp(24px, 7vw, 36px);
+		height: 42px;
 		border-radius: 8px;
 		background: var(--surface-3);
 		font-family: var(--font-display);

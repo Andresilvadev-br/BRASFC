@@ -87,9 +87,25 @@ export function normalizeRoomName(value: unknown): string | null {
 	return name;
 }
 
-export async function createRoom(db: Db, ownerId: string, name: string, options?: { mode: 'coach' | 'player'; max: number; inviteOnly: boolean; assistantsRequired: boolean; leagueOptions?: LeagueOptions }): Promise<Room> {
+export interface LeagueConfig {
+	mode: 'coach' | 'player';
+	max: number;
+	inviteOnly: boolean;
+	assistantsRequired: boolean;
+	leagueOptions?: LeagueOptions;
+}
+
+export function roleMatchesMode(mode: Room['entryMode'], role: 'coach' | 'assistant' | 'player') {
+	return mode === 'player' ? role === 'player' : mode === 'coach' ? role !== 'player' : true;
+}
+
+export async function createRoom(db: Db, ownerId: string, name: string, options?: LeagueConfig, creationKey?: string): Promise<Room> {
 	return db.transaction(async (tx) => {
 		await tx.query('SELECT id FROM profiles WHERE id=$1 FOR UPDATE', [ownerId]);
+		if (creationKey) {
+			const [existing] = await tx.query<RoomRow>('SELECT * FROM rooms WHERE owner_id=$1 AND creation_key=$2', [ownerId, creationKey]);
+			if (existing) return mapRoom(existing);
+		}
 		const [{ count }] = await tx.query<{ count: number | string }>(
 			`SELECT count(*)::int AS count FROM rooms WHERE owner_id = $1 AND status = 'open'`,
 			[ownerId]
@@ -100,16 +116,34 @@ export async function createRoom(db: Db, ownerId: string, name: string, options?
 		for (let attempt = 0; attempt < 6; attempt++) {
 			const code = generateCode();
 			const rows = await tx.query<RoomRow>(
-				`INSERT INTO rooms (id,code,name,owner_id,entry_mode,max_members,invite_only,started,assistants_required,league_options)
-				 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb) ON CONFLICT(code) DO NOTHING RETURNING *`,
+				`INSERT INTO rooms (id,code,name,owner_id,entry_mode,max_members,invite_only,started,assistants_required,league_options,creation_key)
+				 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11) ON CONFLICT(code) DO NOTHING RETURNING *`,
 				[randomUUID(), code, name, ownerId, options?.mode ?? 'mixed', options?.max ?? 8,
-				 options?.inviteOnly ?? false, !options, options?.assistantsRequired ?? true, options?.leagueOptions ? JSON.stringify(options.leagueOptions) : null]
+				 options?.inviteOnly ?? false, !options, options?.mode === 'player' ? false : options?.assistantsRequired ?? true, options?.leagueOptions ? JSON.stringify(options.leagueOptions) : null, creationKey ?? null]
 			);
 			if (!rows.length) continue;
 			await tx.query(`INSERT INTO room_members (room_id, profile_id, role) VALUES ($1, $2, 'owner')`, [rows[0].id, ownerId]);
 			return mapRoom(rows[0]);
 		}
 		throw new RoomError('Não foi possível gerar um código de sala. Tente novamente.', 503);
+	});
+}
+
+export async function configureLeagueDraft(db: Db, code: string, profile: string, name: string, options: LeagueConfig) {
+	return db.transaction(async (tx) => {
+		const [room] = await tx.query<RoomRow>('SELECT * FROM rooms WHERE code=$1 FOR UPDATE', [code]);
+		if (!room || room.owner_id !== profile) throw new RoomError('Liga não encontrada.', 404);
+		const [locked] = await tx.query(`
+			SELECT 1 FROM room_worlds WHERE room_id=$1
+			UNION ALL SELECT 1 FROM room_members WHERE room_id=$1 AND profile_id<>$2
+			UNION ALL SELECT 1 FROM room_invitations WHERE room_id=$1 AND status='pending' AND expires_at>now()`, [room.id, profile]);
+		if (locked || room.started || room.status !== 'open') throw new RoomError('A configuração foi encerrada quando a participação começou.', 409);
+		if (options.mode !== room.entry_mode) throw new RoomError('O modo da liga já foi definido.', 409);
+		const [updated] = await tx.query<RoomRow>(`
+			UPDATE rooms SET name=$2,max_members=$3,invite_only=$4,assistants_required=$5,league_options=$6::jsonb
+			WHERE id=$1 RETURNING *`, [room.id, name, options.max, options.inviteOnly, options.assistantsRequired,
+			JSON.stringify(options.leagueOptions ?? null)]);
+		return mapRoom(updated);
 	});
 }
 
@@ -223,14 +257,20 @@ export async function closeRoom(db: Db, roomId: string): Promise<void> {
 	await db.query(`UPDATE rooms SET status = 'closed', closed_at = now() WHERE id = $1 AND status = 'open'`, [roomId]);
 }
 
-export async function listRoomsForProfile(db: Db, profileId: string, includeOwnedArchives = false): Promise<Array<Room & { members: number }>> {
-	const rows = await db.query<RoomRow & { members: number | string }>(
+export async function listRoomsForProfile(db: Db, profileId: string, includeOwnedArchives = false) {
+	const rows = await db.query<RoomRow & { members: number | string; season: number | null; club: string | null; athlete: string | null; editable: boolean }>(
 		`SELECT r.*,
-			(SELECT count(*)::int FROM room_members x WHERE x.room_id = r.id) AS members
-		 FROM rooms r JOIN room_members rm ON rm.room_id = r.id
-		 WHERE rm.profile_id = $1 AND (r.status = 'open' OR ($2::boolean AND r.owner_id = $1))
+			(SELECT count(*)::int FROM room_members x WHERE x.room_id = r.id) AS members,
+			(w.state->'league'->>'season')::int AS season,
+			w.state->'participants'->$1::text->>'club' AS club,
+			CASE WHEN w.state->'participants'->$1::text->>'role'='player' THEN w.state->'participants'->$1::text->>'name' END AS athlete,
+			w.room_id IS NULL AND r.owner_id=($1::text)::uuid AND NOT r.started AND r.status='open'
+				AND NOT EXISTS (SELECT 1 FROM room_members x WHERE x.room_id=r.id AND x.profile_id<>($1::text)::uuid)
+				AND NOT EXISTS (SELECT 1 FROM room_invitations i WHERE i.room_id=r.id AND i.status='pending' AND i.expires_at>now()) AS editable
+		 FROM rooms r JOIN room_members rm ON rm.room_id = r.id LEFT JOIN room_worlds w ON w.room_id=r.id
+		 WHERE rm.profile_id = ($1::text)::uuid AND (r.status = 'open' OR ($2::boolean AND r.owner_id = ($1::text)::uuid))
 		 ORDER BY r.created_at DESC`,
 		[profileId, includeOwnedArchives]
 	);
-	return rows.map((r) => ({ ...mapRoom(r), members: Number(r.members) }));
+	return rows.map((r) => ({ ...mapRoom(r), members: Number(r.members), club: r.club, athlete: r.athlete, season: r.season ?? mapRoom(r).leagueOptions?.season, editable: r.editable }));
 }

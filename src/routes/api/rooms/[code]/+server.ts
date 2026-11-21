@@ -1,8 +1,9 @@
 import { error } from '@sveltejs/kit';
 import { getDb } from '#lib/server/db/index.ts';
-import { ensureProfile, limitedResponse, noStore, RateLimiter, requireProfile } from '#lib/server/http.ts';
+import { ensureProfile, limitedResponse, noStore, RateLimiter, readJson, requireProfile } from '#lib/server/http.ts';
 import { getRealtimeHub } from '#lib/server/realtime/hub.ts';
-import { getRoomByCode, isMember, joinRoom, leaveRoom, listMembers, normalizeCode, RoomError } from '#lib/server/repos/rooms.ts';
+import { readLeagueConfig } from '#lib/server/league-config.ts';
+import { configureLeagueDraft, getRoomByCode, isMember, joinRoom, leaveRoom, listMembers, normalizeCode, RoomError } from '#lib/server/repos/rooms.ts';
 import type { RequestHandler } from './$types';
 
 const joinLimiter = new RateLimiter(20, 60_000);
@@ -19,6 +20,18 @@ export const GET: RequestHandler = async (event) => {
 	const room = await getRoomByCode(db, codeOf(event.params.code));
 	if (!room || !(await isMember(db, room.id, profile.id))) error(404, 'Sala não encontrada.');
 	return noStore({ room, members: await listMembers(db, room.id) });
+};
+
+export const PATCH: RequestHandler = async (event) => {
+	const profile = requireProfile(event);
+	try {
+		const { name, options } = readLeagueConfig(await readJson(event.request));
+		const room = await configureLeagueDraft(await getDb(), codeOf(event.params.code), profile.id, name, options);
+		return noStore({ room });
+	} catch (e) {
+		if (e instanceof RoomError) error(e.status, e.message);
+		throw e;
+	}
 };
 
 /** Entrar na sala pelo código. */

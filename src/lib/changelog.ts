@@ -19,6 +19,14 @@ export interface Release {
 
 export const RELEASES: Release[] = [
 	{
+		version: '0.9.1', date: '2026-11-21', title: 'Criação de ligas e lobby', channel: 'estavel',
+		added: ['Configuração de liga por etapas e rascunho recuperável', 'Central Social e convites da liga em telas próprias'],
+		improved: ['Navegação mobile, preparação da participação e lobby'],
+		fixed: ['Seleção de modo mostrada de novo depois da criação', 'Funções incompatíveis com o modo da liga'],
+		compat: { database: 'migração aditiva 0011', saves: 'carreiras e ligas anteriores preservadas' },
+		next: []
+	},
+	{
 		version: '0.9.0', date: '2026-11-21', title: 'Ligas multiplayer', channel: 'desenvolvimento',
 		added: ['Conta BRASFC e sessões por dispositivo', 'Lobby, amizades e convites com função', 'Chat da liga e da comissão com sugestões táticas'],
 		improved: ['Regras de criação, convites pela lista de amigos e exclusão individual pelo anfitrião',
