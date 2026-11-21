@@ -62,6 +62,40 @@ jobs:
           done
           echo "servidor não respondeu"; exit 1
 
+  multiplayer-browser:
+    name: Fluxos multiplayer no navegador
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm install --no-save --no-package-lock playwright@1.62.1
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: Testar liga de treinador e de atleta
+        run: |
+          BRASFC_ALLOW_PGLITE=1 PGLITE_DIR="$RUNNER_TEMP/brasfc-browser" ORIGIN=http://127.0.0.1:3000 PORT=3000 node server/index.js > /tmp/brasfc-browser.log 2>&1 &
+          trap 'cat /tmp/brasfc-browser.log' EXIT
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/api/health >/dev/null; then
+              node tests/multiplayer-browser.mjs
+              exit
+            fi
+            sleep 1
+          done
+          exit 1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: capturas-multiplayer
+          path: test-results/multiplayer/
+          if-no-files-found: warn
+
   docker:
     name: Imagem Docker
     runs-on: ubuntu-latest
