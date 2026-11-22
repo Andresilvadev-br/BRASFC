@@ -170,3 +170,10 @@ Mesclei `improvement/master-engineering` (`f1a8d48`) com esta branch numa branch
 
 - **Fase 2:** Treinos, Mercado, Calendário, Competições, Notícias, Configurações, Criação de ligas e Comissão técnica.
 - **Fase 4:** lobby e intervalo com o contrato `readiness`, que depende da pendência 1.
+
+---
+
+## Integração final (Claude, assumindo a Equipe A)
+
+- `improvement/master-integration`: avanço direto até `bb70101` (#20), depois o merge `72fdb3f` (#21 + #22). O único conflito foi este documento.
+- A candidata é a 0.11.0 / Windows 1.4.9. Os resultados e as pendências estão em [RELATORIO-INTEGRACAO-FINAL.md](RELATORIO-INTEGRACAO-FINAL.md).

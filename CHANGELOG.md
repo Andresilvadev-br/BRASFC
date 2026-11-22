@@ -1,5 +1,14 @@
 # Novidades
 
+## 0.11.0 — BRASFC Master
+
+- Integração das equipes de engenharia (Codex) e de experiência (Claude) sobre a 0.10.1.
+- Prontidão oficial da rodada (`readiness`) no lobby e na seção Rodada; partida só começa com obrigatórios prontos e online.
+- Motor 0.5.2 com pressão e cobertura menos aglomeradas e catálogo de abertura v3 com formações variadas.
+- Campo ao vivo interpolado entre quadros oficiais, comparativo de estatísticas no intervalo e escudo nas cenas de lance.
+- Elenco por titulares, banco e fora da relação; calendário com resultados; criação de liga em painel visual; resultados recentes no painel.
+- Publicação protegida por imagem aprovada, backup e verificação de saúde. Migração aditiva 0012. Instalador Windows 1.4.9.
+
 ## 0.10.1 — Central de carreiras
 
 - Menu principal com Continuar (desabilitado sem save válido), Nova carreira, Carregar carreira e Carreiras compartilhadas.

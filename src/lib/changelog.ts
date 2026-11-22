@@ -19,6 +19,25 @@ export interface Release {
 
 export const RELEASES: Release[] = [
 	{
+		version: '0.11.0', date: '2026-11-22', title: 'BRASFC Master', channel: 'estavel',
+		added: ['Prontidão oficial da rodada: prontos, online e apto a iniciar informados pelo servidor',
+			'Campo ao vivo com movimento contínuo entre os quadros oficiais', 'Comparativo de estatísticas no intervalo e na súmula',
+			'Elenco separado em titulares, banco e fora da relação', 'Calendário com resultados, Copa x Liga e agenda do mês'],
+		highlights: [
+			{ title: 'Partida ao vivo mais fluida', text: 'O campo anda entre as atualizações do servidor em vez de pular, e o intervalo mostra posse, finalizações, xG e mais lado a lado.', icon: 'play' },
+			{ title: 'Times com identidade tática', text: 'Os clubes começam com formações coerentes com seus elencos, e a marcação sob pressão ficou menos aglomerada.', icon: 'tactics' },
+			{ title: 'Multiplayer confiável', text: 'O lobby e a rodada mostram quem está pronto e online, e só liberam a partida quando o servidor confirma.', icon: 'multiplayer' },
+			{ title: 'Liga montada em um painel', text: 'Criar uma liga virou um painel com cards, prévia ao vivo e as mesmas opções de antes.', icon: 'trophy' }
+		],
+		improved: ['Motor 0.5.2: primeiro marcador pressiona e os demais dão cobertura (replays anteriores continuam reconhecidos)',
+			'Catálogo de abertura v3 com formações variadas', 'Textos com no mínimo 11 px e telas sem rolagem horizontal de 320 a 2560 px',
+			'Escudo do time nas cenas de lance', 'Publicação protegida por imagem aprovada, backup e verificação de saúde'],
+		fixed: ['Campo da partida ao vivo pulando a cada atualização', 'Lobby indicando "todos prontos" com participante desconectado',
+			'Telas estreitas com rolagem horizontal em Nova carreira, Novidades, Finanças, Notícias e Gabinete'],
+		compat: { database: 'migração aditiva 0012', saves: 'carreiras e ligas anteriores preservadas (verificado com banco da 0.10.0)' },
+		next: []
+	},
+	{
 		version: '0.10.1', date: '2026-11-22', title: 'Central de carreiras', channel: 'estavel',
 		added: ['Biblioteca de carreiras com cards, detalhes, organização e paginação', 'Renomear o save sem alterar o progresso',
 			'Menu com Continuar, Nova carreira, Carregar carreira e Carreiras compartilhadas'],
