@@ -8,6 +8,7 @@
 	import { DEFAULT_LEAGUE_OPTIONS, LEAGUE_SEASONS, leagueOptions, type LeagueOptions } from '#lib/domain/league-options.ts';
 	import Crest from '#lib/ui/Crest.svelte';
 	import SelectCard from '#lib/ui/cards/SelectCard.svelte';
+	import Switch from '#lib/ui/Switch.svelte';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { notify, setIslandContext } from '#lib/stores/island.svelte.ts';
 	import { enter } from '#lib/motion/actions.ts';
@@ -227,7 +228,7 @@
 											<SelectCard icon="lock" title="Somente convidados" description="Só entra quem receber convite da sua conta BRASFC." selected={inviteOnly} onselect={() => (inviteOnly = true)} />
 										</div>
 										{#if mode === 'coach'}
-											<label class="switch"><input type="checkbox" role="switch" bind:checked={assistantsRequired} /><span class="knob" aria-hidden="true"></span><span><strong>Exigir prontidão dos auxiliares</strong><small>A rodada só começa quando os auxiliares também confirmarem.</small></span></label>
+											<Switch bind:checked={assistantsRequired} label="Exigir prontidão dos auxiliares" hint="A rodada só começa quando os auxiliares também confirmarem." />
 										{/if}
 									</section>
 									<section class="cfg">
@@ -391,15 +392,6 @@
 	.pills { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 3px; border-radius: 999px; background: var(--surface-sunken); border: 1px solid var(--line); width: fit-content; max-width: 100%; }
 	.pills button { min-height: 34px; padding: 4px 14px; border: 0; border-radius: 999px; background: transparent; color: var(--text-2); font-weight: 700; font-size: var(--fs-sm); }
 	.pills button[aria-checked='true'] { background: var(--emerald-soft); color: var(--emerald-strong); }
-	.switch { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; background: var(--surface-sunken); border: 1px solid var(--line); cursor: pointer; }
-	.switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
-	.switch .knob { position: relative; flex: none; width: 40px; height: 22px; border-radius: 99px; background: var(--surface-3); transition: background var(--dur-2) var(--ease-out); }
-	.switch .knob::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--text); transition: translate var(--dur-2) var(--ease-spring); }
-	.switch input:checked + .knob { background: var(--emerald); }
-	.switch input:checked + .knob::after { translate: 18px 0; }
-	.switch input:focus-visible + .knob { box-shadow: var(--focus); }
-	.switch span:last-child { display: grid; }
-	.switch small { color: var(--text-3); }
 	.config-preview { position: sticky; top: 16px; display: grid; gap: 10px; padding: 16px; border-radius: 16px; border: 1px solid var(--emerald-line);
 		background: radial-gradient(120% 90% at 100% 0, var(--emerald-soft), transparent 60%), linear-gradient(170deg, #182127, var(--bg-deep)); }
 	.config-preview .eyebrow { color: var(--emerald-strong); }
