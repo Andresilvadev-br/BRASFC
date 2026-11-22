@@ -89,6 +89,7 @@
 		{@const participants = s.room?.members ?? members}
 		{@const seated = participants.map((m) => ({ id: m.profileId, name: m.displayName, assignment: members.find((member) => member.profileId === m.profileId)?.assignment })).filter((m) => m.assignment)}
 		{@const readyCount = seated.filter((m) => m.assignment?.ready).length}
+		{@const offlineSeated = seated.filter((m) => { const live = participants.find((p) => p.profileId === m.id); return !(s.status === 'online' && live && 'online' in live && live.online === true); })}
 		<div class="layout">
 			<div class="lobby-main">
 				<section class="lobby" aria-label="Jogadores na sala">
@@ -99,10 +100,11 @@
 						<div class="readiness" role="status" aria-live="polite">
 							<div class="ring" style:--p={readyCount / seated.length}><span>{readyCount}<small>/{seated.length}</small></span></div>
 							<div class="ready-copy">
-								<strong>{readyCount === seated.length ? 'Todos prontos' : `${readyCount} de ${seated.length} ${seated.length === 1 ? 'participante pronto' : 'participantes prontos'}`}</strong>
+								<strong>{readyCount === seated.length ? (offlineSeated.length ? 'Prontos, mas há desconectados' : 'Todos prontos e online') : `${readyCount} de ${seated.length} ${seated.length === 1 ? 'participante pronto' : 'participantes prontos'}`}</strong>
+								{#if offlineSeated.length}<small class="offline-note">Sem conexão agora: {offlineSeated.map((m) => m.name).join(', ')}. A partida segue a regra de presença da liga, confirmada pelo servidor.</small>{/if}
 								<span class="pips">
 									{#each seated as m (m.id)}
-										<span class="pip" class:ok={m.assignment?.ready} title="{m.name} · {m.assignment?.ready ? 'Pronto' : 'Aguardando'}">{#if m.assignment?.ready}<Icon name="check" size={11} stroke={3} />{/if}<em>{m.name}</em></span>
+										<span class="pip" class:ok={m.assignment?.ready} class:away={offlineSeated.includes(m)} title="{m.name} · {m.assignment?.ready ? 'Pronto' : 'Aguardando'}{offlineSeated.includes(m) ? ' · desconectado' : ''}">{#if m.assignment?.ready}<Icon name="check" size={11} stroke={3} />{/if}<em>{m.name}</em></span>
 									{/each}
 								</span>
 							</div>
@@ -258,6 +260,8 @@
 	.pip.ok { border-style: solid; border-color: var(--emerald-line); color: var(--emerald-strong); }
 	.pip.ok::before { display: none; }
 	.pip :global(svg) { width: 14px; height: 14px; padding: 1px; border-radius: 50%; background: var(--emerald); color: #04130d; }
+	.pip.away { opacity: .6; }
+	.offline-note { color: var(--warning); font-size: var(--fs-xs); max-width: 460px; }
 	.pip em { font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.spot :global(svg) { height: 52px; width: auto; }
 	.member strong {
