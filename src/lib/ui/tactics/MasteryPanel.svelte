@@ -514,13 +514,13 @@
 		white-space: nowrap;
 	}
 	.fn {
-		font-size: 10.5px;
+		font-size: 11px;
 		color: var(--text-3);
 	}
 	.now {
 		position: absolute;
 		top: -7px;
-		font-size: 9px;
+		font-size: 11px;
 		font-weight: 800;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
@@ -648,7 +648,7 @@
 	}
 	.who small {
 		color: var(--gold);
-		font-size: 10.5px;
+		font-size: 11px;
 	}
 	.mini {
 		display: grid;

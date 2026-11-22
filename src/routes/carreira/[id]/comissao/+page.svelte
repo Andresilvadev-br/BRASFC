@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Switch from '#lib/ui/Switch.svelte';
 	import { clubAction } from '#lib/client/club.ts';
 	import { formatMoney } from '#lib/domain/market.ts';
 	import { STAFF_ROLES, type StaffRole } from '#lib/domain/staff.ts';
@@ -71,10 +72,7 @@
 		<div class="sum glass">
 			<small>Folha da comissão</small>
 			<strong>{formatMoney(monthly)}<span>/mês</span></strong>
-			<label class="deleg">
-				<input type="checkbox" checked={!!ov.office.delegated} disabled={busy} onchange={(e) => act({ action: 'treino-delegar', on: (e.currentTarget as HTMLInputElement).checked })} />
-				<span>Auxiliar planeja os treinos</span>
-			</label>
+			<Switch checked={!!ov.office.delegated} disabled={busy} label="Auxiliar planeja os treinos" hint="Em cada rodada de liga, o auxiliar monta a semana pela condição do elenco e pelo próximo adversário." onchange={(on) => act({ action: 'treino-delegar', on })} />
 		</div>
 	</header>
 
@@ -168,19 +166,6 @@
 	.sum strong span {
 		font-size: 0.9rem;
 		color: var(--text-3);
-	}
-	.deleg {
-		display: flex;
-		gap: 8px;
-		align-items: center;
-		margin-top: 6px;
-		font-size: var(--fs-sm);
-		cursor: pointer;
-	}
-	.deleg input {
-		accent-color: #10b981;
-		width: 18px;
-		height: 18px;
 	}
 	.advice {
 		display: grid;

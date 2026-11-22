@@ -1,12 +1,22 @@
-import { catalogClub, type ClubRoster, type RosterCatalogId } from '#lib/data/roster-catalog.ts';
-import { defaultTactic, FORMATIONS, recoverTactic, type Tactic } from './tactics.ts';
+import { catalogClub, fixedOpeningFormation, type ClubRoster, type RosterCatalogId } from '#lib/data/roster-catalog.ts';
+import { autoLineup, defaultTactic, FORMATIONS, recoverTactic, type Tactic } from './tactics.ts';
+import type { CoachProfile } from '#lib/engine/ai-coach.ts';
+import { clubCoach, coachFormation } from './coaches.ts';
 import { squadStrength, type SquadPlayer } from './squad.ts';
 
-export function initialClubTactic(version: RosterCatalogId | undefined, club: string, squad: SquadPlayer[]): Tactic {
+export function initialClubTactic(version: RosterCatalogId | undefined, club: string, squad: SquadPlayer[], profile?: CoachProfile): Tactic {
 	const roster = catalogClub(version, club);
 	if (!roster) return defaultTactic(squad);
+	const fixed = fixedOpeningFormation(version, roster);
+	if (!fixed) {
+		// O seletor e o treinador humano usam o perfil padrão do clube no cenário brasileiro.
+		const catalogSeason = 2026;
+		const shape = profile ?? clubCoach(catalogSeason, club, catalogSeason, catalogSeason).profile;
+		const formation = coachFormation(shape, squad);
+		return { formation, lineup: autoLineup(formation, squad), mentality: shape.mentality, style: shape.style };
+	}
 	return recoverTactic({
-		formation: roster.formation, mentality: 'equilibrada', style: 'posse',
+		formation: fixed, mentality: 'equilibrada', style: 'posse',
 		lineup: roster.players.filter((player) => player.matchRole === 'starter').map((player) => `${club}-cbf${player.playerId}`)
 	}, squad) ?? defaultTactic(squad);
 }

@@ -140,7 +140,7 @@
 		flex: 1;
 	}
 	.eyebrow {
-		font-size: 10.5px;
+		font-size: 11px;
 		font-weight: 800;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
@@ -223,7 +223,7 @@
 		color: var(--text);
 	}
 	.areas b {
-		font-size: 10.5px;
+		font-size: 11px;
 		padding: 0 5px;
 		border-radius: 8px;
 		background: var(--surface-2);
@@ -282,14 +282,14 @@
 		align-items: center;
 	}
 	.kind {
-		font-size: 10.5px;
+		font-size: 11px;
 		font-weight: 800;
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
 		color: var(--text-3);
 	}
 	.pri {
-		font-size: 10px;
+		font-size: 11px;
 		font-weight: 800;
 		padding: 0 6px;
 		border-radius: 6px;

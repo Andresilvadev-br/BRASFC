@@ -2,7 +2,7 @@
 
 Simulador brasileiro de futebol com **Carreira de Treinador** e **Carreira de Jogador**, multiplayer e identidade visual premium — a simplicidade do Brasfoot com a apresentação de um jogo moderno.
 
-> Versão atual: **Dev 0.3 (inteligência tática avançada)**. Relatórios: [Dev 0.3](RELATORIO-DEV-0.3.md) · [Dev 0.2](RELATORIO-DEV-0.2.md) · [Etapa 1](RELATORIO-ETAPA-1.md).
+> Consulte a versão do jogo em [package.json](package.json) e a versão Windows em [desktop/package.json](desktop/package.json). A atualização Master está em revisão. Veja a [auditoria](docs/AUDITORIA-MASTER.md) e os [contratos de integração](docs/INTEGRACAO-MASTER.md).
 
 ## Rodar localmente (com HMR)
 
@@ -61,3 +61,4 @@ Capturas reais das telas (com o servidor rodando): `node scripts/capturas.mjs ht
 
 - `dev` — versões experimentais (publica no ambiente **staging**).
 - `main` — versões estáveis (publica em **produção**, com aprovação).
+- `improvement/master-integration` — valida a candidata Master em PRs separados de engenharia e interface.

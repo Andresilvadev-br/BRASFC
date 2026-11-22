@@ -4,7 +4,7 @@ import { createPgliteDb, createPostgresDb, type Db } from '#lib/server/db/index.
 import { runMigrations } from '#lib/server/db/migrate.ts';
 import { createGuestProfile } from '#lib/server/repos/profiles.ts';
 import { createRoom, joinRoom } from '#lib/server/repos/rooms.ts';
-import { applyWorldCommand, updateLiveRound, worldSnapshot } from '#lib/server/connected-world.ts';
+import { applyWorldCommand, updateLiveRound, worldReadiness, worldSnapshot } from '#lib/server/connected-world.ts';
 import { forgetRound } from '#lib/server/live-round.ts';
 import { parseClientMessage } from '#lib/realtime/protocol.ts';
 
@@ -36,10 +36,26 @@ it('recupera rodada com vários jogos, aplica substituições reais e espera tr�
 	const before = await worldSnapshot(db, room, coach);
 	await command(coach, 'ready', { value: true });
 	await command(assistant, 'ready', { value: true });
-	await expect(command(coach, 'advance')).rejects.toMatchObject({ status: 409 });
-	connected.add(athlete);
 	await command(athlete, 'ready', { value: true });
+	const readiness = () => worldReadiness(db, room, coach, connection.online);
+	const waiting = await readiness();
+	expect(waiting.readiness).toMatchObject({ requiredCount: 3, onlineCount: 2, readyCount: 3, readyOnlineCount: 2, canStart: false });
+	expect(waiting.readiness.participants).toContainEqual({ profileId: athlete, required: true, online: false, ready: true });
+	expect((await worldSnapshot(db, room, coach, connection.online)).readiness).toEqual(waiting.readiness);
+	await expect(worldReadiness(db, room, stranger, connection.online)).rejects.toMatchObject({ status: 404 });
+	connected.add(athlete);
+	const apt = await readiness();
+	expect(apt).toMatchObject({ revision: waiting.revision, readiness: { readyOnlineCount: 3, canStart: true } });
+	connected.delete(athlete);
+	expect(await readiness()).toEqual(waiting);
+	await expect(command(coach, 'advance')).rejects.toMatchObject({ status: 409 });
+	expect(await readiness()).toEqual(waiting);
 	const pulse = (profile = coach) => updateLiveRound(db, room, profile, { action: 'pulse' }, connection);
+	expect((await pulse()).session).toBeNull();
+	connected.add(athlete);
+	expect(await readiness()).toEqual(apt);
+	await command(coach, 'advance');
+	expect((await readiness()).readiness.canStart).toBe(false);
 	await expect(pulse(stranger)).rejects.toMatchObject({ status: 404 });
 	let session = (await pulse()).session!;
 	const issue = async (profile: string, action: string, options: Record<string, unknown> = {}, op = randomUUID()) => {
@@ -140,7 +156,7 @@ it('migra uma cópia de sala da Dev 0.7 sem modificar membros e progresso', asyn
 		await old.query("INSERT INTO room_members (room_id,profile_id,role) VALUES ($1,$2,'owner')", [room.id, profile]);
 		const saved = { date: '2027-02-04', step: 3, participants: { [profile]: { role: 'coach', ready: false, club: 'flamengo' } } };
 		await old.query('INSERT INTO room_worlds (room_id,revision,state) VALUES ($1,4,$2::jsonb)', [room.id, JSON.stringify(saved)]);
-		expect(await runMigrations(old)).toEqual(['0007_live_rounds', '0008_market_lookup', '0009_league_social', '0010_league_options', '0011_league_creation_key']);
+		expect(await runMigrations(old)).toEqual(['0007_live_rounds', '0008_market_lookup', '0009_league_social', '0010_league_options', '0011_league_creation_key', '0012_career_label']);
 		expect(await old.query('SELECT revision,state FROM room_worlds WHERE room_id=$1', [room.id])).toEqual([{ revision: 4, state: saved }]);
 		expect(await old.query('SELECT profile_id FROM room_members WHERE room_id=$1', [room.id])).toEqual([{ profile_id: profile }]);
 		expect(await runMigrations(old)).toEqual([]);

@@ -6,8 +6,8 @@ import serieD from './brasil/2026/elencos-abertura-v2-d.json' with { type: 'json
 import type { Position } from '#lib/domain/positions.ts';
 import type { FormationId } from '#lib/domain/tactics.ts';
 
-export const ROSTER_CATALOG = 'brasil-2026-abertura-v2' as const;
-export type RosterCatalogId = 'brasil-2026-abertura-v1' | typeof ROSTER_CATALOG;
+export const ROSTER_CATALOG = 'brasil-2026-abertura-v3' as const;
+export type RosterCatalogId = 'brasil-2026-abertura-v1' | 'brasil-2026-abertura-v2' | typeof ROSTER_CATALOG;
 
 export interface CatalogPlayer {
 	playerId: string;
@@ -38,12 +38,19 @@ export interface ClubRoster {
 const openingV1 = Object.fromEntries(Object.entries(opening2026.clubs).map(([id, roster]) => [id, {
 	...roster, league: opening2026.league, asOf: opening2026.asOf, source: opening2026.sources[0], modeledTactics: false
 }])) as Record<string, ClubRoster | undefined>;
+const openingV2 = { ...serieA, ...serieB, ...serieC, ...serieD } as Record<string, ClubRoster | undefined>;
 const versions: Record<RosterCatalogId, Record<string, ClubRoster | undefined>> = {
 	'brasil-2026-abertura-v1': openingV1,
-	[ROSTER_CATALOG]: { ...serieA, ...serieB, ...serieC, ...serieD } as Record<string, ClubRoster | undefined>
+	'brasil-2026-abertura-v2': openingV2,
+	[ROSTER_CATALOG]: openingV2
 };
 
 export function catalogClub(version: RosterCatalogId | undefined, clubId: string): ClubRoster | undefined {
 	if (!version) return undefined;
 	return versions[version]?.[clubId];
+}
+
+/** A súmula sem ficha tática determina a inscrição, mas não a formação da edição atual. */
+export function fixedOpeningFormation(version: RosterCatalogId | undefined, roster: ClubRoster): FormationId | undefined {
+	return version !== ROSTER_CATALOG || !roster.modeledTactics || roster.tacticsSource ? roster.formation : undefined;
 }

@@ -55,16 +55,16 @@
 </section>
 
 <style>
-	.walk { position:fixed; inset:0; z-index:80; display:grid; grid-template-rows:minmax(0,1fr) auto; justify-items:center;
-		gap:12px; padding:clamp(12px,4vw,40px); overflow:hidden; color:var(--text); background:radial-gradient(ellipse at 50% 10%, #145740, #07130f 54%, #05080a); }
+	.walk { position:fixed; inset:0; z-index:80; display:flex; flex-direction:column; align-items:center; justify-content:center;
+		gap:20px; height:100dvh; padding:calc(clamp(12px,4vw,40px) + env(safe-area-inset-top,0px)) clamp(12px,4vw,40px) calc(clamp(16px,4vw,40px) + env(safe-area-inset-bottom,0px)); overflow:hidden; color:var(--text); background:radial-gradient(ellipse at 50% 10%, #145740, #07130f 54%, #05080a); }
 	.lights { position:absolute; inset:0; background:conic-gradient(from 135deg at 15% 0%,transparent 0 15deg,#fff1 30deg,transparent 42deg),
 		conic-gradient(from 184deg at 85% 0%,transparent 0 15deg,#fff1 30deg,transparent 42deg); pointer-events:none; }
-	.show { position:relative; width:min(100%,650px); min-height:0; align-self:center; max-height:100%; overflow:auto; text-align:center; }
+	.show { position:relative; width:min(100%,650px); min-height:0; flex:0 1 auto; max-height:100%; overflow:auto; text-align:center; }
 	.competition { margin:0 0 12px; color:var(--gold); font-weight:700; font-size:var(--fs-sm); text-transform:uppercase; }
 	.duel { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:clamp(8px,4vw,48px); }
 	.duel > span { font-size:2rem; color:var(--text-2); }
 	.club,.kickoff { display:grid; justify-items:center; gap:10px; }
 	.club strong,.kickoff strong { font-family:var(--font-display); font-size:clamp(1.5rem,4vw,3rem); line-height:1; }
 	.venue,.kickoff span { color:var(--text-2); }
-	button { z-index:1; padding:8px 14px; border:1px solid var(--line-strong); border-radius:20px; color:var(--text); background:var(--surface); cursor:pointer; }
+	button { z-index:1; flex:none; min-height:44px; padding:8px 18px; border:1px solid var(--line-strong); border-radius:20px; color:var(--text); background:var(--surface); cursor:pointer; }
 </style>

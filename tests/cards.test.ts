@@ -6,6 +6,7 @@ import ActionCard from '#lib/ui/cards/ActionCard.svelte';
 import MatchCard from '#lib/ui/cards/MatchCard.svelte';
 import SelectCard from '#lib/ui/cards/SelectCard.svelte';
 import StatCard from '#lib/ui/cards/StatCard.svelte';
+import StatsCompare from '#lib/ui/match/StatsCompare.svelte';
 
 /** Biblioteca de cards (0.10) e textos da transmissão: renderização SSR dos componentes reais. */
 describe('cards e transmissão', () => {
@@ -45,5 +46,17 @@ describe('cards e transmissão', () => {
 		expect(body).toContain('▲ 3');
 		const flat = render(StatCard, { props: { label: 'Geral', value: 70 } }).body;
 		expect(flat).not.toContain('role="meter"');
+	});
+
+	it('StatsCompare compara as estatísticas oficiais das equipes', () => {
+		const base = { shots: 0, shotsOnTarget: 0, xg: 0, passes: 0, passesCompleted: 0, possessionTicks: 0, corners: 0, fouls: 0, offsides: 0, yellows: 0, reds: 0 };
+		const body = render(StatsCompare, { props: {
+			home: { id: 'flamengo', short: 'FLA', colors: { primary: '#c00' } }, away: { id: 'palmeiras', short: 'PAL', colors: { primary: '#060' } },
+			stats: { home: { ...base, possessionTicks: 60, shots: 7, xg: 1.234, passes: 100, passesCompleted: 85 }, away: { ...base, possessionTicks: 40, shots: 3 } }
+		} }).body;
+		expect(body).toContain('Posse de bola');
+		expect(body).toMatch(/60%[\s\S]*40%/);
+		expect(body).toContain('1.23');
+		expect(body).toContain('85%');
 	});
 });

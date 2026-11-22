@@ -10,6 +10,7 @@ import { DEFAULT_ROLE, defaultRoleForSlot, ROLES, roleCompatibility, type RoleDe
 import { COACH_PROFILES, inMatchAdjustment, type CoachProfile, type MatchView } from './ai-coach.ts';
 import {
 	DEFAULT_RULES,
+	ENGINE_VERSION,
 	PITCH,
 	LEGACY_ENGINE_VERSION,
 	type AppliedDecision,
@@ -159,6 +160,7 @@ export class Match {
 
 	private rng: Rng;
 	private readonly allowDisallowedGoals: boolean;
+	private readonly usePressingLanes: boolean;
 	private queue: Record<Side, Decision[]> = { home: [], away: [] };
 	private replay: Map<number, AppliedDecision[]> | null = null;
 	private restart: Restart | null = null;
@@ -183,6 +185,7 @@ export class Match {
 		this.rules = { ...DEFAULT_RULES, ...(opts.rules ?? {}) };
 		this.seed = opts.seed >>> 0;
 		this.allowDisallowedGoals = opts.version !== LEGACY_ENGINE_VERSION;
+		this.usePressingLanes = (opts.version ?? ENGINE_VERSION) === ENGINE_VERSION;
 		this.rng = createRng(this.seed);
 		const formRng = createRng((this.seed ^ 0x9e3779b9) >>> 0);
 		this.form = { home: 0.9 + formRng.next() * 0.2, away: 0.9 + formRng.next() * 0.2 };
@@ -751,7 +754,7 @@ export class Match {
 		const posSide: Side | null = ownerState?.side ?? (this.ball.flight ? (this.lastTouch?.side ?? null) : (this.restart?.side ?? null));
 		const focusX = this.ball.flight ? this.ball.flight.toX : this.ball.x;
 		const focusY = this.ball.flight ? this.ball.flight.toY : this.ball.y;
-		const pressers = new Set<string>();
+		const pressers = new Map<string, number>();
 		if (ownerState && this.restart === null) {
 			const def = OTHER[ownerState.side];
 			const dt = this.teams[def];
@@ -769,9 +772,9 @@ export class Match {
 			const [cax] = toRel(ownerState.side, ownerState.x, ownerState.y);
 			const danger = cax > 68 ? 2 : 0;
 			near.forEach((n, i) => {
-				if (i === 0 && n.d < Math.max(pressDist, 12)) pressers.add(n.s.id);
-				else if (i < pressersN && n.d < pressDist) pressers.add(n.s.id);
-				else if (i < 1 + danger && n.d < 14) pressers.add(n.s.id);
+				if (i === 0 && n.d < Math.max(pressDist, 12)) pressers.set(n.s.id, pressers.size);
+				else if (i < pressersN && n.d < pressDist) pressers.set(n.s.id, pressers.size);
+				else if (i < 1 + danger && n.d < 14) pressers.set(n.s.id, pressers.size);
 			});
 		}
 		const lines: Record<Side, number> = { home: this.offsideLine('home'), away: this.offsideLine('away') };
@@ -795,7 +798,15 @@ export class Match {
 			const info = this.player(s.id)!;
 			if (pressers.has(s.id) && ownerState) {
 				const [ox, oy] = toRel(s.side, ownerState.x, ownerState.y);
-				[tx, ty] = toAbs(s.side, ox - 1.2, oy);
+				const rank = this.usePressingLanes ? pressers.get(s.id)! : 0;
+				if (!rank) [tx, ty] = toAbs(s.side, ox - 1.2, oy);
+				else {
+					// Quem dá cobertura fecha uma saída de passe ao lado do primeiro marcador.
+					const width = 2.2 * Math.ceil(rank / 2);
+					const direction = oy < PITCH.width / 2 ? 1 : -1;
+					const lateral = width * direction * (rank % 2 ? 1 : -1);
+					[tx, ty] = toAbs(s.side, ...clampToPitch(ox - 1.8 - rank * 0.4, oy + lateral));
+				}
 			} else if (mine && s.id !== this.teams[s.side].gkId) {
 				// Em posse, ninguém fica parado em impedimento; atacantes rápidos esticam até a linha.
 				const [rx, ry] = toRel(s.side, tx, ty);
@@ -845,7 +856,7 @@ export class Match {
 	 * Marcação: cada defensor (sem a bola) acompanha o adversário mais próximo da sua zona,
 	 * posicionado entre ele e o gol. Quem tem bom posicionamento/antecipação marca mais justo.
 	 */
-	private assignMarking(defSide: Side, pressers: Set<string>, ballX: number, ballY: number, target?: (side: Side, slot: number, inPos: boolean) => [number, number]): Map<string, [number, number]> {
+	private assignMarking(defSide: Side, pressers: ReadonlyMap<string, number>, ballX: number, ballY: number, target?: (side: Side, slot: number, inPos: boolean) => [number, number]): Map<string, [number, number]> {
 		const out = new Map<string, [number, number]>();
 		const attSide = OTHER[defSide];
 		const attackers = this.onPitch(attSide).filter((a) => a.id !== this.ball.owner && a.id !== this.teams[attSide].gkId);

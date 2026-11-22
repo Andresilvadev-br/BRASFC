@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { applyWorldCommand, updateLiveRound, worldClubLineup, worldMarket, worldReplay, worldRevision, worldSnapshot } from '#lib/server/connected-world.ts';
+import { applyWorldCommand, updateLiveRound, worldClubLineup, worldMarket, worldReadiness, worldReplay, worldRevision, worldSnapshot } from '#lib/server/connected-world.ts';
 import { getDb } from '#lib/server/db/index.ts';
 import { limitedResponse, noStore, RateLimiter, readJson, requireProfile } from '#lib/server/http.ts';
 import { getRealtimeHub } from '#lib/server/realtime/hub.ts';
@@ -21,12 +21,14 @@ export const GET: RequestHandler = async (event) => {
 	const db = await getDb();
 	try {
 		const room = await roomOf(db, event.params.code);
+		const online = () => getRealtimeHub().onlineProfiles(room.id);
+		if (event.url.searchParams.has('readiness')) return noStore(await worldReadiness(db, room, profile.id, online));
 		if (event.url.searchParams.has('revision')) return noStore(await worldRevision(db, room, profile.id));
 		if (event.url.searchParams.has('market')) return noStore(await worldMarket(db, room, profile.id, event.url.searchParams));
 		const club = event.url.searchParams.get('clube');
 		if (club) return noStore(await worldClubLineup(db, room, profile.id, club));
 		const home = event.url.searchParams.get('home'), away = event.url.searchParams.get('away');
-		return noStore(home && away ? await worldReplay(db, room, profile.id, home, away) : await worldSnapshot(db, room, profile.id));
+		return noStore(home && away ? await worldReplay(db, room, profile.id, home, away) : await worldSnapshot(db, room, profile.id, online));
 	} catch (e) {
 		if (e instanceof RoomError) error(e.status, e.message);
 		throw e;

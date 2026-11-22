@@ -3,7 +3,7 @@
 # baixa a imagem pronta do GitHub (ou constrói localmente) e publica com verificação de saúde e retorno automático.
 #
 # Instalar (uma vez, como root):
-#   curl -fsSL https://raw.githubusercontent.com/Andresilvadev-br/BRASFC/dev/deploy/self-update.sh | bash -s -- --install
+#   curl -fsSL https://raw.githubusercontent.com/Andresilvadev-br/BRASFC/main/deploy/self-update.sh | bash -s -- --install
 #
 # Depois disso, a cada minuto a VPS verifica se há commits novos e atualiza sozinha.
 # Log: /opt/brasfc/backups/self-update.log
@@ -12,8 +12,21 @@ set -euo pipefail
 DIR=/opt/brasfc
 SRC="$DIR/src"
 REPO="https://github.com/Andresilvadev-br/BRASFC.git"
-BRANCH="${BRASFC_BRANCH:-dev}"
 ENV_NAME="${BRASFC_DEPLOY_ENV:-producao}"
+case "$ENV_NAME" in
+	producao) default_branch=main ;;
+	staging) default_branch=dev ;;
+	*) echo "ambiente inválido: $ENV_NAME" >&2; exit 2 ;;
+esac
+BRANCH="${BRASFC_BRANCH:-$default_branch}"
+if [[ ! "$BRANCH" =~ ^[a-zA-Z0-9._/-]+$ ]]; then
+	echo "Branch inválida para configurar o atualizador." >&2
+	exit 2
+fi
+if [ "$ENV_NAME" = producao ] && [ "$BRANCH" != main ]; then
+	echo "O atualizador de produção acompanha a branch main." >&2
+	exit 2
+fi
 LOG="$DIR/backups/self-update.log"
 GHCR="ghcr.io/andresilvadev-br/brasfc"
 
@@ -28,9 +41,9 @@ if [ "${1:-}" = "--install" ]; then
 	chown -R deploy:deploy "$DIR"
 	CURRENT="$(crontab -u deploy -l 2>/dev/null || true)"
 	{ printf '%s\n' "$CURRENT" | grep -v 'self-update.sh' | grep -v '^$' || true
-	  echo "* * * * * flock -n /tmp/brasfc-update.lock $DIR/deploy/self-update.sh >> $LOG 2>&1"; } | crontab -u deploy -
+	  echo "* * * * * BRASFC_DEPLOY_ENV=$ENV_NAME BRASFC_BRANCH=$BRANCH flock -n /tmp/brasfc-update.lock $DIR/deploy/self-update.sh >> $LOG 2>&1"; } | crontab -u deploy -
 	echo "▶ Primeira publicação (leva alguns minutos na primeira vez)…"
-	sudo -u deploy flock /tmp/brasfc-update.lock "$DIR/deploy/self-update.sh" 2>&1 | tee -a "$LOG"
+	sudo -u deploy env BRASFC_DEPLOY_ENV="$ENV_NAME" BRASFC_BRANCH="$BRANCH" flock /tmp/brasfc-update.lock "$DIR/deploy/self-update.sh" 2>&1 | tee -a "$LOG"
 	exit "${PIPESTATUS[0]}"
 fi
 
@@ -86,13 +99,13 @@ done
 cp deploy/caddy/* "$DIR/deploy/caddy/"
 chmod +x "$DIR"/deploy/*.sh
 
-# Caminho rápido: o GitHub Actions já publica a imagem pronta (pública) em ~3 min após o push.
-# Baixar leva segundos; construir na VPS leva vários minutos. Só constrói aqui se o GitHub não publicou.
+# Produção só instala a imagem aprovada e publicada pelo Actions.
+# Staging pode montar a imagem localmente depois da janela de espera.
 if docker pull --quiet "$GHCR:$TAG" >/dev/null 2>&1; then
 	# Integridade: o pull por tag é verificado pelo digest do registro; registramos o digest no log.
 	echo "[$(stamp)] imagem pronta baixada do GitHub ($(docker image inspect --format '{{index .RepoDigests 0}}' "$GHCR:$TAG" 2>/dev/null || echo "$GHCR:$TAG"))"
 	docker tag "$GHCR:$TAG" "brasfc-local:$TAG"
-elif [ $(( $(date +%s) - $(git log -1 --format=%ct "$REMOTE") )) -lt 900 ]; then
+elif [ "$ENV_NAME" = producao ] || [ $(( $(date +%s) - $(git log -1 --format=%ct "$REMOTE") )) -lt 900 ]; then
 	echo "[$(stamp)] aguardando o GitHub publicar a imagem de $TAG"
 	exit 0
 else

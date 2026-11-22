@@ -1,6 +1,6 @@
 # Implantação, atualização e recuperação
 
-Tudo está automatizado, mas **ainda não há VPS, domínio nem credenciais configurados** — nenhum deploy público foi feito. Para ativar, siga os passos abaixo.
+Este documento descreve os métodos de implantação e a configuração necessária. Consulte o resumo de cada execução do Actions e confira o commit em `/api/health` para verificar a versão do site.
 
 ## O que é necessário (você fornece)
 
@@ -26,10 +26,10 @@ O script instala o Docker, cria o usuário `deploy`, gera senhas fortes nos `.en
 Depois do bootstrap, na VPS, como root:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Andresilvadev-br/BRASFC/dev/deploy/self-update.sh | bash -s -- --install
+curl -fsSL https://raw.githubusercontent.com/Andresilvadev-br/BRASFC/main/deploy/self-update.sh | bash -s -- --install
 ```
 
-A VPS passa a verificar a branch `dev` a cada 5 minutos: se houver commit novo, constrói a imagem localmente e publica com backup, verificação de saúde e retorno automático. Não precisa de secrets no GitHub. Log em `/opt/brasfc/backups/self-update.log`.
+Em produção, o atualizador verifica a `main` a cada minuto e aguarda a imagem aprovada no GitHub Actions. A instalação usa backup, verificação de saúde e retorno automático. Em staging, o padrão é acompanhar `dev` e a construção local é permitida após a janela de espera. Não precisa de secrets no GitHub. Log em `/opt/brasfc/backups/self-update.log`.
 
 O deploy via GitHub Actions (abaixo) continua disponível como alternativa.
 
@@ -71,15 +71,21 @@ Secrets (por ambiente ou do repositório):
 | `VPS_SSH_KEY` | chave privada de deploy |
 | `VPS_KNOWN_HOSTS` | saída de `ssh-keyscan SEU_HOST` |
 
-Variables: `PUBLIC_URL` (ex.: `https://brasfc.seudominio.com.br`) e, opcional, `VPS_DIR` (padrão `/opt/brasfc`).
+Variáveis por ambiente:
+
+| Variável | Valor |
+| --- | --- |
+| `DEPLOY_METHOD` | `ssh` para executar a implantação pelo Actions, `self-update` para confirmar o atualizador instalado na VPS ou `image-only` para publicar só a imagem de staging. Sem valor, o job usa SSH quando as quatro credenciais estão presentes. |
+| `PUBLIC_URL` | URL que responde a `/api/health`. Obrigatória em produção e no método `self-update`. |
+| `VPS_DIR` | Diretório usado pelo SSH. Padrão `/opt/brasfc`. |
 
 ## 3. Fluxo de publicação
 
 1. Push em `dev` → CI (tipos, testes, build, smoke test do servidor, build Docker) → imagem `ghcr.io/andresilvadev-br/brasfc:sha-…` → deploy em **staging**.
-2. Merge em `main` → mesmo processo → aprovação manual → **produção**.
+2. Merge aprovado em `main` → validações → aprovação no ambiente **produção** → publicação da imagem e implantação. A aprovação deve estar configurada no GitHub para proteger também instalações via self-update.
 3. `deploy/deploy.sh` faz backup do banco, sobe a nova imagem, espera `/api/health` e **volta automaticamente à versão anterior** se a nova não ficar saudável.
 
-Sem os secrets, o workflow publica a imagem e avisa que o deploy foi ignorado — nunca finge sucesso.
+O resumo indica separadamente CI, publicação da imagem, instalação e confirmação do commit saudável na URL pública. Produção exige um método de implantação válido e a URL deve responder com o commit desse workflow. Quando a VPS usa o atualizador, confirme que seu serviço acompanha `main` para produção e `dev` para staging. A configuração do serviço é administrada na VPS. Uma falha de backup cancela a instalação antes que a candidata possa executar migrações.
 
 Jogadores conectados recebem o aviso "Nova versão do BRASFC" e atualizam quando quiserem; alterações não salvas são protegidas.
 
@@ -131,7 +137,7 @@ App ≤ 512 MB (heap Node 384 MB), PostgreSQL ≤ 512 MB, Caddy ≤ 128 MB por a
 ## Atualização automática (Dev 0.4)
 
 - **Por que o site parou na 0.1.0:** a regra `data/` do `.gitignore` também ignorava `src/lib/data/` (base Brasil 2026). O CI falhava na verificação de tipos e a VPS não conseguia montar a imagem. Corrigido para `/data/`.
-- A VPS verifica a branch a cada minuto, **baixa a imagem pronta do GitHub** (registro público, verificada pelo digest, que vai para o log) e só monta localmente se a imagem não existir após 15 minutos.
+- O atualizador baixa a imagem pronta do GitHub. O digest vai para o log. O fallback de construção local após 15 minutos fica restrito a staging.
 - Antes de publicar: backup do banco (`deploy.sh`); depois: verificação de saúde e retorno automático à versão anterior se falhar.
 - Uma versão que falhou não é tentada de novo a cada minuto (`.failed-tag`); um commit novo libera.
 - Estado da última implantação: `/opt/brasfc/backups/deploy-status.json`. Aviso opcional: crie `/opt/brasfc/deploy/.env.notify` com `DEPLOY_WEBHOOK_URL=...` (Discord, Slack, ntfy) — nada disso vai para o repositório.
@@ -140,7 +146,7 @@ App ≤ 512 MB (heap Node 384 MB), PostgreSQL ≤ 512 MB, Caddy ≤ 128 MB por a
 ## Aplicativo para Windows (Dev 0.4.1)
 
 - Código em `desktop/` (Electron). O app abre o site oficial (`BRASFC_URL` para testar outro endereço), então o JOGO se atualiza pelo servidor como sempre; a casca se atualiza sozinha pelo GitHub Releases (`electron-updater`).
-- Workflow `.github/workflows/desktop.yml`: em push que altere `desktop/`, roda o autoteste da janela (centralização e tela cheia) num Windows do GitHub e publica `BRASFC-Setup.exe` como release `v<versão>` — só se essa versão ainda não existir. Para lançar outra versão do app, aumente `version` em `desktop/package.json`.
+- Workflow `.github/workflows/desktop.yml`: nos PRs de integração e nas publicações Windows, roda o autoteste da janela e valida a atualização a partir da release atual, com save e recuperação de falhas. Uma publicação com versão inédita empacota os mesmos arquivos testados e só então os entrega ao GitHub Releases. Para lançar outra versão do app, aumente `version` em `desktop/package.json`.
 - O botão de download consulta `/api/desktop`, que só devolve link quando a release tem o instalador.
 - Teste local: `cd desktop && npm ci && npx electron . --selftest` (imprime `SELFTEST {...}` e sai com 0 se a janela abriu centralizada e entrou/saiu da tela cheia). Instalador local: `npm run dist`.
 

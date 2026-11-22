@@ -22,28 +22,42 @@ docker network inspect brasfc-edge >/dev/null 2>&1 || docker network create bras
 
 # Backup antes de qualquer migração (apenas se o banco já existir).
 if compose "${PREVIOUS:-$TAG}" ps --status running db 2>/dev/null | grep -q db; then
-  ENV_NAME="$ENV_NAME" "$ROOT/deploy/backup.sh" || echo "⚠ backup falhou; seguindo com cautela"
+  ENV_NAME="$ENV_NAME" "$ROOT/deploy/backup.sh" || {
+    echo "❌ Backup falhou. Implantação cancelada antes de iniciar a nova versão." >&2
+    exit 1
+  }
 fi
 
 # Com BRASFC_SKIP_PULL=1 a imagem já foi construída na própria VPS (self-update.sh).
 [ "${BRASFC_SKIP_PULL:-0}" = 1 ] || compose "$TAG" pull app
-compose "$TAG" up -d --remove-orphans --no-build
+rollback() {
+  echo "❌ versão $TAG não ficou saudável." >&2
+  compose "$TAG" logs --tail 80 app >&2 || true
+  if [ -n "$PREVIOUS" ] && [ "$PREVIOUS" != "$TAG" ]; then
+    echo "↩ retornando para $PREVIOUS" >&2
+    compose "$PREVIOUS" up -d --no-build
+  fi
+  return 1
+}
+
+echo "▶ Instalação iniciada para $ENV_NAME: $TAG"
+if ! compose "$TAG" up -d --remove-orphans --no-build; then
+  rollback
+  exit 1
+fi
 
 echo "⏳ aguardando /api/health…"
+EXPECTED_COMMIT="${TAG#sha-}"
 for i in $(seq 1 30); do
-  if compose "$TAG" exec -T app wget -qO- http://127.0.0.1:3000/api/health 2>/dev/null | grep -q '"status":"ok"'; then
+  if HEALTH="$(compose "$TAG" exec -T app wget -qO- http://127.0.0.1:3000/api/health 2>/dev/null)" &&
+     grep -Fq '"status":"ok"' <<< "$HEALTH" &&
+     { [[ "$TAG" != sha-* ]] || grep -Fq "\"commit\":\"$EXPECTED_COMMIT\"" <<< "$HEALTH"; }; then
     echo "$TAG" > "$STATE_FILE"
-    echo "✅ $ENV_NAME saudável na versão $TAG"
+    echo "✅ Instalação concluída. $ENV_NAME saudável na versão $TAG"
     docker image prune -f >/dev/null || true
     exit 0
   fi
   sleep 3
 done
 
-echo "❌ versão $TAG não ficou saudável." >&2
-compose "$TAG" logs --tail 80 app >&2 || true
-if [ -n "$PREVIOUS" ] && [ "$PREVIOUS" != "$TAG" ]; then
-  echo "↩ retornando para $PREVIOUS" >&2
-  compose "$PREVIOUS" up -d
-fi
-exit 1
+rollback

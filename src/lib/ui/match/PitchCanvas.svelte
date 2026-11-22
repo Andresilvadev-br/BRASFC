@@ -50,6 +50,10 @@
 	const height = $derived(Math.round((width * PITCH.width) / PITCH.length));
 
 	let alpha = 1;
+	/** Define a fração da transição sem desenhar (o próximo redesenho já começa na origem). */
+	export function prime(a: number) {
+		alpha = a;
+	}
 	/** chamado pelo laço de animação a cada quadro, com a fração entre dois ticks */
 	export function draw(a = alpha) {
 		alpha = a;

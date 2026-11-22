@@ -234,7 +234,7 @@
 		align-items: center;
 	}
 	.pos {
-		font-size: 9px;
+		font-size: 11px;
 		font-weight: 800;
 		color: var(--text-3);
 		letter-spacing: 0.03em;
@@ -271,12 +271,12 @@
 	}
 	.ic {
 		font-style: normal;
-		font-size: 9px;
+		font-size: 11px;
 	}
 	.inj {
 		font-style: normal;
 		color: var(--danger);
-		font-size: 10px;
+		font-size: 11px;
 	}
 	.card {
 		display: inline-block;
@@ -338,7 +338,7 @@
 	}
 	.tok .nm {
 		max-width: 100%;
-		font-size: 10.5px;
+		font-size: 11px;
 	}
 	.board.compact {
 		display: grid;

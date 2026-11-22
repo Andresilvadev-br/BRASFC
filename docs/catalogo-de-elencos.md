@@ -28,3 +28,7 @@ O manifesto `identidade.json` admite uma arte local em `static/escudos` somente 
 ## Publicação
 
 As versões de publicação são 0.8.4 no jogo e 1.4.4 no Windows. O workflow de deploy existente empacota a versão do site. O workflow App Windows empacota o offline, gera o instalador e produz os metadados de atualização. Valide o instalador e a versão do ambiente antes de considerar a distribuição concluída.
+
+## Edição v3 para novas carreiras
+
+A edição v3 conserva os 3.442 atletas, os vínculos, as súmulas e as três referências táticas disponíveis na v2. Quando a fonte só documenta a convocação, utiliza o perfil de treinador simulado e o encaixe dos jogadores do elenco nas posições dos esquemas preferidos. A seleção pode promover um suplente documentado se ele se encaixar melhor na escalação do jogo. As súmulas continuam registrando os titulares históricos e os jogadores conservam seus identificadores. Carreiras v1 e v2 mantêm a interpretação anterior da abertura.

@@ -19,6 +19,15 @@
 	import ScreenHeader from '#lib/ui/ScreenHeader.svelte';
 
 	let { data } = $props();
+	/**
+	 * Contrato `readiness` da Equipe A (docs/INTEGRACAO-MASTER.md). O servidor é a autoridade:
+	 * quando o campo existe, o lobby não deduz presença nem aptidão.
+	 */
+	type OfficialReadiness = {
+		participants: Array<{ profileId: string; required: boolean; ready: boolean; online: boolean }>;
+		requiredCount: number; readyCount: number; onlineCount: number; readyOnlineCount: number; canStart: boolean;
+	};
+	const officialReadiness = (world: unknown) => (world as { readiness?: OfficialReadiness }).readiness ?? null;
 	const conn = createRoomConnection(untrack(() => data.room.code), (notice) => notify({ id: notice.id, icon:'mail', title:notice.title, action: {
 		label: notice.destination === 'chat' ? 'Abrir comunicação' : 'Abrir Central social',
 		run: () => void goto(notice.destination === 'chat' && notice.code ? `/multiplayer/sala/${notice.code}?secao=comunicacao` : '/multiplayer#social')
@@ -89,6 +98,10 @@
 		{@const participants = s.room?.members ?? members}
 		{@const seated = participants.map((m) => ({ id: m.profileId, name: m.displayName, assignment: members.find((member) => member.profileId === m.profileId)?.assignment })).filter((m) => m.assignment)}
 		{@const readyCount = seated.filter((m) => m.assignment?.ready).length}
+		{@const official = officialReadiness(world)}
+		{@const offlineSeated = official ? seated.filter((m) => official.participants.some((p) => p.profileId === m.id && p.required && !p.online)) : seated.filter((m) => { const live = participants.find((p) => p.profileId === m.id); return !(s.status === 'online' && live && 'online' in live && live.online === true); })}
+		{@const done = official ? official.readyOnlineCount : readyCount}
+		{@const needed = official ? official.requiredCount : seated.length}
 		<div class="layout">
 			<div class="lobby-main">
 				<section class="lobby" aria-label="Jogadores na sala">
@@ -97,12 +110,16 @@
 					</header>
 					{#if seated.length}
 						<div class="readiness" role="status" aria-live="polite">
-							<div class="ring" style:--p={readyCount / seated.length}><span>{readyCount}<small>/{seated.length}</small></span></div>
+							<div class="ring" class:apt={official?.canStart} style:--p={needed ? done / needed : 0}><span>{done}<small>/{needed}</small></span></div>
 							<div class="ready-copy">
-								<strong>{readyCount === seated.length ? 'Todos prontos' : `${readyCount} de ${seated.length} ${seated.length === 1 ? 'participante pronto' : 'participantes prontos'}`}</strong>
+								<strong>{official
+									? official.canStart ? 'Apto a iniciar' : `${official.readyOnlineCount} de ${official.requiredCount} prontos e online`
+									: readyCount === seated.length ? (offlineSeated.length ? 'Prontos, mas há desconectados' : 'Todos prontos e online') : `${readyCount} de ${seated.length} ${seated.length === 1 ? 'participante pronto' : 'participantes prontos'}`}</strong>
+								{#if official && !official.canStart && official.requiredCount && official.readyOnlineCount === official.requiredCount}<small class="offline-note">Todos prontos e online. A rodada abre quando a temporada estiver em andamento e não houver rodada ativa.</small>{/if}
+								{#if offlineSeated.length}<small class="offline-note">Sem conexão agora: {offlineSeated.map((m) => m.name).join(', ')}. A partida segue a regra de presença da liga, confirmada pelo servidor.</small>{/if}
 								<span class="pips">
 									{#each seated as m (m.id)}
-										<span class="pip" class:ok={m.assignment?.ready} title="{m.name} · {m.assignment?.ready ? 'Pronto' : 'Aguardando'}">{#if m.assignment?.ready}<Icon name="check" size={11} stroke={3} />{/if}<em>{m.name}</em></span>
+										<span class="pip" class:ok={m.assignment?.ready} class:away={offlineSeated.includes(m)} title="{m.name} · {m.assignment?.ready ? 'Pronto' : 'Aguardando'}{offlineSeated.includes(m) ? ' · desconectado' : ''}">{#if m.assignment?.ready}<Icon name="check" size={11} stroke={3} />{/if}<em>{m.name}</em></span>
 									{/each}
 								</span>
 							</div>
@@ -258,6 +275,9 @@
 	.pip.ok { border-style: solid; border-color: var(--emerald-line); color: var(--emerald-strong); }
 	.pip.ok::before { display: none; }
 	.pip :global(svg) { width: 14px; height: 14px; padding: 1px; border-radius: 50%; background: var(--emerald); color: #04130d; }
+	.pip.away { opacity: .6; }
+	.ring.apt { box-shadow: 0 0 0 4px var(--emerald-soft), 0 0 24px -4px rgb(52 211 153 / .6); }
+	.offline-note { color: var(--warning); font-size: var(--fs-xs); max-width: 460px; }
 	.pip em { font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.spot :global(svg) { height: 52px; width: auto; }
 	.member strong {

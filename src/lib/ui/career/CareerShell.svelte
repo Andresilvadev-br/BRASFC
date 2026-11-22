@@ -137,7 +137,7 @@
 	}
 	.group {
 		margin: var(--sp-3) var(--sp-3) 4px;
-		font-size: 10px;
+		font-size: 11px;
 		letter-spacing: 0.18em;
 		text-transform: uppercase;
 		color: var(--text-3);

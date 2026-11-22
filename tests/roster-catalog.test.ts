@@ -2,6 +2,8 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 import { catalogClub, ROSTER_CATALOG } from '#lib/data/roster-catalog.ts';
 import { TEMPORADA_2026 } from '#lib/data/brasil.ts';
 import { computeOverall } from '#lib/engine/attributes.ts';
+import { aiTeam } from '#lib/domain/matchday.ts';
+import { ensureUniverse } from '#lib/server/universe.ts';
 import { careerView } from '#lib/domain/view.ts';
 import { clubLineup, initialClubTactic } from '#lib/domain/club-selection.ts';
 import { careerBaseSquad, generateSquad } from '#lib/domain/squad.ts';
@@ -59,7 +61,10 @@ it('carrega os clubes A–D, sem inscrições duplicadas, com titulares e fontes
 			const preview = clubLineup(squad, initialClubTactic(ROSTER_CATALOG, id, squad), opening);
 			expect(preview.coverage, id).toBe('documented');
 			expect(preview.starters, id).toHaveLength(11);
-			expect(preview.starters.map((slot) => slot.player?.cbfId), id).toEqual(opening.players.filter((player) => player.matchRole === 'starter').map((player) => player.playerId));
+			const legacy = initialClubTactic('brasil-2026-abertura-v2', id, squad);
+			expect(clubLineup(squad, legacy).starters.map((slot) => slot.player?.cbfId), id)
+				.toEqual(opening.players.filter((player) => player.matchRole === 'starter').map((player) => player.playerId));
+			expect(new Set(preview.starters.map((slot) => slot.player?.cbfId)).size, id).toBe(11);
 			expect(preview.bench.length + preview.starters.length, id).toBe(squad.length);
 			for (const player of squad) {
 				expect(player.cbfId, player.name).toMatch(/^\d+$/);
@@ -95,4 +100,25 @@ it('fixa catálogo no banco, isola transação entre saves e mantém elenco lega
 	await db.query("UPDATE careers SET data = data - 'rosterCatalog' - 'market' WHERE id = $1", [coach.id]);
 	const legacy = (await getCareer(db, profile.id, coach.id))!;
 	expect(rosterOf(rosterContext(legacy), 'palmeiras').map((member) => member.id)).toEqual(generateSquad('palmeiras', 15).map((member) => member.id));
+});
+
+it('seleciona mais de uma formação pelo elenco, mantém as referências e aplica o plano à IA', async () => {
+	const divisions = initialLeague('brasil', 2026).divisions;
+	const clubs = Object.values(divisions).flat();
+	const choices = clubs.map((id) => initialClubTactic(ROSTER_CATALOG, id, careerBaseSquad(id, 15, ROSTER_CATALOG)).formation);
+	expect(new Set(choices).size).toBeGreaterThan(2);
+	for (const id of ['palmeiras', 'atletico-mg', 'flamengo']) {
+		expect(choices[clubs.indexOf(id)]).toBe(catalogClub(ROSTER_CATALOG, id)?.formation);
+	}
+	const { profile } = await createGuestProfile(db);
+	const career = await createCareer(db, profile.id, { mode: 'coach', personName: 'Ana Souza', clubId: 'palmeiras', world: 'brasil' }, 15);
+	const universe = ensureUniverse(career, initialLeague('brasil', 2026));
+	const ctx = { season: 2026, firstSeason: 2026 };
+	const modeled = clubs.filter((id) => catalogClub(ROSTER_CATALOG, id)?.modeledTactics && !catalogClub(ROSTER_CATALOG, id)?.tacticsSource);
+	const aiChoices = modeled.map((id) => {
+		const plan = aiTeam({ ...career, data: { ...career.data, universe } }, id, ctx, 1).setup.tactic;
+		expect(plan.formation, id).toBe(universe.clubs[id].formation);
+		return plan.formation;
+	});
+	expect(new Set(aiChoices).size).toBeGreaterThan(2);
 });

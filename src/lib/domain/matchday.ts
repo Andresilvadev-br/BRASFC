@@ -1,19 +1,20 @@
-import { catalogClub } from '#lib/data/roster-catalog.ts';
+import { catalogClub, fixedOpeningFormation } from '#lib/data/roster-catalog.ts';
 import { initialClubTactic } from './club-selection.ts';
 import { computeOverall } from '#lib/engine/attributes.ts';
 import { Match, simulateMatch } from '#lib/engine/match.ts';
 import { buildTeamSetup } from '#lib/engine/teams.ts';
 import type { AppliedDecision, MatchResult as EngineResult, PlayerStats, Side, TeamSetup } from '#lib/engine/types.ts';
+import { COACH_PROFILES } from '#lib/engine/ai-coach.ts';
 import type { TacticalInstructions } from '#lib/engine/instructions.ts';
 import type { RoleId } from '#lib/engine/roles.ts';
 import type { Career } from './career.ts';
-import { aiTeamPlan, scoutFrom, type CoachOverride, type ObservedMatch } from './coaches.ts';
+import { aiTeamPlan, clubCoach, coachFormation, scoutFrom, type CoachOverride, type ObservedMatch } from './coaches.ts';
 import { aiExecution, type UniverseState } from './universe.ts';
 import { requireClub } from './clubs.ts';
 import { randomAppearance } from './appearance.ts';
 import { createRng, deriveSeed } from './rng.ts';
 import type { Fixture, MatchResult } from './season.ts';
-import { squadStrength, type SquadPlayer } from './squad.ts';
+import { careerBaseSquad, squadStrength, type SquadPlayer } from './squad.ts';
 import { rosterOf } from './market.ts';
 import { advancePlayerDays, playerAttributes, playerState, type PlayerAssessment, type PlayerSelection } from './player-development.ts';
 import { rosterContext } from './world.ts';
@@ -89,7 +90,7 @@ export function userTeam(career: Career, myTactic: Tactic, ctx: MatchdayContext,
 				...p, condition: d.condition,
 				overall: p.overall + (d.trust - 50) * 0.28 + (d.support.squad - 50) * 0.07 + (d.condition - 95) * 0.32
 			} : p);
-		const plan = aiTeamPlan(career.seed, career.clubId, ctx.season, ctx.firstSeason, fit, undefined, round, universeCoach(career, career.clubId));
+		const plan = aiTeamPlan(career.seed, career.clubId, ctx.season, ctx.firstSeason, fit, undefined, round, universeCoach(career, career.clubId, fit, ctx));
 		const t = plan.tactic;
 		const setup = buildTeamSetup(identity(career.clubId), fit, t);
 		setup.familiarity = engineFamiliarity(ctx.tactical, t.formation, t.style, setup.tactic.lineup, t.roles, t.instructions);
@@ -110,10 +111,10 @@ export function userTeam(career: Career, myTactic: Tactic, ctx: MatchdayContext,
 export function aiTeam(career: Career, clubId: string, ctx: Pick<MatchdayContext, 'season' | 'firstSeason'>, round: number, opponentObserved?: ObservedMatch[]): { setup: TeamSetup; reasons: string[]; coachLabel: string } {
 	const squad: SquadPlayer[] = rosterOf(rosterContext(career), clubId);
 	const scout = opponentObserved ? scoutFrom(opponentObserved, squad) : undefined;
-	const override = universeCoach(career, clubId);
+	const override = universeCoach(career, clubId, squad, ctx);
 	const catalog = career.data.rosterCatalog;
 	const opening = ctx.season === ctx.firstSeason && round === 1 && catalogClub(catalog, clubId)
-		? initialClubTactic(catalog, clubId, squad) : undefined;
+		? initialClubTactic(catalog, clubId, squad, override ? COACH_PROFILES[override.style] : clubCoach(career.seed, clubId, ctx.season, ctx.firstSeason).profile) : undefined;
 	const plan = aiTeamPlan(career.seed, clubId, ctx.season, ctx.firstSeason, squad, scout, round, override, opening);
 	const setup = buildTeamSetup(identity(clubId), squad, plan.tactic);
 	setup.tactic.instructions = plan.tactic.instructions;
@@ -124,13 +125,17 @@ export function aiTeam(career: Career, clubId: string, ctx: Pick<MatchdayContext
 }
 
 /** Técnico, sistema e domínio do clube no universo da carreira (null em saves sem universo). */
-export function universeCoach(career: Pick<Career, 'data'>, clubId: string): CoachOverride | null {
+export function universeCoach(career: Pick<Career, 'data'> & Partial<Pick<Career, 'seed' | 'season'>>, clubId: string, squad?: SquadPlayer[],
+	ctx = { season: career.season ?? 2026, firstSeason: career.data.firstSeason ?? career.season ?? 2026 }): CoachOverride | null {
 	const u = career.data.universe as UniverseState | undefined;
 	const mind = u?.clubs?.[clubId];
 	const coach = mind?.coachId ? u!.coaches?.[mind.coachId] : null;
 	if (!mind || !coach) {
 		const reference = catalogClub(career.data.rosterCatalog, clubId);
-		return reference?.coach ? { style: 'equilibrado', formation: reference.formation, execution: 55, name: reference.coach, since: 2026 } : null;
+		if (!reference?.coach) return null;
+		const fixed = fixedOpeningFormation(career.data.rosterCatalog, reference);
+		const profile = fixed ? COACH_PROFILES.equilibrado : clubCoach(career.seed ?? 0, clubId, ctx.season, ctx.firstSeason).profile;
+		return { style: profile.id, formation: fixed ?? coachFormation(profile, squad ?? careerBaseSquad(clubId, career.seed ?? 0, career.data.rosterCatalog)), execution: 55, name: reference.coach, since: 2026 };
 	}
 	return { style: coach.style, formation: mind.formation, execution: aiExecution(u, clubId) ?? 55, name: coach.name, since: coach.since };
 }
