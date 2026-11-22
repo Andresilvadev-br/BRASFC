@@ -37,6 +37,7 @@ import { ENGINE_VERSION, supportsEngineVersion, type MatchEvent, type MatchResul
 import { canCommitRound, checkpoint, enginesFor, forgetRound, keepEngines, matchView, preparedFixtures, pulseRound, rememberFixtures, startRound, type LiveFixture, type LiveRound, type RoundReplay } from './live-round.ts';
 import { parseDecision } from './rounds.ts';
 import type { Db } from './db/index.ts';
+import type { RoundReadiness } from '#lib/realtime/protocol.ts';
 import { isUuid } from './repos/careers.ts';
 import { listMembers, roleMatchesMode, RoomError, type Room } from './repos/rooms.ts';
 
@@ -155,15 +156,16 @@ function roster(room: Room, s: WorldState, club: string) {
 	})];
 }
 
-export async function worldSnapshot(db: Db, room: Room, profile: string) {
+export async function worldSnapshot(db: Db, room: Room, profile: string, online: () => ReadonlySet<string> = () => new Set()) {
 	const members = await listMembers(db, room.id);
 	if (!members.some((m) => m.profileId === profile)) fail('Universo não encontrado.', 404);
 	const [row] = await db.query<RecordRow>('SELECT revision, state FROM room_worlds WHERE room_id = $1', [room.id]);
 	const s = row ? readState(row) : initial(room);
 	const current = s.participants[profile];
-	const past = current ? await results(db, room, s.league.season, true, schedule(s).slice(0, s.step).map((step) => step.key)) : [];
+	const steps = schedule(s);
+	const past = current ? await results(db, room, s.league.season, true, steps.slice(0, s.step).map((step) => step.key)) : [];
 	const division = current ? divisionOf(s.league, current.club) : null;
-	const step = stepOf(s);
+	const step = steps[s.step] ?? null;
 	const ownClub = current && current.role !== 'player' ? clubStateOf(context(room, s, current.club), s.league) : null;
 	const fixtures = scheduledFixtures(s, [...seasonFixtures(s.league, seedOf(room)), ...(s.cup ? cupFixtures(s.cup) : [])]);
 	const squad = current ? roster(room, s, current.club) : [];
@@ -177,7 +179,7 @@ export async function worldSnapshot(db: Db, room: Room, profile: string) {
 	const assistant = current?.role === 'assistant' && current.finance && issuer?.role === 'coach' && issuer.club === current.club
 		? current : null;
 	const tier = tierOfDivision(division);
-	const half = (schedule(s).slice(s.step).find((entry) => entry.kind === 'league')?.round ?? 38) <= 19 ? 1 : 2;
+	const half = (steps.slice(s.step).find((entry) => entry.kind === 'league')?.round ?? 38) <= 19 ? 1 : 2;
 	const [[live], reservations, outgoing] = await Promise.all([
 		db.query('SELECT 1 FROM room_live_rounds WHERE room_id=$1', [room.id]),
 		db.query<{ club: string; role: 'coach' | 'assistant'; mine: boolean }>(
@@ -188,7 +190,8 @@ export async function worldSnapshot(db: Db, room: Room, profile: string) {
 			WHERE i.room_id=$1 AND i.sender=$2 AND i.status='pending' AND i.expires_at>now() ORDER BY i.created_at DESC`,
 			[room.id, profile])
 	]);
-	return { reservations, outgoing, editableDraft: room.ownerId === profile && !room.started && !row && members.length === 1 && outgoing.length === 0, options: s.options ?? DEFAULT_LEAGUE_OPTIONS, entryMode: room.entryMode, started: room.started ?? true, assistantsRequired: room.assistantsRequired ?? true, live: !!live, revision: Number(row?.revision ?? 0), ownerId: room.ownerId, season: s.league.season, date: s.date, rosterCatalog: s.rosterCatalog,
+	const readiness = roundReadiness(Object.values(s.participants), online(), room.assistantsRequired ?? true, (room.started ?? true) && !live);
+	return { readiness, reservations, outgoing, editableDraft: room.ownerId === profile && !room.started && !row && members.length === 1 && outgoing.length === 0, options: s.options ?? DEFAULT_LEAGUE_OPTIONS, entryMode: room.entryMode, started: room.started ?? true, assistantsRequired: room.assistantsRequired ?? true, live: !!live, revision: Number(row?.revision ?? 0), ownerId: room.ownerId, season: s.league.season, date: s.date, rosterCatalog: s.rosterCatalog,
 		next: step, fixture: current && step ? fixtures.find((f) => f.competition === (step.kind === 'cup' ? 'copa-do-brasil' : f.competition)
 			&& (step.kind === 'cup' || f.competition !== 'copa-do-brasil') && f.round === (step.kind === 'league' ? step.round : step.matchday)
 			&& [f.home, f.away].includes(current.club)) : null,
@@ -506,6 +509,20 @@ export async function worldRevision(db: Db, room: Room, profile: string) {
 	if (!row) fail('Universo não encontrado.', 404);
 	if (row.status !== 'open') fail('Universo arquivado.', 410);
 	return { revision: Number(row.revision) };
+}
+
+export async function worldReadiness(db: Db, room: Room, profile: string, online: () => ReadonlySet<string>) {
+	const [row] = await db.query<{
+		revision: number; status: Room['status']; started: boolean; assistants_required: boolean;
+		live: boolean; participants: WorldState['participants'] | null;
+	}>(`SELECT COALESCE(w.revision,0) AS revision,r.status,r.started,r.assistants_required,
+		w.state->'participants' AS participants, EXISTS(SELECT 1 FROM room_live_rounds l WHERE l.room_id=r.id) AS live
+		FROM rooms r JOIN room_members m ON m.room_id=r.id LEFT JOIN room_worlds w ON w.room_id=r.id
+		WHERE r.id=$1 AND m.profile_id=$2`, [room.id, profile]);
+	if (!row) fail('Universo não encontrado.', 404);
+	if (row.status !== 'open') fail('Universo arquivado.', 410);
+	const readiness = roundReadiness(Object.values(row.participants ?? {}), online(), row.assistants_required, row.started && !row.live);
+	return { revision: Number(row.revision), readiness };
 }
 
 export async function worldClubLineup(db: Db, room: Room, profile: string, club: string) {
@@ -963,12 +980,28 @@ export async function applyWorldCommand(db: Db, room: Room, profile: string, bod
 	});
 }
 
-function requiredForRound(state: WorldState, assistantsRequired: boolean) {
-	return Object.values(state.participants).filter((member) => member.role !== 'assistant' || assistantsRequired);
+const requiredForRound = (state: WorldState, assistantsRequired: boolean) =>
+	Object.values(state.participants).filter((member) => needsConfirmation(member, assistantsRequired));
+
+function needsConfirmation(member: Assignment, assistantsRequired: boolean) {
+	return member.role !== 'assistant' || assistantsRequired;
 }
+
 function allReady(state: WorldState, online: ReadonlySet<string>, assistantsRequired: boolean) {
 	const members = requiredForRound(state, assistantsRequired);
-	return members.length > 0 && members.every((p) => p.ready && online.has(p.profile));
+	return members.length > 0 && members.every((member) => member.ready && online.has(member.profile));
+}
+
+function roundReadiness(members: Assignment[], online: ReadonlySet<string>, assistantsRequired: boolean, available: boolean): RoundReadiness {
+	const participants = members.map((member) => ({
+		profileId: member.profile, required: needsConfirmation(member, assistantsRequired),
+		ready: member.ready, online: online.has(member.profile)
+	}));
+	const required = participants.filter((member) => member.required);
+	const readyOnlineCount = required.filter((member) => member.ready && member.online).length;
+	return { participants, requiredCount: required.length, readyCount: required.filter((member) => member.ready).length,
+		onlineCount: required.filter((member) => member.online).length, readyOnlineCount,
+		canStart: available && required.length > 0 && readyOnlineCount === required.length };
 }
 
 async function beginLiveRound(tx: Db, room: Room, s: WorldState, connection: RoundConnection, assistantsRequired: boolean) {
@@ -1038,16 +1071,19 @@ export async function updateLiveRound(db: Db, room: Room, profile: string, body:
 		const [identity] = await tx.query('SELECT id FROM rooms WHERE id=$1 AND status=\'open\' FOR UPDATE', [room.id]);
 		connection.timing?.('lock', performance.now() - started);
 		const readStarted = performance.now();
-		if (!identity || !(await listMembers(tx, room.id)).some((member) => member.profileId === profile)) fail('Universo não encontrado.', 404);
-		const [row] = await tx.query<{ session_id: string; state: Omit<LiveRound, 'fixtures'> }>(
-			'SELECT session_id,state FROM room_live_rounds WHERE room_id=$1', [room.id]
-		);
-		if (!row) return { session: null };
+		if (!identity) fail('Universo não encontrado.', 404);
+		const [row] = await tx.query<{
+			session_id: string | null; state: Omit<LiveRound, 'fixtures'> | null; participants: WorldState['participants'] | null;
+		}>(`SELECT l.session_id,l.state,w.state->'participants' AS participants FROM room_members m
+			LEFT JOIN room_live_rounds l ON l.room_id=m.room_id
+			LEFT JOIN room_worlds w ON w.room_id=l.room_id
+			WHERE m.room_id=$1 AND m.profile_id=$2`, [room.id, profile]);
+		if (!row) fail('Universo não encontrado.', 404);
+		if (!row.session_id || !row.state) return { session: null };
 		const fixtures = preparedFixtures(row.session_id) ?? rememberFixtures(row.session_id,
 			(await tx.query<{ fixtures: LiveFixture[] }>('SELECT fixtures FROM room_live_rounds WHERE room_id=$1', [room.id]))[0].fixtures);
 		const round = { ...row.state, fixtures };
-		const [{ participants }] = await tx.query<{ participants: WorldState['participants'] }>(
-			"SELECT state->'participants' AS participants FROM room_worlds WHERE room_id=$1", [room.id]);
+		const participants = row.participants ?? {};
 		connection.timing?.('read', performance.now() - readStarted);
 		const player = participants[profile];
 		if (!player) fail('Você não participa desta rodada.', 403);

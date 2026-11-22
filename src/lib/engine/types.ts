@@ -11,8 +11,9 @@ export const PITCH = { length: 105, width: 68, goalWidth: 7.32, boxDepth: 16.5, 
 
 /** Versão do motor gravada com cada resultado (mudanças de regra mudam a versão). */
 export const LEGACY_ENGINE_VERSION = '0.5.0';
-export const ENGINE_VERSION = '0.5.1';
-export const supportsEngineVersion = (version: unknown) => version === ENGINE_VERSION || version === LEGACY_ENGINE_VERSION;
+export const REVIEW_ENGINE_VERSION = '0.5.1';
+export const ENGINE_VERSION = '0.5.2';
+export const supportsEngineVersion = (version: unknown) => version === ENGINE_VERSION || version === REVIEW_ENGINE_VERSION || version === LEGACY_ENGINE_VERSION;
 
 export type Side = 'home' | 'away';
 

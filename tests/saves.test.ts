@@ -81,6 +81,11 @@ describe('biblioteca de carreiras', () => {
 			await tick();
 			const second = await createCareer(disk, profile.id, { mode: 'coach', personName: 'Segunda', clubId: 'juriti' });
 			await saveCareerProgress(disk, profile.id, second.id, { gameDate: '2026-03-01', data: {} }, second.version);
+			const interrupted = new Error('Falha após a atualização, antes do commit');
+			await expect(disk.transaction(async (tx) => {
+				await saveCareerProgress(tx, profile.id, first.id, { gameDate: '2026-04-01', data: {} }, first.version);
+				throw interrupted;
+			})).rejects.toBe(interrupted);
 			await disk.close();
 
 			disk = await createPgliteDb(dir);
@@ -89,6 +94,7 @@ describe('biblioteca de carreiras', () => {
 			expect(list.map((c) => c.id).sort()).toEqual([first.id, second.id].sort());
 			expect(latestValidSave(list)?.id).toBe(second.id);
 			expect(list.find((c) => c.id === second.id)?.gameDate).toBe('2026-03-01');
+			expect(list.find((c) => c.id === first.id)).toMatchObject({ gameDate: first.gameDate, version: first.version });
 			await disk.close();
 		} finally {
 			rmSync(dir, { recursive: true, force: true });

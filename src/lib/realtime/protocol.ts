@@ -21,6 +21,16 @@ export interface PresenceMember {
 	activityUntil?: number;
 }
 
+/** O servidor calcula estes indicadores com as regras e a presença atuais da liga. */
+export interface RoundReadiness {
+	participants: Array<{ profileId: string; required: boolean; ready: boolean; online: boolean }>;
+	requiredCount: number;
+	readyCount: number;
+	onlineCount: number;
+	readyOnlineCount: number;
+	canStart: boolean;
+}
+
 export interface RoomSnapshot {
 	code: string;
 	name: string;

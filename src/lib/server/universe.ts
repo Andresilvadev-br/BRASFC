@@ -1,4 +1,4 @@
-import { catalogClub } from '#lib/data/roster-catalog.ts';
+import { catalogClub, fixedOpeningFormation } from '#lib/data/roster-catalog.ts';
 import { COACH_PROFILES, type CoachStyleId } from '#lib/engine/ai-coach.ts';
 import type { Career } from '#lib/domain/career.ts';
 import { getClub } from '#lib/domain/clubs.ts';
@@ -33,7 +33,10 @@ export function ensureUniverse(career: Career, league: LeagueState): UniverseSta
 		firstSeason: career.data.firstSeason ?? career.season,
 		divisions: league.divisions as Record<string, string[]>,
 		userClub: career.mode === 'coach' ? career.clubId : null,
-		formationFor: (id, style) => catalogClub(career.data.rosterCatalog, id)?.formation ?? formationFor(id, style),
+		formationFor: (id, style) => {
+			const roster = catalogClub(career.data.rosterCatalog, id);
+			return (roster && fixedOpeningFormation(career.data.rosterCatalog, roster)) ?? formationFor(id, style);
+		},
 		coachNameFor: (id) => catalogClub(career.data.rosterCatalog, id)?.coach
 	});
 }

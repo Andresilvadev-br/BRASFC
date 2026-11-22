@@ -10,9 +10,11 @@ assert(['127.0.0.1', 'localhost'].includes(new URL(base).hostname), 'Use um serv
 const output = process.argv[2] ?? '/tmp/brasfc-season.json';
 const limit = Number(process.env.BRASFC_TEST_ROUNDS ?? 0);
 assert(Number.isSafeInteger(limit) && limit >= 0 && limit <= 51);
+const participants = Number(process.env.BRASFC_TEST_PARTICIPANTS ?? 4);
+assert([2, 4, 8].includes(participants), 'Use 2, 4 ou 8 participantes.');
 
 const started = performance.now();
-const report = { rounds: [], requests: {}, serverTiming: {}, clientTiming: {}, network: { connections: 0, intentionalDisconnects: 0, unexpectedDisconnects: 0 }, errors: {}, scenarios: [], maxRssBytes: 0, maxCpuPercent: 0 };
+const report = { participants, rounds: [], requests: {}, serverTiming: {}, clientTiming: {}, network: { connections: 0, intentionalDisconnects: 0, unexpectedDisconnects: 0 }, errors: {}, scenarios: [], maxRssBytes: 0, maxCpuPercent: 0 };
 const sessions = [];
 const ip = new URL(base);
 let cpuStart;
@@ -69,8 +71,13 @@ async function connect(actor, code) {
 	(report.clientTiming.websocketJoin ??= []).push(performance.now() - started);
 }
 try {
-	for (let i = 0; i < 4; i++) sessions.push({ cookie: (await call(null,'/api/session',{})).headers.get('set-cookie').split(';')[0] });
-	const code = (await call(sessions[0], '/api/rooms', { name: 'Validação de temporada' })).body.room.code;
+	for (let i = 0; i < participants; i++) {
+		const username = 'teste_' + randomUUID().replaceAll('-', '').slice(0, 14);
+		const { headers } = await call(null, '/api/account', { action: 'register', username,
+			displayName: `Técnico de teste ${i + 1}`, password: 'teste-local-brasfc-2026' });
+		sessions.push({ cookie: headers.get('set-cookie').split(';')[0] });
+	}
+	const code = (await call(sessions[0], '/api/rooms', { name: 'Validação de temporada', mode: 'coach', max: participants })).body.room.code;
 	const lobby = '/api/rooms/' + code;
 	const world = lobby + '/world';
 	for (const actor of sessions.slice(1)) await call(actor, lobby, {});
@@ -87,11 +94,9 @@ try {
 		else if (body.session.relevant?.detail) member.matchId = body.session.id;
 		return body.session;
 	};
-	await command(0, 'assign', { role: 'coach', club: 'flamengo' });
-	await command(1, 'assign', { role: 'assistant', club: 'flamengo' });
-	await command(2, 'assign', { role: 'coach', club: 'palmeiras' });
-	await command(3, 'assign', { role: 'player', club: 'flamengo', personName: 'Teste Temporada', position: 'ATA' });
-	await command(0, 'delegate', { target: (await state()).members.find((m) => m.assignment?.role === 'assistant').profileId, value: true });
+	const clubs = ['flamengo', 'palmeiras', 'bahia', 'gremio', 'corinthians', 'atletico-mg', 'botafogo', 'cruzeiro'];
+	for (let i = 0; i < participants; i++) await command(i, 'assign', { role: 'coach', club: clubs[i] });
+	await command(0, 'start');
 	const season = (await state()).season;
 	for (let round = 0; round < (limit || 70); round++) {
 		const prior = await state();
@@ -105,7 +110,7 @@ try {
 				if (round === 0) {
 					await command(1, 'training', { plan: { sessions: ['posse', 'descanso', 'formacao', 'descanso', 'posse'], intensity: 'normal' } });
 					await command(0, 'ready', { value: true });
-					report.scenarios.push('Treino autorizado antes da partida e 1/4 prontos');
+					report.scenarios.push(`Treino autorizado antes da partida e 1/${participants} prontos`);
 				}
 			}
 		}
@@ -115,7 +120,12 @@ try {
 		}
 		let view = await live(0);
 		assert.equal(view.phase, 'LOADING');
-		for (const [i] of sessions.entries()) view = await live(i, 'loaded', { session: view.id, op: randomUUID() });
+		const loaded = { session: view.id, op: randomUUID() };
+		const repeats = await Promise.all([live(0, 'loaded', loaded), live(0, 'loaded', loaded)]);
+		assert.equal(repeats[0].sequence, repeats[1].sequence);
+		assert.equal(repeats[0].loaded.length, 1);
+		report.scenarios.push('Confirmação repetida simultaneamente com o mesmo identificador aplicada uma vez');
+		for (let i = 1; i < participants; i++) view = await live(i, 'loaded', { session: view.id, op: randomUUID() });
 		let half = false, finish = false, count = 0, maxFixtures = 0;
 		while (view && count++ < 900) {
 			const phase = view.phase;
@@ -126,16 +136,17 @@ try {
 					await delay(180);
 					const current = await live(0);
 					await live(0, 'decision', { session: current.id, sequence: current.sequence, op: randomUUID(), decision: { type: 'mentality', value: 'ofensiva' } });
-					const interrupted = sessions[3].socket;
-					sessions[3].disconnectPlanned = true;
+					const disconnected = sessions.at(-1);
+					const interrupted = disconnected.socket;
+					disconnected.disconnectPlanned = true;
 					report.network.intentionalDisconnects++;
 					const closed = new Promise((resolve) => interrupted.once('close', resolve));
 					interrupted.close();
 					await closed;
-					sessions[3].disconnectPlanned = false;
+					disconnected.disconnectPlanned = false;
 					view = await live(0);
 					assert.equal(view.phase, 'HALF_TIME');
-					await connect(sessions[3], code);
+					await connect(disconnected, code);
 					report.scenarios.push('Latência artificial, decisão tática e reconexão no intervalo');
 				}
 				for (const [i] of sessions.entries()) view = await live(i, 'confirm', { session: view.id, op: randomUUID(), value: true });
@@ -144,7 +155,7 @@ try {
 				assert(frames.every((frame) => frame.id === view.id));
 				assert(frames.some((frame) => frame.relevant && !frame.relevant.detail));
 				report.scenarios.push('Quadros incrementais sem reenviar uniformes ou elenco estável');
-				report.scenarios.push('Quatro clientes concorrentes na mesma rodada');
+				report.scenarios.push(`${participants} clientes concorrentes na mesma rodada`);
 				view = frames.at(-1);
 			} else view = await live(count % sessions.length);
 			finish ||= phase === 'FULL_TIME';
@@ -160,9 +171,9 @@ try {
 	const after = await state();
 	assert.equal(after.season, limit ? season : season + 1);
 	if (limit) assert.equal(report.rounds.length, limit);
-	const athlete = await state(3);
-	assert.equal(athlete.current.role, 'player');
-	assert(athlete.current.athlete.playerCareer);
+	const recovered = await state(participants - 1);
+	assert.equal(recovered.current.role, 'coach');
+	assert.equal(recovered.current.club, clubs[participants - 1]);
 	if (!limit) report.completedSeason = { before: season, after: after.season };
 } catch (error) {
 	report.failure = String(error.stack ?? error);

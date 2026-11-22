@@ -3,7 +3,7 @@ name: CI
 # Em PRs roda sozinho; em push para dev/main é chamado pelo workflow de Deploy.
 on:
   pull_request:
-    branches: [dev, main]
+    branches: [dev, main, improvement/master-integration]
   workflow_call:
   workflow_dispatch:
 
@@ -63,8 +63,7 @@ jobs:
           echo "servidor não respondeu"; exit 1
 
   multiplayer-browser:
-    name: Fluxos multiplayer no navegador
-    if: github.event_name == 'pull_request'
+    name: Fluxos de carreira e multiplayer no navegador
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
@@ -89,18 +88,32 @@ jobs:
             sleep 1
           done
           exit 1
+      - name: Testar produção offline e biblioteca de carreiras
+        run: |
+          BRASFC_OFFLINE=1 BRASFC_ALLOW_PGLITE=1 PGLITE_DIR="$RUNNER_TEMP/brasfc-offline" HOST=127.0.0.1 ORIGIN=http://127.0.0.1:3001 PORT=3001 node server/index.js > /tmp/brasfc-offline.log 2>&1 &
+          trap 'cat /tmp/brasfc-offline.log' EXIT
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3001/api/health >/dev/null; then
+              node tests/career-browser.mjs
+              exit
+            fi
+            sleep 1
+          done
+          exit 1
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: capturas-multiplayer
-          path: test-results/multiplayer/
+          name: capturas-navegador
+          path: |
+            test-results/multiplayer/
+            test-results/careers/
           if-no-files-found: warn
 
   docker:
     name: Imagem Docker
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: verify
+    needs: [verify, multiplayer-browser]
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3

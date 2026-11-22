@@ -4,7 +4,7 @@ import { createPgliteDb, createPostgresDb, type Db } from '#lib/server/db/index.
 import { runMigrations } from '#lib/server/db/migrate.ts';
 import { createGuestProfile } from '#lib/server/repos/profiles.ts';
 import { createRoom, joinRoom } from '#lib/server/repos/rooms.ts';
-import { applyWorldCommand, updateLiveRound, worldSnapshot } from '#lib/server/connected-world.ts';
+import { applyWorldCommand, updateLiveRound, worldReadiness, worldSnapshot } from '#lib/server/connected-world.ts';
 import { forgetRound } from '#lib/server/live-round.ts';
 import { parseClientMessage } from '#lib/realtime/protocol.ts';
 
@@ -36,9 +36,17 @@ it('recupera rodada com vários jogos, aplica substituições reais e espera tr�
 	const before = await worldSnapshot(db, room, coach);
 	await command(coach, 'ready', { value: true });
 	await command(assistant, 'ready', { value: true });
+	await command(athlete, 'ready', { value: true });
+	const waiting = (await worldReadiness(db, room, coach, connection.online)).readiness;
+	expect(waiting).toMatchObject({ requiredCount: 3, onlineCount: 2, readyCount: 3, readyOnlineCount: 2, canStart: false });
+	expect(waiting.participants).toContainEqual({ profileId: athlete, required: true, online: false, ready: true });
+	expect((await worldSnapshot(db, room, coach, connection.online)).readiness).toEqual(waiting);
+	await expect(worldReadiness(db, room, stranger, connection.online)).rejects.toMatchObject({ status: 404 });
 	await expect(command(coach, 'advance')).rejects.toMatchObject({ status: 409 });
 	connected.add(athlete);
-	await command(athlete, 'ready', { value: true });
+	expect((await worldReadiness(db, room, coach, connection.online)).readiness.canStart).toBe(true);
+	await command(coach, 'advance');
+	expect((await worldReadiness(db, room, coach, connection.online)).readiness.canStart).toBe(false);
 	const pulse = (profile = coach) => updateLiveRound(db, room, profile, { action: 'pulse' }, connection);
 	await expect(pulse(stranger)).rejects.toMatchObject({ status: 404 });
 	let session = (await pulse()).session!;
