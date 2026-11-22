@@ -126,7 +126,7 @@ try {
 		assert.equal(repeats[0].loaded.length, 1);
 		report.scenarios.push('Confirmação repetida simultaneamente com o mesmo identificador aplicada uma vez');
 		for (let i = 1; i < participants; i++) view = await live(i, 'loaded', { session: view.id, op: randomUUID() });
-		let half = false, finish = false, count = 0, maxFixtures = 0;
+		let half = false, finish = false, concurrent = false, count = 0, maxFixtures = 0;
 		while (view && count++ < 900) {
 			const phase = view.phase;
 			maxFixtures = Math.max(maxFixtures, view.fixtures.length);
@@ -150,17 +150,21 @@ try {
 					report.scenarios.push('Latência artificial, decisão tática e reconexão no intervalo');
 				}
 				for (const [i] of sessions.entries()) view = await live(i, 'confirm', { session: view.id, op: randomUUID(), value: true });
-			} else if (round === 0 && phase === 'FIRST_HALF' && count === 10) {
+			} else if (round === 0 && phase === 'FIRST_HALF' && (!concurrent || count % 16 === 0)) {
 				const frames = await Promise.all(sessions.map((_, i) => live(i)));
 				assert(frames.every((frame) => frame.id === view.id));
 				assert(frames.some((frame) => frame.relevant && !frame.relevant.detail));
-				report.scenarios.push('Quadros incrementais sem reenviar uniformes ou elenco estável');
-				report.scenarios.push(`${participants} clientes concorrentes na mesma rodada`);
+				if (!concurrent) {
+					report.scenarios.push('Quadros incrementais sem reenviar uniformes ou elenco estável');
+					report.scenarios.push(`${participants} clientes concorrentes na mesma rodada`);
+					concurrent = true;
+				}
 				view = frames.at(-1);
 			} else view = await live(count % sessions.length);
 			finish ||= phase === 'FULL_TIME';
 		}
 		assert(view === null && half && finish, 'Rodada não concluída');
+		if (round === 0) assert(concurrent, 'A rodada não foi exercitada sob solicitações simultâneas.');
 		const after = await state();
 		assert.equal(after.live, false);
 		assert(after.revision > prior.revision);

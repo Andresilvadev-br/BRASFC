@@ -1,3 +1,4 @@
+// @ts-nocheck -- Playwright is installed only in the browser validation job.
 // Chromium sobre o mesmo servidor local e banco em disco usados pelo modo offline.
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';

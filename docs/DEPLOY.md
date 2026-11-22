@@ -1,6 +1,6 @@
 # Implantação, atualização e recuperação
 
-Tudo está automatizado, mas **ainda não há VPS, domínio nem credenciais configurados** — nenhum deploy público foi feito. Para ativar, siga os passos abaixo.
+Este documento descreve os métodos de implantação e a configuração necessária. Consulte o resumo de cada execução do Actions e confira o commit em `/api/health` para verificar a versão do site.
 
 ## O que é necessário (você fornece)
 
@@ -71,7 +71,13 @@ Secrets (por ambiente ou do repositório):
 | `VPS_SSH_KEY` | chave privada de deploy |
 | `VPS_KNOWN_HOSTS` | saída de `ssh-keyscan SEU_HOST` |
 
-Variables: `PUBLIC_URL` (ex.: `https://brasfc.seudominio.com.br`) e, opcional, `VPS_DIR` (padrão `/opt/brasfc`).
+Variáveis por ambiente:
+
+| Variável | Valor |
+| --- | --- |
+| `DEPLOY_METHOD` | `ssh` para executar a implantação pelo Actions, `self-update` para confirmar o atualizador instalado na VPS ou `image-only` para publicar só a imagem de staging. Sem valor, o job usa SSH quando as quatro credenciais estão presentes. |
+| `PUBLIC_URL` | URL que responde a `/api/health`. Obrigatória em produção e no método `self-update`. |
+| `VPS_DIR` | Diretório usado pelo SSH. Padrão `/opt/brasfc`. |
 
 ## 3. Fluxo de publicação
 
@@ -79,7 +85,7 @@ Variables: `PUBLIC_URL` (ex.: `https://brasfc.seudominio.com.br`) e, opcional, `
 2. Merge em `main` → mesmo processo → aprovação manual → **produção**.
 3. `deploy/deploy.sh` faz backup do banco, sobe a nova imagem, espera `/api/health` e **volta automaticamente à versão anterior** se a nova não ficar saudável.
 
-Sem os secrets, o workflow publica a imagem e avisa que o deploy foi ignorado — nunca finge sucesso.
+O resumo indica separadamente CI, publicação da imagem, instalação e confirmação do commit saudável na URL pública. Produção exige um método de implantação válido e a URL deve responder com o commit desse workflow. Quando a VPS usa o atualizador, confirme que seu serviço acompanha `main` para produção e `dev` para staging. A configuração do serviço é administrada na VPS. Uma falha de backup cancela a instalação antes que a candidata possa executar migrações.
 
 Jogadores conectados recebem o aviso "Nova versão do BRASFC" e atualizam quando quiserem; alterações não salvas são protegidas.
 
@@ -140,7 +146,7 @@ App ≤ 512 MB (heap Node 384 MB), PostgreSQL ≤ 512 MB, Caddy ≤ 128 MB por a
 ## Aplicativo para Windows (Dev 0.4.1)
 
 - Código em `desktop/` (Electron). O app abre o site oficial (`BRASFC_URL` para testar outro endereço), então o JOGO se atualiza pelo servidor como sempre; a casca se atualiza sozinha pelo GitHub Releases (`electron-updater`).
-- Workflow `.github/workflows/desktop.yml`: em push que altere `desktop/`, roda o autoteste da janela (centralização e tela cheia) num Windows do GitHub e publica `BRASFC-Setup.exe` como release `v<versão>` — só se essa versão ainda não existir. Para lançar outra versão do app, aumente `version` em `desktop/package.json`.
+- Workflow `.github/workflows/desktop.yml`: nos PRs de integração e nas publicações Windows, roda o autoteste da janela e valida a atualização a partir da release atual, com save e recuperação de falhas. Uma publicação com versão inédita empacota os mesmos arquivos testados e só então os entrega ao GitHub Releases. Para lançar outra versão do app, aumente `version` em `desktop/package.json`.
 - O botão de download consulta `/api/desktop`, que só devolve link quando a release tem o instalador.
 - Teste local: `cd desktop && npm ci && npx electron . --selftest` (imprime `SELFTEST {...}` e sai com 0 se a janela abriu centralizada e entrou/saiu da tela cheia). Instalador local: `npm run dist`.
 

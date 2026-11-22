@@ -130,6 +130,7 @@ jobs:
           Stop-Process -Name BRASFC -ErrorAction SilentlyContinue
           $exe = Get-ChildItem (Join-Path $env:LOCALAPPDATA 'Programs') -Filter BRASFC.exe -Recurse | Select-Object -First 1
           if (!$exe) { throw 'O instalador não criou BRASFC.exe' }
+          $env:BRASFC_BASE_VERSION = $stable.TrimStart('v')
           node scripts/verify-upgrade.mjs $exe.FullName dist (Join-Path $env:RUNNER_TEMP 'brasfc-upgrade.json') dist-recovery
       - name: Guardar evidências de atualização
         if: always() && (github.event_name != 'push' || steps.ver.outputs.done == 'false')

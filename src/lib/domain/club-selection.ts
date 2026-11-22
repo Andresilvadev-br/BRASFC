@@ -1,7 +1,7 @@
 import { catalogClub, fixedOpeningFormation, type ClubRoster, type RosterCatalogId } from '#lib/data/roster-catalog.ts';
 import { autoLineup, defaultTactic, FORMATIONS, recoverTactic, type Tactic } from './tactics.ts';
-import { COACH_PROFILES, type CoachProfile } from '#lib/engine/ai-coach.ts';
-import { coachFormation } from './coaches.ts';
+import type { CoachProfile } from '#lib/engine/ai-coach.ts';
+import { clubCoach, coachFormation } from './coaches.ts';
 import { squadStrength, type SquadPlayer } from './squad.ts';
 
 export function initialClubTactic(version: RosterCatalogId | undefined, club: string, squad: SquadPlayer[], profile?: CoachProfile): Tactic {
@@ -9,7 +9,9 @@ export function initialClubTactic(version: RosterCatalogId | undefined, club: st
 	if (!roster) return defaultTactic(squad);
 	const fixed = fixedOpeningFormation(version, roster);
 	if (!fixed) {
-		const shape = profile ?? openingCoach(squad);
+		// O seletor e o treinador humano usam o perfil padrão do clube no cenário brasileiro.
+		const catalogSeason = 2026;
+		const shape = profile ?? clubCoach(catalogSeason, club, catalogSeason, catalogSeason).profile;
 		const formation = coachFormation(shape, squad);
 		return { formation, lineup: autoLineup(formation, squad), mentality: shape.mentality, style: shape.style };
 	}
@@ -17,16 +19,6 @@ export function initialClubTactic(version: RosterCatalogId | undefined, club: st
 		formation: fixed, mentality: 'equilibrada', style: 'posse',
 		lineup: roster.players.filter((player) => player.matchRole === 'starter').map((player) => `${club}-cbf${player.playerId}`)
 	}, squad) ?? defaultTactic(squad);
-}
-
-/** Perfil de partida do treinador humano quando a fonte só documenta a convocação. */
-function openingCoach(squad: SquadPlayer[]) {
-	const qualified = (position: SquadPlayer['position'], count: number) =>
-		squad.filter((player) => !player.pending && player.position === position).length >= count;
-	if (qualified('ATA', 2) && qualified('MC', 2)) return COACH_PROFILES.pragmatico;
-	if (qualified('VOL', 2) && qualified('MEI', 1)) return COACH_PROFILES.equilibrado;
-	if (qualified('ZAG', 3) && !qualified('MEI', 1)) return COACH_PROFILES.ofensivo;
-	return COACH_PROFILES.posse;
 }
 
 function playerCard(player: SquadPlayer) {

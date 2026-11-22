@@ -6,7 +6,7 @@ import { createGuestProfile } from '#lib/server/repos/profiles.ts';
 import { createRoom, getRoomByCode, joinRoom, leaveRoom } from '#lib/server/repos/rooms.ts';
 import { applyWorldCommand, worldClubLineup, worldMarket, worldReplay, worldSnapshot } from '#lib/server/connected-world.ts';
 import { clubLineup } from '#lib/domain/club-selection.ts';
-import { catalogClub, ROSTER_CATALOG } from '#lib/data/roster-catalog.ts';
+import { catalogClub, fixedOpeningFormation, ROSTER_CATALOG } from '#lib/data/roster-catalog.ts';
 import { DEFAULT_APPEARANCE } from '#lib/domain/appearance.ts';
 import { defaultOutfit } from '#lib/domain/wardrobe.ts';
 import { simulateMatch } from '#lib/engine/match.ts';
@@ -27,7 +27,12 @@ describe('universo compartilhado', () => {
 			const opening = catalogClub(ROSTER_CATALOG, id)!;
 			const lineup = await worldClubLineup(db, room, owner, id);
 			expect(lineup.opening?.source).toBe(opening.source);
-			expect(lineup.starters.map((slot) => slot.player?.cbfId)).toEqual(opening.players.filter((player) => player.matchRole === 'starter').map((player) => player.playerId));
+			const starters = lineup.starters.map((slot) => slot.player?.cbfId);
+			expect(new Set(starters).size).toBe(11);
+			expect(starters.every((id) => opening.players.some((player) => player.playerId === id))).toBe(true);
+			if (fixedOpeningFormation(ROSTER_CATALOG, opening)) {
+				expect(starters).toEqual(opening.players.filter((player) => player.matchRole === 'starter').map((player) => player.playerId));
+			}
 		}
 		await expect(worldClubLineup(db, room, outsider, first)).rejects.toMatchObject({ status: 404 });
 		await expect(worldClubLineup(db, room, owner, 'inexistente')).rejects.toMatchObject({ status: 404 });
