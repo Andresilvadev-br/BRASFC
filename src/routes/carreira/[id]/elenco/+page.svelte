@@ -313,7 +313,7 @@
 		text-align: left;
 	}
 	.chip-p .ps {
-		font-size: 10px;
+		font-size: 11px;
 		font-weight: 800;
 		color: var(--emerald-strong);
 		text-align: left;
@@ -441,7 +441,7 @@
 		background: rgb(10 13 16 / 0.4);
 	}
 	dt {
-		font-size: 10px;
+		font-size: 11px;
 		text-transform: uppercase;
 		letter-spacing: 0.1em;
 		color: var(--text-3);

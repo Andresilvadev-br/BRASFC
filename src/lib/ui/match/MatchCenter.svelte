@@ -629,7 +629,7 @@
 	}
 	.clock small {
 		font-family: var(--font-ui);
-		font-size: 10px;
+		font-size: 11px;
 		color: var(--text-3);
 		text-transform: uppercase;
 		letter-spacing: 0.06em;
@@ -644,7 +644,7 @@
 	}
 	.possbar span {
 		transition: width 0.6s ease;
-		font-size: 9.5px;
+		font-size: 11px;
 		font-weight: 700;
 		line-height: 14px;
 		padding: 0 6px;
@@ -715,7 +715,7 @@
 	.t90 {
 		position: absolute;
 		top: 13px;
-		font-size: 9px;
+		font-size: 11px;
 		color: var(--text-3);
 	}
 	.t0 {

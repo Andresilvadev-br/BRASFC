@@ -349,7 +349,7 @@
 		border-radius: 6px;
 		display: grid;
 		place-items: center;
-		font-size: 10px;
+		font-size: 11px;
 		font-weight: 800;
 		font-style: normal;
 		background: rgb(231 237 240 / 0.08);
@@ -546,7 +546,7 @@
 		text-transform: uppercase;
 	}
 	.day small {
-		font-size: 10px;
+		font-size: 11px;
 		color: var(--text-3);
 	}
 	.table {

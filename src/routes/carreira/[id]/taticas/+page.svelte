@@ -757,7 +757,7 @@
 		white-space: nowrap;
 	}
 	.fn {
-		font-size: 9.5px;
+		font-size: 11px;
 		color: var(--gold);
 		max-width: 100%;
 		overflow: hidden;
@@ -768,7 +768,7 @@
 		position: absolute;
 		top: -6px;
 		right: -6px;
-		font-size: 9.5px;
+		font-size: 11px;
 		font-weight: 800;
 		padding: 0 4px;
 		border-radius: 6px;
@@ -789,7 +789,7 @@
 			padding: 2px 2px 4px;
 		}
 		.role {
-			font-size: 10px;
+			font-size: 11px;
 		}
 	}
 	.legend {
@@ -1126,7 +1126,7 @@
 	}
 	.slotl {
 		grid-column: 1 / -1;
-		font-size: 10.5px;
+		font-size: 11px;
 		font-weight: 800;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;

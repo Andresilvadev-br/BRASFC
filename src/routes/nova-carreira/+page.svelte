@@ -455,4 +455,10 @@
 			font-size: var(--fs-xs);
 		}
 	}
+	/* Telas muito estreitas: só os números, o rótulo da etapa atual continua visível. */
+	@media (max-width: 420px) {
+		.steps { min-width: 0; }
+		.steps li:not(.current) { font-size: 0; gap: 0; }
+		.steps li:not(.current) .dot { font-size: var(--fs-xs); }
+	}
 </style>

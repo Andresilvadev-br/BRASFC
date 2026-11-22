@@ -453,7 +453,7 @@
 	}
 	.lbl {
 		fill: var(--text-3);
-		font-size: 10px;
+		font-size: 11px;
 	}
 	.line {
 		fill: none;
