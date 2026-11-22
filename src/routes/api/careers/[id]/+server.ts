@@ -8,7 +8,7 @@ import { isPlayerFocus, isPlayerFocusForPosition, isTeamFocus } from '#lib/domai
 import { sanitizePlan } from '#lib/domain/drills.ts';
 import { getDb } from '#lib/server/db/index.ts';
 import { noStore, readJson, requireProfile } from '#lib/server/http.ts';
-import { deleteCareer, getCareer, isUuid, patchCareerData, touchCareer, VersionConflictError } from '#lib/server/repos/careers.ts';
+import { cleanCareerLabel, deleteCareer, getCareer, isUuid, MAX_CAREER_LABEL, patchCareerData, renameCareer, touchCareer, VersionConflictError } from '#lib/server/repos/careers.ts';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async (event) => {
@@ -23,6 +23,12 @@ export const PATCH: RequestHandler = async (event) => {
 	const profile = requireProfile(event);
 	const db = await getDb();
 	const body = await readJson(event.request);
+	if (body.action === 'rename') {
+		const label = cleanCareerLabel(body.label);
+		if (label === undefined) error(400, `Use um nome de até ${MAX_CAREER_LABEL} caracteres.`);
+		if (!await renameCareer(db, profile.id, event.params.id, label)) error(404, 'Carreira não encontrada.');
+		return noStore({ ok: true, label });
+	}
 	if (body.action === 'touch') {
 		if (!isUuid(event.params.id) || !await touchCareer(db, profile.id, event.params.id)) error(404, 'Carreira não encontrada.');
 		return noStore({ ok: true });

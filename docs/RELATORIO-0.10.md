@@ -1,4 +1,4 @@
-# BRASFC 0.10.0 — Visual Premium
+# BRASFC 0.10 — Visual Premium e Central de Carreiras
 
 Relatório da atualização visual. Data: 21/11/2026. Base: BRASFC 0.9.1 (commit 0c64562).
 
@@ -103,3 +103,62 @@ Saves: nenhuma alteração no formato dos dados nem migração de banco. Carreir
 - Telas ainda não reformuladas nesta etapa: elenco, escalação, treinos do treinador, mercado do treinador, finanças, calendário, competições, notícias, configurações e a criação de liga. A Central do Treinador já era montada em cards e foi mantida.
 - O campo 2D (coordenadas e aglomeração de jogadores) e as cenas especiais de gol e cartão não foram alterados nesta entrega.
 - Os novos cards estão prontos para reaproveitar nessas telas nas próximas etapas.
+
+## 9. Central de carreiras (0.10.1)
+
+### Auditoria da persistência
+
+| Ponto verificado | Resultado |
+|---|---|
+| Identificadores | Cada carreira tem UUID próprio, gerado no servidor |
+| Associação ao jogador | Todas as leituras, gravações, renomeações e exclusões filtram por `profile_id` |
+| Coexistência | Até 12 carreiras por perfil, cada uma numa linha separada da tabela `careers` |
+| Gravação | Gravações com controle otimista de versão: uma aba desatualizada recebe conflito em vez de sobrescrever |
+| Exclusão | Mensagens, partidas, histórico, transferências e finanças da carreira saem juntos (ON DELETE CASCADE) |
+| Multiplayer | As ligas ficam em tabelas próprias (`rooms`, `room_worlds`…) e nenhuma referência a uma carreira individual |
+| Offline | O app usa o mesmo servidor com PGlite em disco, com as mesmas regras |
+
+### O que foi implementado
+
+- **Menu principal:**
+  - Continuar abre o último save válido e fica desabilitado quando não há nenhum.
+  - Também estão no menu Nova carreira, Carregar carreira e Carreiras compartilhadas.
+- **Biblioteca (/continuar):**
+  - card de destaque para continuar;
+  - cards de save com personagem, escudo (ou marcador quando o clube não existe), modalidade, temporada, data no jogo, competição real (lida da liga salva), última atividade e o selo "Mais recente";
+  - detalhes ao tocar no card;
+  - carregamento incremental de 6 em 6;
+  - organização por data, tipo e clube ou nome;
+  - estados vazio, save incompatível e falha de conexão.
+- **Renomear:**
+  - o nome fica numa coluna própria (migração aditiva 0012);
+  - não altera o identificador, a versão nem o progresso, então uma aba aberta continua salvando;
+  - até 40 caracteres, e o campo vazio volta ao nome padrão.
+- **Exclusão segura:**
+  - o modal identifica a carreira e lista o que será apagado;
+  - avisa que as outras carreiras e as ligas não são afetadas;
+  - o botão só é liberado depois de marcar "Entendo que esta exclusão é permanente";
+  - a biblioteca só é atualizada depois da confirmação do servidor.
+- **Saves incompatíveis** (clube inexistente, dados de atleta incompletos, data corrompida): continuam guardados e podem ser excluídos, mas não são carregados nem oferecidos em Continuar.
+- **Carreiras compartilhadas:** aparecem só como atalhos. A exclusão de um universo continua restrita ao anfitrião, no multiplayer.
+
+### Testes (tests/saves.test.ts, 12 cenários em banco real PGlite)
+
+| Cenário | Resultado |
+|---|---|
+| Duas carreiras independentes com progresso diferente, alternando leituras | Aprovado |
+| Fechar e reabrir o banco em disco (modo offline) e continuar a carreira correta | Aprovado |
+| Continuar abre a carreira usada por último | Aprovado |
+| Excluir uma carreira sem afetar outra, nem as ligas | Aprovado |
+| Outro perfil não exclui nem renomeia a carreira | Aprovado |
+| Renomear mantém ID, versão e progresso (aba antiga continua salvando) | Aprovado |
+| Validação do nome | Aprovado |
+| Falha de salvamento: versão antiga é recusada sem sobrescrever | Aprovado |
+| Save incompatível identificado e fora de Continuar | Aprovado |
+| Saves antigos sem nome e competição real do clube | Aprovado |
+| Ordenação | Aprovado |
+| Participante que sai da liga não apaga o universo; excluir a carreira individual não mexe na liga | Aprovado |
+
+Suíte completa: 186 testes aprovados e 3 ignorados (exigem PostgreSQL real; rodam no CI). O teste de migração confirma que ligas e membros de uma base antiga permanecem intactos depois de aplicar as migrações até a 0012.
+
+Não houve teste de falha de rede no navegador. Na tela, um erro de conexão ao renomear ou excluir mostra "Sem conexão com o servidor. Nada foi alterado" e mantém o modal aberto para tentar de novo.

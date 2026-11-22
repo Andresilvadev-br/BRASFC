@@ -140,7 +140,7 @@ it('migra uma cópia de sala da Dev 0.7 sem modificar membros e progresso', asyn
 		await old.query("INSERT INTO room_members (room_id,profile_id,role) VALUES ($1,$2,'owner')", [room.id, profile]);
 		const saved = { date: '2027-02-04', step: 3, participants: { [profile]: { role: 'coach', ready: false, club: 'flamengo' } } };
 		await old.query('INSERT INTO room_worlds (room_id,revision,state) VALUES ($1,4,$2::jsonb)', [room.id, JSON.stringify(saved)]);
-		expect(await runMigrations(old)).toEqual(['0007_live_rounds', '0008_market_lookup', '0009_league_social', '0010_league_options', '0011_league_creation_key']);
+		expect(await runMigrations(old)).toEqual(['0007_live_rounds', '0008_market_lookup', '0009_league_social', '0010_league_options', '0011_league_creation_key', '0012_career_label']);
 		expect(await old.query('SELECT revision,state FROM room_worlds WHERE room_id=$1', [room.id])).toEqual([{ revision: 4, state: saved }]);
 		expect(await old.query('SELECT profile_id FROM room_members WHERE room_id=$1', [room.id])).toEqual([{ profile_id: profile }]);
 		expect(await runMigrations(old)).toEqual([]);

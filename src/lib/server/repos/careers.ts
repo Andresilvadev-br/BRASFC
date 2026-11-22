@@ -22,10 +22,12 @@ type CareerRow = {
 	created_at: Date | string;
 	updated_at: Date | string;
 	unread?: string | number | bigint | null;
+	label?: string | null;
+	division?: string | null;
 };
 
 const COLUMNS = `c.id, c.mode, c.person_name, c.club_id, c.seed, c.season, c.game_date::text AS game_date,
-	c.data, c.version, c.created_at, c.updated_at`;
+	c.data, c.version, c.created_at, c.updated_at, c.label`;
 
 function mapCareer(r: CareerRow): Career {
 	return {
@@ -40,7 +42,9 @@ function mapCareer(r: CareerRow): Career {
 		version: Number(r.version),
 		createdAt: new Date(r.created_at).toISOString(),
 		updatedAt: new Date(r.updated_at).toISOString(),
-		unreadMessages: r.unread == null ? undefined : Number(r.unread)
+		unreadMessages: r.unread == null ? undefined : Number(r.unread),
+		label: r.label ?? null,
+		...(r.division !== undefined ? { division: r.division } : {})
 	};
 }
 
@@ -80,10 +84,15 @@ export async function createCareer(db: Db, profileId: string, input: CreateCaree
 
 export async function listCareers(db: Db, profileId: string, compact = false): Promise<Career[]> {
 	const columns = compact
-		? COLUMNS.replace('c.data,', "jsonb_strip_nulls(jsonb_build_object('appearance', c.data->'appearance', 'position', c.data->'position')) AS data,")
+		? COLUMNS.replace('c.data,', "jsonb_strip_nulls(jsonb_build_object('appearance', c.data->'appearance', 'position', c.data->'position', 'world', c.data->'world', 'player', c.data->'player')) AS data,")
 		: COLUMNS;
+	// Divisão atual do clube (biblioteca de saves): procura o clube nas listas da liga salva.
+	const division = compact
+		? `, (SELECT d.key FROM jsonb_each(CASE WHEN jsonb_typeof(c.data->'league'->'divisions') = 'object' THEN c.data->'league'->'divisions' ELSE '{}'::jsonb END) d
+			WHERE jsonb_typeof(d.value) = 'array' AND d.value @> to_jsonb(c.club_id) LIMIT 1) AS division`
+		: '';
 	const rows = await db.query<CareerRow>(
-		`SELECT ${columns},
+		`SELECT ${columns}${division},
 			(SELECT count(*) FROM career_messages m WHERE m.career_id = c.id AND m.read_at IS NULL) AS unread
 		 FROM careers c WHERE c.profile_id = $1 ORDER BY c.updated_at DESC`,
 		[profileId]
@@ -172,6 +181,27 @@ export async function advanceCareerDate(db: Db, profileId: string, id: string, g
 
 export async function touchCareer(db: Db, profileId: string, id: string): Promise<boolean> {
 	const rows = await db.query('UPDATE careers SET updated_at = now() WHERE id = $1 AND profile_id = $2 RETURNING id', [id, profileId]);
+	return rows.length === 1;
+}
+
+export const MAX_CAREER_LABEL = 40;
+
+/** Nome exibido na biblioteca: aparado, sem quebras e com limite de tamanho. Vazio remove o nome. */
+export function cleanCareerLabel(value: unknown): string | null | undefined {
+	if (value === null) return null;
+	if (typeof value !== 'string') return undefined;
+	const text = value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+	if (text.length > MAX_CAREER_LABEL) return undefined;
+	return text || null;
+}
+
+/**
+ * Renomeia o save sem mexer no identificador, na versão nem nos dados da carreira:
+ * uma janela aberta em outra aba continua salvando normalmente.
+ */
+export async function renameCareer(db: Db, profileId: string, id: string, label: string | null): Promise<boolean> {
+	if (!isUuid(id)) return false;
+	const rows = await db.query('UPDATE careers SET label = $3 WHERE id = $1 AND profile_id = $2 RETURNING id', [id, profileId, label]);
 	return rows.length === 1;
 }
 

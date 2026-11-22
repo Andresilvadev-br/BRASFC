@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { MODE_LABELS } from '#lib/domain/career.ts';
+	import { latestValidSave, saveTitle } from '#lib/domain/saves.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { formatShort } from '#lib/domain/dates.ts';
 	import { DEFAULT_APPEARANCE } from '#lib/domain/appearance.ts';
@@ -33,28 +34,42 @@
 		chips: string[];
 		cta: string;
 		badge?: string;
+		disabled?: boolean;
 	};
 
-	const latest = $derived(data.careers[0]);
+	// Continuar abre o último save válido; saves incompatíveis ficam só na biblioteca.
+	const latest = $derived(latestValidSave(data.careers));
 	const latestClub = $derived(latest ? getClub(latest.clubId) : undefined);
 
 	const items = $derived<Item[]>([
-		...(latest
-			? [
-					{
-						id: 'continuar',
-						label: 'Continuar',
-						hint: `${latest.personName} · ${latestClub?.short ?? ''}`,
-						icon: 'play' as IconName,
-						href: `/carreira/${latest.id}`,
-						eyebrow: MODE_LABELS[latest.mode],
-						headline: `De volta ao ${latestClub?.name ?? 'clube'}`,
-						text: `${formatShort(latest.gameDate)} · ${latest.unreadMessages ? `${latest.unreadMessages} mensagem(ns) não lida(s)` : 'caixa de entrada em dia'}.`,
-						chips: data.careers.length > 1 ? [`${data.careers.length} carreiras salvas`] : ['Carreira salva no servidor'],
-						cta: 'Continuar carreira'
-					}
-				]
-			: []),
+		latest
+			? {
+					id: 'continuar',
+					label: 'Continuar',
+					hint: `${saveTitle(latest)}`,
+					icon: 'play' as IconName,
+					href: `/carreira/${latest.id}`,
+					eyebrow: MODE_LABELS[latest.mode],
+					headline: `De volta ao ${latestClub?.name ?? 'clube'}`,
+					text: `${latest.personName} · ${formatShort(latest.gameDate)} de ${latest.season} · ${latest.unreadMessages ? `${latest.unreadMessages} mensagem(ns) não lida(s)` : 'caixa de entrada em dia'}.`,
+					chips: [saveTitle(latest), 'Último save válido', 'Salvo no servidor'],
+					cta: 'Continuar carreira'
+				}
+			: {
+					id: 'continuar',
+					label: 'Continuar',
+					hint: data.careers.length ? 'Nenhum save compatível' : 'Nenhuma carreira salva',
+					icon: 'play' as IconName,
+					href: '/continuar',
+					eyebrow: 'Continuar carreira',
+					headline: data.careers.length ? 'Nenhum save pode ser aberto' : 'Nenhuma carreira ainda',
+					text: data.careers.length
+						? 'Os saves deste perfil não são compatíveis com esta versão. Eles continuam guardados na biblioteca.'
+						: 'Crie sua primeira carreira para continuar de onde parou sempre que voltar.',
+					chips: ['Indisponível'],
+					cta: 'Continuar carreira',
+					disabled: true
+				},
 		{
 			id: 'nova',
 			label: 'Nova carreira',
@@ -66,6 +81,18 @@
 			text: 'Comande um clube do banco de reservas ou comece como jovem promessa e conquiste a titularidade.',
 			chips: ['Carreira de Treinador', 'Carreira de Jogador', 'Salvamento automático'],
 			cta: 'Criar carreira'
+		},
+		{
+			id: 'carregar',
+			label: 'Carregar carreira',
+			hint: `${data.careers.length} de 12 salvas`,
+			icon: 'save',
+			href: '/continuar',
+			eyebrow: 'Biblioteca de saves',
+			headline: 'Todas as suas carreiras',
+			text: 'Escolha qual carreira abrir, veja detalhes, renomeie ou exclua saves. Cada carreira fica separada das outras no servidor.',
+			chips: [`${data.careers.length} de 12 carreiras`, 'Organizar por data, tipo ou clube', 'Exclusão com confirmação'],
+			cta: 'Abrir biblioteca'
 		},
 		{
 			id: 'laboratorio',
@@ -82,8 +109,8 @@
 		},
 		{
 			id: 'multiplayer',
-			label: 'Multiplayer',
-			hint: 'Carreiras e salas privadas',
+			label: 'Carreiras compartilhadas',
+			hint: 'Ligas multiplayer',
 			icon: 'multiplayer',
 			href: '/multiplayer',
 			eyebrow: 'Com amigos',
@@ -120,7 +147,7 @@
 		}
 	]);
 
-	let selected = $state(0);
+	let selected = $state(untrack(() => (latestValidSave(data.careers) ? 0 : 1)));
 	const current = $derived(items[Math.min(selected, items.length - 1)]);
 	let stage: HTMLElement | undefined = $state();
 
@@ -137,6 +164,7 @@
 	}
 
 	function activate(item: Item) {
+		if (item.disabled) return;
 		void goto(item.href);
 	}
 
@@ -192,7 +220,9 @@
 	<nav class="items" aria-label="Menu principal">
 		{#each items as item, i (item.id)}
 			<a
-				href={item.href}
+				href={item.disabled ? undefined : item.href}
+				aria-disabled={item.disabled || undefined}
+				tabindex={item.disabled ? 0 : undefined}
 				class="item glass"
 				data-menu-item={i}
 				data-active={i === selected}
@@ -223,9 +253,11 @@
 					{#each item.chips as chip (chip)}<li>{chip}</li>{/each}
 				</ul>
 				<div class="cta" data-stage>
-					<Button variant="primary" size="lg" iconRight="arrowRight" onclick={() => activate(item)}>{item.cta}</Button>
-					{#if item.id === 'continuar' && data.careers.length > 1}
-						<Button variant="ghost" href="/continuar">Todas as carreiras</Button>
+					<Button variant="primary" size="lg" iconRight="arrowRight" disabled={item.disabled} onclick={() => activate(item)}>{item.cta}</Button>
+					{#if item.id === 'continuar' && item.disabled}
+						<Button variant="secondary" icon="plus" href="/nova-carreira">Nova carreira</Button>
+					{:else if item.id === 'continuar' && data.careers.length > 1}
+						<Button variant="ghost" href="/continuar">Biblioteca de carreiras</Button>
 					{/if}
 				</div>
 				{#if item.id === 'novidades'}<div class="desk" data-stage><DesktopDownload compact /></div>{/if}
@@ -365,6 +397,14 @@
 	.item[data-active='true'] .ic {
 		background: var(--emerald-soft);
 		color: var(--emerald-strong);
+	}
+	.item[aria-disabled='true'] {
+		cursor: not-allowed;
+		opacity: 0.55;
+	}
+	.item[aria-disabled='true'] .ic {
+		background: rgb(231 237 240 / 0.04);
+		color: var(--text-3);
 	}
 	.stage {
 		grid-area: stage;

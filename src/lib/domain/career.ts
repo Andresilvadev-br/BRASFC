@@ -94,6 +94,10 @@ export interface Career {
 	createdAt: string;
 	updatedAt: string;
 	unreadMessages?: number;
+	/** Nome dado pelo jogador na biblioteca de saves (opcional). */
+	label?: string | null;
+	/** Divisão do clube na temporada (só na listagem da biblioteca). */
+	division?: string | null;
 }
 
 export interface CreateCareerInput {

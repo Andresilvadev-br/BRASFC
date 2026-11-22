@@ -19,6 +19,20 @@ export interface Release {
 
 export const RELEASES: Release[] = [
 	{
+		version: '0.10.1', date: '2026-11-22', title: 'Central de carreiras', channel: 'estavel',
+		added: ['Biblioteca de carreiras com cards, detalhes, organização e paginação', 'Renomear o save sem alterar o progresso',
+			'Menu com Continuar, Nova carreira, Carregar carreira e Carreiras compartilhadas'],
+		highlights: [
+			{ title: 'Biblioteca de carreiras', text: 'Todas as suas carreiras em cards com clube, modalidade, temporada, data no jogo, competição e última atividade.', icon: 'save' },
+			{ title: 'Exclusão segura', text: 'Excluir pede confirmação explícita, mostra exatamente o que será apagado e nunca afeta outras carreiras nem ligas.', icon: 'trash' },
+			{ title: 'Continuar certo', text: 'Continuar abre sempre o último save válido; saves incompatíveis ficam guardados e identificados na biblioteca.', icon: 'play' }
+		],
+		improved: ['Apresentação pré-jogo centralizada no celular, com os titulares dentro do campo'],
+		fixed: ['Botão Pular apresentação escondido pela barra do navegador no iPhone'],
+		compat: { database: 'migração aditiva 0012', saves: 'carreiras e ligas anteriores preservadas' },
+		next: []
+	},
+	{
 		version: '0.10.0', date: '2026-11-21', title: 'Visual premium', channel: 'estavel',
 		added: ['Biblioteca de cards esportivos: ações, seleção, indicadores, confrontos e destaque',
 			'Central do Jogador com contratos, treino e evolução em cards', 'Prontidão animada no lobby e no intervalo'],

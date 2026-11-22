@@ -1,5 +1,14 @@
 # Novidades
 
+## 0.10.1 — Central de carreiras
+
+- Menu principal com Continuar (desabilitado sem save válido), Nova carreira, Carregar carreira e Carreiras compartilhadas.
+- Biblioteca de saves em cards: clube, treinador ou atleta, modalidade, temporada, data no jogo, competição, última atividade e indicador de mais recente.
+- Organização por mais recentes, mais antigos, tipo e clube ou nome, com carregamento incremental e estados vazio, incompatível e sem conexão.
+- Renomear o save (coluna própria, sem alterar identificador, versão nem progresso) e exclusão com confirmação explícita, restrita à carreira escolhida.
+- Ligas multiplayer listadas à parte; só o anfitrião exclui um universo, no multiplayer.
+- Apresentação pré-jogo centralizada no celular. Migração aditiva 0012.
+
 ## 0.10.0 — Visual premium
 
 - Biblioteca de cards esportivos (ação, seleção, indicador, confronto e destaque) com microinterações da Ultra Motion X.
