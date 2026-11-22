@@ -5,12 +5,9 @@ Branch de integração: `improvement/master-integration`. Destino proposto: `mai
 
 ## 1. Recomendação
 
-**A versão está pronta para revisão final e pode ser publicada depois de duas condições:**
+**A versão está pronta para publicação, dependendo apenas da sua autorização.**
 
-1. o CI do PR final e o teste real de atualização no Windows terminarem aprovados;
-2. você autorizar o merge e a implantação.
-
-Todos os testes executados nesta sessão sobre o código integrado passaram, e nenhuma regressão foi encontrada. Ficam fora desta comprovação a VPS real, o Safari do iPhone e o Windows físico, que dependem do CI ou de outro ambiente.
+Todos os testes executados sobre o código integrado passaram, nesta sessão e no CI do PR #23, incluindo a atualização real no Windows. Nenhuma regressão foi encontrada. Ficam fora desta comprovação a VPS real (implantação, saúde e carga) e o Safari do iPhone.
 
 ## 2. O que foi integrado
 
@@ -44,7 +41,8 @@ Todos os testes executados nesta sessão sobre o código integrado passaram, e n
 | 5 | Partidas simultâneas e reconexão | Duas ligas com 4 + 4 ao mesmo tempo, 78/78 confrontos oficiais em cada; reconexão no intervalo e confirmação repetida aplicada uma vez |
 | 6 | Latência (ver tabela abaixo) | P95 abaixo do alvo de 500 ms em todos os cenários |
 | 6 | Tráfego HTTP (8 perfis) | 128 respostas 200, P95 10,8 ms, P99 15,1 ms. Gravações concorrentes 200/409, 0 duplicatas, limitador 429 ativo |
-| 7 | Atualização interna do Windows, saves e rollback | **Em execução no CI do PR final** (runner Windows). Este ambiente é Linux |
+| 7 | Atualização interna do Windows, saves e rollback (runner `windows-latest`, CI do PR #23) | **Aprovado** (`"passed": true`, 1.4.8 → 1.4.9). Downloads ausente, truncado e corrompido (SHA-512) rejeitados com save intacto. Atualização aplicada pelo app, reaberta, com conta, carreira e preferência preservadas. Instalação abortada e falha na primeira inicialização revertidas para a versão anterior, com a mesma carreira disponível |
+| — | CI do PR #23 (`b82ce65`) | **Aprovado**: tipos, testes com PGlite e PostgreSQL real, colaboração e concorrência no PostgreSQL, build, smoke test do servidor, fluxos de navegador (multiplayer e offline) e imagem Docker |
 | 8 | Partida ao vivo | Campo: 171 imagens distintas em 4 s com interpolação × 4 sem. Até o intervalo: 51 cenas, todas com escudo; 10 estatísticas; prontidão "0/1"; sem overflow nem erros |
 | 8 | Memória e requisições do cliente | Heap de 6,1 → 6,6 MiB em 35 navegações, estabilizando (sem vazamento contínuo). 0 chamadas de API repetidas na mesma navegação |
 
@@ -81,16 +79,15 @@ Os números ficaram na mesma faixa dos ensaios isolados do Codex e mostram que a
 
 ## 5. Pendências e riscos remanescentes
 
-1. **Windows:** o teste de atualização interna, preservação de save e rollback roda no CI do PR final. Não declaro aprovado antes do resultado.
-2. **VPS:** a implantação, a saúde do serviço e a versão na URL pública não foram verificadas. Exigem a sua autorização e acesso ao servidor. A capacidade de carga na VPS também segue sem medição.
-3. **Safari do iPhone:** não testado, porque este ambiente só tem Chromium.
-4. **Aglomeração residual no campo:** o Codex reduziu a de 48,4% para 7,7% dos quadros em posse. O resto é comportamento do motor.
-5. **Uma liga multiplayer com 8 participantes reais em produção** ainda não foi observada. Os ensaios usam clientes automatizados.
-6. **Lint:** não existe script de lint no projeto.
+1. **VPS:** a implantação, a saúde do serviço e a versão na URL pública não foram verificadas. Exigem a sua autorização e acesso ao servidor. A capacidade de carga na VPS também segue sem medição.
+2. **Safari do iPhone:** não testado, porque este ambiente só tem Chromium.
+3. **Aglomeração residual no campo:** o Codex reduziu a de 48,4% para 7,7% dos quadros em posse. O resto é comportamento do motor.
+4. **Uma liga multiplayer com 8 participantes reais em produção** ainda não foi observada. Os ensaios usam clientes automatizados.
+5. **Lint:** não existe script de lint no projeto.
 
 ## 6. Como publicar (depois da sua autorização)
 
-1. Confirmar CI e Windows verdes no PR final.
+1. CI e Windows já estão verdes no PR #23 (`b82ce65`).
 2. Fazer o merge do PR na `main`. O workflow publica o instalador 1.4.9, e o deploy de produção aguarda a imagem aprovada e o ambiente "producao".
 3. Verificar a saúde do serviço e a versão 0.11.0 na URL pública.
 4. Fechar os PRs #19, #20, #21 e #22, cujo conteúdo já está no PR final.
