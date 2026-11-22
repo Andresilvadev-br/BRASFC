@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
+import { DEFAULT_APPEARANCE } from '../src/lib/domain/appearance.ts';
 
 const origin = process.env.BRASFC_BROWSER_ORIGIN ?? 'http://127.0.0.1:3001';
 const output = process.env.BRASFC_SCREENSHOTS ?? 'test-results/careers';
@@ -23,7 +24,7 @@ try {
 		return (await response.json()).career;
 	};
 	const coach = await create({ mode: 'coach', personName: 'Ana Técnica', clubId: 'bahia', world: 'brasil' });
-	const player = await create({ mode: 'player', personName: 'Caio Atleta', clubId: 'palmeiras', position: 'ATA', world: 'brasil' });
+	const player = await create({ mode: 'player', personName: 'Caio Atleta', clubId: 'palmeiras', position: 'ATA', world: 'brasil', appearance: DEFAULT_APPEARANCE });
 	await page.reload();
 	const coachCard = page.getByRole('article').filter({ hasText: 'Ana Técnica' });
 	const playerCard = page.getByRole('article').filter({ hasText: 'Caio Atleta' });
