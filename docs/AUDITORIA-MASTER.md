@@ -22,7 +22,7 @@ Data em Recife: 21/11/2026. Escopo: Equipe A, Engenharia. A referência publicad
 
 ## Identificados visualmente
 
-A revisão de código da 0.10.0 e do PR #19 mapeou overflow e sobreposição como pontos de revisão. A comparação em navegador da Central de Carreiras e do campo permanece como verificação da etapa. Os cards aprovados e o layout das telas pertencem à Equipe B.
+As capturas do [ensaio do PR #20](https://github.com/Andresilvadev-br/BRASFC/actions/runs/44969738667/artifacts/14733051997) confirmam a biblioteca em 1920 × 1080 e 390 px, e o lobby de atleta em desktop. A checagem automatizada da biblioteca também passou nas larguras 1366, 1600 e 2560. No campo, o diagnóstico do motor confirmou a convergência de vários marcadores ao mesmo ponto. O relatório registra a redução medida após a correção, com renderização final sob responsabilidade da Equipe B.
 
 ## Riscos técnicos
 
