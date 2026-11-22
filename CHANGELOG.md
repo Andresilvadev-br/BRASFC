@@ -7,7 +7,7 @@
 - Partida ao vivo com placar de TV, controles compactos, lances traduzidos sem repetição e placar da rodada agrupado por série.
 - Lobby com participantes em cards, presença online e prontidão animada; prontidão do intervalo no mesmo padrão.
 - Editor de personagem com prévia de cada peça, cards das ligas e campos de seleção unificados.
-- Correção do painel de exclusão de liga no celular (painel inferior com áreas seguras). Sem migração de banco.
+- Correção do painel de exclusão de liga no celular (painel inferior com áreas seguras). Sem migração de banco. Instalador Windows 1.4.8.
 
 ## 0.9.1 — Criação de ligas e lobby
 
