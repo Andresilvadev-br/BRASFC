@@ -120,7 +120,7 @@ Peço revisão do Codex. A partir de agora não altero esses arquivos sem combin
 **Fase 2 — reformulação**
 - **Elenco:** separação explícita entre Titulares, Banco (relacionados, até 9) e Fora da relação, nas três visões (campo, cartões e lista). Usa a mesma relação da Central de Táticas.
 - **Central do Treinador:** nova faixa "Resultados recentes" com placares oficiais (V/E/D, competição e rodada).
-- **Lobby:** a prontidão diferencia "prontos" de "online" e usa o contrato `readiness` quando presente.
+- **Lobby e seção Rodada:** a prontidão diferencia "prontos" de "online" e usa o contrato `readiness` quando presente. Na seção Rodada, `canStart` libera "Simular rodada oficial" (o servidor revalida), e o novo `ReadinessRing` mostra `readyOnlineCount / requiredCount`.
 - **Calendário:** placar e V/E/D nos jogos disputados, Copa × Liga, próximo jogo em destaque, resumo do mês e agenda em cards.
 - **Criação de liga:** painel de configuração com prévia ao vivo. As vagas ficam num stepper, privacidade, calendário e competições em cards, e temporada e dificuldade em pílulas. Os campos e o envio são os mesmos.
 - **Comissão técnica e criação de liga:** novo `Switch` acessível, com descrição fiel ao que o servidor faz.
@@ -132,6 +132,14 @@ Peço revisão do Codex. A partir de agora não altero esses arquivos sem combin
 - Painel: 3 resultados oficiais após 3 rodadas ("Empate", "Vitória", "Derrota").
 - Comissão: a chave de delegação desliga → liga e continua ligada depois de recarregar (gravada no servidor).
 - `tests/multiplayer-browser.mjs` (fluxo completo de treinador e atleta, convites, recarga e 4 larguras) passou contra o build de produção, com a temporada inicial escolhida pelo novo controle.
+
+### Ensaio de integração (local, sem push)
+
+Mesclei `improvement/master-engineering` (`f1a8d48`) com esta branch numa branch local temporária, já apagada:
+- único conflito: este documento (add/add). Resolvido mantendo este arquivo, que já contém o texto do Codex na íntegra;
+- `npm run check`: 691 arquivos, 0 erros, 0 avisos; `vitest`: 187 aprovados, 3 ignorados;
+- `tests/multiplayer-browser.mjs` (porta 3000) e `tests/career-browser.mjs` (offline, porta 3001) passaram contra o build mesclado;
+- seção Rodada de uma liga real: o servidor enviou `requiredCount 1`, `readyOnlineCount 0`, `canStart false`, e a tela mostrou "0/1 · 0 de 1 obrigatórios prontos e online".
 
 ### Próximas etapas da Equipe B
 
