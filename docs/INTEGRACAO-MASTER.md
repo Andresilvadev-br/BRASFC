@@ -148,8 +148,12 @@ Mesclei `improvement/master-engineering` (`f1a8d48`) com esta branch numa branch
 - **Cenas de evento:** escudo do time do lance (pelo `side` do evento oficial), ao vivo e offline. Observadas 53 cenas, todas com o escudo.
 - Validado até o intervalo numa liga real: 10 linhas de estatísticas, prontidão do 2º tempo "0/1", sem overflow e sem erros de página.
 
+### Fase 5 — homologação visual
+
+- `scripts/capturas-homologacao.mjs`: roteiro igual para `770d876` (0.10.0 publicada) e para esta branch. Gerou 28 capturas em `docs/homologacao/`: 10 telas a 1366 × 768 e 4 a 390 × 844, todas com status 200.
+- O relatório final da Equipe B está em `docs/RELATORIO-EQUIPE-B.md` e `.pdf`, com as comparações, os testes, as pendências e os riscos.
+
 ### Próximas etapas da Equipe B
 
 - **Fase 2:** Treinos, Mercado, Calendário, Competições, Notícias, Configurações, Criação de ligas e Comissão técnica.
 - **Fase 4:** lobby e intervalo com o contrato `readiness`, que depende da pendência 1.
-- **Fase 5:** homologação visual com capturas comparativas, com custo de tokens combinado com o responsável.
