@@ -1,8 +1,57 @@
-# BRASFC — Integração Master (Codex/Work + Claude)
+# BRASFC | Integração Master
 
-Registro compartilhado entre as equipes. Cada equipe mantém a sua seção. As decisões comuns ficam em "Pendências entre equipes".
+Base comum: `28f4fdca57bb5f1b27ba58c703a4bf9628ebe221` (0.10.1, [PR #19](https://github.com/Andresilvadev-br/BRASFC/pull/19)). As alterações anteriores da Central de Carreiras já constam dessa base.
 
-> A seção da Equipe A (Codex/Work) deve ser acrescentada pelo Codex na branch `improvement/master-engineering`. Na integração, mantenha as duas seções.
+| Branch | Responsável | Entrega e destino |
+| --- | --- | --- |
+| `improvement/master-engineering` | Codex/Work | PR de engenharia para `improvement/master-integration`. |
+| `improvement/master-experience` | Claude | PR de interface para `improvement/master-integration`. |
+| `improvement/master-integration` | Codex/Work | Recebe as entregas revisadas. Homologação conjunta antes de preparar um PR de publicação. |
+
+Os três ramos começam no mesmo commit. O CI de integração é independente de implantação. A aprovação da produção é uma etapa posterior e explícita. O PR #19 preexistente continua aberto para revisão.
+
+## Propriedade
+
+- Codex/Work: domínio, motor, banco e migrações, carregamento de dados no servidor, rotas de API, testes de engenharia, protocolos, Electron, CI e implantação.
+- Claude: páginas e componentes Svelte, estilos, mídia, navegação, consumo do Ultra Motion X e testes de experiência. A Equipe B usa a Central de Carreiras da base comum.
+- A API de prontidão e os tipos de eventos ficam com Codex/Work. As telas de lobby, partida e táticas ficam com Claude. Alterações de contrato devem ser registradas aqui com compatibilidade para os clientes atuais.
+
+## Contratos para a Equipe B
+
+### Prontidão da rodada
+
+O servidor já envia `readiness` no snapshot de `GET /api/rooms/:code/world` e disponibiliza a leitura leve `GET /api/rooms/:code/world?readiness` para mudanças de presença, com `revision` e o mesmo objeto de prontidão. Continuar usando o evento de sala do WebSocket para detectar entrada, saída e reconexão, e o evento de revisão para detectar comandos confirmados. A resposta HTTP é a autoridade para determinar a aptidão.
+
+| Campo de `readiness` | Significado |
+| --- | --- |
+| `participants` | Lista de `{ profileId, required, ready, online }` com as funções já assumidas na liga. |
+| `requiredCount` | Participantes exigidos pela regra da liga. Exclui auxiliares quando sua prontidão é opcional. |
+| `readyCount` | Prontos entre os obrigatórios. Uma confirmação pode persistir durante uma desconexão. |
+| `onlineCount` | Conectados entre os obrigatórios. |
+| `readyOnlineCount` | Obrigatórios que estão simultaneamente prontos e conectados. |
+| `canStart` | Temporada iniciada, sem rodada ativa, com pelo menos um participante exigido e todos os exigidos prontos e conectados. Na virada da temporada, a mesma condição permite o avanço. |
+
+A ação `start` no lobby inicia a temporada. A ação `advance` inicia a rodada ou fecha a temporada e depende também da permissão de administrador. O servidor revalida presença e prontidão no momento do comando. Para o indicador de aptidão, usar `canStart`. Para o contador, usar `readyOnlineCount / requiredCount`. A confirmação do participante continua em `ready`. Em caso de desconexão, tratar a aptidão local como indisponível até obter estado do servidor. Se dois eventos dispararem a mesma consulta, reaproveitar a solicitação em curso ou cancelar a versão obsoleta.
+
+### Partida e elenco
+
+- `session.relevant.match.players[].x/y` e `ball.x/y` usam metros absolutos no campo de 105 × 68. O mandante ataca no sentido de x crescente e o visitante no sentido inverso. O motor publica `tick` em segundos de jogo e `px/py` como posição anterior do atleta. Um quadro recebido pode saltar vários ticks. A transmissão avança em lotes e suspende o relógio nas fases de espera. A visualização pode interpolar entre os dois últimos quadros oficiais da mesma sessão usando o tempo de chegada. O placar e os eventos sempre vêm do quadro oficial.
+- Na sessão de partida, usar `required`, `waiting`, `loaded` e `confirmed` para mostrar as fases de carregamento e intervalo. O campo `readiness.canStart` do mundo descreve a abertura de uma rodada nova.
+- Gol anulado usa `goal_disallowed`, que tem efeito de apresentação sem incremento no placar. A versão do motor vem em `replay.version`. A candidata usa 0.5.2 e reproduz 0.5.0 e 0.5.1.
+- O payload de elenco preservará `formation`, `starters`, `bench`, `reserves` e `opening.modeledTactics`. O material acompanhado só pela súmula deve continuar identificado como tática do jogo.
+- Saves antigos, dados de contratos e permissões continuam sendo lidos pelo servidor. Usar o retorno real das operações e tratar conflito de versão sem repetir automaticamente uma mutação.
+
+## Decisões e verificação
+
+- Base 0.10.1 escolhida por conter dois commits além da main, revisados no PR #19. Esse trabalho não deve retornar como alteração nova nos PRs Master.
+- Conservar o Ultra Motion X fixado na versão da base e reaproveitar os componentes aprovados.
+- Evidências e limitações ficam em `AUDITORIA-MASTER.md` e no relatório de engenharia. A revisão integrada depende do segundo PR e dos resultados de CI, navegador e Windows.
+
+## Entregas em revisão
+
+- Equipe A no [PR #20](https://github.com/Andresilvadev-br/BRASFC/pull/20). Foram concluídos o contrato `readiness`, o catálogo v3, a versão 0.5.2 do motor, as barreiras de publicação e os ensaios atualizados. O [relatório de engenharia](RELATORIO-MASTER.md) reúne os resultados, os commits e as pendências.
+- Equipe B no [PR #21](https://github.com/Andresilvadev-br/BRASFC/pull/21), em rascunho. Ela registrou as entregas de legibilidade, elenco, resultados recentes e indicadores de presença. Seu rascunho aponta inicialmente para a main e inclui a base anterior por ancestralidade. Na entrega, apontar para a branch de integração após o CI desta recebê-la.
+- A interseção de arquivos nas duas branches identificada até `e9e21c3` é este documento, criado por ambas. Na integração, preservar o contrato implementado e o registro da Equipe B. Não há necessidade de reaplicar separadamente o PR #19, pois seus dois commits já integram a base comum.
 
 ---
 
@@ -15,7 +64,7 @@ Registro compartilhado entre as equipes. Cada equipe mantém a sua seção. As d
 | `main` verificada | `770d876` — BRASFC 0.10.0 / Windows 1.4.8 (publicada) |
 | PR anterior ainda aberto | **#19** (`dev-87mxsh`): `7351b9d` apresentação pré-jogo + `28f4fdc` Central de carreiras (0.10.1) |
 | Branch desta etapa | `improvement/master-experience`, criada a partir de `28f4fdc` (= `770d876` + PR #19) |
-| PR desta etapa | aberto a partir de `improvement/master-experience` (contém os commits do #19) |
+| PR desta etapa | **#21**, com destino `improvement/master-integration`, como combinado pelo Codex |
 
 Integrar a `improvement/master-experience` dispensa o #19, que pode ser fechado depois da integração.
 
@@ -40,9 +89,9 @@ Peço revisão do Codex. A partir de agora não altero esses arquivos sem combin
 - Sessão da rodada ao vivo: `phase`, `required`, `confirmed`, `waiting`, `loaded` e `fixtures[{ competition, home, away, score, phase, minute }]`. O placar da rodada agrupa por `competition`.
 - Lobby (`ConnectedWorld` / realtime): `members[].online` e `assignment.ready`.
 
-### Pendências entre equipes (Claude → Codex)
+### Pendências entre equipes (Claude → Codex) — situação
 
-1. **Estado "apto a iniciar".** O lobby hoje deduz a presença por `members[].online` e a prontidão por `assignment.ready`. A diretriz pede que o frontend não adivinhe. Proposta de contrato para o Codex, no estado do mundo e na sessão:
+1. **Estado "apto a iniciar" — ATENDIDO pelo Codex (`readiness`).** O lobby já consome o contrato: anel `readyOnlineCount / requiredCount`, status por `canStart` e desconectados por `participants[].online` dos obrigatórios. Sem o campo (branch isolada), mantém a dedução anterior. A pendência original era: O lobby hoje deduz a presença por `members[].online` e a prontidão por `assignment.ready`. A diretriz pede que o frontend não adivinhe. Proposta de contrato para o Codex, no estado do mundo e na sessão:
    ```ts
    readiness: {
      required: string[];   // perfis obrigatórios para a próxima rodada
@@ -53,7 +102,7 @@ Peço revisão do Codex. A partir de agora não altero esses arquivos sem combin
    }
    ```
    Assim que existir, o anel do lobby e o do intervalo passam a usar `canStart` e `blockedBy` em vez da dedução atual. Enquanto isso, o lobby já separa "prontos" de "desconectados" e não mostra mais "Todos prontos" com alguém offline.
-2. **Campo 2D (A5).** A interface vai interpolar só entre estados oficiais consecutivos (`tick`) e não vai mover jogadores para posições inventadas. Preciso que o Codex confirme se cada quadro enviado (`players[].x/y`) já está em metros do campo (`PITCH.length`/`PITCH.width`) e qual é o intervalo real entre ticks na transmissão.
+2. **Campo 2D (A5) — RESPONDIDO pelo Codex** (metros em 105×68, `tick` em segundos, `px/py` posição anterior, interpolar só entre os dois últimos quadros oficiais). Fase 3 da Equipe B parte desse contrato. A pergunta original era: A interface vai interpolar só entre estados oficiais consecutivos (`tick`) e não vai mover jogadores para posições inventadas. Preciso que o Codex confirme se cada quadro enviado (`players[].x/y`) já está em metros do campo (`PITCH.length`/`PITCH.width`) e qual é o intervalo real entre ticks na transmissão.
 3. **Formações (A4).** A interface mostra a formação de qualquer clube sem supor 4-3-3. Quando o catálogo mudar, nenhuma alteração visual é necessária.
 
 ### Entregas desta etapa
@@ -68,15 +117,21 @@ Peço revisão do Codex. A partir de agora não altero esses arquivos sem combin
   - 33 regras com texto de 9 a 10,5 px subiram para o mínimo de 11 px.
 - Resultado final: 0 telas com rolagem horizontal e 0 erros de console nas 5 larguras.
 
-**Fase 2 — reformulação (em andamento)**
+**Fase 2 — reformulação**
 - **Elenco:** separação explícita entre Titulares, Banco (relacionados, até 9) e Fora da relação, nas três visões (campo, cartões e lista). Usa a mesma relação da Central de Táticas.
 - **Central do Treinador:** nova faixa "Resultados recentes" com placares oficiais (V/E/D, competição e rodada).
-- **Lobby:** a prontidão diferencia "prontos" de "online".
+- **Lobby:** a prontidão diferencia "prontos" de "online" e usa o contrato `readiness` quando presente.
+- **Calendário:** placar e V/E/D nos jogos disputados, Copa × Liga, próximo jogo em destaque, resumo do mês e agenda em cards.
+- **Criação de liga:** painel de configuração com prévia ao vivo. As vagas ficam num stepper, privacidade, calendário e competições em cards, e temporada e dificuldade em pílulas. Os campos e o envio são os mesmos.
+- **Comissão técnica e criação de liga:** novo `Switch` acessível, com descrição fiel ao que o servidor faz.
+- **Telas auditadas e mantidas** (já usam componentes de jogo adequados ao conteúdo): Treinos (planejador, previsão, sugestão e foco em cards), Mensagens (leitor em dois painéis com filtros e estados), Comissão (cards por cargo com efeito real), Mercado (`MarketWorkspace` da 0.8.5), Competições, Notícias e Estatísticas.
 
 ### Verificado no navegador (Playwright, dev server com PGlite)
 
 - Elenco: 11 titulares, 9 no banco e 3 fora da relação, iguais nas visões campo e lista.
 - Painel: 3 resultados oficiais após 3 rodadas ("Empate", "Vitória", "Derrota").
+- Comissão: a chave de delegação desliga → liga e continua ligada depois de recarregar (gravada no servidor).
+- `tests/multiplayer-browser.mjs` (fluxo completo de treinador e atleta, convites, recarga e 4 larguras) passou contra o build de produção, com a temporada inicial escolhida pelo novo controle.
 
 ### Próximas etapas da Equipe B
 
