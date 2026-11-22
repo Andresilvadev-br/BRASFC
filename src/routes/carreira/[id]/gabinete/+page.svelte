@@ -226,10 +226,19 @@
 	}
 	.hero {
 		display: grid;
-		grid-template-columns: 1fr auto;
+		grid-template-columns: minmax(0, 1fr) auto;
 		gap: var(--sp-5);
 		align-items: center;
 		padding: var(--sp-6);
+	}
+	@media (max-width: 560px) {
+		.hero {
+			grid-template-columns: minmax(0, 1fr);
+			padding: var(--sp-4);
+		}
+		.totals {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
 	}
 	.tag {
 		margin-left: 8px;
@@ -453,7 +462,7 @@
 	}
 	.lbl {
 		fill: var(--text-3);
-		font-size: 10px;
+		font-size: 11px;
 	}
 	.line {
 		fill: none;

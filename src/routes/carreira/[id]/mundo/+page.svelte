@@ -189,6 +189,7 @@
 <style>
 	.page {
 		display: grid;
+		grid-template-columns: minmax(0, 1fr);
 		gap: var(--sp-5);
 	}
 	.empty {
@@ -210,7 +211,7 @@
 	}
 	.filters input {
 		flex: 1;
-		min-width: 160px;
+		min-width: min(160px, 100%);
 		padding: 8px 12px;
 		border-radius: 999px;
 		border: 1px solid var(--line-strong);
@@ -285,9 +286,14 @@
 	}
 	.side {
 		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		min-width: 0;
 		gap: var(--sp-4);
 		position: sticky;
 		top: calc(var(--desk-bar, 0px) + 80px);
+	}
+	.pick select {
+		width: 100%;
 	}
 	.pick {
 		display: grid;
@@ -400,7 +406,7 @@
 	}
 	@media (max-width: 1180px) {
 		.layout {
-			grid-template-columns: 1fr;
+			grid-template-columns: minmax(0, 1fr);
 		}
 		.side {
 			position: static;

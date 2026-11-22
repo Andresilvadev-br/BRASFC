@@ -153,7 +153,7 @@
 		margin: 4px 0 0;
 	}
 	dt {
-		font-size: 10px;
+		font-size: 11px;
 		letter-spacing: 0.1em;
 		text-transform: uppercase;
 		color: var(--text-3);

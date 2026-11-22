@@ -237,7 +237,7 @@
 	}
 	.mv {
 		width: 16px;
-		font-size: 10px;
+		font-size: 11px;
 	}
 	.upa {
 		color: var(--emerald-strong);
@@ -251,7 +251,7 @@
 		gap: 8px;
 	}
 	.you {
-		font-size: 10px;
+		font-size: 11px;
 		font-weight: 800;
 		padding: 2px 6px;
 		border-radius: 6px;

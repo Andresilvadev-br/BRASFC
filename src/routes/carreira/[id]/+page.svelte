@@ -19,6 +19,7 @@
 	import Icon from '#lib/ui/Icon.svelte';
 	import Pixel from '#lib/ui/Pixel.svelte';
 	import Gauge from '#lib/ui/v4/Gauge.svelte';
+	import MatchCard from '#lib/ui/cards/MatchCard.svelte';
 
 	let { data } = $props();
 	const c = $derived(data.career);
@@ -46,6 +47,15 @@
 			});
 	}
 	const myForm = $derived(form(c.clubId));
+	/** Últimos resultados oficiais do clube (mais recente primeiro), a partir das súmulas gravadas. */
+	const recentResults = $derived.by(() => {
+		const dateOf = (r: (typeof v.results)[number]) => v.clubFixtures.find((f) => f.round === r.round && f.home === r.home && f.competition === (r.competition ?? 'liga-brasfc'))?.date ?? '';
+		return v.results.filter((r) => r.home === c.clubId || r.away === c.clubId).map((r) => ({ r, date: dateOf(r) }))
+			.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5).map(({ r, date }) => {
+				const gf = r.home === c.clubId ? r.homeGoals : r.awayGoals, ga = r.home === c.clubId ? r.awayGoals : r.homeGoals;
+				return { r, date, outcome: gf > ga ? 'Vitória' : gf === ga ? 'Empate' : 'Derrota' };
+			});
+	});
 	const oppForm = $derived(oppId ? form(oppId) : []);
 	const avgFitness = $derived(Math.round(v.squad.reduce((s, p) => s + p.condition, 0) / Math.max(1, v.squad.length)));
 	const expiring = $derived(m.roster.filter((p) => p.contract.until <= c.season && !p.loan && p.id !== 'eu'));
@@ -223,6 +233,18 @@
 		<StandingsTable rows={v.standings} highlight={c.clubId} compact limit={6} />
 	</section>
 
+	<section class="results glass" use:reveal={{ index: 5 }} aria-label="Resultados recentes">
+		<div class="spread"><h2 class="display">Resultados recentes</h2><a class="link" href="{base}/estatisticas">Estatísticas →</a></div>
+		<div class="results-row">
+			{#each recentResults as item (`${item.r.competition ?? 'liga'}-${item.r.round}-${item.r.home}`)}
+				<MatchCard home={item.r.home} away={item.r.away} score={{ home: item.r.homeGoals, away: item.r.awayGoals }}
+					label={`${compLabel(item.r.competition ?? '')}${item.r.competition === CUP_ID ? '' : ` · R${item.r.round}`}`} status={item.outcome} highlight={item.outcome === 'Vitória'} />
+			{:else}
+				<p class="muted">Os resultados aparecem depois da primeira partida oficial.</p>
+			{/each}
+		</div>
+	</section>
+
 	{#if isCoach}
 		<section class="tips glass" use:reveal={{ index: 6 }}>
 			<div class="spread"><h2 class="display">Auxiliar técnico</h2><a class="link" href="{base}/taticas">Táticas →</a></div>
@@ -349,7 +371,7 @@
 		border-radius: 6px;
 		display: grid;
 		place-items: center;
-		font-size: 10px;
+		font-size: 11px;
 		font-weight: 800;
 		font-style: normal;
 		background: rgb(231 237 240 / 0.08);
@@ -546,15 +568,31 @@
 		text-transform: uppercase;
 	}
 	.day small {
-		font-size: 10px;
+		font-size: 11px;
 		color: var(--text-3);
 	}
 	.table {
+		min-width: 0;
+		overflow-x: auto;
 		grid-column: span 5;
 		padding: var(--sp-5);
 		display: grid;
 		gap: var(--sp-3);
 		align-content: start;
+	}
+	.results {
+		grid-column: 1 / -1;
+		padding: var(--sp-5);
+		display: grid;
+		gap: var(--sp-3);
+	}
+	.results h2 {
+		font-size: var(--fs-xl);
+	}
+	.results-row {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+		gap: 8px;
 	}
 	.tips {
 		grid-column: span 7;

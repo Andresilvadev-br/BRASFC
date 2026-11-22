@@ -8,6 +8,8 @@
 	import { reveal } from '#lib/motion/actions.ts';
 	import { playerKit } from '#lib/pixel/kits.ts';
 	import { clubAction } from '#lib/client/club.ts';
+	import { pickBench } from '#lib/engine/teams.ts';
+	import { MATCH_BENCH_SIZE } from '#lib/domain/tactics.ts';
 	import Button from '#lib/ui/Button.svelte';
 	import Pixel from '#lib/ui/Pixel.svelte';
 	import Segmented from '#lib/ui/Segmented.svelte';
@@ -35,7 +37,12 @@
 	const list = $derived(players.filter((p) => filter === 'todos' || sectorOf(p.position) === filter).sort((a, b) => ORDER.indexOf(a.position) - ORDER.indexOf(b.position) || b.overall - a.overall));
 	const shape = $derived(FORMATIONS[v.tactic.formation]);
 	const slots = $derived(v.tactic.lineup.map((id, i) => ({ id, p: players.find((x) => x.id === id), x: shape[i]?.x ?? 50, y: shape[i]?.y ?? 50, pos: shape[i]?.position })));
-	const bench = $derived(players.filter((p) => !v.tactic.lineup.includes(p.id)).sort((a, b) => ORDER.indexOf(a.position) - ORDER.indexOf(b.position) || b.overall - a.overall));
+	// Mesma relação da Central de Táticas: banco salvo ou, sem ele, o banco automático do motor.
+	const benchIds = $derived(new Set((v.tactic.bench ?? pickBench(v.squad, v.tactic.lineup)).filter((id) => !v.tactic.lineup.includes(id))));
+	const byOrder = (a: (typeof players)[number], b: (typeof players)[number]) => ORDER.indexOf(a.position) - ORDER.indexOf(b.position) || b.overall - a.overall;
+	const bench = $derived(players.filter((p) => benchIds.has(p.id)).sort(byOrder));
+	const reserves = $derived(players.filter((p) => !v.tactic.lineup.includes(p.id) && !benchIds.has(p.id)).sort(byOrder));
+	const status = (id: string) => (v.tactic.lineup.includes(id) ? 'Titular' : benchIds.has(id) ? 'Banco' : 'Fora da relação');
 	const sel = $derived(players.find((p) => p.id === selectedId) ?? null);
 	const avg = (k: 'age' | 'overall') => Math.round(players.reduce((s, p) => s + p[k], 0) / Math.max(1, players.length));
 	const wages = $derived(players.reduce((s, p) => s + (p.contract?.wage ?? 0), 0));
@@ -86,6 +93,7 @@
 	<div>
 		<span class="eyebrow">{v.club.name}</span>
 		<h1 class="display">Elenco</h1>
+		<p class="split-count"><span class="sit st">{v.tactic.lineup.length} titulares</span><span class="sit bn">{bench.length} no banco</span><span class="sit out">{reserves.length} fora da relação</span></p>
 		<p class="muted">{players.length} atletas · idade média {avg('age')} · nível médio {avg('overall')}{coach ? ` · folha ${formatMoney(wages)}/mês` : ''} · nomes fictícios do universo BRASFC</p>
 	</div>
 	<div class="tools">
@@ -113,16 +121,22 @@
 			<span class="form display">{v.tactic.formation}</span>
 		</div>
 		<aside class="bench">
-			<h2 class="display">Reservas</h2>
-			<div class="blist">
-				{#each bench as p (p.id)}
-					<button class="brow" onclick={() => open(p.id)}>
-						<span class="ps">{p.position}</span><span class="nm">{p.name}</span><b>{p.overall}</b>
-						{#if p.contract && p.contract.until <= c.season}<span class="warn" title="Contrato termina nesta temporada">●</span>{/if}
-					</button>
-				{/each}
-			</div>
-			{#if coach}<a class="link" href="/carreira/{c.id}/taticas">Mudar escalação e esquema →</a>{/if}
+			{#each [{ key: 'banco', title: 'Banco', hint: `${bench.length}/${MATCH_BENCH_SIZE} relacionados · podem entrar no jogo`, rows: bench }, { key: 'fora', title: 'Fora da relação', hint: `${reserves.length} atletas · não vão para a partida`, rows: reserves }] as group (group.key)}
+				<section class="group {group.key}">
+					<header><h2 class="display">{group.title}</h2><small>{group.hint}</small></header>
+					<div class="blist">
+						{#each group.rows as p (p.id)}
+							<button class="brow" onclick={() => open(p.id)} data-umx-press>
+								<span class="ps">{p.position}</span><span class="nm">{p.name}</span>
+								<i class="cond mini" style="--c:{fit.get(p.id) ?? 95}%" class:low={(fit.get(p.id) ?? 95) < 75} title="Condição {fit.get(p.id) ?? 95}%"></i>
+								<b>{p.overall}</b>
+								{#if p.contract && p.contract.until <= c.season}<span class="warn" title="Contrato termina nesta temporada">●</span>{/if}
+							</button>
+						{:else}<p class="muted none">Nenhum atleta.</p>{/each}
+					</div>
+				</section>
+			{/each}
+			{#if coach}<a class="link" href="/carreira/{c.id}/taticas">Mudar titulares, banco e esquema →</a>{/if}
 		</aside>
 	</div>
 {:else if view === 'cartoes'}
@@ -138,7 +152,7 @@
 					value={coach ? p.value : null}
 					contract={contractLabel(p)}
 					selected={sheet && selectedId === p.id}
-					tags={[...(v.tactic.lineup.includes(p.id) ? ['Titular'] : []), ...(p.contract && p.contract.until <= c.season ? ['Contrato acaba'] : []), ...(m.market.listed.includes(p.id) ? ['À venda'] : []), ...((fit.get(p.id) ?? 95) < 75 ? ['Cansado'] : [])]}
+					tags={[status(p.id), ...(p.contract && p.contract.until <= c.season ? ['Contrato acaba'] : []), ...(m.market.listed.includes(p.id) ? ['À venda'] : []), ...((fit.get(p.id) ?? 95) < 75 ? ['Cansado'] : [])]}
 					onclick={() => open(p.id)}
 				/>
 			</div>
@@ -147,11 +161,11 @@
 {:else}
 	<div class="glass tablewrap">
 		<table>
-			<thead><tr><th>Nº</th><th>Atleta</th><th>Pos.</th><th>Idade</th><th>Nível</th><th>Condição</th><th>Moral</th>{#if coach}<th>Salário</th><th>Contrato</th><th class="r">Valor</th>{/if}</tr></thead>
+			<thead><tr><th>Nº</th><th>Atleta</th><th>Pos.</th><th>Situação</th><th>Idade</th><th>Nível</th><th>Condição</th><th>Moral</th>{#if coach}<th>Salário</th><th>Contrato</th><th class="r">Valor</th>{/if}</tr></thead>
 			<tbody>
 				{#each list as p (p.id)}
 					<tr onclick={() => open(p.id)} class:starter={v.tactic.lineup.includes(p.id)}>
-						<td class="num">{p.number}</td><td><strong>{p.name}</strong></td><td>{p.position}</td><td class="num">{visibleSquadAge(p) ?? '—'}</td><td class="num"><b>{p.overall}</b></td>
+						<td class="num">{p.number}</td><td><strong>{p.name}</strong></td><td>{p.position}</td><td><span class="sit {status(p.id) === 'Titular' ? 'st' : status(p.id) === 'Banco' ? 'bn' : 'out'}">{status(p.id)}</span></td><td class="num">{visibleSquadAge(p) ?? '—'}</td><td class="num"><b>{p.overall}</b></td>
 						<td><i class="bar" style="--c:{fit.get(p.id) ?? 95}%" class:low={(fit.get(p.id) ?? 95) < 75}></i></td>
 						<td>{MORALE_LABELS[p.morale]}</td>
 						{#if coach}<td class="num">{p.contract ? formatMoney(p.contract.wage) : '—'}</td><td class:warn={!!p.contract && p.contract.until <= c.season}>{p.contract?.until ?? '—'}</td><td class="r num">{formatMoney(p.value)}</td>{/if}
@@ -313,7 +327,7 @@
 		text-align: left;
 	}
 	.chip-p .ps {
-		font-size: 10px;
+		font-size: 11px;
 		font-weight: 800;
 		color: var(--emerald-strong);
 		text-align: left;
@@ -346,19 +360,29 @@
 		gap: var(--sp-3);
 		align-content: start;
 	}
-	.bench h2 {
-		margin: 0;
-		font-size: var(--fs-xl);
-	}
+	.group { display: grid; gap: 8px; padding: 12px; border-radius: var(--radius-l); border: 1px solid var(--line); background: var(--card-bg); }
+	.group.banco { border-color: var(--emerald-line); }
+	.group.fora { background: var(--surface-sunken); }
+	.group header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+	.group h2 { margin: 0; font-size: var(--fs-xl); }
+	.group header small { color: var(--text-3); font-size: var(--fs-xs); }
+	.fora .brow { opacity: 0.82; }
+	.none { margin: 0; font-size: var(--fs-sm); }
 	.blist {
 		display: grid;
 		gap: 4px;
-		max-height: 64vh;
+		max-height: 34vh;
 		overflow: auto;
 	}
+	.cond.mini { grid-column: auto; width: 34px; margin-top: 0; }
+	.split-count { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+	.sit { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 99px; font-size: var(--fs-xs); font-weight: 700; white-space: nowrap; }
+	.sit.st { background: var(--emerald-soft); color: var(--emerald-strong); }
+	.sit.bn { background: var(--info-soft); color: var(--info); }
+	.sit.out { background: rgb(231 237 240 / 0.06); color: var(--text-3); }
 	.brow {
 		display: grid;
-		grid-template-columns: 44px 1fr auto auto;
+		grid-template-columns: 40px minmax(0, 1fr) auto auto auto;
 		gap: 8px;
 		align-items: center;
 		padding: 8px 10px;
@@ -441,7 +465,7 @@
 		background: rgb(10 13 16 / 0.4);
 	}
 	dt {
-		font-size: 10px;
+		font-size: 11px;
 		text-transform: uppercase;
 		letter-spacing: 0.1em;
 		color: var(--text-3);

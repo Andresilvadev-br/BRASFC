@@ -71,7 +71,7 @@
 		font-size: var(--fs-sm);
 	}
 	.rec {
-		font-size: 10px;
+		font-size: 11px;
 		font-weight: 800;
 		text-transform: uppercase;
 		padding: 1px 6px;

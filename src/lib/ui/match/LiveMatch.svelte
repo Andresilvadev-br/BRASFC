@@ -18,8 +18,11 @@
 	import { reposition } from '../tactics/reposition.ts';
 	import LineupPresentation from './LineupPresentation.svelte';
 	import MatchCard from '../cards/MatchCard.svelte';
+	import StatsCompare from './StatsCompare.svelte';
 	import Icon from '../Icon.svelte';
 	import { competitionLabel, eventLabel, eventTone } from './event-labels.ts';
+	import { easeOut, shownPositions, tweenDuration, tweenFrame } from './frame-tween.ts';
+	import { motion } from '#lib/motion/motion.svelte.ts';
 
 	type Session = NonNullable<Awaited<ReturnType<typeof updateLiveRound>>['session']>;
 	type MatchDetail = NonNullable<NonNullable<Session['relevant']>['detail']>;
@@ -56,9 +59,47 @@
 	const stages: Record<Session['phase'], string> = { LOADING: 'Carregamento', PRESENTATION: 'Apresentação', FIRST_HALF: 'Primeiro tempo',
 		HALF_TIME: 'Intervalo', SECOND_HALF: 'Segundo tempo', FULL_TIME: 'Fim de jogo · aguardando confirmação oficial' };
 	const athletes = $derived(new Map([...(relevant?.replay.home.players ?? []), ...(relevant?.replay.away.players ?? [])].map((p) => [p.id, p])));
-	const canvas = $derived(visual ? {
-		ball: visual.ball, tick: visual.tick, events: visual.events, teams: visual.teams, player: (id: string) => athletes.get(id),
-		states: new Map(visual.players.map((player) => [player.id, player]))
+	/**
+	 * Campo ao vivo: o servidor envia quadros oficiais a cada pulso (vários ticks de uma vez).
+	 * Entre um quadro e o seguinte, o desenho anda do que está na tela até a posição oficial,
+	 * no ritmo real de chegada. Placar e eventos continuam vindo só do quadro oficial.
+	 */
+	let pitch = $state<{ draw: (a?: number) => void; prime: (a: number) => void }>();
+	let drawn = $state.raw<{ players: NonNullable<typeof visual>['players']; ball: NonNullable<typeof visual>['ball'] } | null>(null);
+	let drawnKey = '';
+	let tweenStart = 0;
+	let tweenMs = 0;
+	let lastArrival = 0;
+	let tweenRaf = 0;
+	const tweenAlpha = (now: number) => (tweenMs ? Math.min(1, (now - tweenStart) / tweenMs) : 1);
+	$effect(() => {
+		const frame = visual;
+		const sid = session?.id;
+		const key = `${sid}:${replayIndex ?? 'ao-vivo'}:${frame?.tick}`;
+		if (!frame || !sid) return;
+		untrack(() => {
+			if (key === drawnKey) return;
+			const now = performance.now();
+			const from = drawn && drawnKey.startsWith(`${sid}:`) ? shownPositions(drawn.players, drawn.ball, easeOut(tweenAlpha(now))) : null;
+			drawn = tweenFrame(from, frame.players, frame.ball);
+			tweenMs = motion.reduced || !from ? 0 : tweenDuration(lastArrival, now);
+			lastArrival = now;
+			tweenStart = now;
+			drawnKey = key;
+			cancelAnimationFrame(tweenRaf);
+			pitch?.prime(tweenMs ? 0 : 1);
+			if (!tweenMs) return;
+			const step = (t: number) => {
+				const a = tweenAlpha(t);
+				pitch?.draw(easeOut(a));
+				if (a < 1) tweenRaf = requestAnimationFrame(step);
+			};
+			tweenRaf = requestAnimationFrame(step);
+		});
+	});
+	const canvas = $derived(visual && drawn ? {
+		ball: drawn.ball, tick: visual.tick, events: visual.events, teams: visual.teams, player: (id: string) => athletes.get(id),
+		states: new Map(drawn.players.map((player) => [player.id, player]))
 	} : null);
 
 	const own = $derived(relevant?.match.teams[relevant.side]);
@@ -162,6 +203,7 @@
 			clearTimeout(timer);
 			clearInterval(clock);
 			clearInterval(replayTimer);
+			cancelAnimationFrame(tweenRaf);
 		};
 	});
 
@@ -279,13 +321,13 @@
 							{#if frameSet.length > 1}<button type="button" class="replay" onclick={replay} disabled={replayIndex !== null} data-umx-press><Icon name="refresh" size={15} /><span>Rever trecho</span></button>{/if}
 						</div>
 						{#if mode !== 'narracao' && canvas}
-							<PitchCanvas match={canvas} {mode} colors={{ home: relevant.replay.home.colors, away: relevant.replay.away.colors }} version={visual?.tick} highlight={pickedPlayer || null} onpick={(id, side) => { if (side === relevant.side) pickedPlayer = id ?? ''; }} />
+							<PitchCanvas bind:this={pitch} match={canvas} {mode} colors={{ home: relevant.replay.home.colors, away: relevant.replay.away.colors }} version={visual?.tick} highlight={pickedPlayer || null} onpick={(id, side) => { if (side === relevant.side) pickedPlayer = id ?? ''; }} />
 						{/if}
 						{#if replayIndex !== null}<span class="film">Replay local</span>{/if}
 						{#if playerStats && !['HALF_TIME', 'FULL_TIME'].includes(session.phase)}
 							<p>Sua atuação · {playerStats.minutes} min · Nota {playerStats.rating.toFixed(1)} · Condição {Math.round(playerStats.condition)}%</p>
 						{/if}
-						<BroadcastMoments events={match.events} sessionKey={session.id + ":" + relevant.replay.home.id} athleteName={(id) => athletes.get(id)?.name} />
+						<BroadcastMoments events={match.events} sessionKey={session.id + ":" + relevant.replay.home.id} athleteName={(id) => athletes.get(id)?.name} clubs={{ home: relevant.replay.home.id, away: relevant.replay.away.id }} />
 					</div>
 					<aside class="surface">
 						<h3 class="section-title">Lances oficiais</h3>
@@ -301,10 +343,7 @@
 			{#if session.phase === 'HALF_TIME' || session.phase === 'FULL_TIME'}
 				<div class="surface stats" use:enter>
 					<h2>{session.phase === 'HALF_TIME' ? 'Intervalo' : 'Súmula da partida'}</h2>
-					{#each sides as side}
-						{@const team = match.stats.teams[side]}
-						<p><strong>{relevant.replay[side].name}</strong> · {team.shots} chutes · {team.shotsOnTarget} no alvo · {team.corners} escanteios · {team.yellows} amarelos</p>
-					{/each}
+					<StatsCompare home={relevant.replay.home} away={relevant.replay.away} stats={match.stats.teams} />
 					{#if playerStats}<p>Sua atuação · {playerStats.minutes} min · Nota {playerStats.rating.toFixed(1)} · Condição {Math.round(playerStats.condition)}%</p>{/if}
 					{#if session.phase === 'FULL_TIME'}
 						{#if match.goals.length}

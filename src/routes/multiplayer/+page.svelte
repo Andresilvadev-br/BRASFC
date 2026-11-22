@@ -7,6 +7,8 @@
 	import { createRoomConnection } from '#lib/realtime/client.svelte.ts';
 	import { DEFAULT_LEAGUE_OPTIONS, LEAGUE_SEASONS, leagueOptions, type LeagueOptions } from '#lib/domain/league-options.ts';
 	import Crest from '#lib/ui/Crest.svelte';
+	import SelectCard from '#lib/ui/cards/SelectCard.svelte';
+	import Switch from '#lib/ui/Switch.svelte';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { notify, setIslandContext } from '#lib/stores/island.svelte.ts';
 	import { enter } from '#lib/motion/actions.ts';
@@ -204,24 +206,67 @@
 								<h2 tabindex="-1" bind:this={heading}>Nova liga <small>{modeLabel(mode)}</small></h2>
 								{#if !existing}<Button size="sm" variant="ghost" icon="arrowLeft" disabled={busy} onclick={() => go(panelUrl('create'))}>Voltar</Button>{/if}
 							</div>
-							<form onsubmit={(event) => { event.preventDefault(); void act(create); }}>
-								<label>Nome da liga<input bind:value={name} maxlength="40" minlength="2" placeholder="Ex.: Liga dos amigos" required /></label>
-								<div class="options">
-									<label>Vagas<input type="number" min="2" max="16" bind:value={max} required /></label>
-									<label>Privacidade<select bind:value={inviteOnly}><option value={false}>Privada · entrada com código</option><option value={true}>Privada · somente convidados</option></select></label>
+							<form class="config-form" onsubmit={(event) => { event.preventDefault(); void act(create); }}>
+								<div class="config-main">
+									<section class="cfg">
+										<h3 class="section-title">Identidade</h3>
+										<label class="name-field">Nome da liga<input bind:value={name} maxlength="40" minlength="2" placeholder="Ex.: Liga dos amigos" required /></label>
+									</section>
+									<section class="cfg">
+										<h3 class="section-title">Participação</h3>
+										<div class="seats-row">
+											<span class="cfg-label">Vagas</span>
+											<div class="stepper" role="group" aria-label="Vagas da liga">
+												<button type="button" onclick={() => (max = Math.max(2, Number(max) - 1))} disabled={Number(max) <= 2} aria-label="Menos uma vaga" data-umx-press><Icon name="chevronLeft" size={16} /></button>
+												<input type="number" min="2" max="16" bind:value={max} required aria-label="Número de vagas" />
+												<button type="button" onclick={() => (max = Math.min(16, Number(max) + 1))} disabled={Number(max) >= 16} aria-label="Mais uma vaga" data-umx-press><Icon name="chevronRight" size={16} /></button>
+											</div>
+											<span class="seat-pips" aria-hidden="true">{#each Array.from({ length: 16 }, (_, i) => i) as i (i)}<i class:on={i < Number(max)}></i>{/each}</span>
+										</div>
+										<div class="choice-grid two" role="radiogroup" aria-label="Privacidade">
+											<SelectCard icon="link" title="Entrada com código" description="Quem tiver o código ou o link pode entrar enquanto houver vaga." selected={!inviteOnly} onselect={() => (inviteOnly = false)} />
+											<SelectCard icon="lock" title="Somente convidados" description="Só entra quem receber convite da sua conta BRASFC." selected={inviteOnly} onselect={() => (inviteOnly = true)} />
+										</div>
+										{#if mode === 'coach'}
+											<Switch bind:checked={assistantsRequired} label="Exigir prontidão dos auxiliares" hint="A rodada só começa quando os auxiliares também confirmarem." />
+										{/if}
+									</section>
+									<section class="cfg">
+										<h3 class="section-title">Temporada e competição</h3>
+										<span class="cfg-label">Temporada inicial</span>
+										<div class="pills" role="radiogroup" aria-label="Temporada inicial">
+											{#each LEAGUE_SEASONS as year (year)}<button type="button" role="radio" aria-checked={rules.season === year} onclick={() => (rules.season = year)} data-umx-press>{year}</button>{/each}
+										</div>
+										{#if rules.season !== 2026}<small class="muted">A temporada usa a base de clubes de 2026.</small>{/if}
+										<div class="choice-grid two" role="radiogroup" aria-label="Calendário">
+											<SelectCard icon="calendar" title="Domingo e quarta" description="Ligas no domingo · Copa na quarta" selected={rules.calendar === 'sunday'} onselect={() => (rules.calendar = 'sunday')} />
+											<SelectCard icon="calendar" title="Sábado e terça" description="Ligas no sábado · Copa na terça" selected={rules.calendar === 'saturday'} onselect={() => (rules.calendar = 'saturday')} />
+										</div>
+										<div class="choice-grid two" role="radiogroup" aria-label="Competições">
+											<SelectCard icon="trophy" title="Séries A–D e Copa" description="Brasileirão completo e Copa do Brasil" selected={rules.competition === 'league-and-cup'} onselect={() => (rules.competition = 'league-and-cup')} />
+											<SelectCard icon="field" title="Somente Séries A–D" description="Calendário só com o Brasileirão" selected={rules.competition === 'league'} onselect={() => (rules.competition = 'league')} />
+										</div>
+										<span class="cfg-label">Dificuldade da IA</span>
+										<div class="pills" role="radiogroup" aria-label="Dificuldade da IA">
+											{#each [['accessible', 'Acessível'], ['standard', 'Padrão'], ['advanced', 'Avançada']] as [value, label] (value)}
+												<button type="button" role="radio" aria-checked={rules.difficulty === value} onclick={() => (rules.difficulty = value as typeof rules.difficulty)} data-umx-press>{label}</button>
+											{/each}
+										</div>
+									</section>
 								</div>
-								<details class="advanced">
-									<summary>Temporada e competição</summary>
-									<div class="advanced-fields">
-										<label>Temporada inicial<select bind:value={rules.season}>{#each LEAGUE_SEASONS as year (year)}<option value={year}>{year}</option>{/each}</select></label>
-										<label>Calendário<select bind:value={rules.calendar}><option value="sunday">Ligas no domingo · Copa na quarta</option><option value="saturday">Ligas no sábado · Copa na terça</option></select></label>
-										<label>Competições<select bind:value={rules.competition}><option value="league-and-cup">Séries A–D e Copa do Brasil</option><option value="league">Somente Séries A–D</option></select></label>
-										<label>Dificuldade da IA<select bind:value={rules.difficulty}><option value="accessible">Acessível</option><option value="standard">Padrão</option><option value="advanced">Avançada</option></select></label>
-									</div>
-									{#if rules.season !== 2026}<small>A temporada usa a base de clubes de 2026.</small>{/if}
-								</details>
-								{#if mode === 'coach'}<label class="check"><input type="checkbox" role="switch" bind:checked={assistantsRequired} /> Exigir prontidão dos auxiliares</label>{/if}
-								<Button type="submit" variant="primary" iconRight="arrowRight" disabled={hydrated !== draftId} loading={busy}>{existing ? 'Salvar e continuar' : mode === 'player' ? 'Continuar para o atleta' : 'Continuar para o clube'}</Button>
+								<aside class="config-preview" aria-label="Prévia da liga">
+									<span class="eyebrow">Prévia</span>
+									<strong class="preview-name display">{name.trim() || 'Sua liga'}</strong>
+									<span class="preview-mode"><Icon name={mode === 'player' ? 'shirt' : 'whistle'} size={14} />{modeLabel(mode)}</span>
+									<dl>
+										<div><dt>Temporada</dt><dd>{rules.season}</dd></div>
+										<div><dt>Vagas</dt><dd>{max}</dd></div>
+										<div><dt>Entrada</dt><dd>{inviteOnly ? 'Convite' : 'Código'}</dd></div>
+										<div><dt>IA</dt><dd>{rules.difficulty === 'accessible' ? 'Acessível' : rules.difficulty === 'advanced' ? 'Avançada' : 'Padrão'}</dd></div>
+									</dl>
+									<small class="muted">{rules.competition === 'league' ? 'Séries A–D' : 'Séries A–D e Copa do Brasil'} · {rules.calendar === 'saturday' ? 'sábado e terça' : 'domingo e quarta'}</small>
+									<Button type="submit" variant="primary" iconRight="arrowRight" disabled={hydrated !== draftId} loading={busy} full>{existing ? 'Salvar e continuar' : mode === 'player' ? 'Continuar para o atleta' : 'Continuar para o clube'}</Button>
+								</aside>
 							</form>
 						</div>
 					{/if}
@@ -296,15 +341,9 @@
 	p { margin: 0; }
 	small { display: block; }
 	label { gap: 4px; font-size: var(--fs-sm); font-weight: 600; }
-	select { width: 100%; min-width: 0; min-height: 44px; }
 	input { width: 100%; min-width: 0; max-width: 100%; min-height: 44px; padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: 9px; color: var(--text); background: var(--surface-sunken); font-size: max(16px, var(--fs-base)); }
-	input:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid var(--emerald-strong); outline-offset: 2px; }
-	.options, .advanced-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 8px; }
-	.advanced-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 10px 0 3px; }
-	.advanced, .item { min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; background: var(--surface-2); overflow-wrap: anywhere; }
-	.advanced summary { cursor: pointer; }
-	.check { display: flex; gap: 8px; align-items: center; min-height: 42px; }
-	.check input { width: 32px; min-height: 20px; accent-color: var(--emerald); }
+	input:focus-visible { outline: 2px solid var(--emerald-strong); outline-offset: 2px; }
+	.item { min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; background: var(--surface-2); overflow-wrap: anywhere; }
 	.league-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 10px; }
 	.league-card { position: relative; display: grid; gap: 12px; min-width: 0; padding: 14px; border-radius: 16px; border: 1px solid var(--line); overflow: hidden; isolation: isolate;
 		background: radial-gradient(120% 120% at 100% 0, color-mix(in srgb, var(--club) 30%, transparent), transparent 58%), linear-gradient(170deg, var(--surface-2), var(--surface-sunken)); }
@@ -330,6 +369,40 @@
 	.failure { color: #ff9d9d; margin: 8px 0; }
 	@media (max-width: 590px) {
 		.tabs a :global(.icon) { display: none; }
-		.advanced-fields, .join { grid-template-columns: minmax(0, 1fr); }
+		.join { grid-template-columns: minmax(0, 1fr); }
+	}
+	.config-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); gap: 16px; align-items: start; }
+	.config-main { display: grid; gap: 14px; min-width: 0; }
+	.cfg { display: grid; gap: 10px; padding: 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--card-bg); }
+	.cfg .section-title { margin: 0; font-size: var(--fs-lg); }
+	.cfg-label { font-size: var(--fs-xs); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+	.name-field { display: grid; gap: 6px; font-weight: 600; }
+	.name-field input { font-size: max(16px, var(--fs-lg)); font-family: var(--font-display); text-transform: uppercase; letter-spacing: .02em; }
+	.choice-grid { display: grid; gap: 8px; }
+	.choice-grid.two { grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
+	.seats-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; }
+	.stepper { display: inline-flex; align-items: center; border: 1px solid var(--line-strong); border-radius: 10px; overflow: hidden; }
+	.stepper button { display: grid; place-items: center; width: 38px; height: 40px; border: 0; background: var(--surface-2); color: var(--text); }
+	.stepper button:disabled { opacity: .4; }
+	.stepper input { width: 52px; min-height: 40px; border: 0; border-radius: 0; text-align: center; font-family: var(--font-display); font-size: var(--fs-lg); font-weight: 800; appearance: textfield; -moz-appearance: textfield; }
+	.stepper input::-webkit-inner-spin-button { -webkit-appearance: none; }
+	.seat-pips { display: flex; gap: 3px; flex: 1 1 160px; }
+	.seat-pips i { flex: 1; height: 6px; border-radius: 4px; background: rgb(231 237 240 / .08); transition: background var(--dur-2) var(--ease-out); }
+	.seat-pips i.on { background: var(--emerald-strong); }
+	.pills { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 3px; border-radius: 999px; background: var(--surface-sunken); border: 1px solid var(--line); width: fit-content; max-width: 100%; }
+	.pills button { min-height: 34px; padding: 4px 14px; border: 0; border-radius: 999px; background: transparent; color: var(--text-2); font-weight: 700; font-size: var(--fs-sm); }
+	.pills button[aria-checked='true'] { background: var(--emerald-soft); color: var(--emerald-strong); }
+	.config-preview { position: sticky; top: 16px; display: grid; gap: 10px; padding: 16px; border-radius: 16px; border: 1px solid var(--emerald-line);
+		background: radial-gradient(120% 90% at 100% 0, var(--emerald-soft), transparent 60%), linear-gradient(170deg, #182127, var(--bg-deep)); }
+	.config-preview .eyebrow { color: var(--emerald-strong); }
+	.preview-name { font-size: clamp(1.6rem, 3vw, 2.2rem); overflow-wrap: anywhere; }
+	.preview-mode { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); font-weight: 600; }
+	.config-preview dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin: 0; }
+	.config-preview dl div { padding: 7px 9px; border-radius: 9px; background: rgb(0 0 0 / .25); }
+	.config-preview dt { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+	.config-preview dd { margin: 0; font-weight: 700; }
+	@media (max-width: 860px) {
+		.config-form { grid-template-columns: minmax(0, 1fr); }
+		.config-preview { position: static; }
 	}
 </style>

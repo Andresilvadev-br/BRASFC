@@ -370,7 +370,7 @@
 		background: rgb(10 13 16 / 0.4);
 	}
 	.ranges span {
-		font-size: 10px;
+		font-size: 11px;
 		text-transform: uppercase;
 		letter-spacing: 0.1em;
 		color: var(--text-3);

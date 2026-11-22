@@ -191,7 +191,7 @@
 		color: var(--text-3);
 	}
 	.slotl {
-		font-size: 10.5px;
+		font-size: 11px;
 		font-weight: 800;
 		text-transform: uppercase;
 		letter-spacing: 0.06em;
@@ -210,7 +210,7 @@
 		gap: 6px;
 	}
 	.tag {
-		font-size: 10px;
+		font-size: 11px;
 		font-weight: 800;
 		padding: 1px 6px;
 		border-radius: 6px;

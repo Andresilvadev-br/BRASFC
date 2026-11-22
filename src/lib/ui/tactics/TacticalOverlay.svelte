@@ -140,7 +140,7 @@
 		pointer-events: none;
 	}
 	.legend span {
-		font-size: 10px;
+		font-size: 11px;
 		font-weight: 700;
 		padding: 3px 7px;
 		border-radius: 999px;

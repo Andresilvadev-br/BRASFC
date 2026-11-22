@@ -201,7 +201,7 @@
 		margin: 0;
 	}
 	dt {
-		font-size: 10px;
+		font-size: 11px;
 		text-transform: uppercase;
 		letter-spacing: 0.12em;
 		color: var(--text-3);
@@ -325,7 +325,9 @@
 		margin: 0;
 		padding: 0;
 		display: grid;
+		grid-template-columns: minmax(0, 1fr);
 		gap: 8px;
+		overflow-wrap: anywhere;
 	}
 	.timeline li.current {
 		box-shadow: 0 0 0 1px var(--emerald-line);
@@ -333,7 +335,7 @@
 	.head {
 		width: 100%;
 		display: grid;
-		grid-template-columns: 70px 1fr auto auto auto;
+		grid-template-columns: 70px minmax(0, 1fr) auto auto auto;
 		gap: var(--sp-3);
 		align-items: center;
 		padding: var(--sp-4);
@@ -363,7 +365,11 @@
 			grid-template-columns: 1fr;
 		}
 		.head {
-			grid-template-columns: 60px 1fr auto;
+			grid-template-columns: 52px minmax(0, 1fr) auto auto;
+			gap: var(--sp-2);
+		}
+		.head .t {
+			overflow-wrap: anywhere;
 		}
 		.head .d {
 			display: none;

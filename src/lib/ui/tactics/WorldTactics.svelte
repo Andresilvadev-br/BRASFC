@@ -204,5 +204,5 @@
 	.bench button:is(:enabled:hover,[aria-pressed='true']) { border-color:var(--emerald); }
 	.bench small,.bench button:disabled { color:var(--text-2); }
 	@media(max-width:760px) { .tactics { grid-template-columns:1fr; } .bench { max-height:300px; } }
-	@container(max-width:440px) { .slot :global(svg) { height:22px; width:auto; } .slot span { font-size:.62rem; } }
+	@container(max-width:440px) { .slot :global(svg) { height:22px; width:auto; } .slot span { font-size: .6875rem; } }
 </style>

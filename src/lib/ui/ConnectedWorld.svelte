@@ -34,6 +34,7 @@
 	import { markClean, markDirty } from '#lib/stores/unsaved.svelte.ts';
 	import { notify } from '#lib/stores/island.svelte.ts';
 	import { enter } from '#lib/motion/actions.ts';
+	import ReadinessRing from './ReadinessRing.svelte';
 	import Button from './Button.svelte';
 	import type { IconName } from './icons.ts';
 	import type { CareerGroup } from './career/navigation.ts';
@@ -243,8 +244,17 @@
 			activity: connected?.activity, activityUntil: connected?.activityUntil }];
 	}));
 	const names = $derived(Object.fromEntries(world.members.map((member) => [member.profileId, member.displayName])));
-	const required = $derived(friends.filter((friend) => world.assistantsRequired || friend.role !== labels.assistant));
-	const everyoneReady = $derived(required.length > 0 && required.every((friend) => friend.online && friend.ready));
+	/** Contrato `readiness` da Equipe A: quando presente, é a autoridade sobre presença e aptidão. */
+	type OfficialReadiness = { participants: Array<{ profileId: string; required: boolean; ready: boolean; online: boolean }>;
+		requiredCount: number; readyCount: number; onlineCount: number; readyOnlineCount: number; canStart: boolean };
+	const official = $derived((world as unknown as { readiness?: OfficialReadiness }).readiness ?? null);
+	const required = $derived(official
+		? friends.filter((friend) => official.participants.some((p) => p.profileId === friend.id && p.required))
+		: friends.filter((friend) => world.assistantsRequired || friend.role !== labels.assistant));
+	const onlineOf = (id: string, fallback: boolean) => official?.participants.find((p) => p.profileId === id)?.online ?? fallback;
+	const everyoneReady = $derived(official ? official.canStart : required.length > 0 && required.every((friend) => friend.online && friend.ready));
+	const readyOnline = $derived(official ? official.readyOnlineCount : required.filter((friend) => friend.ready && friend.online).length);
+	const requiredTotal = $derived(official ? official.requiredCount : required.length);
 	const coach = $derived(current?.role === 'coach');
 	const ownStaff = $derived(friends.filter((friend) => friend.club === current?.club && friend.role !== labels.player));
 	const competitionMode = $derived(world.entryMode === 'coach' ? 'Carreira de Treinador' : world.entryMode === 'player' ? 'Carreira de Jogador' : 'Universo legado');
@@ -572,10 +582,14 @@
 				{#if world.fixture}
 					<FixtureCard fixture={world.fixture} clubId={current?.club ?? world.fixture.home} today={world.date} />
 				{:else}<p>{current ? 'Acompanhe os compromissos do universo neste passo.' : 'Selecione uma carreira para entrar na rodada.'}</p>{/if}
-				<p>{required.filter((friend) => friend.ready && friend.online).length} de {required.length} participantes prontos · {friends.filter((friend) => friend.online).length}/{friends.length} online</p>
+				<div class="round-ready">
+					<ReadinessRing done={readyOnline} total={requiredTotal} apt={everyoneReady} label="{readyOnline} de {requiredTotal} obrigatórios prontos e online" />
+					<div><strong>{everyoneReady ? 'Apto a iniciar a rodada' : `${readyOnline} de ${requiredTotal} obrigatórios prontos e online`}</strong>
+						<small>{friends.filter((friend) => onlineOf(friend.id, friend.online)).length}/{friends.length} online{official ? ' · confirmado pelo servidor' : ''}</small></div>
+				</div>
 				<div class="ready-team">
 					{#each friends as friend (friend.id)}
-						<div><Crest clubId={friend.club} size={28} /><span><strong>{friend.name}</strong><small>{friend.role}</small></span><small>{friend.online ? 'Online' : 'Offline'} · {friend.ready ? 'Pronto' : friend.role === labels.assistant && !world.assistantsRequired ? 'Opcional' : 'Pendente'}</small></div>
+						<div class:ok={friend.ready && onlineOf(friend.id, friend.online)}><Crest clubId={friend.club} size={28} /><span><strong>{friend.name}</strong><small>{friend.role}</small></span><small>{onlineOf(friend.id, friend.online) ? 'Online' : 'Offline'} · {friend.ready ? 'Pronto' : friend.role === labels.assistant && !world.assistantsRequired ? 'Opcional' : 'Pendente'}</small></div>
 					{/each}
 				</div>
 				<div class="actions">
@@ -901,6 +915,10 @@
 	article { min-width: 0; border: 1px solid var(--line); border-radius: 14px; background: linear-gradient(150deg, var(--emerald-soft), transparent 50%), var(--surface); padding: 16px; }
 	h3 { margin-top: 0; }
 	.ready-team { display:grid; gap:5px; margin:10px 0; }
+	.ready-team div.ok { border-color: var(--emerald-line); }
+	.round-ready { display:flex; align-items:center; gap:14px; margin:10px 0; }
+	.round-ready div { display:grid; }
+	.round-ready small { color: var(--text-3); }
 	.ready-team div { display:grid; grid-template-columns:28px 1fr auto; gap:8px;align-items:center;padding:7px;border:1px solid var(--line);border-radius:8px; }
 	.ready-team small {display:block;color:var(--text-3);}
 	label { display: grid; gap: 4px; margin: 8px 0; }
