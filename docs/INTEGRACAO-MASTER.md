@@ -33,6 +33,18 @@ O servidor já envia `readiness` no snapshot de `GET /api/rooms/:code/world` e d
 
 A ação `start` no lobby inicia a temporada. A ação `advance` inicia a rodada ou fecha a temporada e depende também da permissão de administrador. O servidor revalida presença e prontidão no momento do comando. Para o indicador de aptidão, usar `canStart`. Para o contador, usar `readyOnlineCount / requiredCount`. A confirmação do participante continua em `ready`. Em caso de desconexão, tratar a aptidão local como indisponível até obter estado do servidor. Se dois eventos dispararem a mesma consulta, reaproveitar a solicitação em curso ou cancelar a versão obsoleta.
 
+#### Pendência de integração em 22/11/2026
+
+No [PR #21](https://github.com/Andresilvadev-br/BRASFC/pull/21) em `ee26cf8`, o lobby e a tela de rodada leem a prontidão do snapshot do mundo. Com dois atletas prontos, fechar a sessão de um deles atualiza a presença via WebSocket. A lista de membros e a revisão do mundo permanecem iguais, então o resumo do lobby conserva **2 de 2 prontos e online**. Na temporada iniciada, o botão de simulação também continua habilitado com **Apto a iniciar a rodada**.
+
+O endpoint `/world?readiness` devolve `readyCount: 2`, `readyOnlineCount: 1` e `canStart: false` para a mesma revisão. O servidor recusa `advance` com HTTP 409, sem gravação e sem rodada ativa. Na reconexão, `readyOnlineCount` volta a 2 e `canStart` volta a `true` se a temporada já tiver iniciado.
+
+O ensaio no Chromium com PostgreSQL 16.16 isolado reproduziu a divergência no build conjunto dos PRs #20, #21 e #22. Os três testes de rodada em `tests/live-round.test.ts` passaram com PGlite e com PostgreSQL.
+
+- **Equipe B.** No consumidor do estado, invalidar a prontidão quando `members[].online` mudar ou o cliente reconectar. Solicitar a leitura leve, aceitar o retorno com a mesma revisão e descartar respostas de presença anteriores à transição mais recente. Enquanto a confirmação estiver pendente, bloquear a simulação. Atividade na sala sem mudança de presença pode reaproveitar o estado atual.
+- **Equipe A.** A cobertura em `tests/live-round.test.ts` verifica a queda e a recuperação da aptidão na mesma revisão, a rejeição do avanço e a ausência de rodada antes de reconectar.
+- **Aceitação conjunta.** Em duas sessões reais, confirmar a prontidão no lobby, desconectar um participante e observar o contador cair de 2 para 1. Reconectar, iniciar a temporada e repetir em Dia de jogo. O contador e o botão devem acompanhar `readiness` em ambas as transições. Depois de reconectar, o proprietário deve conseguir abrir a rodada.
+
 ### Partida e elenco
 
 - `session.relevant.match.players[].x/y` e `ball.x/y` usam metros absolutos no campo de 105 × 68. O mandante ataca no sentido de x crescente e o visitante no sentido inverso. O motor publica `tick` em segundos de jogo e `px/py` como posição anterior do atleta. Um quadro recebido pode saltar vários ticks. A transmissão avança em lotes e suspende o relógio nas fases de espera. A visualização pode interpolar entre os dois últimos quadros oficiais da mesma sessão usando o tempo de chegada. O placar e os eventos sempre vêm do quadro oficial.
@@ -46,9 +58,10 @@ A ação `start` no lobby inicia a temporada. A ação `advance` inicia a rodada
 - Base 0.10.1 escolhida por conter dois commits além da main, revisados no PR #19. Esse trabalho não deve retornar como alteração nova nos PRs Master.
 - Conservar o Ultra Motion X fixado na versão da base e reaproveitar os componentes aprovados.
 - Evidências e limitações ficam em `AUDITORIA-MASTER.md` e no relatório de engenharia. A revisão integrada depende do segundo PR e dos resultados de CI, navegador e Windows.
+- No build conjunto dos PRs #20, #21 e #22, o Chromium validou a biblioteca offline em cinco resoluções. Após reiniciar o servidor local com o mesmo banco, a carreira de treinador renomeada carregou com a mesma versão de save e a carreira de jogador excluída permaneceu ausente. O ensaio rodou no Linux com PGlite. A atualização integrada do instalador ainda precisa ser exercitada no Windows.
 
 ## Entregas em revisão
 
 - Equipe A no [PR #20](https://github.com/Andresilvadev-br/BRASFC/pull/20). Foram concluídos o contrato `readiness`, o catálogo v3, a versão 0.5.2 do motor, as barreiras de publicação e os ensaios atualizados. O [relatório de engenharia](RELATORIO-MASTER.md) reúne os resultados, os commits e as pendências.
-- Equipe B no [PR #21](https://github.com/Andresilvadev-br/BRASFC/pull/21), em rascunho. Ela registrou as entregas de legibilidade, elenco, resultados recentes e indicadores de presença. Seu rascunho aponta inicialmente para a main e inclui a base anterior por ancestralidade. Na entrega, apontar para a branch de integração após o CI desta recebê-la.
+- Equipe B no [PR #21](https://github.com/Andresilvadev-br/BRASFC/pull/21), aberto para revisão na branch de integração, com legibilidade, elenco, resultados recentes e indicadores de presença. O [PR #22](https://github.com/Andresilvadev-br/BRASFC/pull/22) parte da branch de experiência e reúne as alterações de partida ao vivo. A pendência de prontidão deve ser corrigida e revalidada antes da integração.
 - A interseção de arquivos nas duas branches identificada até `e9e21c3` é este documento, criado por ambas. Na integração, preservar o contrato implementado e o registro da Equipe B. Não há necessidade de reaplicar separadamente o PR #19, pois seus dois commits já integram a base comum.
