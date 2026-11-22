@@ -65,46 +65,68 @@ async function until(fn, timeout = 45_000) {
 	}
 	throw Error('Etapa do upgrade excedeu o tempo de espera.');
 }
-async function attach() {
+async function attach(endpoints) {
+	const chromiumDeadline = Date.now() + 3000;
 	const page = await until(async () => {
-		const [web, main] = await Promise.all([4190, 4191].map(async (port) => {
-			try { return await fetch(`http://127.0.0.1:${port}/json`, { signal: AbortSignal.timeout(600) }).then(r => r.json()); }
-			catch { return []; }
-		}));
-		const page = web.find(p => p.type === 'page');
-		if (page) { inspector = false; return page; }
-		const runtime = main.find(p => p.type === 'node');
-		if (runtime) { inspector = true; return runtime; }
+		const web = endpoints.chromium;
+		if (web) {
+			const url = new URL('/json', web.replace(/^ws:/, 'http:'));
+			const pages = await fetch(url, { signal: AbortSignal.timeout(600) }).then(r => r.json()).catch(() => []);
+			const target = pages.find(p => p.type === 'page');
+			if (target) return { url: target.webSocketDebuggerUrl, inspector: false };
+		}
+		if (endpoints.node && Date.now() >= chromiumDeadline) return { url: endpoints.node, inspector: true };
 		return false;
 	}, 65_000);
-	socket = new WebSocket(page.webSocketDebuggerUrl);
+	inspector = page.inspector;
+	socket = new WebSocket(page.url, { handshakeTimeout: 5000 });
+	socket.on('error', (error) => { diagnostics = (diagnostics + String(error)).slice(-4500); });
 	await new Promise((resolve, reject) => { socket.once('open', resolve); socket.once('error', reject); });
 }
 let id = 0;
 function evaluate(expression) {
 	if (inspector) expression = `process.mainModule.require('electron').BrowserWindow.getAllWindows()[0]?.webContents.executeJavaScript(${JSON.stringify(expression)}, true)`;
+	const connection = socket;
+	if (connection.readyState !== WebSocket.OPEN) return Promise.reject(Error('CDP desconectado'));
 	return new Promise((resolve, reject) => {
 		const messageId = ++id;
-		const timer = setTimeout(() => { socket.off('message', handler); reject(Error('CDP sem resposta')); }, 15_000);
+		const timer = setTimeout(() => finish(Error('CDP sem resposta')), 15_000);
+		const disconnect = () => finish(Error('CDP desconectado'));
+		function finish(error, value) {
+			clearTimeout(timer);
+			connection.off('message', handler);
+			connection.off('close', disconnect);
+			if (error) reject(error);
+			else resolve(value);
+		}
 		function handler(raw) {
 			const data = JSON.parse(String(raw));
 			if (data.id !== messageId) return;
-			clearTimeout(timer); socket.off('message', handler);
-			if (data.error || data.result.exceptionDetails) reject(Error(JSON.stringify(data.error ?? data.result.exceptionDetails)));
-			else resolve(data.result.result.value);
+			if (data.error || data.result.exceptionDetails) finish(Error(JSON.stringify(data.error ?? data.result.exceptionDetails)));
+			else finish(null, data.result.result.value);
 		}
-		socket.on('message', handler);
-		socket.send(JSON.stringify({ id: messageId, method: 'Runtime.evaluate', params: { expression, awaitPromise: true, returnByValue: true } }));
+		connection.on('message', handler);
+		connection.once('close', disconnect);
+		connection.send(JSON.stringify({ id: messageId, method: 'Runtime.evaluate', params: { expression, awaitPromise: true, returnByValue: true } }),
+			(error) => { if (error) finish(error); });
 	});
 }
 function launch(extraEnv = {}) {
-	app = spawn(exe, ['--remote-debugging-port=4190', '--remote-debugging-address=127.0.0.1', '--inspect=127.0.0.1:4191'], {
+	// Cada abertura do app escolhe portas livres. Só anexamos ao processo que esta chamada abriu.
+	const endpoints = {};
+	let startup = '';
+	app = spawn(exe, ['--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1', '--inspect=127.0.0.1:0'], {
 		env: { ...process.env, ...extraEnv, ELECTRON_ENABLE_LOGGING: '1' }, stdio: ['ignore', 'ignore', 'pipe']
 	});
-	app.stderr.on('data', (data) => diagnostics = (diagnostics + String(data)).slice(-4500));
+	app.stderr.on('data', (data) => {
+		diagnostics = (diagnostics + String(data)).slice(-4500);
+		startup = (startup + String(data)).slice(-8000);
+		endpoints.chromium ??= startup.match(/DevTools listening on (ws:\/\/127\.0\.0\.1:\d+\/\S+)[\r\n]/)?.[1];
+		endpoints.node ??= startup.match(/Debugger listening on (ws:\/\/127\.0\.0\.1:\d+\/\S+)[\r\n]/)?.[1];
+	});
 	app.on('exit', (code) => diagnostics += `
 Processo saiu com código ${code}`);
-	return attach();
+	return attach(endpoints);
 }
 const preferences = join(process.env.APPDATA, 'BRASFC', 'janela.json');
 const useFeed = () => writeFileSync(join(exe, '..', 'resources', 'app-update.yml'),
@@ -217,7 +239,7 @@ try {
 			let installed;
 			try { installed = await evaluate("window.brasfcDesktop.update('install')"); }
 			catch (error) {
-				if (existsSync(recoveryPending) && /frame was disposed|CDP sem resposta/.test(String(error))) return;
+				if (existsSync(recoveryPending) && /frame was disposed|CDP sem resposta|CDP desconectado/.test(String(error))) return;
 				throw error;
 			}
 			if (installed !== true) {
@@ -294,6 +316,7 @@ try {
 				await new Promise((resolve) => { app.once('exit', resolve); app.kill(); });
 			}
 		}
+		result.pendingFault = 'retry';
 		await downloadCandidate();
 		await startInstall();
 		socket.close();
@@ -302,6 +325,7 @@ try {
 		await launch();
 		await waitOffline();
 		assert.equal(await evaluate(`fetch('/api/careers/${old.id}').then(r => r.json()).then(d => d.career?.id)`), old.id);
+		delete result.pendingFault;
 		result.tests.push('Instalação abortada e falha de inicialização recuperadas, com nova tentativa concluída e a mesma carreira disponível');
 	}
 	result.passed = true;
