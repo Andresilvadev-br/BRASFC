@@ -18,6 +18,7 @@
 	import { reposition } from '../tactics/reposition.ts';
 	import LineupPresentation from './LineupPresentation.svelte';
 	import MatchCard from '../cards/MatchCard.svelte';
+	import StatsCompare from './StatsCompare.svelte';
 	import Icon from '../Icon.svelte';
 	import { competitionLabel, eventLabel, eventTone } from './event-labels.ts';
 	import { easeOut, shownPositions, tweenDuration, tweenFrame } from './frame-tween.ts';
@@ -326,7 +327,7 @@
 						{#if playerStats && !['HALF_TIME', 'FULL_TIME'].includes(session.phase)}
 							<p>Sua atuação · {playerStats.minutes} min · Nota {playerStats.rating.toFixed(1)} · Condição {Math.round(playerStats.condition)}%</p>
 						{/if}
-						<BroadcastMoments events={match.events} sessionKey={session.id + ":" + relevant.replay.home.id} athleteName={(id) => athletes.get(id)?.name} />
+						<BroadcastMoments events={match.events} sessionKey={session.id + ":" + relevant.replay.home.id} athleteName={(id) => athletes.get(id)?.name} clubs={{ home: relevant.replay.home.id, away: relevant.replay.away.id }} />
 					</div>
 					<aside class="surface">
 						<h3 class="section-title">Lances oficiais</h3>
@@ -342,10 +343,7 @@
 			{#if session.phase === 'HALF_TIME' || session.phase === 'FULL_TIME'}
 				<div class="surface stats" use:enter>
 					<h2>{session.phase === 'HALF_TIME' ? 'Intervalo' : 'Súmula da partida'}</h2>
-					{#each sides as side}
-						{@const team = match.stats.teams[side]}
-						<p><strong>{relevant.replay[side].name}</strong> · {team.shots} chutes · {team.shotsOnTarget} no alvo · {team.corners} escanteios · {team.yellows} amarelos</p>
-					{/each}
+					<StatsCompare home={relevant.replay.home} away={relevant.replay.away} stats={match.stats.teams} />
 					{#if playerStats}<p>Sua atuação · {playerStats.minutes} min · Nota {playerStats.rating.toFixed(1)} · Condição {Math.round(playerStats.condition)}%</p>{/if}
 					{#if session.phase === 'FULL_TIME'}
 						{#if match.goals.length}

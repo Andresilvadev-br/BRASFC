@@ -4,6 +4,7 @@
 	import { PITCH } from '#lib/engine/types.ts';
 	import { newBroadcastEvents } from './broadcast-events.ts';
 	import Icon from '../Icon.svelte';
+	import Crest from '../Crest.svelte';
 	import type { IconName } from '../icons.ts';
 	import type { MatchEvent } from '#lib/engine/types.ts';
 	type Moment = MatchEvent & { index: number; minute: string };
@@ -31,7 +32,9 @@
 		half_time: { title: 'Intervalo', tag: 'Fim do primeiro tempo', duration: 2200, priority: 6 },
 		full_time: { title: 'Apito final', tag: 'Encerramento', duration: 2200, priority: 6 }
 	};
-	let { events, athleteName, sessionKey }: { events: Moment[]; athleteName: (id: string) => string | undefined; sessionKey?: string } = $props();
+	let { events, athleteName, sessionKey, clubs }: { events: Moment[]; athleteName: (id: string) => string | undefined; sessionKey?: string;
+		/** Clubes de cada lado: o escudo identifica de quem é o lance (vem do `side` do evento oficial). */
+		clubs?: Partial<Record<'home' | 'away', string>> } = $props();
 	let active = $state.raw<Moment | null>(null);
 	let priority = $state(0);
 	let speed = $state(1);
@@ -148,7 +151,7 @@
 					{:else if symbol}<span class="event-symbol" use:pop><Icon name={symbol} size={28} /></span>{:else}<i></i><i></i><i></i>{/if}
 				</div>
 				<div class="copy">
-					<small>{info.tag} · {active.minute}</small>
+					<small>{#if active.side && clubs?.[active.side]}<span class="club"><Crest clubId={clubs[active.side]} size={16} /></span>{/if}{info.tag} · {active.minute}</small>
 					<strong use:pop>{decisive ? 'Gol nos minutos finais!' : info.title}</strong>
 					{#if active.type === 'sub'}<span>Entra {player ?? '—'} · Sai {other ?? '—'}</span>
 					{:else if active.type === 'goal_disallowed'}<span>{player} · {active.data?.reason === 'impedimento' ? 'Impedimento' : 'Revisão da arbitragem'} · Placar {active.data?.score ?? 'mantido'}</span>
@@ -169,7 +172,7 @@
 	@media (max-width:420px){.toolbar button span:not(.num){display:none}}
 	.ribbon {--mark:#66edd0;display:grid;grid-template-columns:64px 1fr;gap:13px;align-items:center;min-height:72px;overflow:hidden;border-left:4px solid var(--mark);border-radius:8px;background:linear-gradient(110deg,#162c31,#0d171b);color:#fff}
 	.review-field {width:100%;padding:5px;color:var(--mark);transform:skewX(15deg)} .review-flag {animation:pulse .55s ease-out both;transform-origin:center}
-	.copy {padding:7px 9px 7px 0;min-width:0;display:grid}.copy small{color:var(--mark);text-transform:uppercase;letter-spacing:.07em}.copy strong{font-size:clamp(1rem,3vw,1.5rem);line-height:1.02}.copy span{font-size:.75rem;color:#dee9e4}
+	.copy {padding:7px 9px 7px 0;min-width:0;display:grid}.copy small{display:flex;align-items:center;gap:6px}.club{display:inline-grid;filter:drop-shadow(0 1px 2px #0008)}.copy small{color:var(--mark);text-transform:uppercase;letter-spacing:.07em}.copy strong{font-size:clamp(1rem,3vw,1.5rem);line-height:1.02}.copy span{font-size:.75rem;color:#dee9e4}
 	.signal {display:flex;gap:3px;align-items:center;justify-content:center;height:100%;transform:skewX(-15deg);background:repeating-linear-gradient(90deg,#0000 0 7px,#ffffff0d 7px 9px)}
 	.event-symbol { color:var(--mark); }
 	.event-symbol :global(svg) { display:block; }

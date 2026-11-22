@@ -141,9 +141,15 @@ Mesclei `improvement/master-engineering` (`f1a8d48`) com esta branch numa branch
 - `tests/multiplayer-browser.mjs` (porta 3000) e `tests/career-browser.mjs` (offline, porta 3001) passaram contra o build mesclado;
 - seção Rodada de uma liga real: o servidor enviou `requiredCount 1`, `readyOnlineCount 0`, `canStart false`, e a tela mostrou "0/1 · 0 de 1 obrigatórios prontos e online".
 
+### Fase 3 — partida (branch `improvement/master-experience-match`, PR empilhado sobre o #21)
+
+- **Campo ao vivo interpolado** (`frame-tween.ts`): anda do que está na tela até o último quadro oficial, no ritmo real de chegada. Corta direto para substituição, reposição (> 22 m), nova sessão e movimento reduzido. Placar e eventos seguem só o quadro oficial. Medido numa rodada ao vivo real em 4 s: **4 imagens distintas sem interpolação × 162 com**.
+- **Intervalo e súmula:** `StatsCompare` com posse, finalizações, no alvo, xG, passes certos, escanteios, faltas, impedimentos e cartões, tudo de `match.stats.teams`.
+- **Cenas de evento:** escudo do time do lance (pelo `side` do evento oficial), ao vivo e offline. Observadas 53 cenas, todas com o escudo.
+- Validado até o intervalo numa liga real: 10 linhas de estatísticas, prontidão do 2º tempo "0/1", sem overflow e sem erros de página.
+
 ### Próximas etapas da Equipe B
 
 - **Fase 2:** Treinos, Mercado, Calendário, Competições, Notícias, Configurações, Criação de ligas e Comissão técnica.
-- **Fase 3:** campo 2D (interpolação entre ticks oficiais), cenas de evento e intervalo, que dependem da pendência 2.
 - **Fase 4:** lobby e intervalo com o contrato `readiness`, que depende da pendência 1.
 - **Fase 5:** homologação visual com capturas comparativas, com custo de tokens combinado com o responsável.

@@ -443,7 +443,7 @@
 				/>
 			{/if}
 
-			<BroadcastMoments events={moments} athleteName={nameOf} />
+			<BroadcastMoments events={moments} athleteName={nameOf} clubs={{ home: home.id, away: away.id }} />
 			<div class="ticker" aria-live="polite">
 				{#if lines[0]}<span class="min">{lines[0].minute}</span> {lines[0].text}{:else}Pronto para o apito inicial.{/if}
 			</div>
