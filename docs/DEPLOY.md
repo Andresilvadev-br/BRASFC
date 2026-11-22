@@ -26,10 +26,10 @@ O script instala o Docker, cria o usuário `deploy`, gera senhas fortes nos `.en
 Depois do bootstrap, na VPS, como root:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Andresilvadev-br/BRASFC/dev/deploy/self-update.sh | bash -s -- --install
+curl -fsSL https://raw.githubusercontent.com/Andresilvadev-br/BRASFC/main/deploy/self-update.sh | bash -s -- --install
 ```
 
-A VPS passa a verificar a branch `dev` a cada 5 minutos: se houver commit novo, constrói a imagem localmente e publica com backup, verificação de saúde e retorno automático. Não precisa de secrets no GitHub. Log em `/opt/brasfc/backups/self-update.log`.
+Em produção, o atualizador verifica a `main` a cada minuto e aguarda a imagem aprovada no GitHub Actions. A instalação usa backup, verificação de saúde e retorno automático. Em staging, o padrão é acompanhar `dev` e a construção local é permitida após a janela de espera. Não precisa de secrets no GitHub. Log em `/opt/brasfc/backups/self-update.log`.
 
 O deploy via GitHub Actions (abaixo) continua disponível como alternativa.
 
@@ -82,7 +82,7 @@ Variáveis por ambiente:
 ## 3. Fluxo de publicação
 
 1. Push em `dev` → CI (tipos, testes, build, smoke test do servidor, build Docker) → imagem `ghcr.io/andresilvadev-br/brasfc:sha-…` → deploy em **staging**.
-2. Merge em `main` → mesmo processo → aprovação manual → **produção**.
+2. Merge aprovado em `main` → validações → aprovação no ambiente **produção** → publicação da imagem e implantação. A aprovação deve estar configurada no GitHub para proteger também instalações via self-update.
 3. `deploy/deploy.sh` faz backup do banco, sobe a nova imagem, espera `/api/health` e **volta automaticamente à versão anterior** se a nova não ficar saudável.
 
 O resumo indica separadamente CI, publicação da imagem, instalação e confirmação do commit saudável na URL pública. Produção exige um método de implantação válido e a URL deve responder com o commit desse workflow. Quando a VPS usa o atualizador, confirme que seu serviço acompanha `main` para produção e `dev` para staging. A configuração do serviço é administrada na VPS. Uma falha de backup cancela a instalação antes que a candidata possa executar migrações.
@@ -137,7 +137,7 @@ App ≤ 512 MB (heap Node 384 MB), PostgreSQL ≤ 512 MB, Caddy ≤ 128 MB por a
 ## Atualização automática (Dev 0.4)
 
 - **Por que o site parou na 0.1.0:** a regra `data/` do `.gitignore` também ignorava `src/lib/data/` (base Brasil 2026). O CI falhava na verificação de tipos e a VPS não conseguia montar a imagem. Corrigido para `/data/`.
-- A VPS verifica a branch a cada minuto, **baixa a imagem pronta do GitHub** (registro público, verificada pelo digest, que vai para o log) e só monta localmente se a imagem não existir após 15 minutos.
+- O atualizador baixa a imagem pronta do GitHub. O digest vai para o log. O fallback de construção local após 15 minutos fica restrito a staging.
 - Antes de publicar: backup do banco (`deploy.sh`); depois: verificação de saúde e retorno automático à versão anterior se falhar.
 - Uma versão que falhou não é tentada de novo a cada minuto (`.failed-tag`); um commit novo libera.
 - Estado da última implantação: `/opt/brasfc/backups/deploy-status.json`. Aviso opcional: crie `/opt/brasfc/deploy/.env.notify` com `DEPLOY_WEBHOOK_URL=...` (Discord, Slack, ntfy) — nada disso vai para o repositório.

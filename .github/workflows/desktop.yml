@@ -157,6 +157,7 @@ jobs:
     needs: windows
     if: github.ref == 'refs/heads/main' && needs.windows.outputs.release_pending == 'true' && (github.event_name == 'push' || inputs.publish)
     runs-on: ubuntu-latest
+    environment: producao
     permissions:
       contents: write
     steps:

@@ -29,6 +29,8 @@ jobs:
     if: (github.ref_name == 'main' || github.ref_name == 'dev') && (github.event_name == 'push' || inputs.publish)
     needs: checks
     runs-on: ubuntu-latest
+    # A VPS com self-update consegue instalar assim que a imagem estiver disponível.
+    environment: ${{ github.ref_name == 'main' && 'producao' || 'staging' }}
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
       image: ${{ steps.meta.outputs.image }}
