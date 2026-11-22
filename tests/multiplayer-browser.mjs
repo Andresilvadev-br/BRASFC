@@ -73,7 +73,7 @@ try {
 	const { page: assistant } = await account('auxiliar_teste','Ivo Auxiliar',390,844);
 	await start(coach,'Treinador','Liga da comissão');
 	await coach.getByText('Temporada e competição', { exact:true }).click();
-	await coach.getByLabel('Temporada inicial').selectOption('2028');
+	await coach.getByRole('radiogroup', { name:'Temporada inicial' }).getByRole('radio', { name:'2028' }).click();
 	await coach.getByText('Temporada e competição', { exact:true }).click();
 	await capture(coach,'02-configuracao-mobile');
 	await coach.reload();
