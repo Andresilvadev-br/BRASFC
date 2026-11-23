@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { sanitizeDiscipline, suspensionLabel } from '#lib/domain/discipline.ts';
 	import { untrack } from 'svelte';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { formatLong, monthGrid, monthLabel, toDate } from '#lib/domain/dates.ts';
@@ -12,6 +13,16 @@
 
 	let { data } = $props();
 	const c = $derived(data.career);
+	// Suspensos e a próxima partida da competição em que cumprem a punição.
+	const suspensionList = $derived.by(() => {
+		const d = sanitizeDiscipline(c.data.discipline, c.season);
+		const playedKeys = new Set(data.view.results.map((r) => `${r.competition ?? ''}:${r.round}:${r.home}`));
+		return d.suspensions.map((s) => ({
+			...s,
+			name: data.view.squad.find((p) => p.id === s.playerId)?.name ?? s.playerId,
+			nextDate: data.view.clubFixtures.find((f) => f.competition === s.competition && !playedKeys.has(`${f.competition}:${f.round}:${f.home}`))?.date ?? null
+		}));
+	});
 	const v = $derived(data.view);
 
 	const start = untrack(() => toDate(data.career.gameDate));
@@ -128,6 +139,15 @@
 			{/if}
 			<p class="legend subtle"><span class="lg match"></span> Liga <span class="lg cup"></span> Copa <span class="lg today"></span> Hoje <span class="lg next"></span> Próximo</p>
 		</Panel>
+		{#if suspensionList.length}
+			<Panel title="Suspensões" icon="alert" index={2}>
+				<ul class="susp-list">
+					{#each suspensionList as s (s.playerId + s.competition)}
+						<li><strong>{s.name}</strong> · {suspensionLabel(s)} <small>{s.competition === CUP_ID ? 'Copa do Brasil' : 'Campeonato'}{s.nextDate ? ` · fora em ${formatLong(s.nextDate).toLowerCase()}` : ''}</small></li>
+					{/each}
+				</ul>
+			</Panel>
+		{/if}
 		<Panel title="Resumo do mês" icon="calendar" index={2}>
 			<dl class="sum">
 				<div><dt>Jogos</dt><dd>{summary.games}</dd></div>
@@ -149,6 +169,8 @@
 </div>
 
 <style>
+	.susp-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: var(--fs-sm); }
+	.susp-list small { display: block; color: var(--text-3); }
 	.head {
 		display: flex;
 		justify-content: space-between;

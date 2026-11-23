@@ -44,7 +44,7 @@
 	let saved = $state.raw<RoundResponse | null>(null);
 	let seasonEnd = $state.raw<{ summary: SeasonSummary; moves: Array<{ clubId: string; from: DivisionId; to: DivisionId; reason: string }> } | null>(null);
 
-	const ctx = $derived<MatchdayContext>({ season: c.season, firstSeason: v.firstSeason, tactical: v.tactical, fitness: c.data.fitness, observed: data.observed, playerCalendar: { division: v.division, gameDates: v.clubFixtures.map((f) => f.date) } });
+	const ctx = $derived<MatchdayContext>({ season: c.season, firstSeason: v.firstSeason, tactical: v.effective, fitness: c.data.fitness, observed: data.observed, playerCalendar: { division: v.division, gameDates: v.clubFixtures.map((f) => f.date) } });
 	const fixture = $derived(v.next);
 	const preview = $derived(fixture ? fixtureSetup(c, fixture, v.tactic, ctx) : null);
 	const myTeam = $derived(preview ? (preview.mySide === 'home' ? preview.home : preview.away) : null);
@@ -214,6 +214,9 @@
 					</p>
 					{#if c.data.position && meInLineup !== 'fora'}<p class="muted">Objetivo individual · {matchObjective(c.data.position).label}</p>{/if}
 				{/if}
+				{#if c.mode === 'coach' && preview.suspended.length}
+					<p class="warn susp" role="alert"><Icon name="alert" /> Suspensos nesta partida: {preview.suspended.map((id) => v.squad.find((p) => p.id === id)?.shortName ?? id).join(', ')}. O servidor os retirou da escalação e do banco.</p>
+				{/if}
 				{#if c.mode === 'coach'}<div class="m"><span>Domínio tático</span><Meter value={Math.round(v.mastery.execution)} label="Domínio tático" /><b>{Math.round(v.mastery.execution)} · {MASTERY_LABEL(v.mastery.execution)}</b></div>{/if}
 			</div>
 			<div>
@@ -294,6 +297,7 @@
 {/if}
 
 <style>
+	.warn.susp { color: #fca5a5; }
 	.card {
 		display: flex;
 		flex-direction: column;

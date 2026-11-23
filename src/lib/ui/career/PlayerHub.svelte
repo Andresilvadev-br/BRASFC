@@ -67,7 +67,7 @@
 	const positionCount = $derived(1 + v.squad.filter((p) => p.id !== CAREER_PLAYER_ID && p.position === position).length);
 	const selection = $derived.by(() => {
 		if (!v.next) return null;
-		const setup = fixtureSetup(c, v.next, v.tactic, { season: c.season, firstSeason: v.firstSeason, tactical: v.tactical, fitness: c.data.fitness, observed: [], playerCalendar: { division: v.division, gameDates } });
+		const setup = fixtureSetup(c, v.next, v.tactic, { season: c.season, firstSeason: v.firstSeason, tactical: v.effective, fitness: c.data.fitness, observed: [], playerCalendar: { division: v.division, gameDates } });
 		return selectionOf(setup[setup.mySide]);
 	});
 	const rivals = $derived(v.squad.filter((p) => p.id !== CAREER_PLAYER_ID && positionFit(p.position, position) >= 0.6).sort((a, b) => positionFit(b.position, position) - positionFit(a.position, position) || b.overall - a.overall).slice(0, 3));

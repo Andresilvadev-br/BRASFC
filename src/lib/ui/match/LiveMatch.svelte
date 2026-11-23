@@ -230,7 +230,8 @@
 		const squad = relevant.replay[relevant.side].players.filter((p) => match?.players.some((row) => row.id === p.id));
 		const available = new Set(squad.map((p) => p.id));
 		const lineup = autoLineup(value, squad.map((p) => ({ ...p, overall: computeOverall(p.attributes, p.position) } as Parameters<typeof autoLineup>[1][number])));
-		if (lineup.every((id) => available.has(id))) decision({ type: 'formation', value, lineup });
+		// Com expulsões a nova formação tem vagas (''): o motor confere que os demais estão em campo.
+		if (lineup.every((id) => id === '' || available.has(id)) && lineup.filter(Boolean).length === available.size) decision({ type: 'formation', value, lineup });
 	}
 	function replay() {
 		if (frameSet.length < 2 || replayIndex !== null) return;

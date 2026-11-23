@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { positionFit, type Position } from '#lib/domain/positions.ts';
 	import { FORMATIONS, MENTALITY_LABELS, STYLE_LABELS } from '#lib/domain/tactics.ts';
 	import { reposition } from '../tactics/reposition.ts';
 	import type { Match } from '#lib/engine/match.ts';
@@ -21,7 +22,8 @@
 		pendingOut = [],
 		color: kit,
 		onsub,
-		onswap
+		onswap,
+		onmove
 	}: {
 		match: Match;
 		side: Side;
@@ -33,8 +35,11 @@
 		pendingOut?: string[];
 		/** cor do uniforme em uso (resolve choque de cores) */
 		color?: string;
-		onsub?: (outId: string, inId: string) => void;
+		/** `slot`: vaga aberta por expulsão onde o reserva deve entrar (ausente = posição de quem sai) */
+		onsub?: (outId: string, inId: string, slot?: number) => void;
 		onswap?: (first: string, second: string) => void;
+		/** leva um atleta em campo para uma vaga aberta (reorganizar com 10) */
+		onmove?: (playerId: string, slot: number) => void;
 	} = $props();
 
 	const team = $derived.by(() => {
@@ -56,6 +61,39 @@
 		return match.subsLeft(side);
 	});
 	const mineSelected = $derived(!!selected && slots.some((s) => s.id === selected && s.st?.onPitch));
+	// Vagas: posições do desenho sem ninguém em campo (expulsão sem substituição).
+	const onPitchCount = $derived.by(() => {
+		void version;
+		return match.onPitch(side).length;
+	});
+	const sentOff = $derived.by(() => {
+		void version;
+		return [...match.states.values()].filter((st) => st.side === side && st.sentOff).length;
+	});
+	const vacant = $derived.by(() => {
+		void version;
+		const taken = new Set(match.onPitch(side).map((st) => st.slot));
+		return slots.map((s, i) => ({ ...s, i })).filter((s) => !taken.has(s.i));
+	});
+	/** Vaga mais adequada à posição do reserva, se ela encaixar melhor que a posição de quem sai. */
+	function slotFor(outId: string, inId: string): number | undefined {
+		if (!vacant.length) return undefined;
+		const incoming = match.player(inId);
+		const out = slots.find((s) => s.id === outId);
+		if (!incoming || !out) return undefined;
+		const best = [...vacant].sort((a, b) => positionFit(incoming.position, b.pos as Position) - positionFit(incoming.position, a.pos as Position))[0];
+		return positionFit(incoming.position, best.pos as Position) > positionFit(incoming.position, out.pos as Position) ? best.i : undefined;
+	}
+	// Auxiliar técnico: sugestão após expulsão na defesa (nunca executada sem o treinador).
+	const advice = $derived.by(() => {
+		if (!onsub || !canSub) return null;
+		const hole = vacant.find((v) => ['ZAG', 'LD', 'LE', 'VOL'].includes(v.pos));
+		if (!hole) return null;
+		const attacker = slots.filter((s) => s.st?.onPitch && ['ATA', 'PD', 'PE', 'MEI'].includes(s.pos)).sort((a, b) => (a.st?.condition ?? 0) - (b.st?.condition ?? 0))[0];
+		const defender = bench.filter((b) => b.position !== 'GOL').sort((a, b) => positionFit(b.position, hole.pos as Position) - positionFit(a.position, hole.pos as Position))[0];
+		if (!attacker || !defender || positionFit(defender.position, hole.pos as Position) < 0.6) return null;
+		return { hole, attacker, defender };
+	});
 	const color = $derived(kit ?? team.setup.colors.primary);
 
 	function rating(id: string) {
@@ -68,6 +106,12 @@
 		onswap?.(first, second);
 		selected = null;
 	}
+	function pickVacant(i: number) {
+		if (onmove && mineSelected && selected) {
+			onmove(selected, i);
+			selected = null;
+		}
+	}
 	function pick(id: string) {
 		if (onswap && mineSelected && selected && selected !== id && slots.some((slot) => slot.id === id && slot.st?.onPitch)) {
 			swap(selected, id);
@@ -79,12 +123,27 @@
 	<header>
 		<strong>{team.setup.short}</strong>
 		<span>{team.tactic.formation} · {MENTALITY_LABELS[team.tactic.mentality]} · {STYLE_LABELS[team.tactic.style]}</span>
+		{#if sentOff}<span class="tenmen" role="status">{onPitchCount} jogadores em campo — {sentOff} {sentOff === 1 ? 'expulso' : 'expulsos'}</span>{/if}
 	</header>
+	{#if advice}
+		<div class="advice" role="note">
+			<span><b>Auxiliar:</b> a vaga de {advice.hole.pos} ficou aberta. Recomendo tirar {match.player(advice.attacker.id)?.shortName} e colocar {advice.defender.shortName} na defesa.</span>
+			<button onclick={() => onsub?.(advice.attacker.id, advice.defender.id, advice.hole.i)}>Fazer a troca</button>
+		</div>
+	{/if}
 
 	<div class="field" use:reposition={{ move: onswap ? swap : undefined }}>
 		<span class="mid"></span>
 		<span class="box"></span>
-		{#each slots as s (s.id)}
+		{#each vacant as h (h.i)}
+			<button class="chip vaga" class:target={!!onmove && mineSelected} style="left:{h.x}%;top:{h.y}%" disabled={!(onmove && mineSelected)} onclick={() => pickVacant(h.i)}
+				aria-label="Vaga aberta: {h.pos}{onmove && mineSelected ? ' — toque para levar o atleta selecionado' : ''}" title="Vaga aberta ({h.pos})">
+				<span class="top"><span class="pos">{h.pos}</span></span>
+				<span class="nm">Vaga</span>
+			</button>
+		{/each}
+		{#each slots as s, si (si)}
+			{#if s.st?.onPitch}
 			{@const p = match.player(s.id)}
 			{@const r = rating(s.id)}
 			{@const st = s.st}
@@ -111,13 +170,16 @@
 				</span>
 				<span class="cond"><span style="width:{st?.condition ?? 0}%" class:low={(st?.condition ?? 100) < 60}></span></span>
 			</button>
+			{/if}
 		{/each}
 	</div>
 
 	<div class="bench">
 		{#if onswap}<small class="lbl">Arraste um atleta ou toque em dois titulares para trocar posições.</small>{/if}
 		<span class="lbl">
-			{#if canSub && mineSelected}
+			{#if vacant.length && onmove && mineSelected}
+				Toque numa <b>vaga</b> para levar <b>{match.player(selected!)?.shortName}</b> até ela, ou num reserva para substituí-lo{vacant.length ? ' (o reserva entra na vaga que combina com a posição dele)' : ''}
+			{:else if canSub && mineSelected}
 				Toque num reserva para entrar no lugar de <b>{match.player(selected!)?.shortName}</b>
 			{:else if canSub}
 				Banco · toque em quem sai e depois em quem entra ({subsLeft} {subsLeft === 1 ? 'troca' : 'trocas'})
@@ -132,7 +194,7 @@
 					class:ready={canSub && mineSelected}
 					disabled={!(canSub && mineSelected)}
 					onclick={() => {
-						if (selected) onsub?.(selected, b.id);
+						if (selected) onsub?.(selected, b.id, slotFor(selected, b.id));
 						selected = null;
 					}}
 					title="{b.name} · {b.position}"
@@ -148,6 +210,13 @@
 </section>
 
 <style>
+	.tenmen { color: #fca5a5; font-weight: 700; font-size: var(--fs-xs); }
+	.advice { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 8px 10px; border-radius: 10px; background: rgb(59 130 246 / 0.12); font-size: var(--fs-xs); }
+	.advice button { flex: none; padding: 6px 10px; border-radius: 8px; border: 1px solid rgb(59 130 246 / 0.5); background: rgb(59 130 246 / 0.2); color: inherit; cursor: pointer; }
+	.chip.vaga { border: 1px dashed rgb(239 68 68 / 0.7); background: rgb(239 68 68 / 0.12); opacity: 0.9; }
+	.chip.vaga.target { border-color: #fbbf24; background: rgb(251 191 36 / 0.18); animation: blink 1s ease-in-out infinite alternate; }
+	@keyframes blink { to { opacity: 0.6; } }
+	@media (prefers-reduced-motion: reduce) { .chip.vaga.target { animation: none; } }
 	.board {
 		display: flex;
 		flex-direction: column;

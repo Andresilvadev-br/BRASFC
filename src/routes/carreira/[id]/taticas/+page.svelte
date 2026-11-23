@@ -43,7 +43,7 @@
 	import Segmented from '#lib/ui/Segmented.svelte';
 	import StylePicker from '#lib/ui/StylePicker.svelte';
 	import { analyze, type Tip } from '#lib/domain/assistant.ts';
-	import { bestRoles, resolveRoles, teamMastery } from '#lib/domain/tactical.ts';
+	import { resolveRoles, teamMastery } from '#lib/domain/tactical.ts';
 	import { overridesOf, presetInstructions, type TacticalInstructions } from '#lib/engine/instructions.ts';
 	import { ROLES, type RoleId } from '#lib/engine/roles.ts';
 	import AssistantPanel from '#lib/ui/tactics/AssistantPanel.svelte';
@@ -58,6 +58,11 @@
 	import { count, enter } from '#lib/motion/actions.ts';
 	import InstructionsEditor from '#lib/ui/tactics/InstructionsEditor.svelte';
 	import MasteryPanel from '#lib/ui/tactics/MasteryPanel.svelte';
+	import TacticLibrary from '#lib/ui/tactics/TacticLibrary.svelte';
+	import CoachKnowledgePanel from '#lib/ui/tactics/CoachKnowledgePanel.svelte';
+	import { sanitizePresets } from '#lib/domain/tactic-presets.ts';
+	import { bestBench, bestEleven, lineupScore } from '#lib/domain/lineup-optimizer.ts';
+	import { sanitizeDiscipline, suspendedFor, playerDiscipline, suspensionLabel } from '#lib/domain/discipline.ts';
 	import RolePicker from '#lib/ui/tactics/RolePicker.svelte';
 	import TacticalOverlay from '#lib/ui/tactics/TacticalOverlay.svelte';
 
@@ -98,12 +103,17 @@
 	});
 	const preset = $derived(presetInstructions(tactic.mentality, tactic.style));
 	const customCount = $derived(Object.keys(overridesOf(tactic.instructions, preset)).length);
-	const mastery = $derived(teamMastery(v.tactical, tactic.formation, tactic.style, tactic.lineup, tactic.instructions));
+	const mastery = $derived(teamMastery(v.effective, tactic.formation, tactic.style, tactic.lineup, tactic.instructions));
+	// Disciplina: suspensos para a PRÓXIMA partida (a competição dela define quem cumpre suspensão).
+	const discipline = $derived(sanitizeDiscipline(data.career.data.discipline, data.career.season));
+	const nextCompetition = $derived(v.upcoming?.competition ?? null);
+	const suspended = $derived(suspendedFor(discipline, nextCompetition));
+	const presets = $derived(sanitizePresets(data.career.data.tacticPresets));
 	const tips = $derived(
 		analyze({
 			squad: v.squad,
 			tactic,
-			tactical: v.tactical,
+			tactical: v.effective,
 			fitness: v.fitness,
 			recent: data.recent ?? [],
 			clubId: data.career.clubId,
@@ -160,14 +170,32 @@
 		tactic.roles = resolveRoles(f);
 	}
 
-	/** Recalcula o onze inteiro, inclusive com atletas que estavam no banco ou na reserva. */
+	/**
+	 * Montar melhor 11: avalia TODO o elenco elegível (fora suspensos) e busca o melhor conjunto para a
+	 * formação. Mostra a prévia antes; funções, mentalidade e instruções personalizadas ficam como estão.
+	 */
+	let bestOpen = $state(false);
+	let bestPlan = $state<{ lineup: string[]; bench: string[]; before: number; after: number; changes: Array<{ slot: string; from: SquadPlayer | undefined; to: SquadPlayer | undefined }> } | null>(null);
 	function optimizeLineup() {
-		const lineup = autoLineup(tactic.formation, v.squad);
-		tactic.lineup = lineup;
-		tactic.bench = pickBench(v.squad, lineup);
-		tactic.roles = bestRoles(tactic.formation, lineup, v.squad);
+		const lineup = bestEleven(tactic.formation, v.squad, { fitness: v.fitness, unavailable: suspended });
+		const benchIds = bestBench(v.squad, lineup, { fitness: v.fitness, unavailable: suspended });
+		const changes = slots.map((slot, i) => ({ slot: slot.position, from: byId.get(tactic.lineup[i]), to: byId.get(lineup[i]) })).filter((c) => c.from?.id !== c.to?.id);
+		bestPlan = { lineup, bench: benchIds, before: lineupScore(tactic.formation, tactic.lineup, v.squad, v.fitness), after: lineupScore(tactic.formation, lineup, v.squad, v.fitness), changes };
+		bestOpen = true;
+	}
+	function applyBest() {
+		if (!bestPlan) return;
+		tactic.lineup = bestPlan.lineup;
+		tactic.bench = bestPlan.bench;
+		tactic.roles = resolveRoles(tactic.formation, tactic.roles);
 		selection = null;
-		notify({ icon: 'check', tone: 'success', title: 'Melhor 11 sugerido', detail: 'Revise as posições e salve a tática para confirmar.' });
+		bestOpen = false;
+		notify({ icon: 'check', tone: 'success', title: 'Melhor 11 aplicado', detail: 'Revise e salve a tática para confirmar.' });
+	}
+	function applyPresetTactic(t: Tactic) {
+		tactic = editable(t);
+		mode = 'avancada';
+		selection = null;
 	}
 
 	function swap(target: Selection) {
@@ -179,6 +207,13 @@
 		const idOf = (item: Selection) => item.kind === 'slot' ? lineup[item.index] : item.id;
 		const a = idOf(src), b = idOf(target);
 		if (!a || !b || a === b) return;
+		// Suspensos não podem ser relacionados para a próxima partida (o servidor também os retira).
+		const entering = [src.kind !== 'slot' && target.kind === 'slot' ? a : null, target.kind !== 'slot' && src.kind === 'slot' ? b : null, src.kind === 'reserve' && target.kind === 'bench' ? a : null, target.kind === 'reserve' && src.kind === 'bench' ? b : null].filter(Boolean) as string[];
+		const blocked = entering.find((id) => suspended.has(id));
+		if (blocked) {
+			notify({ icon: 'alert', tone: 'warning', title: `${byId.get(blocked)?.name ?? 'Atleta'} está suspenso`, detail: 'Ele não pode ser relacionado para a próxima partida desta competição.' });
+			return;
+		}
 		const benchIndexes = [nextBench.indexOf(a), nextBench.indexOf(b)];
 		if (src.kind === 'slot') lineup[src.index] = b;
 		if (target.kind === 'slot') lineup[target.index] = a;
@@ -371,6 +406,9 @@
 					<button class="chip" aria-pressed={behavior} onclick={() => (behavior = !behavior)} title="Mostra linha, bloco, pressão e corridas que o motor vai usar">Comportamento</button>
 				</div>
 			</div>
+			{#if [...suspended].some((id) => tactic.lineup.includes(id) || tactic.bench.includes(id))}
+				<p class="susp-warn" role="alert"><Icon name="alert" size={14} /> {[...suspended].filter((id) => tactic.lineup.includes(id) || tactic.bench.includes(id)).map((id) => byId.get(id)?.shortName ?? id).join(', ')} {[...suspended].filter((id) => tactic.lineup.includes(id) || tactic.bench.includes(id)).length === 1 ? 'está suspenso' : 'estão suspensos'} para a próxima partida e será retirado pelo servidor. Use "Montar melhor 11" ou troque manualmente.</p>
+			{/if}
 			<div class="pitch-wrap">
 				<LineupPitch touchOnly move={(from, to) => {
 					selection = { kind: 'slot', index: Number(from) };
@@ -401,6 +439,7 @@
 							<span class="pname">{p?.shortName ?? '—'}{p ? ` · ${visibleSquadAge(p) ?? '—'}a` : ''}</span>
 							<span class="fn">{ROLES[tactic.roles[i]]?.label ?? ''}</span>
 							{#if p && p.condition < 75}<span class="cond" title="Condição física: {p.condition}%">{p.condition}%</span>{/if}
+							{#if p && suspended.has(p.id)}<span class="susp" title={suspensionLabel(playerDiscipline(discipline, p.id).suspensions[0] ?? { remaining: 1 })}>SUSP</span>{/if}
 						</button>
 					{/each}
 				</LineupPitch>
@@ -411,6 +450,9 @@
 					<span class="k"><i class="run"></i>corrida</span><span class="k"><i class="sup"></i>apoio/amplitude</span><span class="k"><i class="box"></i>chegada à área</span>
 				</div>
 			{/if}
+			<div class="library-wrap">
+				<TacticLibrary careerId={data.career.id} version={data.career.version} {presets} tactic={tactic} squad={v.squad} clubId={data.career.clubId} unavailable={suspended} fitness={v.fitness} dirty={changed} onapply={applyPresetTactic} />
+			</div>
 		</Panel>
 
 		<div class="side">
@@ -436,7 +478,7 @@
 						ondragover={(e) => e.preventDefault()} ondrop={(e) => onDrop(e, { kind, id: p.id })}
 						onclick={() => clickOffPitch(kind, p.id)} aria-pressed={isSel(kind, p.id)}>
 						<Pixel appearance={p.appearance} kit={playerKit(data.career.clubId, p.position)} size={30} />
-						<span class="bn">{p.name} · {visibleSquadAge(p) ?? '—'}a</span><span class="bp">{p.position}</span><span class="bo num">{p.overall}</span>
+						<span class="bn">{p.name} · {visibleSquadAge(p) ?? '—'} anos{#if suspended.has(p.id)} <em class="susp-tag">{suspensionLabel(playerDiscipline(discipline, p.id).suspensions[0] ?? { remaining: 1 })}</em>{/if}</span><span class="bp">{p.position}</span><span class="bo num">{p.overall}</span>
 					</button>
 				</li>
 			{/snippet}
@@ -591,7 +633,8 @@
 				</Panel>
 		{:else if workspace === 'dominio'}
 		<Panel title="Domínio tático" icon="chart" index={7} class="m-mastery">
-			<MasteryPanel state={v.tactical} {mastery} formation={tactic.formation} style={tactic.style} lineup={tactic.lineup} roles={tactic.roles} {slots} squad={v.squad} instructions={tactic.instructions} onformation={changeFormation} />
+			{#if v.coach}<CoachKnowledgePanel coach={v.coach} team={v.tactical} formation={tactic.formation} style={tactic.style} />{/if}
+			<MasteryPanel state={v.effective} {mastery} formation={tactic.formation} style={tactic.style} lineup={tactic.lineup} roles={tactic.roles} {slots} squad={v.squad} instructions={tactic.instructions} onformation={changeFormation} />
 		</Panel>
 
 		{:else if workspace === 'auxiliar'}
@@ -619,7 +662,38 @@
 	{/snippet}
 </Modal>
 
+
+<Modal bind:open={bestOpen} title="Montar melhor 11" description="Avaliamos todo o elenco disponível: posição de origem e secundárias, atributos da posição, overall e condição física. Suspensos ficam de fora." size="md">
+	{#if bestPlan}
+		<p class="best-score">Nota do onze: <b>{bestPlan.before}</b> → <b class:up={bestPlan.after > bestPlan.before}>{bestPlan.after}</b></p>
+		{#if bestPlan.changes.length}
+			<ul class="best-list">
+				{#each bestPlan.changes as ch, i (i)}
+					<li><span class="pos">{ch.slot}</span> <s>{ch.from ? `${ch.from.shortName} · ${ch.from.position} · ${ch.from.overall}` : 'vago'}</s> <Icon name="arrowRight" size={14} /> <b>{ch.to ? `${ch.to.shortName} · ${visibleSquadAge(ch.to) ?? '—'} anos · ${ch.to.position} · ${ch.to.overall}` : 'vago'}</b></li>
+				{/each}
+			</ul>
+		{:else}
+			<p class="muted">A escalação atual já é a melhor para o {tactic.formation}. O banco será reorganizado.</p>
+		{/if}
+		<p class="muted small">Mentalidade, estilo, instruções e funções continuam como estão.</p>
+	{/if}
+	{#snippet footer()}
+		<Button variant="ghost" onclick={() => (bestOpen = false)}>Cancelar</Button>
+		<Button variant="gold" icon="check" onclick={applyBest}>Aplicar na prancheta</Button>
+	{/snippet}
+</Modal>
+
 <style>
+	.library-wrap { padding: 10px 12px 12px; }
+	.susp { position: absolute; top: -6px; right: -6px; padding: 1px 5px; border-radius: 6px; background: #b91c1c; color: #fff; font: 700 0.6rem/1.4 inherit; }
+	.susp-tag { font-style: normal; color: #fca5a5; font-size: var(--fs-xs); }
+	.susp-warn { display: flex; gap: 6px; align-items: center; margin: 0 12px; padding: 8px 10px; border-radius: 10px; background: rgb(239 68 68 / 0.12); color: #fca5a5; font-size: var(--fs-sm); }
+	.best-score { margin: 0 0 10px; }
+	.best-score .up { color: var(--emerald-strong); }
+	.best-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: var(--fs-sm); }
+	.best-list li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+	.best-list .pos { min-width: 34px; font-weight: 700; color: var(--text-3); }
+	.best-list s { color: var(--text-3); }
 	.head {
 		display: flex;
 		justify-content: space-between;

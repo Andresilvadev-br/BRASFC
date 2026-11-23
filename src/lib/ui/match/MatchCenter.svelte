@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { positionFit } from '#lib/domain/positions.ts';
 	import BroadcastMoments from './BroadcastMoments.svelte';
 	import { onDestroy, untrack } from 'svelte';
 	import { overridesOf, presetInstructions, type TacticalInstructions } from '#lib/engine/instructions.ts';
@@ -274,7 +275,8 @@
 		const before = JSON.stringify(match.teams[control].instructions);
 		if (mentality !== t.mentality) match.submit(control, { type: 'mentality', value: mentality });
 		if (style !== t.style) match.submit(control, { type: 'style', value: style });
-		if (formation !== t.formation && match.onPitch(control).length === 11) {
+		// Com 10 (ou 9) em campo a formação também muda: as vagas ficam nas posições menos críticas.
+		if (formation !== t.formation) {
 			match.submit(control, { type: 'formation', value: formation, lineup: reorderFor(formation) });
 		}
 		// Instruções finais (preset novo + ajustes): registradas como decisão reproduzível.
@@ -290,30 +292,44 @@
 			version++;
 		}
 	}
-	/** Encaixa os mesmos 11 nos slots da nova formação (goleiro sempre no slot 0). */
+	/**
+	 * Encaixa os atletas em campo nos slots da nova formação (goleiro no slot 0). Com expulsões, as
+	 * posições são preenchidas da defesa para o ataque e as que sobram ficam vagas ('').
+	 */
 	function reorderFor(f: FormationId): string[] {
 		const side = control!;
 		const slots = FORMATIONS[f];
 		const gk = match.teams[side].gkId;
 		const rest = match.onPitch(side).filter((s) => s.id !== gk).map((s) => s.id);
 		const used = new Set<string>();
-		const lineup: string[] = [gk];
-		for (let i = 1; i < slots.length; i++) {
+		const lineup: string[] = new Array(slots.length).fill('');
+		lineup[0] = match.onPitch(side).some((s) => s.id === gk) ? gk : '';
+		const PRIORITY = ['ZAG', 'LD', 'LE', 'VOL', 'MC', 'MEI', 'PD', 'PE', 'ATA'];
+		const order = slots.map((_, i) => i).slice(1).sort((a, b) => PRIORITY.indexOf(slots[a].position) - PRIORITY.indexOf(slots[b].position));
+		for (const i of order) {
 			const want = slots[i].position;
-			const pick = rest.find((id) => !used.has(id) && match.player(id)?.position === want) ?? rest.find((id) => !used.has(id))!;
+			const pick = rest.filter((id) => !used.has(id)).sort((a, b) => positionFit(match.player(b)!.position, want) - positionFit(match.player(a)!.position, want))[0];
+			if (!pick) break;
 			used.add(pick);
-			lineup.push(pick);
+			lineup[i] = pick;
 		}
 		return lineup;
+	}
+	function movePlayer(playerId: string, slot: number) {
+		if (!control || finished) return;
+		const decision = { type: 'move', playerId, slot } as const;
+		if (atInterval) intervalError = match.prepareInterval(control, decision) ?? '';
+		else match.submit(control, decision);
+		version++;
 	}
 	function swapPlayers(first: string, second: string) {
 		if (!control || finished) return;
 		intervalError = match.swapPositions(control, first, second) ?? '';
 		version++;
 	}
-	function doSub(outId: string, inId: string) {
+	function doSub(outId: string, inId: string, slot?: number) {
 		if (!control) return;
-		const decision = { type: 'sub', outId, inId } as const;
+		const decision = { type: 'sub', outId, inId, ...(slot !== undefined ? { slot } : {}) } as const;
 		if (atInterval) intervalError = match.prepareInterval(control, decision) ?? '';
 		else match.submit(control, decision);
 		version++;
@@ -417,6 +433,7 @@
 			canSub={control === 'home' && !finished && match.subsLeft('home') > 0}
 			pendingOut={control === 'home' ? pendingOut : []}
 			onswap={control === 'home' && !finished ? swapPlayers : undefined}
+			onmove={control === 'home' && !finished ? movePlayer : undefined}
 			onsub={doSub}
 		/>
 
@@ -516,6 +533,7 @@
 			canSub={control === 'away' && !finished && match.subsLeft('away') > 0}
 			pendingOut={control === 'away' ? pendingOut : []}
 			onswap={control === 'away' && !finished ? swapPlayers : undefined}
+			onmove={control === 'away' && !finished ? movePlayer : undefined}
 			onsub={doSub}
 		/>
 	</div>
@@ -527,7 +545,7 @@
 		<Segmented label="Ajustes da equipe" bind:value={intervalTab} options={[{ value: 'elenco', label: 'Escalação' }, { value: 'tatica', label: 'Tática' }]} />
 		{#if intervalTab === 'elenco'}
 			<FormationBoard compact {match} side={control} color={colors[control].primary} {version} players={result.players}
-				bind:selected={intervalSelected} canSub={match.subsLeft(control) > 0} pendingOut={pendingOut} onsub={doSub} onswap={!finished ? swapPlayers : undefined} />
+				bind:selected={intervalSelected} canSub={match.subsLeft(control) > 0} pendingOut={pendingOut} onsub={doSub} onswap={!finished ? swapPlayers : undefined} onmove={!finished ? movePlayer : undefined} />
 			{#if intervalError}<p role="status">{intervalError}</p>{/if}
 		{:else}
 		<div class="tac">

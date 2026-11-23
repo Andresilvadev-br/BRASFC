@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { sanitizeDiscipline, suspensionLabel } from '#lib/domain/discipline.ts';
 	import { ATTRIBUTE_LABELS, GOALKEEPING, MENTAL, PHYSICAL, TECHNICAL, type AttributeKey } from '#lib/engine/attributes.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { formatMoney, ROLE_LABELS, wageDemand, type ContractRole, type RosterPlayer } from '#lib/domain/market.ts';
@@ -18,6 +19,9 @@
 
 	let { data } = $props();
 	const c = $derived(data.career);
+	// Disciplina: suspensões pendentes por competição e amarelos acumulados (registro do servidor).
+	const discipline = $derived(sanitizeDiscipline(c.data.discipline, c.season));
+	const suspensions = $derived(new Map(discipline.suspensions.map((s) => [s.playerId, `${suspensionLabel(s)} (${s.competition === 'copa-do-brasil' ? 'Copa do Brasil' : 'campeonato'})`])));
 	const v = $derived(data.view);
 	const m = $derived(data.manage);
 	const coach = $derived(c.mode === 'coach');
@@ -114,6 +118,7 @@
 						<span class="o">{s.p.overall}</span>
 						<span class="n">{s.p.shortName}</span>
 						<span class="ps">{s.pos} · {visibleSquadAge(s.p) ?? '—'}a</span>
+						{#if suspensions.get(s.id)}<span class="susp" title={suspensions.get(s.id)}>SUSP</span>{/if}
 						<i class="cond" style="--c:{fit.get(s.id) ?? 95}%" class:low={(fit.get(s.id) ?? 95) < 75}></i>
 					</button>
 				{/if}
@@ -131,6 +136,7 @@
 								<i class="cond mini" style="--c:{fit.get(p.id) ?? 95}%" class:low={(fit.get(p.id) ?? 95) < 75} title="Condição {fit.get(p.id) ?? 95}%"></i>
 								<b>{p.overall}</b>
 								{#if p.contract && p.contract.until <= c.season}<span class="warn" title="Contrato termina nesta temporada">●</span>{/if}
+								{#if suspensions.get(p.id)}<span class="susp" title={suspensions.get(p.id)}>SUSP</span>{/if}
 							</button>
 						{:else}<p class="muted none">Nenhum atleta.</p>{/each}
 					</div>
@@ -227,6 +233,7 @@
 </Sheet>
 
 <style>
+	.susp { margin-left: 4px; padding: 0 5px; border-radius: 5px; background: #b91c1c; color: #fff; font: 700 0.6rem/1.5 inherit; }
 	.head {
 		display: flex;
 		justify-content: space-between;

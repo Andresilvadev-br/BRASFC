@@ -81,7 +81,7 @@
 			? analyze({
 					squad: v.squad,
 					tactic: v.tactic,
-					tactical: v.tactical,
+					tactical: v.effective,
 					fitness: v.fitness,
 					recent: data.recent ?? [],
 					clubId: c.clubId,
