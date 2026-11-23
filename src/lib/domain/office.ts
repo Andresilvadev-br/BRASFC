@@ -88,6 +88,10 @@ export interface OfficeState {
 	lastMeeting: Record<string, number>;
 	/** treinos planejados pelo auxiliar técnico */
 	delegated?: boolean;
+	/** Renovação automática quando a diretoria aprovar, sem substituir recusas explícitas. */
+	autoRenewal?: boolean;
+	/** Temporada em que o treinador escolheu sair ao fim do vínculo. */
+	renewalDeclinedSeason?: number;
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -109,7 +113,8 @@ export function initialOffice(season: number, tier: Tier, reputation: number): O
 		ultimatum: null,
 		totals: { games: 0, wins: 0, draws: 0, losses: 0, unbeaten: 0, bestUnbeaten: 0 },
 		lastPress: -99,
-		lastMeeting: {}
+		lastMeeting: {},
+		autoRenewal: false
 	};
 }
 
@@ -124,7 +129,9 @@ export function sanitizeOffice(raw: unknown, season: number, tier: Tier, reputat
 		milestones: Array.isArray(o.milestones) ? o.milestones.slice(-200) : [],
 		decisions: Array.isArray(o.decisions) ? o.decisions.slice(-200) : [],
 		totals: { ...base.totals, ...(o.totals ?? {}) },
-		lastMeeting: o.lastMeeting ?? {}
+		lastMeeting: o.lastMeeting ?? {},
+		autoRenewal: o.autoRenewal === true,
+		renewalDeclinedSeason: Number.isInteger(o.renewalDeclinedSeason) ? o.renewalDeclinedSeason : undefined
 	};
 }
 
