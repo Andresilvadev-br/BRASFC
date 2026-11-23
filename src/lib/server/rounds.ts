@@ -60,6 +60,7 @@ export async function matchdayContext(db: Db, career: Career, view?: ReturnType<
  */
 export async function playRound(db: Db, profileId: string, career: Career, body: { version: number; round?: number; step?: string; decisions?: AppliedDecision[] }) {
 	if (body.version !== career.version) throw new RoundError('A carreira mudou em outra janela. Recarregue para continuar.', 409);
+	if (career.mode === 'coach' && career.data.club?.board.dismissed) throw new RoundError('Seu vínculo com o clube terminou. Avalie as propostas de emprego antes de comandar outra partida.', 409);
 	const results = await listResults(db, career.id, career.season);
 	const view = careerView(career, results);
 	if (view.seasonOver || !view.step) throw new RoundError('A temporada terminou. Encerre-a para começar a próxima.', 409);
