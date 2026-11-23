@@ -38,6 +38,10 @@ export const PATCH: RequestHandler = async (event) => {
 
 	const version = Number(body.version);
 	if (!Number.isInteger(version)) error(400, 'Versão da carreira ausente.');
+	// Um ex-treinador não pode mais alterar o elenco, plano ou instruções do clube anterior via API.
+	if (career.mode === 'coach' && career.data.club?.board.dismissed && (body.tactic !== undefined || body.trainingFocus !== undefined || body.trainingPlan !== undefined || body.dismissTip !== undefined)) {
+		error(409, 'Seu vínculo terminou. Aceite uma nova proposta antes de modificar o trabalho de um clube.');
+	}
 	const patch: Partial<CareerData> = {};
 	if (body.appearance !== undefined) {
 		if (!isAppearance(body.appearance)) error(400, 'Aparência inválida.');
