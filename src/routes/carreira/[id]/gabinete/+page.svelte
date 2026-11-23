@@ -20,6 +20,7 @@
 	let feedback = $state<{ text: string; tone: 'ok' | 'erro' } | null>(null);
 	let answers = $state<Record<string, string>>({});
 	let years = $state<Record<string, number>>({});
+	let percentRequested = $state(10);
 
 	async function act(body: Record<string, unknown>) {
 		busy = true;
@@ -85,6 +86,23 @@
 		<h2 class="display">Renovação automática de contrato</h2>
 		<p class="muted">{o.autoRenewal ? 'Ativada: ao fim do vínculo, o clube tentará renovar automaticamente se a diretoria aprovar.' : 'Desativada: você decide manualmente quando receber uma proposta de renovação.'} Recusar uma renovação sempre prevalece sobre esta configuração.</p>
 		<Button variant={o.autoRenewal ? 'secondary' : 'gold'} icon="briefcase" disabled={busy || club.board.dismissed} onclick={() => act({ action: 'renovacao-auto', on: !o.autoRenewal })}>{o.autoRenewal ? 'Desativar renovação automática' : 'Ativar renovação automática'}</Button>
+	</section>
+	{/if}
+
+	{#if !club.board.dismissed}
+	<section class="glass pad" use:reveal aria-label="Solicitar reforço de orçamento à diretoria">
+		<h2 class="display">Negociar verba com a diretoria</h2>
+		<p class="muted">Você pode pedir mais recursos para contratar ou um teto salarial maior. A aprovação depende de confiança e caixa, e pedidos do mesmo tipo exigem 8 rodadas de intervalo.</p>
+		<p class="muted">Contratações: <strong>{formatMoney(club.transferBudget)}</strong> · Limite mensal da folha: <strong>{formatMoney(club.wageBudget)}</strong> · Caixa: <strong>{formatMoney(club.balance)}</strong></p>
+		<label class="muted">Aumento solicitado
+			<select bind:value={percentRequested}>
+				{#each [10, 20, 30] as percent (percent)}<option value={percent}>+{percent}%</option>{/each}
+			</select>
+		</label>
+		<div class="choices">
+			<Button icon="briefcase" disabled={busy} loading={busy} onclick={() => act({ action: 'verba-solicitar', kind: 'transferencias', percent: percentRequested })}>Pedir verba para contratações</Button>
+			<Button icon="chart" disabled={busy} onclick={() => act({ action: 'verba-solicitar', kind: 'folha', percent: percentRequested })}>Pedir aumento na folha</Button>
+		</div>
 	</section>
 	{/if}
 
