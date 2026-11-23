@@ -4,6 +4,7 @@ import { noStore, readJson, requireProfile } from '#lib/server/http.ts';
 import { getCareer, VersionConflictError } from '#lib/server/repos/careers.ts';
 import { listUserMatches } from '#lib/server/repos/matches.ts';
 import { playRound, RoundError } from '#lib/server/rounds.ts';
+import { prefetchRound } from '#lib/server/round-prefetch.ts';
 import type { AppliedDecision } from '#lib/engine/types.ts';
 import type { RequestHandler } from './$types';
 
@@ -31,7 +32,14 @@ export const POST: RequestHandler = async (event) => {
 	const step = typeof body.step === 'string' && /^(league|cup):\d{1,2}$/.test(body.step) ? body.step : undefined;
 	if (!Number.isInteger(version) || (step === undefined && !Number.isInteger(round))) error(400, 'Versão e passo do calendário são obrigatórios.');
 	try {
-		return noStore(await playRound(db, profile.id, career, { version, ...(step ? { step } : { round }), decisions: body.decisions as AppliedDecision[] | undefined }));
+		const out = await playRound(db, profile.id, career, { version, ...(step ? { step } : { round }), decisions: body.decisions as AppliedDecision[] | undefined });
+		// Operação secundária: já simula em segundo plano os outros jogos do próximo passo.
+		prefetchRound(db, profile.id, out.career.id);
+		// Resposta enxuta: a tela só precisa do resultado e da versão; a carreira é relida ao voltar à gestão.
+		const { career: saved, timings, ...rest } = out;
+		const res = noStore({ ...rest, career: { id: saved.id, version: saved.version, gameDate: saved.gameDate, season: saved.season } });
+		res.headers.set('Server-Timing', Object.entries(timings).map(([k, v]) => `${k};dur=${v}`).join(', '));
+		return res;
 	} catch (e) {
 		if (e instanceof RoundError) error(e.status, e.message);
 		if (e instanceof VersionConflictError) error(409, e.message);

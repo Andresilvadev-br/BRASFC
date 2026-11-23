@@ -9,7 +9,18 @@ import type { AnimateOptions, Props, UltraMotionX } from 'ultra-motion-x';
  *   microinterações — a Ultra Motion X 1.3.0 não trata prefers-reduced-motion.
  * • Mantém um único ponto de acesso para telas, componentes e transições.
  */
-export type MotionPreference = 'auto' | 'completo' | 'leve' | 'reduzido';
+export type MotionPreference = 'auto' | 'completo' | 'reduzido';
+/**
+ * Dev 0.12 · qualidade visual adaptativa. Controla efeitos (desfoque, sombras, luz, partículas,
+ * inclinação 2.5D); nunca o feedback de clique nem as transições essenciais.
+ */
+export type QualityPreference = 'auto' | 'alto' | 'equilibrado' | 'economico' | 'ultra-economico';
+export const QUALITY_PROFILE: Record<Exclude<QualityPreference, 'auto'>, MotionProfileId> = {
+	alto: 'ultra',
+	equilibrado: 'balanced',
+	economico: 'performance',
+	'ultra-economico': 'performance'
+};
 export type MotionProfileId = 'ultra' | 'balanced' | 'performance';
 
 export const motion = $state({
@@ -24,6 +35,7 @@ let loading: Promise<UltraMotionX | null> | null = null;
 let unbindMicro: (() => void) | null = null;
 let unbindRich: Array<() => void> = [];
 let preference: MotionPreference = 'auto';
+let quality: QualityPreference = 'auto';
 let mediaQuery: MediaQueryList | null = null;
 
 function systemReduced(): boolean {
@@ -49,10 +61,35 @@ function applyReduced() {
 		// só os ativa nos perfis que permitem efeitos de cursor (Ultra/Balanced).
 		unbindRich = [engine.surface({ selector: '[data-umx-surface]', tilt: 3.5 }).bind(document), engine.magnetic({ selector: '[data-umx-magnet]', strength: 0.2, max: 6 }).bind(document)];
 	}
-	// Qualidade: "leve" usa o perfil de desempenho; "completo", o Ultra; "auto", o que o orçamento medir.
-	if (preference === 'leve') void engine.budget.setProfile('performance', { persist: false, source: 'user' });
-	else if (preference === 'completo') void engine.budget.setProfile('ultra', { persist: false, source: 'user' });
-	document.documentElement.dataset.quality = preference === 'leve' ? 'leve' : preference === 'completo' ? 'completo' : 'auto';
+	applyQuality();
+}
+
+/** Hardware de entrada (poucos núcleos e pouca memória): o modo automático começa econômico. */
+function modestHardware(): boolean {
+	if (typeof navigator === 'undefined') return false;
+	const cores = navigator.hardwareConcurrency ?? 8;
+	const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8;
+	return cores <= 2 || memory <= 2 || (cores <= 4 && memory <= 4);
+}
+
+/** Qualidade efetivamente em uso (o automático resolve pelo hardware). */
+export function effectiveQuality(): Exclude<QualityPreference, 'auto'> {
+	return quality !== 'auto' ? quality : modestHardware() ? 'economico' : 'alto';
+}
+
+function applyQuality() {
+	if (typeof document === 'undefined') return;
+	const q = effectiveQuality();
+	document.documentElement.dataset.quality = q;
+	if (!engine) return;
+	// No automático em hardware bom, o orçamento da Ultra Motion X ainda pode baixar o perfil sozinho.
+	if (quality === 'auto' && q === 'alto') return;
+	void engine.budget.setProfile(QUALITY_PROFILE[q], { persist: false, source: 'user' });
+}
+
+export function setQualityPreference(q: QualityPreference) {
+	quality = q;
+	applyQuality();
 }
 
 export function setMotionPreference(pref: MotionPreference) {
@@ -60,10 +97,6 @@ export function setMotionPreference(pref: MotionPreference) {
 	applyReduced();
 }
 
-export async function setMotionProfile(id: MotionProfileId) {
-	const umx = await loadMotion();
-	await umx?.budget.setProfile(id, { persist: true, source: 'user' });
-}
 
 export function getMotionProfile(): MotionProfileId | null {
 	return engine?.budget.profileId ?? null;

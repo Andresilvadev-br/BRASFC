@@ -274,8 +274,38 @@ svg {
 	transition: opacity 0.4s var(--ease-out);
 }
 :root[data-motion='reduced'] [data-umx-surface],
-:root[data-quality='leve'] [data-umx-surface] {
+:root[data-quality='economico'] [data-umx-surface],
+:root[data-quality='ultra-economico'] [data-umx-surface] {
 	transform: none;
+}
+
+/*
+ * Dev 0.12 · qualidade visual adaptativa.
+ * Econômico: sem desfoque (o efeito mais caro em GPU integrada) e sem luz de cursor.
+ * Ultra Econômico: além disso, sem sombras grandes, sem brilho de texto e sem animações
+ * decorativas infinitas. Transições de entrada e o feedback de clique continuam.
+ */
+:root[data-quality='economico'] *,
+:root[data-quality='ultra-economico'] * {
+	backdrop-filter: none !important;
+	-webkit-backdrop-filter: none !important;
+}
+:root[data-quality='economico'] [data-umx-surface]::after,
+:root[data-quality='ultra-economico'] [data-umx-surface]::after {
+	display: none;
+}
+:root[data-quality='ultra-economico'] {
+	--shadow-1: 0 1px 2px rgb(0 0 0 / 0.35);
+	--shadow-2: 0 2px 6px rgb(0 0 0 / 0.35);
+	--glow-emerald: 0 0 0 1px var(--emerald-strong);
+}
+:root[data-quality='ultra-economico'] * {
+	text-shadow: none !important;
+}
+:root[data-quality='ultra-economico'] [data-decor],
+:root[data-quality='ultra-economico'] [data-decor] * {
+	animation: none !important;
+	filter: none !important;
 }
 
 .eyebrow-gold {

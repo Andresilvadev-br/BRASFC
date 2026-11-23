@@ -17,7 +17,8 @@
 	let py = 0;
 
 	function onMove(e: PointerEvent) {
-		if (!parallax || motion.reduced) return;
+		// Paralaxe é decorativa: desligada no movimento reduzido e nos modos econômicos.
+		if (!parallax || motion.reduced || /economico/.test(document.documentElement.dataset.quality ?? '')) return;
 		px = e.clientX / window.innerWidth - 0.5;
 		py = e.clientY / window.innerHeight - 0.5;
 		if (frame) return;
@@ -32,7 +33,7 @@
 
 <svelte:window onpointermove={onMove} />
 
-<div class="stadium" bind:this={root} style="--tint:{tint}; --dim:{dim}" aria-hidden="true">
+<div class="stadium" bind:this={root} style="--tint:{tint}; --dim:{dim}" aria-hidden="true" data-decor>
 	<div class="sky"></div>
 	<div class="layer far" bind:this={far}>
 		<div class="lights">
