@@ -26,7 +26,9 @@
 	const unread = $derived(data.career.unreadMessages ?? 0);
 	const coach = $derived(data.career.mode === 'coach');
 	const brasil = $derived(data.view.world === 'brasil');
-	const groups = $derived<CareerGroup[]>([
+	const groups = $derived<CareerGroup[]>(coach && data.manage.club.board.dismissed
+		? [{ label: 'Carreira', items: [{ href: `${base}/gabinete`, label: 'Propostas de emprego', icon: 'briefcase' as IconName }] }]
+		: [
 		{
 			label: 'Jogo',
 			items: [
@@ -93,7 +95,9 @@
 	personName={data.career.personName} roleLabel={MODE_LABELS[data.career.mode]} {groups} {current}
 	date={data.career.gameDate} season={data.career.season} cup={step?.kind === 'cup'} {stepLabel}
 	balance={coach ? data.manage.club.balance : undefined}
-	match={{ href: `${base}/partida`, label: data.view.next ? 'Ir para o jogo' : data.view.seasonOver ? 'Encerrar temporada' : 'Avançar' }}>
+	match={coach && data.manage.club.board.dismissed
+		? { href: `${base}/gabinete`, label: 'Ver propostas de emprego' }
+		: { href: `${base}/partida`, label: data.view.next ? 'Ir para o jogo' : data.view.seasonOver ? 'Encerrar temporada' : 'Avançar' }}>
 	{#snippet status()}
 		<WardrobeDialog value={data.career.data.appearance} clubId={data.career.clubId} uniformOptions={!coach} onsave={saveAppearance}
 			kit={coach ? coachKit(data.career.clubId) : playerKit(data.career.clubId, data.career.data.position ?? 'ATA')} />
