@@ -113,7 +113,7 @@
 					<button class="chip-p" style="left:{s.x}%;top:{s.y}%" onclick={() => open(s.id)} data-umx-press>
 						<span class="o">{s.p.overall}</span>
 						<span class="n">{s.p.shortName}</span>
-						<span class="ps">{s.pos}</span>
+						<span class="ps">{s.pos} · {visibleSquadAge(s.p) ?? '—'}a</span>
 						<i class="cond" style="--c:{fit.get(s.id) ?? 95}%" class:low={(fit.get(s.id) ?? 95) < 75}></i>
 					</button>
 				{/if}
@@ -127,7 +127,7 @@
 					<div class="blist">
 						{#each group.rows as p (p.id)}
 							<button class="brow" onclick={() => open(p.id)} data-umx-press>
-								<span class="ps">{p.position}</span><span class="nm">{p.name}</span>
+								<span class="ps">{p.position}</span><span class="nm">{p.name} · {visibleSquadAge(p) ?? '—'}a</span>
 								<i class="cond mini" style="--c:{fit.get(p.id) ?? 95}%" class:low={(fit.get(p.id) ?? 95) < 75} title="Condição {fit.get(p.id) ?? 95}%"></i>
 								<b>{p.overall}</b>
 								{#if p.contract && p.contract.until <= c.season}<span class="warn" title="Contrato termina nesta temporada">●</span>{/if}
