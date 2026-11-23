@@ -84,6 +84,7 @@ export const POST: RequestHandler = async (event) => {
 			const updated = await db.transaction(async (tx) => {
 				const saved = await saveCareerProgress(tx, profile.id, career.id, { gameDate: career.gameDate, data: { club: out.club, office: out.office } }, career.version);
 				await insertLedger(tx, career.id, career.season, career.gameDate, out.ledger, key);
+				if (body.action === 'verba-solicitar') await insertMessages(tx, career.id, career.gameDate, [{ sender: 'Diretoria', subject: 'Resposta ao pedido de verba', body: out.message, important: true }]);
 				return saved;
 			});
 			return noStore({ career: updated, message: out.message });
