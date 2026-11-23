@@ -8,7 +8,7 @@ import { resolveMeeting, resolvePress, type BoardSnapshot, type OfficeState } fr
 import { STAFF_ROLES, type StaffRole } from '#lib/domain/staff.ts';
 import { officeOf } from './universe.ts';
 
-export const OFFICE_ACTIONS = new Set(['reuniao', 'coletiva', 'comissao-contratar', 'comissao-dispensar', 'treino-delegar', 'base-plano']);
+export const OFFICE_ACTIONS = new Set(['reuniao', 'coletiva', 'comissao-contratar', 'comissao-dispensar', 'treino-delegar', 'base-plano', 'renovacao-auto']);
 
 export interface OfficeActionResult {
 	club: ClubState;
@@ -40,8 +40,15 @@ export function applyOfficeAction(career: Career, league: LeagueState, club: Clu
 			st.board.confidence = clamp(st.board.confidence + eff.confidence, 0, 100);
 			if (eff.transferBudgetPct) st.transferBudget = Math.max(0, Math.round(st.transferBudget * (1 + eff.transferBudgetPct / 100)));
 			if (eff.baseInvestment) st.board.notes = [...st.board.notes, `base-investida-${career.season}`].slice(-10);
-			if (eff.contract) office.contract = eff.contract;
-			if (eff.leaving) office.contract = { ...office.contract, until: career.season };
+			if (eff.contract) {
+				office.contract = eff.contract;
+				office.renewalDeclinedSeason = undefined;
+			}
+			if (eff.leaving) {
+				office.contract = { ...office.contract, until: career.season };
+				office.renewalDeclinedSeason = career.season;
+				office.autoRenewal = false;
+			}
 			if (eff.ultimatum !== undefined) office.ultimatum = eff.ultimatum;
 			if (eff.objectiveShift && st.board.objectives[0]) {
 				const o = st.board.objectives[0];
@@ -86,6 +93,12 @@ export function applyOfficeAction(career: Career, league: LeagueState, club: Clu
 			if (!(STAFF_ROLES as readonly string[]).includes(role)) throw new ManagementError('Cargo inválido.');
 			const r = fireStaff(st, career.season, round, role);
 			return { club: r.state, office, ledger: r.ledger, message: r.message };
+		}
+		case 'renovacao-auto': {
+			office.autoRenewal = body.on === true;
+			return out(office.autoRenewal
+				? 'Renovação automática ativada. O vínculo será renovado somente se a diretoria concordar e você não tiver recusado a renovação.'
+				: 'Renovação automática desativada. Você decidirá manualmente sobre as próximas propostas.');
 		}
 		case 'treino-delegar':
 			office.delegated = body.on === true;
