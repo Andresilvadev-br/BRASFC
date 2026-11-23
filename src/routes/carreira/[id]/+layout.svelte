@@ -91,10 +91,10 @@
 {#if data.degraded.length}
 	<p class="load-notice" role="status">Não foi possível carregar {data.degraded.join(' e ')}. <button type="button" onclick={() => invalidate('app:career')}>Tentar novamente</button></p>
 {/if}
-<CareerShell {base} clubId={data.career.clubId} clubName={data.view.club.name} color={data.view.club.colors.primary}
+<CareerShell {base} clubId={data.career.clubId} unemployed={coach && data.manage.club.board.dismissed} clubName={coach && data.manage.club.board.dismissed ? 'Sem clube' : data.view.club.name} color={coach && data.manage.club.board.dismissed ? '#374151' : data.view.club.colors.primary}
 	personName={data.career.personName} roleLabel={MODE_LABELS[data.career.mode]} {groups} {current}
 	date={data.career.gameDate} season={data.career.season} cup={step?.kind === 'cup'} {stepLabel}
-	balance={coach ? data.manage.club.balance : undefined}
+	balance={coach && !data.manage.club.board.dismissed ? data.manage.club.balance : undefined}
 	match={coach && data.manage.club.board.dismissed
 		? { href: `${base}/gabinete`, label: 'Ver propostas de emprego' }
 		: { href: `${base}/partida`, label: data.view.next ? 'Ir para o jogo' : data.view.seasonOver ? 'Encerrar temporada' : 'Avançar' }}>
