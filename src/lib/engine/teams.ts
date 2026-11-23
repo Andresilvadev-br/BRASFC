@@ -11,7 +11,8 @@ export function toEnginePlayer(p: SquadPlayer & { pending?: boolean }): EnginePl
 		position: p.position,
 		attributes: p.attributes,
 		condition: p.condition,
-		...(p.pending ? { pending: true } : {})
+		...(p.pending ? { pending: true } : {}),
+		...(typeof p.age === 'number' && !(p.cbfId && !p.birthDate) ? { age: p.age } : {})
 	};
 }
 

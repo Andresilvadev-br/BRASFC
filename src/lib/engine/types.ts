@@ -31,6 +31,8 @@ export interface EnginePlayer {
 	condition: number;
 	/** Atleta de elenco pendente (sem dados reais). */
 	pending?: boolean;
+	/** idade conhecida (só exibição; o motor não usa) */
+	age?: number;
 }
 
 export interface TeamTactic {

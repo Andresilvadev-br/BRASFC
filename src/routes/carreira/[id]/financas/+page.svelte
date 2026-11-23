@@ -89,6 +89,7 @@
 			<small class="muted">Teto da diretoria: {formatMoney(club.wageBudget || m.payroll)}</small>
 		</div>
 		<div><span>Receita fixa mensal</span><strong>{formatMoney(m.monthlyIncome)}</strong></div>
+		<a class="board-link" href="/carreira/{data.career.id}/gabinete#orcamento">Negociar verba com a diretoria →</a>
 	</div>
 </section>
 
@@ -143,6 +144,8 @@
 {#if msg}<p class="msg" role="status">{msg}</p>{/if}
 
 <style>
+	.board-link { font-size: var(--fs-sm); color: #f5c451; text-decoration: none; }
+	.board-link:hover { text-decoration: underline; }
 	.top {
 		display: grid;
 		grid-template-columns: 1.5fr auto 1fr;

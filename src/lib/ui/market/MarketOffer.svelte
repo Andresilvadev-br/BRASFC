@@ -58,7 +58,7 @@
 	}
 </script>
 
-<Sheet bind:open title={player.name} subtitle={`${player.clubName} · ${kind === 'compra' ? 'Compra' : kind === 'emprestimo' ? 'Empréstimo' : 'Contrato de atleta livre'}`}>
+<Sheet bind:open title={player.name} subtitle={`${player.clubName} · ${player.position} · ${player.age === null ? 'idade pendente' : `${player.age} anos`} · ${kind === 'compra' ? 'Compra' : kind === 'emprestimo' ? 'Empréstimo' : 'Contrato de atleta livre'}`}>
 	<form id="market-offer" onsubmit={submit}>
 		{#if blocked}
 			<p role="status">A situação do atleta ou da janela mudou. Confira a ficha antes de negociar.</p>
