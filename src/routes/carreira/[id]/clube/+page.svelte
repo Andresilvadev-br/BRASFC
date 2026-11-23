@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { isOfferOpen } from '#lib/domain/employment.ts';
 	import { goto } from '$app/navigation';
 	import { BOARD_PROFILES, FACILITIES, FACILITY_INFO, upgradeCost } from '#lib/domain/club.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
@@ -44,6 +45,7 @@
 		return 'em-andamento';
 	};
 	const levelName = ['', 'Básica', 'Regular', 'Boa', 'Excelente', 'Referência'];
+	const openJobOffers = $derived(club.jobOffers.filter((o) => isOfferOpen(o, c.season, Math.max(0, data.view.nextRound - 1))));
 </script>
 
 <svelte:head><title>{coach ? 'Clube' : 'Minha carreira'} · {data.view.club.name} · BRASFC</title></svelte:head>
@@ -87,19 +89,12 @@
 		</div>
 	</section>
 
-	{#if club.jobOffers.length}
-		<h2 class="display section">Propostas de trabalho</h2>
-		<div class="grid-auto" style="--min:260px">
-			{#each club.jobOffers as o (o.id)}
-				<article class="job glass" data-umx-surface use:reveal>
-					<Crest clubId={o.clubId} size={54} />
-					<h3>{getClub(o.clubId)?.name ?? o.clubId}</h3>
-					<span class="chip">{DIVISION_LABELS[o.division as DivisionId] ?? o.division}</span>
-					<p class="muted">{o.reason}</p>
-					<Button variant={club.board.dismissed ? 'primary' : 'secondary'} loading={busy} onclick={() => act({ action: 'emprego', offerId: o.id })}>Assumir o clube</Button>
-				</article>
-			{/each}
-		</div>
+	{#if openJobOffers.length}
+		<a class="jobs glass" href="/carreira/{c.id}/gabinete#propostas" use:reveal data-umx-press>
+			<Icon name="briefcase" size={22} />
+			<span><strong>{openJobOffers.length} {openJobOffers.length === 1 ? 'clube interessado' : 'clubes interessados'} em você</strong><small class="muted">Avalie elenco, finanças e projeto na Central de Propostas, no Gabinete.</small></span>
+			<Icon name="arrowRight" size={18} />
+		</a>
 	{/if}
 
 	<h2 class="display section">Estrutura</h2>
@@ -182,6 +177,8 @@
 {#if msg}<p class="msg" role="status">{msg}</p>{/if}
 
 <style>
+	.jobs { display: flex; gap: var(--sp-3); align-items: center; padding: var(--sp-4); border-radius: 16px; text-decoration: none; color: inherit; border: 1px solid rgb(234 179 8 / 0.3); }
+	.jobs span { display: grid; flex: 1; gap: 2px; }
 	.pad {
 		padding: var(--sp-5);
 	}

@@ -15,7 +15,8 @@ export const load: LayoutServerLoad = async ({ locals, params, depends, request,
 	if (!career) error(404, 'Carreira não encontrada neste perfil.');
 	// Um treinador desligado não pode acessar o banco de reservas ou administrar o antigo clube.
 	// A Central de Propostas continua disponível e é a única tela de atuação até novo contrato.
-	if (career.mode === 'coach' && career.data.club?.board.dismissed && url.pathname !== `/carreira/${career.id}/gabinete`) {
+	const freeAgentPages = ['gabinete', 'mensagens', 'mundo', 'historia'].map((p) => `/carreira/${career.id}/${p}`);
+	if (career.mode === 'coach' && career.data.club?.board.dismissed && !freeAgentPages.includes(url.pathname)) {
 		redirect(303, `/carreira/${career.id}/gabinete`);
 	}
 	const degraded: string[] = [];

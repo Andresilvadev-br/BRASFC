@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import { clubAction } from '#lib/client/club.ts';
 	import { BOARD_PROFILES } from '#lib/domain/club.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
@@ -11,6 +10,10 @@
 	import Crest from '#lib/ui/Crest.svelte';
 	import Icon from '#lib/ui/Icon.svelte';
 	import Gauge from '#lib/ui/v4/Gauge.svelte';
+	import Switch from '#lib/ui/Switch.svelte';
+	import JobCenter from '#lib/ui/career/JobCenter.svelte';
+	import BoardMeeting from '#lib/ui/career/BoardMeeting.svelte';
+	import { employmentStatus } from '#lib/domain/employment.ts';
 
 	let { data } = $props();
 	const c = $derived(data.career);
@@ -19,8 +22,8 @@
 	let busy = $state(false);
 	let feedback = $state<{ text: string; tone: 'ok' | 'erro' } | null>(null);
 	let answers = $state<Record<string, string>>({});
-	let years = $state<Record<string, number>>({});
-	let percentRequested = $state(10);
+	const marketRound = $derived(Math.max(0, data.view.nextRound - 1));
+	const status = $derived(employmentStatus(o, club, c.season, marketRound));
 
 	async function act(body: Record<string, unknown>) {
 		busy = true;
@@ -29,7 +32,6 @@
 			const r = await clubAction(c.id, c.version, body);
 			feedback = { text: r.message, tone: 'ok' };
 			notify({ icon: 'check', tone: 'success', title: 'Decisão registrada', detail: r.message });
-			if (body.action === 'emprego') await goto(`/carreira/${c.id}`, { invalidateAll: true });
 		} catch (e) {
 			feedback = { text: (e as Error).message, tone: 'erro' };
 		} finally {
@@ -53,18 +55,18 @@
 	);
 	let hover = $state<number | null>(null);
 	const allPress = $derived(o.press?.questions.every((q) => answers[q.id]) ?? false);
-	const offers = $derived(club.jobOffers);
 </script>
 
-<svelte:head><title>Gabinete · {data.view.club.name} · BRASFC</title></svelte:head>
+<svelte:head><title>{club.board.dismissed ? 'Central de Propostas' : `Gabinete · ${data.view.club.name}`} · BRASFC</title></svelte:head>
 
 <div class="page">
 	<header class="hero glass" use:reveal>
 		<div class="who">
-			<span class="eyebrow-gold">Gabinete do treinador</span>
+			<span class="eyebrow-gold">{club.board.dismissed ? 'Treinador sem clube' : 'Gabinete do treinador'}</span>
 			<h1 class="display">{c.personName}</h1>
 			<p class="muted">
-				{club.board.dismissed ? 'Sem clube · contrato encerrado' : data.view.club.name} · {club.board.dismissed ? 'Escolha uma proposta para voltar a comandar' : `contrato até ${o.contract.until} · ${formatMoney(o.contract.wage)} por mês`}
+				<span class="status-pill {status.key}">{status.label}</span>
+				{club.board.dismissed ? (o.unemployedSince?.reason === 'fim-contrato' ? 'Contrato encerrado' : 'Desligado pela diretoria') : data.view.club.name} · {club.board.dismissed ? 'Escolha uma proposta para voltar a comandar' : `contrato até ${o.contract.until} · ${formatMoney(o.contract.wage)} por mês`}
 				{#if o.delegated}<span class="tag">Treinos delegados ao auxiliar</span>{/if}
 			</p>
 			<dl class="totals">
@@ -81,29 +83,19 @@
 		<p class="feedback" class:erro={feedback.tone === 'erro'} role="status" aria-live="polite"><Icon name={feedback.tone === 'erro' ? 'alert' : 'check'} size={16} /> {feedback.text}</p>
 	{/if}
 
-	{#if !club.board.dismissed}
-	<section class="glass pad" use:reveal aria-label="Preferência de renovação contratual">
-		<h2 class="display">Renovação automática de contrato</h2>
-		<p class="muted">{o.autoRenewal ? 'Ativada: ao fim do vínculo, o clube tentará renovar automaticamente se a diretoria aprovar.' : 'Desativada: você decide manualmente quando receber uma proposta de renovação.'} Recusar uma renovação sempre prevalece sobre esta configuração.</p>
-		<Button variant={o.autoRenewal ? 'secondary' : 'gold'} icon="briefcase" disabled={busy || club.board.dismissed} onclick={() => act({ action: 'renovacao-auto', on: !o.autoRenewal })}>{o.autoRenewal ? 'Desativar renovação automática' : 'Ativar renovação automática'}</Button>
-	</section>
-	{/if}
+	<JobCenter careerId={c.id} version={c.version} season={c.season} round={marketRound} offers={club.jobOffers} {status} unemployed={club.board.dismissed}
+		alert={o.offerAlert ?? null} league={data.view.league} results={data.results} currentClub={c.clubId} contract={o.contract} seasonOver={data.view.seasonOver} />
 
 	{#if !club.board.dismissed}
-	<section class="glass pad" use:reveal aria-label="Solicitar reforço de orçamento à diretoria">
-		<h2 class="display">Negociar verba com a diretoria</h2>
-		<p class="muted">Você pode pedir mais recursos para contratar ou um teto salarial maior. A aprovação depende de confiança e caixa, e pedidos do mesmo tipo exigem 8 rodadas de intervalo.</p>
-		<p class="muted">Contratações: <strong>{formatMoney(club.transferBudget)}</strong> · Limite mensal da folha: <strong>{formatMoney(club.wageBudget)}</strong> · Caixa: <strong>{formatMoney(club.balance)}</strong></p>
-		<label class="muted">Aumento solicitado
-			<select bind:value={percentRequested}>
-				{#each [10, 20, 30] as percent (percent)}<option value={percent}>+{percent}%</option>{/each}
-			</select>
-		</label>
-		<div class="choices">
-			<Button icon="briefcase" disabled={busy} loading={busy} onclick={() => act({ action: 'verba-solicitar', kind: 'transferencias', percent: percentRequested })}>Pedir verba para contratações</Button>
-			<Button icon="chart" disabled={busy} onclick={() => act({ action: 'verba-solicitar', kind: 'folha', percent: percentRequested })}>Pedir aumento na folha</Button>
-		</div>
-	</section>
+		<section class="glass pad renewal" use:reveal aria-label="Renovação automática de contrato">
+			<div>
+				<h2 class="display">Renovação automática de contrato</h2>
+				<p class="muted">Ativada, você autoriza a renovação ao fim do vínculo — a diretoria ainda avalia confiança, campanha, objetivo, caixa e reputação. Recusar uma renovação sempre prevalece.</p>
+			</div>
+			<Switch checked={o.autoRenewal ?? false} label={o.autoRenewal ? 'Ativada' : 'Desativada'} hint={status.key === 'saida-confirmada' ? 'Você já recusou a renovação nesta temporada.' : `Contrato até ${o.contract.until}`} disabled={busy || status.key === 'saida-confirmada'} onchange={(on) => act({ action: 'renovacao-auto', on })} />
+		</section>
+		<BoardMeeting careerId={c.id} version={c.version} season={c.season} round={marketRound} transferBudget={club.transferBudget} wageBudget={club.wageBudget} balance={club.balance}
+			confidence={club.board.confidence} talks={o.budgetTalks ?? []} counter={o.budgetCounter ?? null} profileLabel={BOARD_PROFILES[club.board.profile].label} />
 	{/if}
 
 	{#if o.meeting}
@@ -153,33 +145,6 @@
 				</fieldset>
 			{/each}
 			<Button variant="primary" icon="check" disabled={!allPress || busy} loading={busy} onclick={() => act({ action: 'coletiva', pressId: o.press!.id, answers })}>Encerrar coletiva</Button>
-		</section>
-	{/if}
-
-	{#if club.board.dismissed}
-		<section class="offers" use:reveal aria-labelledby="ot">
-			<h2 id="ot" class="display">Propostas de emprego</h2>
-			<div class="ogrid">
-				{#each offers as of (of.id)}
-					<article class="offer glass" data-umx-surface>
-						<Crest clubId={of.clubId} size={54} />
-						<div>
-							<strong>{getClub(of.clubId)?.name ?? of.clubId}</strong>
-							<small class="muted">{divLabel(of.division)}{of.project ? ` · ${of.project}` : ''}</small>
-							<p>{of.reason}</p>
-						</div>
-						<div class="sign">
-							<label>Duração
-								<select bind:value={years[of.id]}>
-									{#each [1, 2, 3] as y (y)}<option value={y} selected={y === (of.years ?? 2)}>{y} temporada{y > 1 ? 's' : ''}</option>{/each}
-								</select>
-							</label>
-							<Button variant="gold" icon="briefcase" loading={busy} onclick={() => act({ action: 'emprego', offerId: of.id, years: years[of.id] ?? of.years ?? 2 })}>Assinar</Button>
-						</div>
-					</article>
-				{/each}
-				{#if !offers.length}<p class="muted">Nenhuma proposta disponível. Seu antigo clube continua indisponível; a carreira está aguardando novas ofertas.</p>{/if}
-			</div>
 		</section>
 	{/if}
 
@@ -267,6 +232,13 @@
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
 	}
+	.status-pill { margin-right: 8px; padding: 2px 10px; border-radius: 999px; font-size: var(--fs-xs); font-weight: 700; background: rgb(16 185 129 / 0.15); color: var(--emerald-strong); }
+	.status-pill.saida-confirmada { background: rgb(245 158 11 / 0.16); color: #f8c46b; }
+	.status-pill.sem-clube { background: rgb(239 68 68 / 0.14); color: var(--danger); }
+	.status-pill.em-negociacao { background: rgb(59 130 246 / 0.16); color: #93c5fd; }
+	.renewal { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--sp-4); align-items: center; }
+	.renewal h2 { margin: 0; }
+	.renewal p { margin: 6px 0 0; max-width: 72ch; }
 	.tag {
 		margin-left: 8px;
 		padding: 2px 8px;
@@ -439,45 +411,6 @@
 	.opt.on {
 		border-color: var(--emerald-strong);
 		background: rgb(16 185 129 / 0.08);
-	}
-	.ogrid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-		gap: var(--sp-3);
-	}
-	.offer {
-		display: grid;
-		grid-template-columns: auto 1fr;
-		gap: 12px;
-		padding: var(--sp-4);
-	}
-	.offer div {
-		display: grid;
-		gap: 2px;
-	}
-	.offer p {
-		margin: 6px 0 0;
-		font-size: var(--fs-sm);
-	}
-	.sign {
-		grid-column: 1 / -1;
-		display: flex !important;
-		justify-content: space-between;
-		align-items: end;
-		gap: 10px;
-	}
-	.sign label {
-		display: grid;
-		gap: 4px;
-		font-size: var(--fs-xs);
-		color: var(--text-3);
-	}
-	select {
-		padding: 8px;
-		border-radius: 10px;
-		background: var(--bg-2, #1c252b);
-		color: var(--text);
-		border: 1px solid var(--line-strong);
 	}
 	.timeline svg {
 		width: 100%;
