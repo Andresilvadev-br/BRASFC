@@ -37,7 +37,9 @@ describe('fim de contrato da carreira de treinador', () => {
   it('renova automaticamente com aprovação da diretoria', () => {
     const result = endWith({ auto: true, confidence: 80 });
     expect(result.club.board.dismissed).toBe(false);
-    expect(result.office.contract.until).toBe(season + 2);
+    // A diretoria decide a duração (2 ou 3 temporadas) pelo desempenho e pela confiança.
+    expect(result.office.contract.until).toBeGreaterThanOrEqual(season + 2);
+    expect(result.office.contract.until).toBeLessThanOrEqual(season + 3);
     expect(result.news.some((message) => message.subject === 'Contrato renovado automaticamente')).toBe(true);
   });
 

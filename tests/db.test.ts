@@ -131,7 +131,9 @@ describe('partidas da carreira (Dev 0.2/0.3)', () => {
 		const live = newFixtureMatch(reloaded, fixture, view.tactic, ctx);
 		for (let i = 0; i < 55 * 60; i++) live.step();
 		const side = setup.control!;
-		live.submit(side, { type: 'sub', outId: live.onPitch(side).find((s) => s.slot === 10)!.id, inId: live.bench(side)[2].id });
+		// Atacante do slot 10 (ou, se ele foi expulso, outro atleta de linha ainda em campo).
+		const outgoing = live.onPitch(side).find((s) => s.slot === 10) ?? live.onPitch(side).find((s) => s.slot !== 0)!;
+		live.submit(side, { type: 'sub', outId: outgoing.id, inId: live.bench(side)[2].id });
 		const played = live.runToEnd();
 		const mine = played.decisions.filter((d) => d.side === side);
 

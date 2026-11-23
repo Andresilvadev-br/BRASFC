@@ -3,6 +3,7 @@ import { getClub } from './clubs.ts';
 import type { Tier } from './market.ts';
 import { createRng, deriveSeed } from './rng.ts';
 import { coachOf, PROJECT_INFO, type UniverseState } from './universe.ts';
+import type { BudgetCounter, BudgetTalk } from './board-talks.ts';
 
 /**
  * Gabinete do treinador (Dev 0.5): contrato, reputação, histórico, marcos, reuniões com a
@@ -92,6 +93,20 @@ export interface OfficeState {
 	autoRenewal?: boolean;
 	/** Temporada em que o treinador escolheu sair ao fim do vínculo. */
 	renewalDeclinedSeason?: number;
+	/** Treinador 2.0: quando e por que ficou sem clube (ausente = contratado) */
+	unemployedSince?: { season: number; round: number; reason: 'demitido' | 'fim-contrato' };
+	/** janelas do mercado de treinadores já processadas ("temporada:rodada") */
+	offerWindows?: string[];
+	/** propostas novas que ainda não foram vistas na janela de destaque */
+	offerAlert?: { season: number; round: number; ids: string[] } | null;
+	/** última rodada (temporada*100+rodada) em que chegaram propostas */
+	lastOfferAt?: number;
+	/** reuniões de orçamento com a diretoria (histórico das negociações) */
+	budgetTalks?: BudgetTalk[];
+	/** contraproposta aguardando resposta */
+	budgetCounter?: BudgetCounter | null;
+	/** orçamentos no primeiro pedido da temporada (limite de +50%) */
+	budgetBaseline?: { season: number; transferBudget: number; wageBudget: number };
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -99,6 +114,18 @@ const TIER_COACH_WAGE: Record<Tier, number> = { A: 420_000, B: 140_000, C: 45_00
 
 export function coachWage(tier: Tier, reputation: number): number {
 	return Math.round((TIER_COACH_WAGE[tier] * (0.6 + reputation / 120)) / 1000) * 1000;
+}
+
+/**
+ * Linha do histórico de uma passagem (temporada × clube): os jogos são o total da carreira menos o
+ * que já foi registrado em outras linhas, então saídas no meio do ano não duplicam partidas.
+ */
+export function seasonRow(office: Pick<OfficeState, 'totals' | 'history'>, r: { season: number; clubId: string; division: string | null; position: number | null; outcome: CoachSeason['outcome']; reputation: number }): CoachSeason {
+	const others = office.history;
+	const games = Math.max(0, office.totals.games - others.reduce((s, h) => s + h.games, 0));
+	const wins = Math.max(0, office.totals.wins - others.reduce((s, h) => s + h.wins, 0));
+	const draws = Math.max(0, office.totals.draws - others.reduce((s, h) => s + h.draws, 0));
+	return { season: r.season, clubId: r.clubId, division: r.division, position: r.position, outcome: r.outcome, games, wins, draws, losses: Math.max(0, games - wins - draws), reputation: r.reputation };
 }
 
 export function initialOffice(season: number, tier: Tier, reputation: number): OfficeState {
@@ -131,7 +158,13 @@ export function sanitizeOffice(raw: unknown, season: number, tier: Tier, reputat
 		totals: { ...base.totals, ...(o.totals ?? {}) },
 		lastMeeting: o.lastMeeting ?? {},
 		autoRenewal: o.autoRenewal === true,
-		renewalDeclinedSeason: Number.isInteger(o.renewalDeclinedSeason) ? o.renewalDeclinedSeason : undefined
+		renewalDeclinedSeason: Number.isInteger(o.renewalDeclinedSeason) ? o.renewalDeclinedSeason : undefined,
+		unemployedSince: o.unemployedSince && Number.isInteger(o.unemployedSince.season) && Number.isInteger(o.unemployedSince.round) && (o.unemployedSince.reason === 'demitido' || o.unemployedSince.reason === 'fim-contrato') ? o.unemployedSince : undefined,
+		offerWindows: Array.isArray(o.offerWindows) ? o.offerWindows.filter((k: unknown) => typeof k === 'string').slice(-12) : [],
+		offerAlert: o.offerAlert && Array.isArray(o.offerAlert.ids) ? o.offerAlert : null,
+		lastOfferAt: Number.isFinite(o.lastOfferAt) ? o.lastOfferAt : undefined,
+		budgetTalks: Array.isArray(o.budgetTalks) ? o.budgetTalks.slice(-40) : [],
+		budgetCounter: o.budgetCounter && typeof o.budgetCounter === 'object' ? o.budgetCounter : null
 	};
 }
 

@@ -15,6 +15,19 @@ export interface JobOfferDetail {
 	wage?: number;
 	years?: number;
 	project?: string;
+	/** Treinador 2.0: rodada-limite na temporada `expiresSeason` (ausente = até o fim dela) */
+	expiresRound?: number;
+	/** rodada em que a proposta chegou */
+	createdRound?: number;
+	createdSeason?: number;
+	/** origem: janela da temporada, demissão, fim de contrato, mercado durante o desemprego */
+	source?: 'janela' | 'demissao' | 'fim-contrato' | 'desemprego' | 'temporada';
+	/** situação persistida (ausente em saves antigos = aberta) */
+	status?: 'aberta' | 'recusada' | 'aceita' | 'expirada';
+	/** o treinador pediu mais tempo (só uma vez por proposta) */
+	postponed?: boolean;
+	/** objetivo principal que a diretoria apresenta */
+	objective?: string;
 }
 
 /** Propostas de emprego coerentes com a reputação do treinador (determinísticas). */

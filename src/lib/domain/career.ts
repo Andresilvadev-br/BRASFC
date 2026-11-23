@@ -2,6 +2,9 @@ import { isDominantFoot, isNationality, isStartAge, MIN_START_AGE, MAX_START_AGE
 import { ROSTER_CATALOG, type RosterCatalogId } from '#lib/data/roster-catalog.ts';
 import type { UniverseState } from './universe.ts';
 import type { OfficeState } from './office.ts';
+import type { CoachKnowledge } from './coach-knowledge.ts';
+import type { TacticPreset } from './tactic-presets.ts';
+import type { DisciplineState } from './discipline.ts';
 import { isAppearance, type Appearance } from './appearance.ts';
 import { CLUBES_2026, TEMPORADA_2026 } from '#lib/data/brasil.ts';
 import { CLUBS, getClub, LEAGUE, type Club } from './clubs.ts';
@@ -79,6 +82,13 @@ playerCareer?: PlayerCareerState;
 universe?: UniverseState;
 /** gabinete do treinador: contrato, reuniões, coletivas, marcos e histórico */
 office?: OfficeState;
+// ── Treinador 2.0
+/** conhecimento tático pessoal do treinador (acompanha as trocas de clube) */
+coachKnowledge?: CoachKnowledge;
+/** biblioteca "Minhas Táticas" (pertence ao treinador, não ao clube) */
+tacticPresets?: TacticPreset[];
+/** registro disciplinar persistente (cartões e suspensões por competição) */
+discipline?: DisciplineState;
 }
 
 export interface Career {

@@ -12,8 +12,11 @@ export const PITCH = { length: 105, width: 68, goalWidth: 7.32, boxDepth: 16.5, 
 /** Versão do motor gravada com cada resultado (mudanças de regra mudam a versão). */
 export const LEGACY_ENGINE_VERSION = '0.5.0';
 export const REVIEW_ENGINE_VERSION = '0.5.1';
-export const ENGINE_VERSION = '0.5.2';
-export const supportsEngineVersion = (version: unknown) => version === ENGINE_VERSION || version === REVIEW_ENGINE_VERSION || version === LEGACY_ENGINE_VERSION;
+export const PREVIOUS_ENGINE_VERSION = '0.5.2';
+export const ENGINE_VERSION = '0.5.3';
+export const supportsEngineVersion = (version: unknown) => version === ENGINE_VERSION || version === PREVIOUS_ENGINE_VERSION || version === REVIEW_ENGINE_VERSION || version === LEGACY_ENGINE_VERSION;
+/** Regras de reprodução para a versão com que a partida foi gravada. */
+export const rulesForVersion = (version: unknown): Partial<MatchRules> => (version === ENGINE_VERSION ? {} : { redCardReorg: false });
 
 export type Side = 'home' | 'away';
 
@@ -79,14 +82,22 @@ export interface MatchRules {
 	/** duração de cada tempo em minutos */
 	halfMinutes: number;
 	homeAdvantage: boolean;
+	/**
+	 * Treinador 2.0 (motor 0.5.3): a IA reorganiza a defesa depois de uma expulsão. Reproduções de
+	 * partidas gravadas em versões anteriores desligam para chegar ao mesmo resultado.
+	 */
+	redCardReorg?: boolean;
 }
 
-export const DEFAULT_RULES: MatchRules = { maxSubs: 5, maxWindows: 3, halfMinutes: 45, homeAdvantage: true };
+export const DEFAULT_RULES: MatchRules = { maxSubs: 5, maxWindows: 3, halfMinutes: 45, homeAdvantage: true, redCardReorg: true };
 
 export type Decision =
 	| { type: 'individual'; playerId: string; order: PlayerOrder | null }
 	| { type: 'captains'; order: string[] }
-	| { type: 'sub'; outId: string; inId: string }
+	/** `slot`: posição que o reserva ocupa (a do atleta que sai ou uma vaga aberta por expulsão) */
+	| { type: 'sub'; outId: string; inId: string; slot?: number }
+	/** Treinador 2.0: leva um atleta em campo para uma vaga aberta (ex.: atacante para a zaga após expulsão) */
+	| { type: 'move'; playerId: string; slot: number }
 	| { type: 'swap'; first: string; second: string }
 	| { type: 'mentality'; value: Mentality }
 	| { type: 'style'; value: PlayStyle }

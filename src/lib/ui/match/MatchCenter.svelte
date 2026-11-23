@@ -8,6 +8,7 @@
 	import { narrate, type NarrationLine } from '#lib/engine/narration.ts';
 	import { possessionPct } from '#lib/engine/stats.ts';
 	import type { MatchResult, Side, TeamSetup } from '#lib/engine/types.ts';
+	import { rulesForVersion } from '#lib/engine/types.ts';
 	import Button from '../Button.svelte';
 	import Icon from '../Icon.svelte';
 	import MentalityScale from '../MentalityScale.svelte';
@@ -52,7 +53,7 @@
 		home,
 		away,
 		seed,
-		...(neutral ? { rules: { homeAdvantage: false } } : {}),
+		rules: { ...(neutral ? { homeAdvantage: false } : {}), ...(official?.version ? rulesForVersion(official.version) : {}) },
 		ai: official?.ai ?? { home: control !== 'home' && aiOpponent, away: control !== 'away' && aiOpponent },
 		version: official?.version,
 		replay: official?.decisions

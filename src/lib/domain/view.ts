@@ -20,6 +20,7 @@ import { CUP_ID, sanitizeCup } from './cup.ts';
 import { CLUBES_2026 } from '#lib/data/brasil.ts';
 import { squadStrength } from './squad.ts';
 import { resolveRoles, sanitizeTacticalState, syncSquad, teamMastery } from './tactical.ts';
+import { effectiveTactical, sanitizeCoachKnowledge } from './coach-knowledge.ts';
 import { initialClubTactic } from './club-selection.ts';
 import { recoverTactic, type Tactic } from './tactics.ts';
 
@@ -61,6 +62,9 @@ export function careerView(career: Career, results: StoredRoundResult[] = []) {
 	const tactic: Tactic = persisted ?? initialClubTactic(career.data.rosterCatalog, career.clubId, squad);
 	const roles = resolveRoles(tactic.formation, tactic.roles);
 	const tactical = syncSquad(sanitizeTacticalState(career.data.tactical, squad, tactic.formation, tactic.style), squad);
+	// Treinador 2.0: conhecimento pessoal (acompanha o treinador) × entrosamento do elenco (do clube).
+	const coach = career.mode === 'coach' ? sanitizeCoachKnowledge(career.data.coachKnowledge, tactical) : null;
+	const effective = effectiveTactical(tactical, coach);
 	let nextRound = step?.kind === 'league' ? step.round : 1;
 	if (step?.kind === 'cup') {
 		const leagueDone = new Set(results.filter((r) => r.competition !== CUP_ID).map((r) => r.round));
@@ -95,8 +99,13 @@ export function careerView(career: Career, results: StoredRoundResult[] = []) {
 		strength: squadStrength(squad),
 		tactic: { ...tactic, roles },
 		tacticSaved: !!persisted,
+		/** domínio coletivo do ELENCO (o que é persistido e aprendido pelos jogadores) */
 		tactical,
-		mastery: teamMastery(tactical, tactic.formation, tactic.style, tactic.lineup, tactic.instructions),
+		/** conhecimento pessoal do treinador (null na carreira de jogador) */
+		coach,
+		/** domínio efetivo em campo: elenco + parte da vantagem do treinador */
+		effective,
+		mastery: teamMastery(effective, tactic.formation, tactic.style, tactic.lineup, tactic.instructions),
 		trainingPlan: career.data.trainingPlan ? sanitizePlan(career.data.trainingPlan) : { ...DEFAULT_PLAN, sessions: [...DEFAULT_PLAN.sessions] },
 		fitness: career.data.fitness ?? {},
 		seasons: career.data.seasons ?? [],

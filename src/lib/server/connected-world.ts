@@ -33,7 +33,7 @@ import { ensureUniverse, officeOf, officeSeasonEnd, officeStep, universeAfterSte
 import { computeOverall } from '#lib/engine/attributes.ts';
 import { buildTeamSetup } from '#lib/engine/teams.ts';
 import { Match } from '#lib/engine/match.ts';
-import { ENGINE_VERSION, supportsEngineVersion, type MatchEvent, type MatchResult, type Side, type PlayerStats } from '#lib/engine/types.ts';
+import { ENGINE_VERSION, rulesForVersion, supportsEngineVersion, type MatchEvent, type MatchResult, type Side, type PlayerStats } from '#lib/engine/types.ts';
 import { canCommitRound, checkpoint, enginesFor, forgetRound, keepEngines, matchView, preparedFixtures, pulseRound, rememberFixtures, startRound, type LiveFixture, type LiveRound, type RoundReplay } from './live-round.ts';
 import { parseDecision } from './rounds.ts';
 import type { Db } from './db/index.ts';
@@ -240,7 +240,7 @@ export async function worldSnapshot(db: Db, room: Room, profile: string, online:
 }
 
 async function playOfficialMatch(replay: Replay) {
-	const match = new Match({ ...replay, ...(replay.neutral ? { rules: { homeAdvantage: false } } : {}) });
+	const match = new Match({ ...replay, rules: { ...(replay.neutral ? { homeAdvantage: false } : {}), ...rulesForVersion(replay.version) } });
 	for (let tick = 0; tick <= 20_000 && match.step(); tick++) {
 		// Give HTTP/WebSocket callbacks time between slices while this room's transaction stays locked.
 		if (tick % 256 === 255) await new Promise<void>((resolve) => setImmediate(resolve));

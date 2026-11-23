@@ -9,12 +9,12 @@ import { addDays } from '#lib/domain/dates.ts';
 import { applyTrainingWeek, recoverFitness } from '#lib/domain/drills.ts';
 import { closeSeason, prepareRound, seasonFixtures, seasonStartDate, type SeasonSummary } from '#lib/domain/league.ts';
 import { CUP_ID, clubCupRun, cupFixtures, cupView, prepareCup, projectedCup } from '#lib/domain/cup.ts';
-import { sanitizeMarket } from '#lib/domain/management.ts';
+import { payroll, sanitizeMarket } from '#lib/domain/management.ts';
 import { clubStateOf, rosterContext } from '#lib/domain/world.ts';
 import { seasonEndManagement, weeklyManagement } from './management.ts';
 import { closePlayerSeason, playerOffers } from '#lib/domain/careerlife.ts';
 import { divisionOf } from '#lib/domain/league.ts';
-import { expectedWage, formatMoney, tierOfDivision, transferWindow } from '#lib/domain/market.ts';
+import { expectedWage, formatMoney, rosterOf, tierOfDivision, transferWindow } from '#lib/domain/market.ts';
 import { getClub } from '#lib/domain/clubs.ts';
 import { playerTotals } from '#lib/domain/playerstats.ts';
 import { insertLedger, insertMessages, insertTransfers, upsertHistory } from './repos/management.ts';
@@ -22,7 +22,10 @@ import { strengthFor } from '#lib/domain/strength.ts';
 import type { Fixture } from '#lib/domain/season.ts';
 import { CAREER_PLAYER_ID, fixtureSetup, matchFromSetup, observedFrom, selectionOf, simulateOtherFixtures, summarize, type MatchdayContext } from '#lib/domain/matchday.ts';
 import { learnFromMatch, teamMastery } from '#lib/domain/tactical.ts';
+import { applyMatchDiscipline, sanitizeDiscipline, type DisciplineState } from '#lib/domain/discipline.ts';
+import { coachLearnFromMatch, coachSeasonDecay, teachingFactor, withTeaching } from '#lib/domain/coach-knowledge.ts';
 import { careerView } from '#lib/domain/view.ts';
+import { isUnemployed } from '#lib/domain/employment.ts';
 import { ENGINE_VERSION, type AppliedDecision } from '#lib/engine/types.ts';
 import { FORMATIONS, isFormation, normalizeMentality, normalizeStyle } from '#lib/domain/tactics.ts';
 import { presetInstructions, sanitizeInstructions } from '#lib/engine/instructions.ts';
@@ -48,7 +51,7 @@ export async function matchdayContext(db: Db, career: Career, view?: ReturnType<
 	const observed = previous
 		.map((m) => observedFrom(m.summary))
 		.filter((o) => o !== null);
-	return { season: career.season, firstSeason: view.firstSeason, tactical: view.tactical, fitness: career.data.fitness, observed, playerCalendar: { division: view.division, gameDates: view.clubFixtures.map((f) => f.date) } };
+	return { season: career.season, firstSeason: view.firstSeason, tactical: view.effective, fitness: career.data.fitness, observed, playerCalendar: { division: view.division, gameDates: view.clubFixtures.map((f) => f.date) } };
 }
 
 
@@ -60,7 +63,9 @@ export async function matchdayContext(db: Db, career: Career, view?: ReturnType<
  */
 export async function playRound(db: Db, profileId: string, career: Career, body: { version: number; round?: number; step?: string; decisions?: AppliedDecision[] }) {
 	if (body.version !== career.version) throw new RoundError('A carreira mudou em outra janela. Recarregue para continuar.', 409);
-	if (career.mode === 'coach' && career.data.club?.board.dismissed) throw new RoundError('Seu vínculo com o clube terminou. Avalie as propostas de emprego antes de comandar outra partida.', 409);
+	// Sem clube (demitido ou contrato expirado): o calendário avança na procura por emprego, mas o
+	// treinador não comanda o ex-clube — o jogo dele é simulado pela IA, sem decisões nem gestão.
+	const unemployed = isUnemployed(career);
 	const results = await listResults(db, career.id, career.season);
 	const view = careerView(career, results);
 	if (view.seasonOver || !view.step) throw new RoundError('A temporada terminou. Encerre-a para começar a próxima.', 409);
@@ -80,11 +85,14 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 		fixtures = cupFixtures(cup).filter((f) => f.round === step.matchday);
 	}
 	const round = step.kind === 'league' ? step.round : step.matchday;
-	const mine = fixtures.find((f) => f.home === career.clubId || f.away === career.clubId) ?? null;
+	const mine = unemployed ? null : (fixtures.find((f) => f.home === career.clubId || f.away === career.clubId) ?? null);
 	const ctx = await matchdayContext(db, career, view);
 	const rows: RoundInsert[] = [];
 	let userMatch: { fixture: Fixture; homeGoals: number; awayGoals: number; summary: ReturnType<typeof summarize> } | null = null;
 	let tactical = view.tactical;
+	let coachKnowledge = view.coach;
+	let discipline: DisciplineState | null = null;
+	let disciplineNews: Array<{ subject: string; body: string }> = [];
 	let fitness = { ...(career.data.fitness ?? {}) };
 	const squad = view.squad;
 	const originalPlayer = career.mode === 'player' ? playerState(career, view.division) : null;
@@ -97,7 +105,7 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 		const match = matchFromSetup(setup, decisions);
 		const result = match.runToEnd();
 		const t = setup.myTactic;
-		const mastery = teamMastery(view.tactical, t.formation, t.style, t.lineup, t.instructions);
+		const mastery = teamMastery(view.effective, t.formation, t.style, t.lineup, t.instructions);
 		const summary = summarize(match, result, setup.mySide, {
 			tactic: { formation: t.formation, style: t.style, ...(t.instructions ? { instructions: t.instructions } : {}), roles: t.roles },
 			opponentCoach: setup.opponentCoach,
@@ -117,12 +125,26 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 		}
 		rows.push({ season: career.season, round, competition: mine.competition, home: mine.home, away: mine.away, homeGoals: result.homeGoals, awayGoals: result.awayGoals, seed: setup.seed, isUser: true, decisions: result.decisions.filter((d) => d.side === setup.control), summary });
 		userMatch = { fixture: mine, homeGoals: result.homeGoals, awayGoals: result.awayGoals, summary };
+		// Disciplina: suspensos cumprem este jogo; cartões geram acúmulo e novas suspensões (por competição).
+		if (career.mode === 'coach') {
+			const names = new Map(squad.map((p) => [p.id, p.name]));
+			const out = applyMatchDiscipline(discipline ?? sanitizeDiscipline(career.data.discipline, career.season), {
+				season: career.season, round, competition: mine.competition,
+				cards: summary.cards.filter((c) => c.side === setup.mySide),
+				names: (id) => names.get(id) ?? id
+			});
+			discipline = out.state;
+			disciplineNews = out.news;
+		}
 		// Aprendizado: quem jogou, quantos minutos e em que função (titulares pelo slot; reservas na função do slot que ocuparam).
 		const team = match.teams[setup.mySide];
 		const appearances = [...match.states.values()]
 			.filter((s) => s.side === setup.mySide && (result.players[s.id]?.minutes ?? 0) > 0)
 			.map((s) => ({ id: s.id, minutes: result.players[s.id].minutes, role: t.roles[s.slot] ?? t.roles[0] }));
-		tactical = learnFromMatch(tactical, { formation: team.tactic.formation, style: team.tactic.style, instructions: t.instructions, appearances, squad });
+		const learned = learnFromMatch(tactical, { formation: team.tactic.formation, style: team.tactic.style, instructions: t.instructions, appearances, squad });
+		// O elenco aprende mais rápido com um treinador que domina o sistema; o treinador também ganha experiência.
+		tactical = withTeaching(tactical, learned, teachingFactor(tactical, view.coach, t.formation, t.style));
+		if (view.coach) coachKnowledge = coachLearnFromMatch(view.coach, { formation: team.tactic.formation, style: team.tactic.style, instructions: t.instructions, season: career.season, clubId: career.clubId });
 		tactical.history = [...tactical.history, { season: career.season, round, formation: t.formation, style: t.style, goalsFor: setup.mySide === 'home' ? result.homeGoals : result.awayGoals, goalsAgainst: setup.mySide === 'home' ? result.awayGoals : result.homeGoals, execution: mastery.execution }].slice(-120);
 		for (const [id, st] of Object.entries(result.players)) if (squad.some((p) => p.id === id) && st.minutes > 0) fitness[id] = st.condition;
 	}
@@ -145,7 +167,7 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 	let plan = view.trainingPlan;
 	let delegatedReasons: string[] = [];
 	if (step.kind === 'league') {
-		if (career.mode === 'coach') {
+		if (career.mode === 'coach' && !unemployed) {
 			const weekCtx = { formation: view.tactic.formation, style: view.tactic.style, lineup: view.tactic.lineup, roles: view.tactic.roles, squad, nextOpponent, learning: fx.tacticalLearning, analyst: fx.opponentPrep };
 			if (office?.delegated) {
 				const avg = squad.reduce((s, p) => s + (fitness[p.id] ?? 95), 0) / Math.max(1, squad.length);
@@ -153,7 +175,7 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 				plan = sug.plan;
 				delegatedReasons = sug.reasons;
 			}
-			tactical = applyTrainingWeek(tactical, plan, weekCtx);
+			tactical = withTeaching(tactical, applyTrainingWeek(tactical, plan, weekCtx), teachingFactor(tactical, view.coach, view.tactic.formation, view.tactic.style));
 		}
 		const before = fitness;
 		const recovered = recoverFitness(fitness, squad, career.mode === 'coach' ? plan : { sessions: ['descanso', 'formacao', 'posse', 'defesa', 'descanso'], intensity: 'normal' });
@@ -196,10 +218,12 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 	// Dev 0.5: universo vivo (forma, diretorias, demissões, notícias) e gabinete do treinador.
 	const before = universe;
 	universe = universeAfterStep(universe, career, league, { round, league: step.kind === 'league', seasonResults: allResults, newResults: rows.map(({ home, away, homeGoals, awayGoals, competition }) => ({ home, away, homeGoals, awayGoals, competition })), strengthOf });
-	let clubOut = wk.club;
+	// Ex-clube volta para a IA: as finanças dele não são mais da carreira (nem lançamentos, nem caixa).
+	let clubOut = unemployed ? clubStateOf(career, league) : wk.club;
+	if (unemployed) wk.news.splice(0, wk.news.length);
 	if (career.mode === 'coach' && office) {
 		const big = wk.transfers.filter((t) => t.to === career.clubId && t.fee >= 1_000_000).sort((a, b) => b.fee - a.fee)[0];
-		const os = officeStep({ career, league, office, club: wk.club, universe, round, isLeague: step.kind === 'league', totalRounds: view.rounds, seasonResults: allResults, userMatch: mine && userMatch ? { home: mine.home, away: mine.away, homeGoals: userMatch.homeGoals, awayGoals: userMatch.awayGoals, competition: mine.competition } : null, nextOpponent, nextDecisive: !!nextFix && nextFix.competition === CUP_ID, signedBig: big?.playerName ?? null });
+		const os = officeStep({ career, league, office, club: clubOut, universe, round, leagueRound: view.nextRound - 1, isLeague: step.kind === 'league', totalRounds: view.rounds, seasonResults: allResults, userMatch: mine && userMatch ? { home: mine.home, away: mine.away, homeGoals: userMatch.homeGoals, awayGoals: userMatch.awayGoals, competition: mine.competition } : null, nextOpponent, nextDecisive: !!nextFix && nextFix.competition === CUP_ID, signedBig: big?.playerName ?? null });
 		office = os.office;
 		clubOut = os.club;
 		universe = os.universe;
@@ -207,12 +231,13 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 		if (delegatedReasons.length) wk.news.push({ sender: 'Auxiliar técnico', subject: 'Semana de treinos planejada', body: `Montei a semana: ${plan.sessions.join(', ')} (intensidade ${plan.intensity}). ${delegatedReasons.join(' ')}`, important: false });
 	}
 	wk.news.push(...inboxWorthy(before, universe, career.clubId, view.division, nextOpponent));
-	const data: Partial<CareerData> = { tactical, fitness, league, universe, ...(office ? { office } : {}), ...(cup ? { cup } : {}), market: wk.market, ...(career.mode === 'coach' ? { club: clubOut } : {}), ...(playerCareer ? { playerCareer } : {}) };
+	for (const n of disciplineNews) wk.news.push({ sender: 'Departamento de futebol', subject: n.subject, body: n.body, important: true });
+	const data: Partial<CareerData> = { tactical, fitness, league, universe, ...(coachKnowledge ? { coachKnowledge } : {}), ...(discipline ? { discipline } : {}), ...(office ? { office } : {}), ...(cup ? { cup } : {}), market: wk.market, ...(career.mode === 'coach' ? { club: clubOut } : {}), ...(playerCareer ? { playerCareer } : {}) };
 	const key = `${career.season}:${step.key}`;
 	const updated = await db.transaction(async (tx) => {
 		await insertRound(tx, career.id, rows, ENGINE_VERSION);
 		const saved = await saveCareerProgress(tx, profileId, career.id, { gameDate: nextDate, data }, career.version);
-		if (career.mode === 'coach') await insertLedger(tx, career.id, career.season, step.date, wk.ledger, key);
+		if (career.mode === 'coach' && !unemployed) await insertLedger(tx, career.id, career.season, step.date, wk.ledger, key);
 		await insertTransfers(tx, career.id, career.season, step.date, wk.transfers, `${key}:t`);
 		await insertMessages(tx, career.id, nextDate, career.mode === 'coach' ? wk.news : wk.news.filter((n) => n.sender?.startsWith('Empresário') || n.sender === 'Departamento médico'));
 		return saved;
@@ -222,8 +247,9 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 		round,
 		step: step.key,
 		match: userMatch,
-		finance: career.mode === 'coach' ? { balance: clubOut.balance, ledger: wk.ledger } : null,
+		finance: career.mode === 'coach' && !unemployed ? { balance: clubOut.balance, ledger: wk.ledger } : null,
 		dismissed: career.mode === 'coach' && clubOut.board.dismissed && !(career.data.club?.board?.dismissed ?? false),
+		unemployed: career.mode === 'coach' && clubOut.board.dismissed,
 		results: rows.filter((r) => !r.isUser).map(({ home, away, homeGoals, awayGoals, competition }) => ({ home, away, homeGoals, awayGoals, competition }))
 	};
 }
@@ -255,6 +281,7 @@ export async function finishSeason(db: Db, profileId: string, career: Career, ve
 	for (const s of Object.keys(tactical.styles) as Array<keyof typeof tactical.styles>) tactical.styles[s] = Math.round(tactical.styles[s] * 0.95 * 10) / 10;
 	const fitness: Record<string, number> = {};
 	for (const p of view.squad) fitness[p.id] = 100;
+	const coachKnowledge = view.coach ? coachSeasonDecay(view.coach) : null;
 	const next = outcome.next;
 	const cupNow = view.cup ? cupView(view.cup, results, career.seed, strengthOf) : null;
 	// Copa da próxima temporada (projeção) a partir das novas divisões e dos campeões.
@@ -264,7 +291,11 @@ export async function finishSeason(db: Db, profileId: string, career: Career, ve
 			: undefined;
 	// Gestão: contratos que terminam, empréstimos, premiações, avaliação da diretoria e nova base.
 	const myCup = cupNow ? clubCupRun(cupNow, career.clubId) : null;
-	const end = career.mode !== 'coach' ? { club: clubStateOf(career, view.league), market: sanitizeMarket(career.data.market), ledger: [], transfers: [], news: [] as Array<{ subject: string; body: string; important?: boolean; sender?: string }> } : seasonEndManagement({
+	const unemployed = isUnemployed(career);
+	const officeBefore = career.mode === 'coach' ? officeOf(career, clubStateOf(career, view.league), view.league) : null;
+	// Temporada inteira sem clube: o ex-clube não entra no histórico do treinador.
+	const idleSeason = unemployed && !!officeBefore?.unemployedSince && officeBefore.unemployedSince.season < career.season;
+	const end = career.mode !== 'coach' || unemployed ? { club: clubStateOf(career, view.league), market: sanitizeMarket(career.data.market), ledger: [], transfers: [], news: [] as Array<{ subject: string; body: string; important?: boolean; sender?: string }> } : seasonEndManagement({
 		career,
 		club: clubStateOf(career, view.league),
 		market: sanitizeMarket(career.data.market),
@@ -285,7 +316,7 @@ export async function finishSeason(db: Db, profileId: string, career: Career, ve
 	const history: Array<[string, string, unknown]> = [];
 	for (const [comp, champ] of Object.entries(outcome.champions)) if (champ) history.push(['campeao', comp, { clubId: champ, runnerUp: outcome.runnersUp[comp as keyof typeof outcome.runnersUp] ?? null }]);
 	if (cupNow?.champion) history.push(['campeao', CUP_ID, { clubId: cupNow.champion, runnerUp: cupNow.runnerUp }]);
-	history.push(['temporada-usuario', view.division, { ...summary, clubId: career.clubId, cupPhase: myCup?.lastPhase ?? 0, cupChampion: !!myCup?.champion }]);
+	if (!idleSeason) history.push(['temporada-usuario', view.division, { ...summary, clubId: career.clubId, cupPhase: myCup?.lastPhase ?? 0, cupChampion: !!myCup?.champion }]);
 	history.push(['tabela', view.division, { rows: table.slice(0, 40).map((r) => ({ clubId: r.clubId, points: r.points, won: r.won, drawn: r.drawn, lost: r.lost, goalDiff: r.goalDiff })) }]);
 	const scorers = topScorers(await listSeasonGoals(db, career.id, career.season), view.division);
 	if (scorers.length) history.push(['artilharia', view.division, { players: scorers }]);
@@ -305,7 +336,8 @@ export async function finishSeason(db: Db, profileId: string, career: Career, ve
 	});
 	let officeData: Partial<CareerData> = {};
 	if (career.mode === 'coach') {
-		const oe = officeSeasonEnd({ career, office: officeOf(career, end.club, view.league), club: end.club, universe, division: view.division, position: row?.position ?? null, outcome: summary.outcome === 'rebaixado' ? 'queda' : summary.outcome === 'permanece' ? 'permanece' : summary.outcome, next });
+		const monthlyWages = payroll(rosterOf(rosterContext(career, view.league), career.clubId));
+		const oe = officeSeasonEnd({ career, office: officeOf(career, end.club, view.league), club: end.club, universe, division: view.division, position: row?.position ?? null, outcome: summary.outcome === 'rebaixado' ? 'queda' : summary.outcome === 'permanece' ? 'permanece' : summary.outcome, next, monthlyWages });
 		end.club = oe.club;
 		end.news.push(...oe.news);
 		officeData = { office: { ...oe.office, meeting: null, press: null } };
@@ -358,11 +390,11 @@ export async function finishSeason(db: Db, profileId: string, career: Career, ve
 			tx,
 			profileId,
 			career.id,
-			{ gameDate: nextDate, season: next.season, clubId: returnedTo, data: { league: next, ...(returnedTo ? { tactical: null, fitness: {} } : { tactical, fitness }), seasons: [...view.seasons, summary], ...(nextCup ? { cup: nextCup } : {}), market: end.market, ...(career.mode === 'coach' ? { club: end.club } : {}), ...playerData, universe, ...officeData } },
+			{ gameDate: nextDate, season: next.season, clubId: returnedTo, data: { league: next, ...(returnedTo ? { tactical: null, fitness: {} } : { tactical, fitness }), seasons: idleSeason ? view.seasons : [...view.seasons, summary], ...(nextCup ? { cup: nextCup } : {}), market: end.market, ...(career.mode === 'coach' ? { club: end.club } : {}), ...(coachKnowledge ? { coachKnowledge } : {}), ...playerData, universe, ...officeData } },
 			career.version
 		);
 		if (returnedTo && playerData.playerCareer) await insertTransfers(tx, career.id, next.season, nextDate, [{ playerId: CAREER_PLAYER_ID, playerName: career.personName, from: career.clubId, to: returnedTo, kind: 'retorno', fee: 0, wage: playerData.playerCareer.contract.wage }], `${career.season}:jogador:retorno`);
-		if (career.mode === 'coach') await insertLedger(tx, career.id, career.season, addDays(nextDate, -1), end.ledger, `${career.season}:fim`);
+		if (career.mode === 'coach' && !unemployed) await insertLedger(tx, career.id, career.season, addDays(nextDate, -1), end.ledger, `${career.season}:fim`);
 		await insertTransfers(tx, career.id, career.season, addDays(nextDate, -1), end.transfers, `${career.season}:fim:t`);
 		await insertMessages(tx, career.id, nextDate, end.news);
 		for (const [kind, comp, data] of history) await upsertHistory(tx, career.id, career.season, kind, comp, data);
@@ -416,11 +448,15 @@ export function parseDecision(raw: unknown): Decision | null {
 		&& dec.first.length > 0 && dec.first.length <= 128 && dec.second.length > 0 && dec.second.length <= 128 && dec.first !== dec.second) {
 		return { type: 'swap', first: dec.first, second: dec.second };
 	}
-	if (dec.type === 'sub' && typeof dec.outId === 'string' && typeof dec.inId === 'string') return { type: 'sub', outId: dec.outId, inId: dec.inId };
+	if (dec.type === 'sub' && typeof dec.outId === 'string' && typeof dec.inId === 'string') {
+		const slot = Number.isInteger(dec.slot) && (dec.slot as number) >= 0 && (dec.slot as number) < 11 ? (dec.slot as number) : undefined;
+		return { type: 'sub', outId: dec.outId, inId: dec.inId, ...(slot !== undefined ? { slot } : {}) };
+	}
+	if (dec.type === 'move' && typeof dec.playerId === 'string' && dec.playerId.length <= 128 && Number.isInteger(dec.slot) && (dec.slot as number) >= 0 && (dec.slot as number) < 11) return { type: 'move', playerId: dec.playerId, slot: dec.slot as number };
 	if (dec.type === 'mentality' && normalizeMentality(dec.value)) return { type: 'mentality', value: normalizeMentality(dec.value)! };
 	if (dec.type === 'style' && normalizeStyle(dec.value)) return { type: 'style', value: normalizeStyle(dec.value)! };
 	if (dec.type === 'instructions' && dec.value && typeof dec.value === 'object') return { type: 'instructions', value: sanitizeInstructions(dec.value, presetInstructions('equilibrada', 'posse')) };
-	if (dec.type === 'formation' && isFormation(dec.value) && Array.isArray(dec.lineup) && dec.lineup.length === FORMATIONS[dec.value].length && dec.lineup.every((x) => typeof x === 'string')) {
+	if (dec.type === 'formation' && isFormation(dec.value) && Array.isArray(dec.lineup) && dec.lineup.length === FORMATIONS[dec.value].length && dec.lineup.every((x) => typeof x === 'string' && x.length <= 128)) {
 		const roles = Array.isArray(dec.roles) && dec.roles.length === dec.lineup.length && dec.roles.every(isRoleId) ? dec.roles : undefined;
 		return { type: 'formation', value: dec.value, lineup: dec.lineup as string[], ...(roles ? { roles } : {}) };
 	}
