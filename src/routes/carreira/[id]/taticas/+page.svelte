@@ -14,6 +14,7 @@
 	import { api, isVersionConflict, withCareerVersion } from '#lib/api.ts';
 	import { pickBench } from '#lib/engine/teams.ts';
 	import { positionFit } from '#lib/domain/positions.ts';
+	import { visibleSquadAge } from '#lib/domain/squad.ts';
 	import type { SquadPlayer } from '#lib/domain/squad.ts';
 	import {
 		autoLineup,
@@ -42,7 +43,7 @@
 	import Segmented from '#lib/ui/Segmented.svelte';
 	import StylePicker from '#lib/ui/StylePicker.svelte';
 	import { analyze, type Tip } from '#lib/domain/assistant.ts';
-	import { resolveRoles, teamMastery } from '#lib/domain/tactical.ts';
+	import { bestRoles, resolveRoles, teamMastery } from '#lib/domain/tactical.ts';
 	import { overridesOf, presetInstructions, type TacticalInstructions } from '#lib/engine/instructions.ts';
 	import { ROLES, type RoleId } from '#lib/engine/roles.ts';
 	import AssistantPanel from '#lib/ui/tactics/AssistantPanel.svelte';
@@ -157,6 +158,16 @@
 		tactic.bench = tactic.bench.filter((id) => !tactic.lineup.includes(id));
 		tactic.formation = f;
 		tactic.roles = resolveRoles(f);
+	}
+
+	/** Recalcula o onze inteiro, inclusive com atletas que estavam no banco ou na reserva. */
+	function optimizeLineup() {
+		const lineup = autoLineup(tactic.formation, v.squad);
+		tactic.lineup = lineup;
+		tactic.bench = pickBench(v.squad, lineup);
+		tactic.roles = bestRoles(tactic.formation, lineup, v.squad);
+		selection = null;
+		notify({ icon: 'check', tone: 'success', title: 'Melhor 11 sugerido', detail: 'Revise as posições e salve a tática para confirmar.' });
 	}
 
 	function swap(target: Selection) {
@@ -355,6 +366,7 @@
 			<div class="pitch-tools">
 				<Segmented label="Formação" value={tactic.formation} onchange={changeFormation} options={FORMATION_IDS.map((f) => ({ value: f, label: f }))} />
 				<div class="tools-r">
+					<Button size="sm" variant="secondary" icon="sparkle" onclick={optimizeLineup}>Montar melhor 11</Button>
 					<div class="fam" title="Quanto os titulares estão nas posições de origem"><span>Familiaridade</span><Meter value={familiarity} label="Familiaridade tática" /></div>
 					<button class="chip" aria-pressed={behavior} onclick={() => (behavior = !behavior)} title="Mostra linha, bloco, pressão e corridas que o motor vai usar">Comportamento</button>
 				</div>
@@ -379,14 +391,14 @@
 							ondrop={(e) => onDrop(e, { kind: 'slot', index: i })}
 							onclick={() => clickSlot(i)}
 							aria-pressed={isSel('slot', i)}
-							aria-label="{slot.position}: {p ? `Overall ${p.overall} · ${p.name}` : 'vazio'}"
+							aria-label="{slot.position}: {p ? `Overall ${p.overall} · ${p.name} · ${visibleSquadAge(p) ?? 'idade pendente'} anos` : 'vazio'}"
 						>
 							{#if p}<Pixel appearance={p.appearance} kit={playerKit(data.career.clubId, p.position)} size={40} />{/if}
 							<span class="rating-line">
 								<span class="role">{slot.position}</span>
 								{#if p}<span class="overall num" title="Overall">{p.overall}</span>{/if}
 							</span>
-							<span class="pname">{p?.shortName ?? '—'}</span>
+							<span class="pname">{p?.shortName ?? '—'}{p ? ` · ${visibleSquadAge(p) ?? '—'}a` : ''}</span>
 							<span class="fn">{ROLES[tactic.roles[i]]?.label ?? ''}</span>
 							{#if p && p.condition < 75}<span class="cond" title="Condição física: {p.condition}%">{p.condition}%</span>{/if}
 						</button>
@@ -424,7 +436,7 @@
 						ondragover={(e) => e.preventDefault()} ondrop={(e) => onDrop(e, { kind, id: p.id })}
 						onclick={() => clickOffPitch(kind, p.id)} aria-pressed={isSel(kind, p.id)}>
 						<Pixel appearance={p.appearance} kit={playerKit(data.career.clubId, p.position)} size={30} />
-						<span class="bn">{p.name}</span><span class="bp">{p.position}</span><span class="bo num">{p.overall}</span>
+						<span class="bn">{p.name} · {visibleSquadAge(p) ?? '—'}a</span><span class="bp">{p.position}</span><span class="bo num">{p.overall}</span>
 					</button>
 				</li>
 			{/snippet}
