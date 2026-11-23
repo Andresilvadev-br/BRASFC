@@ -1,4 +1,4 @@
-import { error } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
 import { careerCalendar } from '#lib/domain/view.ts';
 import { universePreview } from '#lib/domain/universe.ts';
 import { getDb } from '#lib/server/db/index.ts';
@@ -7,12 +7,17 @@ import { listResults, recentUserMatches } from '#lib/server/repos/matches.ts';
 import { logRequestFailure } from '#lib/server/request-error.ts';
 import type { LayoutServerLoad } from './$types';
 
-export const load: LayoutServerLoad = async ({ locals, params, depends, request }) => {
+export const load: LayoutServerLoad = async ({ locals, params, depends, request, url }) => {
 	depends('app:career');
 	if (!locals.profile || !isUuid(params.id)) error(404, 'Carreira não encontrada.');
 	const db = await getDb();
 	const career = await getCareer(db, locals.profile.id, params.id);
 	if (!career) error(404, 'Carreira não encontrada neste perfil.');
+	// Um treinador desligado não pode acessar o banco de reservas ou administrar o antigo clube.
+	// A Central de Propostas continua disponível e é a única tela de atuação até novo contrato.
+	if (career.mode === 'coach' && career.data.club?.board.dismissed && url.pathname !== `/carreira/${career.id}/gabinete`) {
+		redirect(303, `/carreira/${career.id}/gabinete`);
+	}
 	const degraded: string[] = [];
 	const optional = async <T>(operation: string, read: Promise<T[]>): Promise<T[]> => {
 		try { return await read; }
