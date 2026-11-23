@@ -80,6 +80,12 @@
 		<p class="feedback" class:erro={feedback.tone === 'erro'} role="status" aria-live="polite"><Icon name={feedback.tone === 'erro' ? 'alert' : 'check'} size={16} /> {feedback.text}</p>
 	{/if}
 
+	<section class="glass pad" use:reveal aria-label="Preferência de renovação contratual">
+		<h2 class="display">Renovação automática de contrato</h2>
+		<p class="muted">{o.autoRenewal ? 'Ativada: ao fim do vínculo, o clube tentará renovar automaticamente se a diretoria aprovar.' : 'Desativada: você decide manualmente quando receber uma proposta de renovação.'} Recusar uma renovação sempre prevalece sobre esta configuração.</p>
+		<Button variant={o.autoRenewal ? 'secondary' : 'gold'} icon="briefcase" disabled={busy || club.board.dismissed} onclick={() => act({ action: 'renovacao-auto', on: !o.autoRenewal })}>{o.autoRenewal ? 'Desativar renovação automática' : 'Ativar renovação automática'}</Button>
+	</section>
+
 	{#if o.meeting}
 		<section class="meeting glass gold" use:reveal aria-labelledby="mt">
 			<div class="mhead">
