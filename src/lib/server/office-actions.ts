@@ -8,7 +8,7 @@ import { resolveMeeting, resolvePress, type BoardSnapshot, type OfficeState } fr
 import { STAFF_ROLES, type StaffRole } from '#lib/domain/staff.ts';
 import { officeOf } from './universe.ts';
 
-export const OFFICE_ACTIONS = new Set(['reuniao', 'coletiva', 'comissao-contratar', 'comissao-dispensar', 'treino-delegar', 'base-plano', 'renovacao-auto']);
+export const OFFICE_ACTIONS = new Set(['reuniao', 'coletiva', 'comissao-contratar', 'comissao-dispensar', 'treino-delegar', 'base-plano', 'renovacao-auto', 'verba-solicitar']);
 
 export interface OfficeActionResult {
 	club: ClubState;
@@ -93,6 +93,38 @@ export function applyOfficeAction(career: Career, league: LeagueState, club: Clu
 			if (!(STAFF_ROLES as readonly string[]).includes(role)) throw new ManagementError('Cargo inválido.');
 			const r = fireStaff(st, career.season, round, role);
 			return { club: r.state, office, ledger: r.ledger, message: r.message };
+		}
+		case 'verba-solicitar': {
+			const kind = str('kind');
+			if (kind !== 'transferencias' && kind !== 'folha') throw new ManagementError('Escolha entre orçamento de transferências ou limite da folha salarial.');
+			const percent = Number(body.percent);
+			if (![10, 20, 30].includes(percent)) throw new ManagementError('O aumento solicitado deve ser de 10%, 20% ou 30%.');
+			const key = `pedido-verba:${kind}`;
+			const currentRound = career.season * 100 + round;
+			const previous = [...office.decisions].reverse().find((d) => d.kind === key);
+			if (previous && currentRound - (previous.season * 100 + previous.round) < 8) {
+				throw new ManagementError('A diretoria precisa avaliar os resultados antes de receber outro pedido deste tipo (intervalo de 8 rodadas).');
+			}
+			const isPayroll = kind === 'folha';
+			const before = isPayroll ? st.wageBudget : st.transferBudget;
+			if (before <= 0) throw new ManagementError('Aguarde a definição do orçamento inicial da temporada antes de pedir o aumento.');
+			const increase = Math.max(1, Math.round(before * percent / 100));
+			const trustRequired = percent === 10 ? 50 : percent === 20 ? 65 : 80;
+			// Um teto de folha maior é autorização de despesa, jamais dinheiro adicionado ao caixa.
+			// Considerar pelo menos seis meses de aumento potencial da despesa salarial.
+			const cashNeeded = isPayroll ? increase * 6 : before + increase;
+			const approved = st.board.confidence >= trustRequired && st.balance >= cashNeeded;
+			if (approved) {
+				if (isPayroll) st.wageBudget += increase;
+				else st.transferBudget += increase;
+			}
+			const label = isPayroll ? 'teto mensal da folha' : 'orçamento de transferências';
+			const message = approved
+				? `Diretoria aprovou +${percent}% no ${label}, de ${before.toLocaleString('pt-BR')} para ${(before + increase).toLocaleString('pt-BR')}. O caixa não foi alterado.`
+				: `Diretoria recusou +${percent}% no ${label}. Motivo: ${st.board.confidence < trustRequired ? 'confiança insuficiente para a solicitação' : 'caixa insuficiente para assumir o compromisso'}.`;
+			office.decisions.push({ season: career.season, round, kind: key, choice: approved ? 'aprovado' : 'recusado', effect: message });
+			office.decisions = office.decisions.slice(-200);
+			return out(message);
 		}
 		case 'renovacao-auto': {
 			office.autoRenewal = body.on === true;
