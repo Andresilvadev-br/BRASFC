@@ -63,7 +63,7 @@
 			<span class="eyebrow-gold">Gabinete do treinador</span>
 			<h1 class="display">{c.personName}</h1>
 			<p class="muted">
-				{data.view.club.name} · contrato até <strong>{o.contract.until}</strong> · {formatMoney(o.contract.wage)} por mês
+				{club.board.dismissed ? 'Sem clube · contrato encerrado' : data.view.club.name} · {club.board.dismissed ? 'Escolha uma proposta para voltar a comandar' : `contrato até ${o.contract.until} · ${formatMoney(o.contract.wage)} por mês`}
 				{#if o.delegated}<span class="tag">Treinos delegados ao auxiliar</span>{/if}
 			</p>
 			<dl class="totals">
@@ -80,11 +80,13 @@
 		<p class="feedback" class:erro={feedback.tone === 'erro'} role="status" aria-live="polite"><Icon name={feedback.tone === 'erro' ? 'alert' : 'check'} size={16} /> {feedback.text}</p>
 	{/if}
 
+	{#if !club.board.dismissed}
 	<section class="glass pad" use:reveal aria-label="Preferência de renovação contratual">
 		<h2 class="display">Renovação automática de contrato</h2>
 		<p class="muted">{o.autoRenewal ? 'Ativada: ao fim do vínculo, o clube tentará renovar automaticamente se a diretoria aprovar.' : 'Desativada: você decide manualmente quando receber uma proposta de renovação.'} Recusar uma renovação sempre prevalece sobre esta configuração.</p>
 		<Button variant={o.autoRenewal ? 'secondary' : 'gold'} icon="briefcase" disabled={busy || club.board.dismissed} onclick={() => act({ action: 'renovacao-auto', on: !o.autoRenewal })}>{o.autoRenewal ? 'Desativar renovação automática' : 'Ativar renovação automática'}</Button>
 	</section>
+	{/if}
 
 	{#if o.meeting}
 		<section class="meeting glass gold" use:reveal aria-labelledby="mt">
@@ -136,7 +138,7 @@
 		</section>
 	{/if}
 
-	{#if club.board.dismissed && offers.length}
+	{#if club.board.dismissed}
 		<section class="offers" use:reveal aria-labelledby="ot">
 			<h2 id="ot" class="display">Propostas de emprego</h2>
 			<div class="ogrid">
@@ -158,6 +160,7 @@
 						</div>
 					</article>
 				{/each}
+				{#if !offers.length}<p class="muted">Nenhuma proposta disponível. Seu antigo clube continua indisponível; a carreira está aguardando novas ofertas.</p>{/if}
 			</div>
 		</section>
 	{/if}
