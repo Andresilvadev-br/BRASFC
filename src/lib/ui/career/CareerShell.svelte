@@ -7,18 +7,18 @@
 	import Icon from '../Icon.svelte';
 	import type { CareerGroup } from './navigation.ts';
 
-	let { base, clubId, clubName, color, personName, roleLabel, groups, current, date, season, cup = false, stepLabel,
+	let { base, clubId, clubName, color, personName, roleLabel, groups, current, date, season, cup = false, unemployed = false, stepLabel,
 		balance, match, exit = { href: '/menu', label: 'Menu' }, status, children }: {
 		base: string; clubId: string; clubName: string; color: string; personName: string; roleLabel: string; groups: CareerGroup[];
-		current: string | null; date: string; season: number; cup?: boolean; stepLabel: string; balance?: number;
+		current: string | null; date: string; season: number; cup?: boolean; unemployed?: boolean; stepLabel: string; balance?: number;
 		match?: { href: string; label: string; hint?: string }; exit?: { href: string; label: string }; status?: Snippet; children: Snippet;
 	} = $props();
 </script>
 
 <div class="shell" style="--club:{color}">
 	<aside class="rail" aria-label="Navegação da carreira">
-		<a class="club" href={base} data-umx-shared="career-crest">
-			<Crest clubId={clubId} size={42} />
+		<a class="club" href={unemployed ? `${base}/gabinete` : base} data-umx-shared="career-crest">
+			{#if unemployed}<Icon name="briefcase" size={42} />{:else}<Crest clubId={clubId} size={42} />{/if}
 			<span class="names">
 				<strong>{clubName}</strong>
 				<small>{roleLabel} · {personName}</small>
