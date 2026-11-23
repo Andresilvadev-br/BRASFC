@@ -4,7 +4,7 @@
 
 	let { code, owner, coach, mode, teams }: { code: string; owner: boolean; coach: boolean; mode?: 'coach' | 'player' | 'mixed'; teams: { id: string; name: string }[] } = $props();
 	let username = $state('');
-	let role = $state<'member' | 'coach' | 'assistant'>('member');
+	let role = $state<'member' | 'coach'>('member');
 	let club = $state('');
 	let hours = $state<number | undefined>(72);
 	let busy = $state(false);
@@ -27,7 +27,7 @@
 		message = '';
 		failed = false;
 		try {
-			await api(`/api/rooms/${code}/social`, { body: { action:'invite', username, role: mode === 'player' ? 'member' : owner ? role : 'assistant', club, hours } });
+			await api(`/api/rooms/${code}/social`, { body: { action:'invite', username, role, club, hours } });
 			message = `Convite enviado para @${username.trim().toLowerCase()}.`;
 			username = '';
 		} catch (error) {
@@ -37,9 +37,9 @@
 	}
 </script>
 
-{#if owner || coach}
+{#if owner}
 	<form onsubmit={invite} data-umx-enter>
-		<h3>{mode === 'player' ? 'Convidar atleta' : 'Convidar participante'}</h3>
+		<h3>Convidar treinador</h3>
 		<label>Usuário BRASFC<input bind:value={username} placeholder="nome_de_usuario" minlength="3" maxlength="24" required autocapitalize="none" /></label>
 		<details ontoggle={(event) => { if (event.currentTarget.open) void loadFriends(); }}>
 			<summary>Escolher um amigo</summary>
@@ -52,10 +52,10 @@
 				</select></label>
 			{:else if friends}<p>Seus amigos aceitos aparecerão aqui.</p>{/if}
 		</details>
-		{#if mode === 'player'}<p>O convidado prepara seu atleta ao entrar.</p>{:else if owner}<label>Oferecer função<select bind:value={role}><option value="member">{mode === 'coach' ? 'Treinador · escolhe o clube ao entrar' : 'Participante · escolhe ao entrar'}</option>
-			<option value="coach">Treinador de outro clube</option>{#if coach}<option value="assistant">Auxiliar do meu clube</option>{/if}
-		</select></label>{:else}<p>Vaga de auxiliar técnico no seu clube.</p>{/if}
-		{#if owner && mode !== 'player' && role === 'coach'}<label>Clube disponível<select bind:value={club} required><option value="">Escolha o clube</option>
+		{#if owner}<label>Vaga oferecida<select bind:value={role}><option value="member">Treinador · escolhe o clube ao entrar</option>
+			<option value="coach">Treinador de um clube reservado</option>
+		</select></label>{:else}<p>Só o administrador da liga envia convites. Compartilhe o código da liga com seus amigos.</p>{/if}
+		{#if owner && role === 'coach'}<label>Clube disponível<select bind:value={club} required><option value="">Escolha o clube</option>
 			{#each teams as team (team.id)}<option value={team.id}>{team.name}</option>{/each}
 		</select></label>{/if}
 		<label>Validade em horas<input type="number" bind:value={hours} min="1" max="168" required /></label>

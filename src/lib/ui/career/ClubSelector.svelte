@@ -14,8 +14,8 @@
 	import Stars from '../Stars.svelte';
 	import LineupPitch from '../tactics/LineupPitch.svelte';
 
-	let { clubs, clubId = $bindable(null), blocked = {}, lineup, loading = false, error, retry, top, mode, position, season,
-		transferBudget, wageBudget, coach, prefetch, playerOverall, busy = false }: {
+	let { clubs, clubId = $bindable(null), blocked = {}, lineup, loading = false, error, retry, top, season,
+		transferBudget, wageBudget, coach, prefetch, busy = false }: {
 		clubs: ReadonlyArray<{ id: string; division: DivisionId }>;
 		clubId?: string | null;
 		blocked?: Record<string, string>;
@@ -24,14 +24,11 @@
 		error?: string;
 		retry?: () => void;
 		top?: Snippet;
-		mode: 'coach' | 'assistant' | 'player';
-		position: Position;
 		season: number;
 		transferBudget?: number;
 		wageBudget?: number;
 		coach?: string;
 		prefetch?: (ids: string[]) => void;
-		playerOverall?: number;
 		busy?: boolean;
 	} = $props();
 
@@ -52,8 +49,6 @@
 	const institution = $derived(club && realClub(club.id));
 	const identity = $derived(club && IDENTIDADE[club.id]);
 	const players = $derived(lineup ? [...lineup.starters.flatMap((slot) => slot.player ? [slot.player] : []), ...lineup.bench, ...lineup.reserves] : []);
-	const competition = $derived(players.filter((player) => player.position === position || player.secondary?.includes(position)));
-	const highest = $derived(Math.max(0, ...competition.map((player) => player.overall)));
 	const normalized = (value: string) => value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim();
 	const filtered = $derived(teams.filter((team) => normalized(`${team.name} ${team.short} ${realClub(team.id)?.uf ?? ''}`).includes(normalized(search))));
 	const rosterTabs: Array<{ value: RosterTab; label: string }> = [
@@ -122,18 +117,9 @@
 					<div><dt>Estádio</dt><dd>{institution ? institution.estadio ?? 'Pendente' : club.stadium}</dd></div>
 					<div><dt>Força do elenco</dt><dd>{lineup?.strength ?? '—'}</dd></div>
 					{#if coach || lineup?.opening}<div><dt>Técnico</dt><dd>{coach ?? 'Indisponível na súmula'}</dd></div>{/if}
-					{#if mode === 'coach'}
-						<div><dt>Objetivo da diretoria</dt><dd>{boardExpectation(club, DIVISION_LABELS[active])}</dd></div>
-						{#if transferBudget !== undefined}<div><dt>Transferências</dt><dd>{formatMoney(transferBudget)}</dd></div>{/if}
-						{#if wageBudget}<div><dt>Orçamento salarial</dt><dd>{formatMoney(wageBudget)}/mês</dd></div>{/if}
-					{:else if mode === 'player'}
-						<div><dt>Competições</dt><dd>{DIVISION_LABELS[active]}{season === COPA_2026.temporada && COPA_2026.participantes.some((entry) => entry.clube === club.id) ? ' · Copa do Brasil' : ''}</dd></div>
-						<div><dt>{POSITION_INFO[position].label}</dt><dd>{!lineup || lineup.coverage === 'incomplete' ? 'Concorrência indisponível' : `${competition.length} concorrente(s)`}</dd></div>
-						<div><dt>Entrada no elenco</dt><dd>Em avaliação pela comissão</dd></div>
-						{#if playerOverall !== undefined && lineup && lineup.coverage !== 'incomplete'}
-							<div><dt>Perspectiva de titularidade</dt><dd>{highest - playerOverall > 7 ? 'Disputa difícil' : 'Disputa aberta'}</dd></div>
-						{/if}
-					{/if}
+					<div><dt>Objetivo da diretoria</dt><dd>{boardExpectation(club, DIVISION_LABELS[active])}</dd></div>
+					{#if transferBudget !== undefined}<div><dt>Transferências</dt><dd>{formatMoney(transferBudget)}</dd></div>{/if}
+					{#if wageBudget}<div><dt>Orçamento salarial</dt><dd>{formatMoney(wageBudget)}/mês</dd></div>{/if}
 				</dl>
 				{#if identity && !identity.cores}<p class="quiet">Cores provisórias</p>{/if}
 				{#if blocked[club.id]}<p class="restriction" role="status">{blocked[club.id]}</p>{/if}

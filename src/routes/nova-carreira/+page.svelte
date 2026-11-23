@@ -1,14 +1,10 @@
 <script lang="ts">
-	import CareerModeCards from '#lib/ui/career/CareerModeCards.svelte';
-	import PlayerIdentityFields from '#lib/ui/career/PlayerIdentityFields.svelte';
-	import { isStartAge, isNationality, isDominantFoot } from '#lib/domain/player-profile.ts';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { page } from '$app/state';
 	import { api, ApiError } from '#lib/api.ts';
 	import { DEFAULT_APPEARANCE, type Appearance } from '#lib/domain/appearance.ts';
 	import AppearanceEditor from '#lib/ui/career/AppearanceEditor.svelte';
-	import { careerStart, initialCareerData, MODE_LABELS, type Career, type CareerMode, type DominantFoot } from '#lib/domain/career.ts';
+	import { careerStart, type Career } from '#lib/domain/career.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import Segmented from '#lib/ui/Segmented.svelte';
 	import { initialLeague, type DivisionId } from '#lib/domain/league.ts';
@@ -17,36 +13,28 @@
 	import { clubLineup, initialClubTactic } from '#lib/domain/club-selection.ts';
 	import { careerBaseSquad } from '#lib/domain/squad.ts';
 	import ClubSelector from '#lib/ui/career/ClubSelector.svelte';
-	import { POSITION_INFO, type Position } from '#lib/domain/positions.ts';
-	import { coachKit, playerKit } from '#lib/pixel/kits.ts';
+	import { coachKit } from '#lib/pixel/kits.ts';
 	import { notify, setIslandContext } from '#lib/stores/island.svelte.ts';
 	import Button from '#lib/ui/Button.svelte';
 	import Icon from '#lib/ui/Icon.svelte';
 	import Logo from '#lib/ui/Logo.svelte';
 	import Pixel from '#lib/ui/Pixel.svelte';
-	import PositionPicker from '#lib/ui/PositionPicker.svelte';
 	import Presentation from '#lib/ui/Presentation.svelte';
 	import Stadium from '#lib/ui/Stadium.svelte';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
 
-	type Step = 'modo' | 'perfil' | 'clube';
+	// Dev 0.12: o BRASFC tem uma única carreira — a de treinador.
+	type Step = 'perfil' | 'clube';
 	const STEPS: Array<{ id: Step; label: string }> = [
-		{ id: 'modo', label: 'Modo' },
-		{ id: 'perfil', label: 'Você' },
+		{ id: 'perfil', label: 'Treinador' },
 		{ id: 'clube', label: 'Clube' }
 	];
+	const mode = 'coach' as const;
 
-	const initialMode = page.url.searchParams.get('modo');
-	let mode = $state<CareerMode | null>(initialMode === 'coach' || initialMode === 'player' ? initialMode : null);
-	let step = $state<Step>(initialMode === 'coach' || initialMode === 'player' ? 'perfil' : 'modo');
+	let step = $state<Step>('perfil');
 	let personName = $state('');
-	let age = $state<number | undefined>(18);
-	let nationality = $state('Brasil');
-	let foot = $state<DominantFoot>('direito');
-	let turned = $state(false);
-	let position = $state<Position>('ATA');
 	let appearance = $state<Appearance>({ ...DEFAULT_APPEARANCE });
 	let clubId = $state<string | null>(null);
 	let errors = $state<Record<string, string>>({});
@@ -54,11 +42,7 @@
 	let created = $state<Career | null>(null);
 
 	const stepIndex = $derived(STEPS.findIndex((s) => s.id === step));
-	const club = $derived(clubId ? getClub(clubId) : undefined);
-	const NEUTRAL_KIT = { shirt: '#10B981', trim: '#E7EDF0', shorts: '#101418', socks: '#10B981' };
-	const previewKit = $derived(
-		mode === 'coach' ? coachKit(clubId ?? undefined) : clubId ? playerKit(clubId, position) : position === 'GOL' ? { shirt: '#E8B86A', trim: '#15110E', shorts: '#15110E', socks: '#E8B86A' } : NEUTRAL_KIT
-	);
+	const previewKit = $derived(coachKit(clubId ?? undefined));
 	let world = $state<'brasil' | 'brasfc'>('brasil');
 	const league = $derived(initialLeague(world, careerStart(world).season));
 	const selectionClubs = $derived(Object.entries(league.divisions).flatMap(([division, ids]) =>
@@ -68,9 +52,7 @@
 	const rosterCache = new Map<string, ReturnType<typeof clubLineup>>();
 	const lineup = $derived(step === 'clube' && clubId ? previewClub(clubId, data.previewSeed, catalog) : undefined);
 	const coach = $derived(clubId ? catalogClub(catalog, clubId)?.coach : undefined);
-	const finances = $derived(mode === 'coach' && clubId && step === 'clube' ? initialClubState(data.previewSeed, clubId, clubDivision ?? null, league.season) : undefined);
-	const playerOverall = $derived(mode === 'player' && clubId && step === 'clube'
-		? initialCareerData({ mode, clubId, personName, position, age, world }, data.previewSeed).player?.overall : undefined);
+	const finances = $derived(clubId && step === 'clube' ? initialClubState(data.previewSeed, clubId, clubDivision ?? null, league.season) : undefined);
 
 	function previewClub(id: string, seed: number, version: typeof catalog) {
 		const key = `${id}:${seed}:${version}`;
@@ -85,21 +67,11 @@
 
 	onMount(() => setIslandContext('Nova carreira'));
 
-	function chooseMode(m: CareerMode) {
-		mode = m;
-		step = 'perfil';
-	}
-
 	function validateProfile(): boolean {
 		const name = personName.trim();
 		errors = {};
 		if (name.length < 2) errors.personName = 'Digite seu nome (pelo menos 2 letras).';
 		else if (name.length > 40) errors.personName = 'Use no máximo 40 caracteres.';
-		if (mode === 'player') {
-			if (!isStartAge(age)) errors.age = 'Escolha uma idade entre 16 e 35 anos.';
-			if (!isNationality(nationality)) errors.nationality = 'Selecione uma nacionalidade disponível.';
-			if (!isDominantFoot(foot)) errors.foot = 'Escolha o pé dominante.';
-		}
 		return Object.keys(errors).length === 0;
 	}
 
@@ -109,23 +81,22 @@
 
 	function back() {
 		if (step === 'clube') step = 'perfil';
-		else if (step === 'perfil') step = 'modo';
 		else void goto('/menu');
 	}
 
 	async function create() {
-		if (!mode || !clubId || saving || created) return;
+		if (!clubId || saving || created) return;
 		saving = true;
 		errors = {};
 		try {
 			const res = await api<{ career: Career }>('/api/careers', {
-				body: { mode, personName, clubId, appearance, world, previewSeed: data.previewSeed, ...(mode === 'player' ? { position, age, nationality, foot } : {}) }
+				body: { mode, personName, clubId, appearance, world, previewSeed: data.previewSeed }
 			});
 			created = res.career;
 		} catch (e) {
 			if (e instanceof ApiError && e.errors) {
 				errors = e.errors;
-				if (['personName', 'appearance', 'position', 'age', 'nationality', 'foot'].some((field) => e.errors?.[field])) step = 'perfil';
+				if (['personName', 'appearance'].some((field) => e.errors?.[field])) step = 'perfil';
 			}
 			notify({ icon: 'alert', tone: 'error', title: e instanceof Error ? e.message : 'Não foi possível criar a carreira.' });
 		} finally {
@@ -158,7 +129,7 @@
 	<header class="top" data-umx-enter>
 		<button class="back" onclick={back} data-umx-press>
 			<Icon name="arrowLeft" />
-			<span>{step === 'modo' ? 'Menu' : 'Voltar'}</span>
+			<span>{step === 'perfil' ? 'Menu' : 'Voltar'}</span>
 		</button>
 		<Logo size={30} />
 		<ol class="steps" aria-label="Etapas">
@@ -172,41 +143,26 @@
 	</header>
 
 	<main class="body">
-		{#if step === 'modo'}
-			<div class="intro" data-umx-enter>
-				<span class="eyebrow">Passo 1 de 3</span>
-				<h1>Como você quer jogar?</h1>
-				<p class="muted">Você pode ter várias carreiras salvas, dos dois tipos.</p>
-			</div>
-			<CareerModeCards {chooseMode} />
-		{:else if step === 'perfil'}
+		{#if step === 'perfil'}
 			<div class="split">
 				<div class="form" data-umx-enter>
-					<span class="eyebrow">Passo 2 de 3 · {mode ? MODE_LABELS[mode] : ''}</span>
-					<h1>{mode === 'coach' ? 'Quem é o novo treinador?' : 'Crie seu jogador'}</h1>
+					<span class="eyebrow">Passo 1 de 2 · Carreira de treinador</span>
+					<h1>Quem é o novo treinador?</h1>
 
 					<label class="field">
-						<span>Nome {mode === 'coach' ? 'do treinador' : 'do jogador'}</span>
+						<span>Nome do treinador</span>
 						<input
 							bind:value={personName}
 							maxlength="40"
 							autocomplete="off"
-							placeholder={mode === 'coach' ? 'Ex.: Ana Ribeiro' : 'Ex.: Léo Duarte'}
+							placeholder="Ex.: Ana Ribeiro"
 							aria-invalid={!!errors.personName}
 							onkeydown={(e) => e.key === 'Enter' && next()}
 						/>
 						{#if errors.personName}<small class="err" role="alert">{errors.personName}</small>{/if}
 					</label>
 
-					{#if mode === 'player'}
-						<PlayerIdentityFields bind:age bind:nationality bind:foot {errors} />
-						<fieldset class="field">
-							<legend>Onde você joga? <span class="muted">Toque na posição no campo</span></legend>
-							<PositionPicker bind:value={position} />
-						</fieldset>
-					{/if}
-
-					<AppearanceEditor bind:appearance kit={previewKit} clubId={clubId ?? undefined} uniformOptions={mode === 'player'} />
+					<AppearanceEditor bind:appearance kit={previewKit} clubId={clubId ?? undefined} uniformOptions={false} />
 
 					<div class="actions">
 						<Button variant="primary" size="lg" iconRight="arrowRight" onclick={next}>Escolher clube</Button>
@@ -214,13 +170,10 @@
 				</div>
 				<div class="preview" aria-label="Pré-visualização do personagem" data-umx-enter>
 					<div class="podium">
-						<div class:turned><Pixel variant="full" {appearance} kit={previewKit} clubId={clubId ?? undefined} styled size={380} ball={mode === 'player'} idle label="Seu personagem" /></div>
+						<div><Pixel variant="full" {appearance} kit={previewKit} clubId={clubId ?? undefined} styled size={380} idle label="Seu treinador" /></div>
 					</div>
-					{#if mode === 'player'}
-						<Button size="sm" onclick={() => (turned = !turned)} aria-pressed={turned}>Espelhar prévia</Button>
-					{/if}
-					<strong class="pname">{personName.trim() || (mode === 'coach' ? 'Treinador' : 'Jogador')}</strong>
-					<span class="muted">{mode === 'player' ? POSITION_INFO[position].label : 'Treinador principal'}</span>
+					<strong class="pname">{personName.trim() || 'Treinador'}</strong>
+					<span class="muted">Treinador principal</span>
 				</div>
 			</div>
 		{:else}
@@ -228,7 +181,7 @@
 				<h1>Escolha seu clube</h1>
 			</div>
 			{#key world}
-				<ClubSelector clubs={selectionClubs} bind:clubId {lineup} mode={mode ?? 'coach'} {position} {playerOverall} {coach}
+				<ClubSelector clubs={selectionClubs} bind:clubId {lineup} {coach}
 					season={league.season} transferBudget={finances?.transferBudget} wageBudget={finances?.wageBudget} busy={saving || !!created}
 					prefetch={(ids) => ids.forEach((id) => previewClub(id, data.previewSeed, catalog))}>
 					{#snippet top()}
@@ -238,27 +191,25 @@
 				</ClubSelector>
 			{/key}
 			<div class="actions finish">
-				<Button variant="primary" size="lg" icon="play" disabled={!clubId} loading={saving} onclick={create}>{mode === 'player' ? 'Iniciar carreira de jogador' : 'Iniciar carreira de treinador'}</Button>
+				<Button variant="primary" size="lg" icon="play" disabled={!clubId} loading={saving} onclick={create}>Iniciar carreira de treinador</Button>
 			</div>
 		{/if}
 	</main>
 </div>
 
-{#if created && mode}
+{#if created}
 	<Presentation
 		clubId={created.clubId}
-		eyebrow={mode === 'coach' ? 'Novo treinador' : 'Reforço da base'}
+		eyebrow="Novo treinador"
 		title={`Bem-vindo, ${created.personName}`}
 		subtitle={`${getClub(created.clubId)?.name} · Temporada ${created.season}`}
 		{appearance}
-		kit={mode === 'coach' ? coachKit(created.clubId) : playerKit(created.clubId, position)}
-		ball={mode === 'player'}
+		kit={coachKit(created.clubId)}
 		ondone={afterPresentation}
 	/>
 {/if}
 
 <style>
-	.turned { transform: scaleX(-1); }
 
 	.screen {
 		position: relative;
@@ -373,8 +324,7 @@
 		margin: 0;
 		padding: 0;
 	}
-	.field > span,
-	legend {
+	.field > span {
 		font-weight: 600;
 		font-size: var(--fs-sm);
 		margin-bottom: var(--sp-2);
@@ -399,10 +349,6 @@
 	.err {
 		color: var(--danger);
 		font-size: var(--fs-sm);
-	}
-	legend .muted {
-		font-weight: 500;
-		margin-left: var(--sp-2);
 	}
 
 	.finish { margin-top: var(--sp-4); }

@@ -181,7 +181,8 @@ describe('criação de carreira', () => {
 		if (!bad.ok) {
 			expect(bad.errors.personName).toMatch(/2 letras/);
 			expect(bad.errors.clubId).toBeDefined();
-			expect(bad.errors.position).toBeDefined();
+			// Dev 0.12: a carreira de jogador foi descontinuada.
+			expect(bad.errors.mode).toMatch(/descontinuada/);
 		}
 		expect(validateCreateCareer({ mode: 'coach', personName: '<script>', clubId: 'aurora' }).ok).toBe(false);
 		const good = validateCreateCareer({ mode: 'coach', personName: '  Ana   Souza ', clubId: 'aurora' });

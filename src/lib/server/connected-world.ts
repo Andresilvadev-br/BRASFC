@@ -684,34 +684,19 @@ export async function applyWorldCommand(db: Db, room: Room, profile: string, bod
 			// A proposta só altera o mercado quando executada pelo fluxo oficial.
 		} else if (action === 'assign') {
 			const role = body.role, club = body.club;
-			if (owner && !p && identity.entry_mode !== 'mixed' && role !== identity.entry_mode) fail('A função do criador deve seguir o modo escolhido.');
-			if (role !== 'coach' && role !== 'assistant' && role !== 'player') fail('Escolha uma função.');
-			if (!roleMatchesMode(identity.entry_mode, role)) fail('A função não pertence ao modo desta liga.', 403);
+			// Dev 0.12: cada participante é o treinador principal do próprio clube.
+			if (role !== 'coach') fail(role === 'assistant' || role === 'player' ? 'Desde a versão 0.12 a carreira online é só de treinadores.' : 'Escolha uma função.', role === 'assistant' || role === 'player' ? 410 : 400);
 			if (typeof club !== 'string' || !clubList(s).includes(club)) fail('Escolha um clube da temporada.');
-			if (p?.role === 'player') fail('Um atleta muda de clube pelo mercado.');
-			if (p && role === 'player') fail('Este participante já tem uma carreira técnica.');
-			if (role !== 'player') {
-				const [reserved] = await tx.query<{ recipient: string }>(`SELECT recipient FROM room_invitations
-					WHERE room_id=$1 AND club=$2 AND role=$3 AND status='pending' AND expires_at>now()`, [room.id, club, role]);
-				if (reserved && reserved.recipient !== profile) fail('A vaga está reservada para outro participante.', 409);
-				if (identity.entry_mode !== 'mixed' && role === 'assistant' && !reserved && (p?.role !== 'assistant' || p.club !== club)) fail('O treinador precisa convidar você para a comissão.', 403);
-			}
-			if (role !== 'player' && Object.values(s.participants).some((x) => x.profile !== profile && x.role === role && x.club === club)) fail('Esta função já está ocupada.', 409);
-			if (role === 'assistant' && !Object.values(s.participants).some((x) => x.role === 'coach' && x.club === club && x.profile !== profile)) fail('Escolha um clube com treinador humano.');
-			if (p?.role === 'assistant' && role === 'coach' && s.vacancies[profile] !== club) fail('Aceite uma proposta para assumir outro clube.');
-			const appearance = body.appearance ?? p?.appearance ?? p?.athlete?.appearance;
+			if (p && p.role !== 'coach') fail('Participações antigas de atleta ou auxiliar seguem como legado e não assumem clubes.', 410);
+			const [reserved] = await tx.query<{ recipient: string }>(`SELECT recipient FROM room_invitations
+				WHERE room_id=$1 AND club=$2 AND role=$3 AND status='pending' AND expires_at>now()`, [room.id, club, role]);
+			if (reserved && reserved.recipient !== profile) fail('A vaga está reservada para outro participante.', 409);
+			// Validação atômica (mesma transação da liga): dois treinadores nunca assumem o mesmo clube.
+			if (Object.values(s.participants).some((x) => x.profile !== profile && x.role === 'coach' && x.club === club)) fail('Este clube já tem treinador.', 409);
+			const appearance = body.appearance ?? p?.appearance;
 			if (appearance !== undefined && !isAppearance(appearance)) fail('Aparência inválida.');
-			let athlete: CareerData | undefined;
-			if (role === 'player') {
-				const validated = validateCreateCareer({ ...body, mode: 'player', world: 'brasil', clubId: club, appearance: appearance ?? DEFAULT_APPEARANCE });
-				if (!validated.ok) fail(Object.values(validated.errors)[0]);
-				const { player, playerCareer, appearance: playerLook, position, playerFocus } = initialCareerData(validated.value, hashString(room.id + profile));
-				playerCareer!.contract.until = s.league.season + 2;
-				playerCareer!.daily.clubs = [{ clubId: club, date: s.date, kind: 'inicio' }];
-				athlete = { player, playerCareer, appearance: playerLook, position, playerFocus };
-			}
-			const name = role === 'player' ? String(body.personName).trim() : member.displayName;
-			s.participants[profile] = { profile, name, role, club, appearance, athlete: athlete ?? p?.athlete, notices: p?.notices, ready: false, history: [...(p?.history ?? s.alumniHistory?.[profile] ?? []), { club, role, date: s.date }] };
+			const name = member.displayName;
+			s.participants[profile] = { profile, name, role, club, appearance, notices: p?.notices, ready: false, history: [...(p?.history ?? s.alumniHistory?.[profile] ?? []), { club, role, date: s.date }] };
 			if (role !== p?.role || club !== p?.club) {
 				cancelFinanceDrafts(s, profile);
 				if (p?.role === 'coach') for (const former of Object.values(s.participants)) {
@@ -983,8 +968,10 @@ export async function applyWorldCommand(db: Db, room: Room, profile: string, bod
 const requiredForRound = (state: WorldState, assistantsRequired: boolean) =>
 	Object.values(state.participants).filter((member) => needsConfirmation(member, assistantsRequired));
 
-function needsConfirmation(member: Assignment, assistantsRequired: boolean) {
-	return member.role !== 'assistant' || assistantsRequired;
+function needsConfirmation(member: Assignment, _assistantsRequired: boolean) {
+	// Dev 0.12: só treinadores confirmam a rodada. Atletas e auxiliares de ligas antigas seguem como legado.
+	void _assistantsRequired;
+	return member.role === 'coach';
 }
 
 function allReady(state: WorldState, online: ReadonlySet<string>, assistantsRequired: boolean) {

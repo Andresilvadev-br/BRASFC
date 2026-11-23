@@ -24,10 +24,13 @@ try {
 		return (await response.json()).career;
 	};
 	const coach = await create({ mode: 'coach', personName: 'Ana Técnica', clubId: 'bahia', world: 'brasil' });
-	const player = await create({ mode: 'player', personName: 'Caio Atleta', clubId: 'palmeiras', position: 'ATA', world: 'brasil', appearance: DEFAULT_APPEARANCE });
+	// Dev 0.12: a carreira de jogador foi descontinuada; a API recusa criar uma nova.
+	const refused = await page.request.post('/api/careers', { data: { mode: 'player', personName: 'Caio Atleta', clubId: 'palmeiras', position: 'ATA', world: 'brasil', appearance: DEFAULT_APPEARANCE }, headers: { Origin: origin } });
+	assert.equal(refused.status(), 400);
+	const player = await create({ mode: 'coach', personName: 'Caio Técnico', clubId: 'palmeiras', world: 'brasil', appearance: DEFAULT_APPEARANCE });
 	await page.reload();
 	const coachCard = page.getByRole('article').filter({ hasText: 'Ana Técnica' });
-	const playerCard = page.getByRole('article').filter({ hasText: 'Caio Atleta' });
+	const playerCard = page.getByRole('article').filter({ hasText: 'Caio Técnico' });
 	await playerCard.getByRole('button', { name: 'Carregar', exact: true }).waitFor();
 
 	for (const [width, height] of [[1920, 1080], [2560, 1440], [1600, 900], [1366, 768], [390, 844]]) {

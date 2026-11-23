@@ -2,14 +2,13 @@
 	import { untrack } from 'svelte';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { CAREER_PLAYER_ID } from '#lib/domain/matchday.ts';
-	import { playerHistory, playerTotals, type Totals } from '#lib/domain/playerstats.ts';
+	import { playerTotals, type Totals } from '#lib/domain/playerstats.ts';
 	import Panel from '#lib/ui/Panel.svelte';
 	import Segmented from '#lib/ui/Segmented.svelte';
 
 	let { data } = $props();
 	const c = $derived(data.career);
 	const v = $derived(data.view);
-	const isPlayer = $derived(c.mode === 'player');
 	const seasons = $derived([...new Set(data.matches.map((m) => m.season))].sort((a, b) => b - a));
 	let season = $state<string>(untrack(() => String(data.career.season)));
 	const filtered = $derived(season === 'todas' ? data.matches : data.matches.filter((m) => String(m.season) === season));
@@ -33,8 +32,6 @@
 			.sort((a, b) => b[1].rating - a[1].rating)
 			.slice(0, 5)
 	);
-	const me = $derived(playerHistory(data.matches, CAREER_PLAYER_ID));
-	const meSeason = $derived(season === 'todas' ? me.all : (me.seasons.find((s) => String(s.season) === season)?.totals ?? null));
 	const record = $derived.by(() => {
 		let w = 0, d = 0, l = 0, gf = 0, ga = 0;
 		for (const m of filtered) {
@@ -65,48 +62,6 @@
 {#if !data.matches.length}
 	<Panel title="Ainda sem jogos" icon="chart"><p class="muted">Dispute a primeira partida para começar a acumular estatísticas.</p></Panel>
 {:else}
-	{#if isPlayer}
-		<Panel title="Você · {c.personName}" icon="user" index={0}>
-			{#if meSeason && meSeason.games}
-				<div class="kpis">
-					<div><b>{meSeason.games}</b><span>jogos</span></div>
-					<div><b>{meSeason.starts}</b><span>como titular</span></div>
-					<div><b>{meSeason.minutes}</b><span>minutos</span></div>
-					<div><b>{meSeason.goals}</b><span>gols</span></div>
-					<div><b>{meSeason.assists}</b><span>assistências</span></div>
-					<div><b>{meSeason.rating.toFixed(2)}</b><span>nota média</span></div>
-					<div><b>{meSeason.shots ? `${pct(meSeason.shotsOnTarget, meSeason.shots)}%` : '—'}</b><span>chutes no alvo ({meSeason.shots})</span></div>
-					<div><b>{meSeason.passes ? `${pct(meSeason.passesCompleted, meSeason.passes)}%` : '—'}</b><span>passes certos ({meSeason.passes})</span></div>
-					<div><b>{meSeason.tackles}</b><span>desarmes</span></div>
-					<div><b>{meSeason.yellow}/{meSeason.red}</b><span>amarelos/vermelhos</span></div>
-				</div>
-			{:else}
-				<p class="muted">Você ainda não entrou em campo {season === 'todas' ? '' : `em ${season}`}.</p>
-			{/if}
-			{#if me.seasons.length > 1}
-				<h3>Por temporada</h3>
-				<div class="seasons">
-					{#each me.seasons as s (s.season)}
-						<div><b>{s.season}</b><span>{s.totals.games} J · {s.totals.goals} G · {s.totals.assists} A · nota {s.totals.rating.toFixed(2)}</span></div>
-					{/each}
-				</div>
-			{/if}
-			{#if me.games.length}
-				<h3>Jogo a jogo</h3>
-				<div class="games">
-					{#each me.games.slice(0, 20) as g (g.season + ':' + g.round)}
-						<div class="g" title="{getClub(g.home)?.name} {g.score} {getClub(g.away)?.name}">
-							<span class="r">{g.season} · R{g.round}</span>
-							<span>{getClub(g.home)?.short} {g.score} {getClub(g.away)?.short}</span>
-							<span class="st">{g.started ? 'titular' : 'reserva'} · {g.stats.minutes}'</span>
-							<span class="nota" data-t={g.stats.rating >= 7.5 ? 'hi' : g.stats.rating < 6 ? 'lo' : ''}>{g.stats.rating.toFixed(1)}</span>
-							<span class="ga">{g.stats.goals ? `⚽${g.stats.goals}` : ''}{g.stats.assists ? ` 🅰${g.stats.assists}` : ''}</span>
-						</div>
-					{/each}
-				</div>
-			{/if}
-		</Panel>
-	{/if}
 
 	<div class="row">
 		<Panel title="Campanha" icon="trophy" index={1}>
@@ -160,132 +115,7 @@
 		font-weight: 800;
 		margin: 0;
 	}
-	h3 {
-		margin: 14px 0 6px;
-		font-size: var(--fs-xs);
-		color: var(--text-3);
-		text-transform: uppercase;
-		letter-spacing: 0.06em;
-	}
-	.kpis {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-		gap: 8px;
-	}
-	.kpis div {
-		display: flex;
-		flex-direction: column;
-		padding: 10px;
-		border-radius: 10px;
-		background: var(--surface-2);
-	}
-	.kpis b {
-		font-family: var(--font-display);
-		font-size: var(--fs-2xl);
-	}
-	.kpis.small b {
-		font-size: var(--fs-xl);
-	}
-	.kpis span {
-		font-size: var(--fs-xs);
-		color: var(--text-3);
-	}
-	.kpis .w {
-		color: var(--emerald-strong);
-	}
-	.kpis .l {
-		color: var(--danger);
-	}
-	.row {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-		gap: var(--sp-4);
-		margin-top: var(--sp-4);
-	}
-	.lead {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: grid;
-		gap: 4px;
-	}
-	.lead li {
-		display: grid;
-		grid-template-columns: 20px 1fr auto 32px;
-		gap: 8px;
-		align-items: center;
-		padding: 4px 6px;
-		border-radius: 6px;
-		font-size: var(--fs-sm);
-	}
-	.lead li:first-child {
-		background: var(--gold-soft);
-	}
-	.lead li.me {
-		box-shadow: inset 0 0 0 1px var(--emerald);
-	}
-	.lead .pos {
-		color: var(--text-3);
-		font-weight: 700;
-	}
-	.lead .nm {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.lead small {
-		color: var(--text-3);
-		text-align: right;
-	}
 	.lead .none {
 		color: var(--text-3);
-	}
-	.seasons {
-		display: grid;
-		gap: 4px;
-		font-size: var(--fs-sm);
-	}
-	.seasons div {
-		display: flex;
-		gap: 10px;
-	}
-	.games {
-		display: grid;
-		gap: 4px;
-	}
-	.g {
-		display: grid;
-		grid-template-columns: 90px 1fr 110px 40px 60px;
-		gap: 8px;
-		align-items: center;
-		padding: 5px 8px;
-		border-radius: 6px;
-		background: var(--surface-2);
-		font-size: var(--fs-sm);
-	}
-	.g .r,
-	.g .st {
-		color: var(--text-3);
-		font-size: var(--fs-xs);
-	}
-	.nota {
-		font-family: var(--font-display);
-		font-weight: 700;
-		text-align: center;
-	}
-	.nota[data-t='hi'] {
-		color: var(--emerald-strong);
-	}
-	.nota[data-t='lo'] {
-		color: var(--danger);
-	}
-	@media (max-width: 640px) {
-		.g {
-			grid-template-columns: 70px 1fr 40px;
-		}
-		.g .st,
-		.g .ga {
-			display: none;
-		}
 	}
 </style>

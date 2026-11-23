@@ -8,7 +8,6 @@
 	import { DIVISION_LABELS, type DivisionId, type SeasonSummary } from '#lib/domain/league.ts';
 	import { CAREER_PLAYER_ID, fixtureSetup, type MatchdayContext, type MatchSummary } from '#lib/domain/matchday.ts';
 	import type { Fixture } from '#lib/domain/season.ts';
-	import { matchObjective, PLAYER_SELECTION } from '#lib/domain/player-development.ts';
 	import { MASTERY_LABEL } from '#lib/domain/tactical.ts';
 	import { MENTALITY_LABELS, STYLE_LABELS } from '#lib/domain/tactics.ts';
 	import type { MatchResult } from '#lib/engine/types.ts';
@@ -39,7 +38,6 @@
 	// A partida é montada uma vez, quando o usuário entra em campo (tática congelada).
 	let setup = $state.raw<ReturnType<typeof fixtureSetup> | null>(null);
 	let playedFixture = $state.raw<typeof v.next>(null);
-	let playerKickoff = $state.raw<{ version: number; step: string | undefined } | null>(null);
 	let local = $state.raw<MatchResult | null>(null);
 	let saved = $state.raw<RoundResponse | null>(null);
 	let seasonEnd = $state.raw<{ summary: SeasonSummary; moves: Array<{ clubId: string; from: DivisionId; to: DivisionId; reason: string }> } | null>(null);
@@ -48,18 +46,11 @@
 	const fixture = $derived(v.next);
 	const preview = $derived(fixture ? fixtureSetup(c, fixture, v.tactic, ctx) : null);
 	const myTeam = $derived(preview ? (preview.mySide === 'home' ? preview.home : preview.away) : null);
-	const meInLineup = $derived.by(() => {
-		if (c.mode !== 'player' || !myTeam) return null;
-		const i = myTeam.tactic.lineup.indexOf(CAREER_PLAYER_ID);
-		return i >= 0 ? 'titular' : myTeam.tactic.bench.includes(CAREER_PLAYER_ID) ? 'reserva' : 'fora';
-	});
-
 	let walkout = $state(false);
 	function kickOff() {
 		if (!fixture || !preview) return;
 		setup = preview;
 		playedFixture = fixture;
-		playerKickoff = c.mode === 'player' ? { version: c.version, step: v.step?.key } : null;
 		walkout = true;
 	}
 	function startMatch() {
@@ -80,14 +71,12 @@
 			const decisions = local && setup ? local.decisions.filter((d) => d.side === setup!.control) : [];
 			const submit = (version: number, step = v.step?.key) =>
 				api<RoundResponse>(`/api/careers/${c.id}/matches`, { body: { version, step, decisions } });
-			const res = playerKickoff ? await submit(playerKickoff.version, playerKickoff.step) :
-				c.mode === 'player' ? await submit(c.version) : await withCareerVersion(c.id, c.version, submit);
+			const res = await withCareerVersion(c.id, c.version, submit);
 			if (res.match && !playedFixture) {
 				playedFixture = res.match.fixture;
 				setup = fixtureSetup(c, res.match.fixture, v.tactic, ctx);
 			}
 			saved = res;
-			if (c.mode === 'player') await invalidate('app:career');
 			stage = 'saved';
 			markClean('partida');
 			if (local && res.match && (res.match.homeGoals !== local.homeGoals || res.match.awayGoals !== local.awayGoals)) {
@@ -132,7 +121,6 @@
 		local = null;
 		seasonEnd = null;
 		playedFixture = null;
-		playerKickoff = null;
 	}
 
 	beforeNavigate((nav) => {
@@ -190,7 +178,7 @@
 		</p>
 		<div class="actions">
 			<Button variant="primary" icon="arrowRight" loading={busy} onclick={skipWeek}>Avançar a semana</Button>
-			<Button href={c.mode === 'player' ? `${base}?secao=treino` : `${base}/treinos`} icon="training">Treinos</Button>
+			<Button href="{base}/treinos" icon="training">Treinos</Button>
 		</div>
 	</section>
 {:else if stage === 'pre' && fixture && preview}
@@ -203,17 +191,8 @@
 		</div>
 		<div class="intel">
 			<div>
-				<h3>{c.mode === 'player' ? 'Convocação' : 'Seu plano'}</h3>
-				{#if c.mode === 'coach'}
+				<h3>Seu plano</h3>
 					<p><strong>{v.tactic.formation}</strong> · {MENTALITY_LABELS[v.tactic.mentality]} · {STYLE_LABELS[v.tactic.style]}{#if !v.tacticSaved}<em> (padrão — ainda não salva)</em>{/if}</p>
-				{:else}
-					<p>
-						{#if meInLineup === 'titular'}O técnico escalou você como <strong>titular</strong>.
-						{:else if meInLineup === 'reserva'}Você começa no <strong>banco</strong> e pode entrar durante o jogo.
-						{:else}Você não foi relacionado para esta partida.{/if}
-					</p>
-					{#if c.data.position && meInLineup !== 'fora'}<p class="muted">Objetivo individual · {matchObjective(c.data.position).label}</p>{/if}
-				{/if}
 				{#if c.mode === 'coach' && preview.suspended.length}
 					<p class="warn susp" role="alert"><Icon name="alert" /> Suspensos nesta partida: {preview.suspended.map((id) => v.squad.find((p) => p.id === id)?.shortName ?? id).join(', ')}. O servidor os retirou da escalação e do banco.</p>
 				{/if}
@@ -230,8 +209,7 @@
 			</div>
 		</div>
 		<div class="actions">
-			<Button variant="primary" size="lg" icon="whistle" onclick={kickOff}>{c.mode === 'player' ? 'Acompanhar partida' : 'Entrar em campo'}</Button>
-			{#if c.mode === 'player'}<Button onclick={skipWeek} loading={busy}>Simular partida</Button>{/if}
+			<Button variant="primary" size="lg" icon="whistle" onclick={kickOff}>Entrar em campo</Button>
 			{#if c.mode === 'coach'}<Button href="{base}/taticas" icon="tactics">Ajustar tática</Button>{/if}
 		</div>
 	</section>
@@ -239,7 +217,7 @@
 	{#if stage === 'saving'}
 		<p class="status"><Icon name="refresh" /> Registrando: o servidor confere a partida e simula a rodada nas outras séries…</p>
 	{:else if stage === 'error'}
-		<div class="status err"><Icon name="alert" /> {errorMsg} {#if playerKickoff && /outra janela/.test(errorMsg)}<Button size="sm" onclick={next}>Atualizar partida</Button>{:else}<Button size="sm" onclick={save}>Tentar de novo</Button>{/if}</div>
+		<div class="status err"><Icon name="alert" /> {errorMsg} <Button size="sm" onclick={save}>Tentar de novo</Button></div>
 	{:else if stage === 'saved' && saved}
 		<section class="card post" aria-label="Rodada registrada">
 			{#if saved.match && playedFixture}
@@ -252,26 +230,6 @@
 					<ul class="goals">
 						{#each saved.match.summary.goals as g (g.tick)}<li><span>{g.minute}</span> ⚽ {name(g.player)}{g.assist ? ` (assist. ${name(g.assist)})` : ''}</li>{/each}
 					</ul>
-				{/if}
-				{#if saved.match.summary.me}
-					{@const me = saved.match.summary.me}
-					<p class="me">Nota <strong>{me.rating.toFixed(1)}</strong> · {me.minutes} min · {me.goals} gol(s) · {me.assists} assist. · {me.passesCompleted}/{me.passes} passes
-						{#if c.data.position === 'GOL'} · {me.saves} defesas
-						{:else if c.data.position === 'ZAG' || c.data.position === 'VOL' || c.data.position === 'LD' || c.data.position === 'LE'} · {me.tackles} desarmes · {me.interceptions} interceptações
-						{:else} · {me.shotsOnTarget} finalizações no alvo · {me.keyPasses} passes decisivos{/if}
-					</p>
-				{:else if c.mode === 'player'}
-					<p class="me">Você não entrou em campo nesta partida.</p>
-				{/if}
-				{#if saved.match.summary.assessment}
-					{@const assessment = saved.match.summary.assessment}
-					<p><strong>{PLAYER_SELECTION[assessment.selection]}</strong> · {assessment.feedback} {assessment.trustDelta ? `(${assessment.trustDelta > 0 ? '+' : ''}${assessment.trustDelta} de confiança)` : ''}</p>
-					{#if assessment.met !== null}<p>{assessment.met ? 'Objetivo cumprido' : 'Objetivo em aberto'} · {assessment.objective}</p>{/if}
-					{#if assessment.injuryUntil}<p>Retorno médico previsto para {formatLong(assessment.injuryUntil).toLowerCase()}.</p>{/if}
-					{#each saved.match.summary.playerEvents ?? [] as event, index (index)}
-						<p class="muted">{event.minute} · {event.kind === 'entrou' ? 'Entrada em campo' : event.kind === 'saiu' ? 'Substituído' : 'Lesão'}</p>
-					{/each}
-					<Button size="sm" href={base}>Voltar à central do jogador</Button>
 				{/if}
 			{:else}
 				<h2>Rodada {saved.round} disputada</h2>

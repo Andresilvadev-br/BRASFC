@@ -1,5 +1,4 @@
 <script lang="ts">
-	import PlayerIdentityFields from '#lib/ui/career/PlayerIdentityFields.svelte';
 	import LeagueChat from '#lib/ui/career/LeagueChat.svelte';
 	import MarketSearch from '#lib/ui/market/MarketSearch.svelte';
 	import type { MarketProfile } from '#lib/domain/market-search.ts';
@@ -13,7 +12,6 @@
 	import { page } from '$app/state';
 	import { ApiError, api, connectionIssue } from '#lib/api.ts';
 	import { DEFAULT_APPEARANCE, isAppearance, type Appearance } from '#lib/domain/appearance.ts';
-	import PositionPicker from './PositionPicker.svelte';
 	import { isStartAge, isNationality, isDominantFoot } from '#lib/domain/player-profile.ts';
 	import AppearanceEditor from './career/AppearanceEditor.svelte';
 	import WardrobeDialog from './career/WardrobeDialog.svelte';
@@ -109,8 +107,8 @@
 	const requested = $derived(page.url.searchParams.get('secao'));
 	const section = $derived(requested === 'lobby' || requested === 'admin' || requested === 'comunicacao'
 		? requested : !world.current ? 'carreira' : !requested && !world.started ? 'lobby' : requested === 'carreira' ? 'central' : requested ?? 'central');
-	let legacyRole = $state<'coach' | 'assistant' | 'player' | null>(null);
-	const role = $derived(world.entryMode === 'coach' || world.entryMode === 'player' ? world.entryMode : legacyRole);
+	// Dev 0.12: só existe a função de treinador. Participantes antigos (atleta/auxiliar) seguem como legado.
+	const role = 'coach' as 'coach' | 'assistant' | 'player';
 	let club = $state<string | null>(null);
 	let lineup = $state.raw<ClubPreview>();
 	let lineupKey = $state('');
@@ -261,14 +259,11 @@
 	const staffMode = $derived(world.entryMode !== 'player');
 	const setupStorage = $derived(`brasfc:participation:${profileId}:${code}`);
 	let setupHydrated = $state(false);
-	const playerDetailsReady = $derived(normalizeName(name).length >= 2 && isStartAge(age));
-	const preparingAthlete = $derived(role === 'player' && (page.url.searchParams.get('etapa') !== 'clube' || !playerDetailsReady));
 	const setupBack = $derived(world.editableDraft ? `/multiplayer?aba=criar&modo=${role}&liga=${code}` : '/multiplayer');
 	$effect(() => {
 		if (setupHydrated || current) return;
 		try {
 			const saved = JSON.parse(sessionStorage.getItem(setupStorage) ?? 'null');
-			if (world.entryMode === 'mixed' && ['coach', 'assistant', 'player'].includes(saved?.role)) legacyRole = saved.role;
 			if (typeof saved?.club === 'string' && world.clubs.some((item) => item.id === saved.club)) club = saved.club;
 			if (typeof saved?.name === 'string') name = saved.name;
 			if (isPosition(saved?.position)) position = saved.position;
@@ -425,20 +420,11 @@
 		return send('tactic', { tactic });
 	}
 
-	function chooseRole(next: typeof legacyRole) {
-		legacyRole = next;
-		club = null;
-		lineup = undefined;
-		lineupKey = '';
-		message = '';
-		failed = false;
-		retry = null;
-	}
 
 	async function roleForm(event: SubmitEvent) {
 		event.preventDefault();
-		if (current || saving || !role || !club || blockedClubs[club] || (role === 'player' && !playerDetailsReady)) return;
-		const ok = await send('assign', { role, club, personName: name, position, age, nationality, foot, appearance: $state.snapshot(appearance) });
+		if (current || saving || !club || blockedClubs[club]) return;
+		const ok = await send('assign', { role: 'coach', club, personName: name, appearance: $state.snapshot(appearance) });
 		if (ok) {
 			try { sessionStorage.removeItem(setupStorage); } catch { /* armazenamento opcional */ }
 			await goto(href('lobby'), { replaceState: true });
@@ -642,57 +628,23 @@
 			<div class="wide"><WorldManagement {section} data={world.management} sponsors={world.sponsors ?? []} staff={world.staff ?? {}} balance={world.balance ?? 0} busy={saving}
 				notices={current?.notices ?? []} onaction={(request) => send('club', { request })} /></div>
 		{:else if section === 'carreira' && !current}
-			{#if !role}
-				<div class="wide">
-					<h2>Escolher função no universo legado</h2>
-					<div class="role-cards">
-						<button type="button" class="role-card" onclick={() => chooseRole('coach')} data-umx-press><Icon name="whistle" size={22} /><strong>Treinador</strong></button>
-						<button type="button" class="role-card" onclick={() => chooseRole('player')} data-umx-press><Icon name="user" size={22} /><strong>Jogador</strong></button>
-					</div>
-					{#if world.members.some((member) => member.assignment?.role === 'coach')}
-						<Button variant="ghost" icon="multiplayer" onclick={() => chooseRole('assistant')}>Entrar como auxiliar técnico</Button>
-					{/if}
-				</div>
-			{:else if preparingAthlete}
-				<article class="wide athlete-setup" use:enter>
-					<h2>Crie seu atleta</h2>
-					<form class="join-profile" onsubmit={(event) => {
-						event.preventDefault();
-						if (playerDetailsReady) void goto(`${href('carreira')}&etapa=clube`);
-					}}>
-						<label>Nome do jogador<input bind:value={name} required minlength="2" maxlength="40" autocomplete="off" /></label>
-						<PlayerIdentityFields bind:age bind:nationality bind:foot />
-						<fieldset><legend>Posição em campo</legend><PositionPicker bind:value={position} /></fieldset>
-						<details><summary>Personalizar aparência</summary>
-							<AppearanceEditor bind:appearance kit={playerKit(club ?? '', position)} clubId={club ?? undefined} uniformOptions preview />
-						</details>
-						<div class="actions">
-							{#if world.entryMode === 'mixed'}<Button variant="ghost" icon="arrowLeft" onclick={() => chooseRole(null)}>Voltar</Button>{/if}
-							<Button type="submit" variant="primary" iconRight="arrowRight" disabled={!playerDetailsReady}>Continuar para o clube</Button>
-						</div>
-					</form>
-				</article>
-			{:else}
 				<div class="wide" use:enter>
 					<div class="setup-heading">
-						<h2>{role === 'assistant' ? 'Escolha uma comissão' : 'Escolha seu clube'}</h2>
-						{#if role === 'player'}<Button href={href('carreira')} variant="ghost" icon="arrowLeft" disabled={saving}>Voltar ao atleta</Button>
-						{:else if world.entryMode === 'mixed'}<Button variant="ghost" icon="arrowLeft" disabled={saving} onclick={() => chooseRole(null)}>Voltar às funções</Button>{/if}
+						<h2>Escolha seu clube</h2>
 					</div>
-					<ClubSelector clubs={world.clubs} bind:clubId={club} blocked={blockedClubs} mode={role} {position} playerOverall={role === 'player' ? 57 + Math.min(12, Math.max(0, ((age ?? 18) - 18) * 2)) : undefined}
+					<ClubSelector clubs={world.clubs} bind:clubId={club} blocked={blockedClubs}
 						season={world.season} busy={saving} coach={selectedPreview?.coach} transferBudget={selectedPreview?.transferBudget} wageBudget={selectedPreview?.wageBudget}
 						lineup={selectedPreview}
 						prefetch={(ids) => ids.forEach((id) => void readPreview(id, world.revision).catch(() => {}))}
 						error={lineupKey === selectedLineupKey ? lineupError : undefined}
 						loading={!!club && lineupKey !== selectedLineupKey} retry={() => lineupAttempt++} />
 					<form class="join-profile" onsubmit={roleForm}>
-						{#if role !== 'player'}<details><summary>Personalizar aparência</summary>
+						<details><summary>Personalizar aparência</summary>
 							<AppearanceEditor bind:appearance kit={coachKit(club ?? undefined)} clubId={club ?? undefined} preview />
-						</details>{/if}
+						</details>
 						<Button type="submit" variant="primary" iconRight="arrowRight" disabled={!club || !!blockedClubs[club]} loading={saving}>Confirmar e abrir lobby</Button>
 					</form>
 				</div>
-			{/if}
 		{:else if section === 'treinos'}
 			{#if current?.role === 'coach' || current?.delegated}
 				<div class="wide"><WeekPlanner bind:plan={() => trainingPlan, (value) => trainingDraft = value}
@@ -892,19 +844,9 @@
 	.league-nav { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
 	.league-nav a { flex: 1; text-align: center; padding: 10px 3px; border-radius: 8px; border: 1px solid var(--line); color: var(--text-2); font-size: var(--fs-sm); text-decoration: none; }
 	.league-nav a[aria-current] { background: var(--emerald-soft); color: var(--emerald-strong); border-color: var(--emerald-line); }
-	.athlete-setup { width: min(100%, 620px); margin-inline: auto; }
-	.athlete-setup h2 { margin: 0; }
-	.athlete-setup input { min-height: 44px; font-size: max(16px, var(--fs-base)); }
-	.athlete-setup fieldset { min-width: 0; border: 0; padding: 0; margin: 0; }
-	.athlete-setup legend, .join-profile summary, article summary { font-weight: 600; }
 	.join-profile details, article details { min-width: 0; }
 	.setup-heading { display:flex; gap:8px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:12px; }
 	.setup-heading h2 { margin:0; }
-	.role-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); gap:12px; margin:12px 0; }
-	.role-card { display:grid; gap:8px; padding:18px; text-align:left; border:1px solid var(--line-strong); border-radius:var(--radius-l); background:linear-gradient(130deg,var(--emerald-soft),transparent),var(--surface); color:var(--text); }
-	.role-card:hover, .role-card:focus-visible { border-color:var(--emerald); }
-	.role-card strong { font:700 var(--fs-2xl) var(--font-display); }
-	.role-card :global(.icon) { color:var(--emerald-strong); }
 	.join-profile { display:grid; gap:12px; padding:12px 0; }
 	.join-profile > :global(button) { justify-self:start; }
 	.world { display: grid; gap: 12px; margin-bottom: 20px; min-width: 0; }

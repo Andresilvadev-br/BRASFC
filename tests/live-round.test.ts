@@ -15,7 +15,8 @@ beforeAll(async () => {
 });
 afterAll(async () => { await db.close(); });
 
-it('recupera rodada com vários jogos, aplica substituições reais e espera três participantes', async () => {
+it('recupera rodada com vários jogos, aplica substituições reais e espera três treinadores', async () => {
+	// Dev 0.12: só treinadores; "assistant" e "athlete" agora são treinadores de outros clubes.
 	const [coach, assistant, athlete, stranger] = await Promise.all(Array.from({ length: 4 }, async () => (await createGuestProfile(db)).profile.id));
 	const room = await createRoom(db, coach, 'Rodada cooperativa');
 	await joinRoom(db, room.code, assistant);
@@ -29,9 +30,11 @@ it('recupera rodada com vários jogos, aplica substituições reais e espera tr�
 		revision = result.revision;
 	};
 	await command(coach, 'assign', { role: 'coach', club: 'flamengo' });
-	await command(assistant, 'assign', { role: 'assistant', club: 'flamengo' });
-	await command(athlete, 'assign', { role: 'player', club: 'flamengo', personName: 'Atleta Ao Vivo', position: 'ATA' });
-	await command(coach, 'delegate', { target: assistant, value: true });
+	await command(assistant, 'assign', { role: 'coach', club: 'palmeiras' });
+	await command(athlete, 'assign', { role: 'coach', club: 'corinthians' });
+	// Dois treinadores nunca assumem o mesmo clube.
+	await expect(command(assistant, 'assign', { role: 'coach', club: 'flamengo' })).rejects.toMatchObject({ status: 409 });
+	await expect(command(assistant, 'assign', { role: 'assistant', club: 'flamengo' })).rejects.toMatchObject({ status: 410 });
 	await command(assistant, 'training', { plan: { sessions: ['posse', 'descanso', 'formacao', 'descanso', 'posse'], intensity: 'normal' } });
 	const before = await worldSnapshot(db, room, coach);
 	await command(coach, 'ready', { value: true });
@@ -100,14 +103,12 @@ it('recupera rodada com vários jogos, aplica substituições reais e espera tr�
 	const firstSub = { type: 'sub', outId: outgoing[0].id, inId: bench[0].id };
 	const [first, second] = outgoing;
 	const exchange = { type:'swap', first:first.id, second:second.id };
-	await expect(issue(athlete, 'decision', { decision:exchange })).rejects.toMatchObject({ status:403 });
-	await issue(assistant, 'suggest', { decision:exchange });
+	// O treinador de outro clube não decide pelo meu time.
+	await expect(issue(athlete, 'decision', { decision:exchange })).rejects.toBeInstanceOf(Error);
 	await issue(coach, 'decision', { decision:exchange });
 	expect(session.relevant!.match.players.find((player) => player.id === first.id)?.slot).toBe(second.slot);
 	expect(session.relevant!.match.players.find((player) => player.id === second.id)?.slot).toBe(first.slot);
-	await expect(issue(assistant, 'decision', { decision: firstSub })).rejects.toMatchObject({ status: 403 });
-	await expect(issue(athlete, 'decision', { decision: firstSub })).rejects.toMatchObject({ status: 403 });
-	await issue(assistant, 'suggest', { decision: { type: 'mentality', value: 'ofensiva' } });
+	await expect(issue(assistant, 'decision', { decision: firstSub })).rejects.toBeInstanceOf(Error);
 	const op = randomUUID();
 	await issue(coach, 'decision', { decision: firstSub }, op);
 	await issue(coach, 'decision', { decision: firstSub }, op);

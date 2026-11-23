@@ -51,40 +51,38 @@ describe('contas e ligas', () => {
 		await expect(rotateCredentials(db, null, { username: body.username, current: recovery, password }, '')).rejects.toMatchObject({ status: 401 });
 	});
 
-	it('recupera a mesma liga ao repetir a criação, salva o rascunho e mantém os modos separados', async () => {
+	it('recupera a mesma liga ao repetir a criação, salva o rascunho e recusa ligas e funções descontinuadas', async () => {
 		const host = await registered('modos_host'), guest = await registered('modos_guest');
-		const config = { mode:'player', max:4, inviteOnly:true, assistantsRequired:true } as const;
+		const config = { mode:'coach', max:4, inviteOnly:true, assistantsRequired:true } as const;
 		const key = randomUUID();
 		const created = await Promise.all([
-			createRoom(db, host.id, 'Atletas online', config, key),
-			createRoom(db, host.id, 'Atletas online', config, key)
+			createRoom(db, host.id, 'Treinadores online', config, key),
+			createRoom(db, host.id, 'Treinadores online', config, key)
 		]);
 		const [room] = created;
 		expect(created[1].id).toBe(room.id);
-		expect(room.assistantsRequired).toBe(false);
 		const leagueOptions = { season:2028, calendar:'saturday', competition:'league', difficulty:'advanced' } as const;
 		await expect(configureLeagueDraft(db, room.code, guest.id, 'Sem permissão', config)).rejects.toMatchObject({ status:404 });
-		const patched = await configureLeagueDraft(db, room.code, host.id, 'Atletas 2028', { ...config, assistantsRequired:false, leagueOptions });
-		expect(patched).toMatchObject({ id:room.id, name:'Atletas 2028', entryMode:'player' });
+		const patched = await configureLeagueDraft(db, room.code, host.id, 'Treinadores 2028', { ...config, leagueOptions });
+		expect(patched).toMatchObject({ id:room.id, name:'Treinadores 2028', entryMode:'coach' });
 		expect(await listRoomsForProfile(db, host.id)).toMatchObject([{ code:room.code, season:2028, editable:true }]);
-		const player = { action:'assign', role:'player', club:'atletico-mg', personName:'Atleta BRASFC', position:'ATA' };
 		const send = async (profile: string, body: Record<string, unknown>) => applyWorldCommand(db, room, profile, {
 			...body, revision:(await worldSnapshot(db, room, profile)).revision, op:randomUUID()
 		});
-		await send(host.id, player);
-		const league = await worldSnapshot(db, patched, host.id);
-		expect(league).toMatchObject({ season:2028, editableDraft:false, current:{ role:'player' } });
+		await send(host.id, { action:'assign', role:'coach', club:'atletico-mg' });
+		expect(await worldSnapshot(db, patched, host.id)).toMatchObject({ season:2028, editableDraft:false, current:{ role:'coach' } });
 		await expect(configureLeagueDraft(db, room.code, host.id, 'Mudança tardia', config)).rejects.toMatchObject({ status:409 });
-		await expect(sendInvitation(db, room, host.id, { role:'coach', club:'santos', username:guest.username })).rejects.toMatchObject({ status:403 });
 		const invite = await sendInvitation(db, room, host.id, { role:'member', username:guest.username });
-		expect((await socialInbox(db, guest.id)).invites[0]).toMatchObject({ mode:'player' });
 		await answerInvitation(db, guest.id, invite.id, true);
-		await expect(send(guest.id, { action:'assign', role:'coach', club:'santos' })).rejects.toMatchObject({ status:403 });
-		await send(guest.id, { ...player, club:'santos', personName:'Outro Atleta' });
-		expect((await worldSnapshot(db, patched, guest.id)).members.map((member) => member.assignment?.role)).toEqual(['player','player']);
-		const coaching = await createRoom(db, host.id, 'Comissão exclusiva', { ...config, mode:'coach', inviteOnly:false });
-		await joinRoom(db, coaching.code, guest.id);
-		await expect(applyWorldCommand(db, coaching, guest.id, { ...player, op:randomUUID(), revision:0 })).rejects.toMatchObject({ status:403 });
+		// Carreira de jogador e auxiliar humano foram descontinuados na 0.12.
+		await expect(send(guest.id, { action:'assign', role:'player', club:'santos', personName:'Atleta', position:'ATA' })).rejects.toMatchObject({ status:410 });
+		await expect(send(guest.id, { action:'assign', role:'assistant', club:'atletico-mg' })).rejects.toMatchObject({ status:410 });
+		await expect(sendInvitation(db, room, host.id, { role:'assistant', username:guest.username })).rejects.toMatchObject({ status:410 });
+		await expect(createRoom(db, host.id, 'Atletas online', { ...config, mode:'player' as never }, randomUUID())).rejects.toMatchObject({ status:410 });
+		// Clube já assumido não aceita outro treinador.
+		await expect(send(guest.id, { action:'assign', role:'coach', club:'atletico-mg' })).rejects.toMatchObject({ status:409 });
+		await send(guest.id, { action:'assign', role:'coach', club:'santos' });
+		expect((await worldSnapshot(db, patched, guest.id)).members.map((member) => member.assignment?.role)).toEqual(['coach','coach']);
 	});
 
 	it('persiste regras de criação e restringe a exclusão individual ao anfitrião com confirmação', async () => {
@@ -121,61 +119,7 @@ describe('contas e ligas', () => {
 		expect(await db.query('SELECT 1 FROM room_deletion_audit WHERE room_id=$1 AND actor=$2', [room.id, a.id])).toHaveLength(1);
 	});
 
-	it('revisa propostas e contratos do auxiliar com limites e preserva a liga depois de deixar a comissão', async () => {
-		const a = await registered('tecnico'), b = await registered('auxiliar'), c = await registered('rival');
-		const room = await createRoom(db, a.id, 'Mercado delegado', { mode:'coach', max:4, inviteOnly:false, assistantsRequired:false });
-		const get = (id: string) => worldSnapshot(db, room, id);
-		const send = async (id: string, action: string, body = {}) => applyWorldCommand(db, room, id,
-			{ op: randomUUID(), revision: (await get(id)).revision, action, ...body });
-		await send(a.id, 'assign', { role:'coach', club:'atletico-mg' });
-		await joinRoom(db, room.code, c.id);
-		await send(c.id, 'assign', { role:'coach', club:'santos' });
-		const invite = await sendInvitation(db, room, a.id, { username:b.username, role:'assistant' });
-		await answerInvitation(db, b.id, invite.id, true);
-		const seller = await get(c.id);
-		const target = seller.roster.find((player) => 'contract' in player && !player.loan && !player.pending)!;
-		const grant = { mode:'review', offers:true, contracts:true, maxFee:2_000_000, maxWage:100_000, maxYears:3 };
-		await expect(send(b.id, 'deal', { target:c.id, player:target.id, fee:1 })).rejects.toMatchObject({ status:403 });
-		await send(a.id, 'delegate-finance', { target:b.id, grant });
-		await expect(send(b.id, 'deal', { target:c.id, player:target.id, fee:grant.maxFee + 1 })).rejects.toMatchObject({ status:403 });
-		await expect(send(b.id, 'club', { request:{ action:'rescindir', playerId:target.id } })).rejects.toMatchObject({ status:403 });
-		await send(b.id, 'deal', { target:c.id, player:target.id, fee:1_000_000 });
-		const [draft] = (await get(a.id)).financeDrafts;
-		expect(draft).toMatchObject({ author:b.id, player:target.name, status:'pending' });
-		expect((await get(c.id)).financeDrafts).toHaveLength(0);
-		expect((await get(c.id)).activity.some((event) => event.action === 'finance-requested')).toBe(false);
-		expect((await get(c.id)).deals).toHaveLength(0);
-		await expect(send(c.id, 'finance-review', { id:draft.id, approve:true })).rejects.toMatchObject({ status:409 });
-		await send(a.id, 'finance-review', { id:draft.id, approve:true });
-		expect((await get(b.id)).financeDrafts[0].status).toBe('approved');
-		const [proposal] = (await get(c.id)).deals;
-		expect(proposal).toMatchObject({ player:target.id, fee:1_000_000 });
-		await send(c.id, 'accept-deal', { id:proposal.id });
-		await expect(send(b.id, 'contract-deal', { id:proposal.id, wage:100_001, years:3, role:'rotacao' })).rejects.toMatchObject({ status:403 });
-		await send(b.id, 'contract-deal', { id:proposal.id, wage:10_000, years:3, role:'rotacao' });
-		const [contract] = (await get(a.id)).financeDrafts;
-		expect(contract).toMatchObject({ status:'pending', command:{ action:'contract-deal', wage:10_000 } });
-		await send(a.id, 'finance-review', { id:contract.id, approve:false });
-		expect((await get(b.id)).financeDrafts[0].status).toBe('declined');
-		await send(a.id, 'delegate-finance', { target:b.id, grant:{ ...grant, mode:'direct' } });
-		const next = seller.roster.find((player) => 'contract' in player && !player.loan && !player.pending && player.id !== target.id)!;
-		await send(b.id, 'deal', { target:c.id, player:next.id, fee:1 });
-		expect((await get(c.id)).deals.some((deal) => deal.player === next.id)).toBe(true);
-		await send(a.id, 'delegate-finance', { target:b.id, grant:{ ...grant, offers:false, contracts:false } });
-		await expect(send(b.id, 'contract-deal', { id:proposal.id, wage:10_000, years:1, role:'rotacao' })).rejects.toMatchObject({ status:403 });
-		await send(a.id, 'vacancy', { target:b.id, club:'palmeiras' });
-		await send(b.id, 'decline-vacancy', { club:'palmeiras' });
-		expect((await get(b.id)).vacancies).toHaveLength(0);
-		await send(b.id, 'leave-commission');
-		expect((await get(b.id)).current).toBeUndefined();
-		expect((await get(b.id)).members.find((member) => member.profileId === b.id)?.assignment).toBeNull();
-		await expect(readRoomChat(db, room, b.id, 'staff')).rejects.toMatchObject({ status:403 });
-		const reinvite = await sendInvitation(db, room, a.id, { username:b.username, role:'assistant' });
-		await answerInvitation(db, b.id, reinvite.id, true);
-		expect((await get(b.id)).current?.history.map((entry) => entry.role)).toEqual(['assistant', 'left', 'assistant']);
-	});
-
-	it('forma duas comissões, restringe privacidade e confirma sugestões e permissões sem duplicar ações', async () => {
+	it('dois treinadores convidados, privacidade e negociação sem duplicar ações', async () => {
 		const a = await registered('alberto'), b = await registered('bruno'), c = await registered('caio'), d = await registered('davi');
 		const outsider = await registered('edson');
 		await friendship(db, a.id, 'friend', b.id);
@@ -195,41 +139,19 @@ describe('contas e ligas', () => {
 		const clubs = (await get(a.id)).clubs;
 		expect(clubs.some((club) => club.id === mine)).toBe(true);
 		await send(a.id, 'assign', { role:'coach', club:mine });
-		const privateInvite = await invite(a.id, b, 'assistant');
-		await expect(answerInvitation(db, outsider.id, privateInvite.id, true)).rejects.toMatchObject({ status: 404 });
-		await answerInvitation(db, b.id, privateInvite.id, true);
-		await answerInvitation(db, b.id, privateInvite.id, true);
 		const rivalInvite = await invite(a.id, c, 'coach', rival);
+		await expect(answerInvitation(db, outsider.id, rivalInvite.id, true)).rejects.toMatchObject({ status: 404 });
 		await answerInvitation(db, c.id, rivalInvite.id, true);
-		const rivalAssistant = await invite(c.id, d, 'assistant');
-		await answerInvitation(db, d.id, rivalAssistant.id, true);
-		expect((await get(b.id)).current).toMatchObject({ role:'assistant', club:mine });
-		expect((await get(d.id)).current).toMatchObject({ role:'assistant', club:rival });
+		await answerInvitation(db, c.id, rivalInvite.id, true);
+		expect((await get(c.id)).current).toMatchObject({ role:'coach', club:rival });
+		void b; void d;
 		await send(a.id, 'start');
 		expect((await getRoomByCode(db, room.code))?.started).toBe(true);
 
-		const text = { channel:'staff', action:'message', text:'Treino às oito', op:randomUUID() };
-		await Promise.all([writeRoomChat(db, room, b.id, text), writeRoomChat(db, room, b.id, text)]);
-		expect((await readRoomChat(db, room, a.id, 'staff')).messages).toHaveLength(1);
-		expect((await readRoomChat(db, room, c.id, 'staff')).messages).toHaveLength(0);
 		await expect(readRoomChat(db, room, outsider.id, 'league')).rejects.toMatchObject({ status: 404 });
-		const snapshot = await get(b.id);
-		const tactic = { ...snapshot.tactic!, mentality:'ofensiva' };
-		await expect(send(b.id, 'tactic', { tactic })).rejects.toMatchObject({ status: 403 });
-		await writeRoomChat(db, room, b.id, { action:'suggest', channel:'staff', tactic, text:'Sugestão de tática', op:randomUUID(), revision:snapshot.revision });
-		const chat = await readRoomChat(db, room, a.id, 'staff');
-		expect(chat.messages.at(-1)?.suggestion).toMatchObject({ tactic:{ mentality:'ofensiva' }, tacticAtSend:{ formation:snapshot.tactic!.formation } });
-		expect(chat.messages.at(-1)?.avatar).toBeTypeOf('number');
-		const decision = { action:'approve', channel:'staff', seq:chat.messages.at(-1)!.seq };
-		const results = await Promise.all([writeRoomChat(db, room, a.id, decision), writeRoomChat(db, room, a.id, decision)]);
-		expect(results.filter((item) => item.changed)).toHaveLength(1);
-		expect((await get(b.id)).tactic?.mentality).toBe('ofensiva');
-		await send(a.id, 'delegate', { area:'match', target:b.id, value:true });
-		await send(b.id, 'tactic', { tactic: { ...tactic, mentality:'defensiva' } });
-		await send(a.id, 'delegate', { area:'match', target:b.id, value:false });
-		await expect(send(b.id, 'tactic', { tactic })).rejects.toMatchObject({ status: 403 });
-		await writeRoomChat(db, room, a.id, { action:'read', channel:'staff', seq:decision.seq });
-		expect((await readRoomChat(db, room, a.id, 'staff')).lastRead).toBe(decision.seq);
+		const tactic = { ...(await get(a.id)).tactic!, mentality:'ofensiva' };
+		await send(a.id, 'tactic', { tactic });
+		expect((await get(a.id)).tactic?.mentality).toBe('ofensiva');
 		const buyer = await get(a.id), seller = await get(c.id);
 		const target = seller.roster.find((player) => 'contract' in player && !player.loan && !player.pending && player.age > 0)!;
 		const tier = tierOfDivision(buyer.clubs.find((club) => club.id === mine)?.division);

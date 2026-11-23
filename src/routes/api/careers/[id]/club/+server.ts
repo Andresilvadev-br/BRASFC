@@ -3,7 +3,6 @@ import { careerWorld } from '#lib/domain/career.ts';
 import { getClub } from '#lib/domain/clubs.ts';
 import { divisionOf } from '#lib/domain/league.ts';
 import { initialClubState } from '#lib/domain/management.ts';
-import { applyPlayerAction } from '#lib/server/player-actions.ts';
 import { sanitizeLeague } from '#lib/domain/league.ts';
 import { ManagementError, sanitizeMarket } from '#lib/domain/management.ts';
 import { careerView } from '#lib/domain/view.ts';
@@ -52,27 +51,8 @@ export const POST: RequestHandler = async (event) => {
 	if (body.action === 'emprego' || (typeof body.action === 'string' && body.action.startsWith('proposta-'))) {
 		return careerDecision(db, profile.id, career, league, body);
 	}
-	if (typeof body.action === 'string' && body.action.startsWith('jogador-')) {
-		if (career.mode !== 'player') error(403, 'Ação exclusiva da carreira de jogador.');
-		try {
-			const view = careerView(career, await listResults(db, career.id, career.season));
-			const out = applyPlayerAction(career, view, body);
-			const updated = await db.transaction(async (tx) => {
-				const saved = await saveCareerProgress(tx, profile.id, career.id, {
-					gameDate: career.gameDate, clubId: out.clubId,
-					data: { playerCareer: out.state, ...(out.clubId ? { tactical: null, fitness: { eu: out.state.daily.condition } } : {}) }
-				}, career.version);
-				if (out.movement) await insertTransfers(tx, career.id, career.season, career.gameDate, [{ playerId: 'eu', playerName: career.personName, from: career.clubId, to: out.clubId ?? career.clubId, kind: out.movement, fee: 0, wage: out.state.contract.wage }], `${career.season}:jogador:${career.version}`);
-				if (out.movement || body.action === 'jogador-entrevista') await insertMessages(tx, career.id, career.gameDate, [{ sender: body.action === 'jogador-entrevista' ? 'Imprensa' : out.state.agent.name, subject: body.action === 'jogador-entrevista' ? 'Repercussão da entrevista' : 'Contrato profissional', body: out.message, important: !!out.movement }]);
-				return saved;
-			});
-			return noStore({ career: updated, message: out.message });
-		} catch (e) {
-			if (e instanceof ManagementError) error(422, e.message);
-			if (e instanceof VersionConflictError) error(409, e.message);
-			throw e;
-		}
-	}
+	// Dev 0.12: ações da carreira de jogador foram descontinuadas (o save legado fica guardado).
+	if (career.mode !== 'coach') error(410, 'A carreira de jogador foi descontinuada na versão 0.12.');
 	if (career.mode !== 'coach') error(403, 'Só o treinador gerencia o clube.');
 	const club = clubStateOf(career, league);
 	if (club.board.dismissed) error(409, 'Você não comanda mais o clube.');

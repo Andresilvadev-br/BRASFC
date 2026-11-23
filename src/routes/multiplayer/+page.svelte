@@ -1,5 +1,4 @@
 <script lang="ts">
-	import CareerModeCards from '#lib/ui/career/CareerModeCards.svelte';
 	import { goto, invalidate } from '$app/navigation';
 	import { onMount, tick } from 'svelte';
 	import { page } from '$app/state';
@@ -31,12 +30,9 @@
 		page.url.searchParams.get('aba') === 'entrar' || page.url.searchParams.has('codigo') ? 'join' : 'list');
 	const editCode = $derived(page.url.searchParams.get('liga'));
 	const existing = $derived(editCode ? data.rooms.find((room) => room.code === editCode && room.ownerId === data.profile?.id) : undefined);
-	const mode = $derived.by(() => {
-		if (existing?.entryMode === 'coach' || existing?.entryMode === 'player') return existing.entryMode;
-		const value = page.url.searchParams.get('modo');
-		return value === 'coach' || value === 'player' ? value : null;
-	});
-	const modeLabel = (value?: string) => value === 'coach' ? 'Carreira de Treinador' : value === 'player' ? 'Carreira de Jogador' : 'Universo legado';
+	// Dev 0.12: toda liga é uma carreira online de treinadores (sem escolha de modo).
+	const mode = 'coach' as const;
+	const modeLabel = (value?: string) => value === 'coach' ? 'Carreira online' : value === 'player' ? 'Liga legada (jogadores)' : 'Liga legada';
 	const pendingInvites = $derived(data.social?.invites.filter((invite) => invite.recipient === data.profile?.id && invite.status === 'pending') ?? []);
 	const draftId = $derived(mode && `brasfc:league:${data.profile?.id}:${editCode ?? mode}`);
 	let hydrated = $state<string | null>(null);
@@ -115,7 +111,7 @@
 
 	async function create() {
 		if (!mode || !draftId || hydrated !== draftId) return;
-		const body = { name, mode, max, inviteOnly, assistantsRequired: mode === 'coach' && assistantsRequired, rules: $state.snapshot(rules), creationKey };
+		const body = { name, mode, max, inviteOnly, assistantsRequired: false, rules: $state.snapshot(rules), creationKey };
 		const { room } = await api<{ room: { code: string } }>(existing ? `/api/rooms/${existing.code}` : '/api/rooms',
 			{ method: existing ? 'PATCH' : 'POST', body });
 		try { sessionStorage.removeItem(draftId); } catch { /* o rascunho é opcional */ }
@@ -197,9 +193,6 @@
 						<h2 tabindex="-1" bind:this={heading}>Configuração da liga</h2>
 						<p>{existing ? 'Sua liga já passou pela configuração.' : 'Esse rascunho não está disponível.'}</p>
 						{#if existing?.status === 'open'}<Button href={`/multiplayer/sala/${existing.code}`}>Continuar na liga</Button>{:else}<Button href="/multiplayer">Minhas ligas</Button>{/if}
-					{:else if !mode}
-						<h2 tabindex="-1" bind:this={heading}>Criar uma liga</h2>
-						<CareerModeCards {chooseMode} />
 					{:else}
 						<div class="configure" use:enter>
 							<div class="config-top">
@@ -227,9 +220,6 @@
 											<SelectCard icon="link" title="Entrada com código" description="Quem tiver o código ou o link pode entrar enquanto houver vaga." selected={!inviteOnly} onselect={() => (inviteOnly = false)} />
 											<SelectCard icon="lock" title="Somente convidados" description="Só entra quem receber convite da sua conta BRASFC." selected={inviteOnly} onselect={() => (inviteOnly = true)} />
 										</div>
-										{#if mode === 'coach'}
-											<Switch bind:checked={assistantsRequired} label="Exigir prontidão dos auxiliares" hint="A rodada só começa quando os auxiliares também confirmarem." />
-										{/if}
 									</section>
 									<section class="cfg">
 										<h3 class="section-title">Temporada e competição</h3>
@@ -257,7 +247,7 @@
 								<aside class="config-preview" aria-label="Prévia da liga">
 									<span class="eyebrow">Prévia</span>
 									<strong class="preview-name display">{name.trim() || 'Sua liga'}</strong>
-									<span class="preview-mode"><Icon name={mode === 'player' ? 'shirt' : 'whistle'} size={14} />{modeLabel(mode)}</span>
+									<span class="preview-mode"><Icon name="whistle" size={14} />{modeLabel(mode)}</span>
 									<dl>
 										<div><dt>Temporada</dt><dd>{rules.season}</dd></div>
 										<div><dt>Vagas</dt><dd>{max}</dd></div>
@@ -265,7 +255,7 @@
 										<div><dt>IA</dt><dd>{rules.difficulty === 'accessible' ? 'Acessível' : rules.difficulty === 'advanced' ? 'Avançada' : 'Padrão'}</dd></div>
 									</dl>
 									<small class="muted">{rules.competition === 'league' ? 'Séries A–D' : 'Séries A–D e Copa do Brasil'} · {rules.calendar === 'saturday' ? 'sábado e terça' : 'domingo e quarta'}</small>
-									<Button type="submit" variant="primary" iconRight="arrowRight" disabled={hydrated !== draftId} loading={busy} full>{existing ? 'Salvar e continuar' : mode === 'player' ? 'Continuar para o atleta' : 'Continuar para o clube'}</Button>
+									<Button type="submit" variant="primary" iconRight="arrowRight" disabled={hydrated !== draftId} loading={busy} full>{existing ? 'Salvar e continuar' : 'Continuar para o clube'}</Button>
 								</aside>
 							</form>
 						</div>
