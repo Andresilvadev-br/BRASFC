@@ -6,7 +6,7 @@ import { coachFormation } from '#lib/domain/coaches.ts';
 import { divisionOf, divisionStandings, type DivisionId, type LeagueState, type StoredRoundResult } from '#lib/domain/league.ts';
 import type { ClubState } from '#lib/domain/management.ts';
 import { formatMoney, rosterOf, tierOfDivision } from '#lib/domain/market.ts';
-import { coachOffers, maybeMeeting, maybePress, recordGame, sanitizeOffice, type BoardSnapshot, type OfficeState } from '#lib/domain/office.ts';
+import { coachOffers, coachWage, maybeMeeting, maybePress, recordGame, sanitizeOffice, type BoardSnapshot, type OfficeState } from '#lib/domain/office.ts';
 import type { FormationId } from '#lib/domain/tactics.ts';
 import { divLabel, initialUniverse, sanitizeUniverse, universeAfterRound, universeSeasonEnd, type NewsItem, type UniverseState } from '#lib/domain/universe.ts';
 import { rosterContext } from '#lib/domain/world.ts';
@@ -182,6 +182,12 @@ export function officeSeasonEnd(o: { career: Career; office: OfficeState; club: 
 	else office.history.push(row);
 	if (o.outcome === 'campeao') office.milestones.push({ key: `titulo-${o.career.season}-${o.division}`, season: o.career.season, round: 99, label: `Campeão da ${divLabel(o.division ?? '')}`, detail: `${getClub(o.career.clubId)?.name ?? ''} ${o.career.season}` });
 	if (o.outcome === 'acesso') office.milestones.push({ key: `acesso-${o.career.season}`, season: o.career.season, round: 99, label: 'Acesso conquistado', detail: `${getClub(o.career.clubId)?.name ?? ''} sobe de divisão` });
+	// Renovação automática só vale para vínculo em vigor, com confiança da diretoria e sem recusa explícita.
+	if (!club.board.dismissed && office.contract.until <= o.career.season && office.autoRenewal && office.renewalDeclinedSeason !== o.career.season && club.board.confidence >= 60) {
+		const nextTier = tierOfDivision(divisionOf(o.next, o.career.clubId));
+		office.contract = { until: o.career.season + 2, wage: coachWage(nextTier, club.coachReputation) };
+		news.push({ sender: `Diretoria — ${getClub(o.career.clubId)?.name ?? ''}`, subject: 'Contrato renovado automaticamente', body: `A diretoria aprovou a renovação até ${office.contract.until}. Você permanece no comando do clube.`, important: true });
+	}
 	// Contrato: terminou sem renovação → o treinador sai e recebe propostas coerentes.
 	if (!club.board.dismissed && office.contract.until <= o.career.season) {
 		club.board.dismissed = true;
