@@ -34,6 +34,9 @@
 	import StaffScreen from './career/screens/StaffScreen.svelte';
 	import AcademyScreen from './career/screens/AcademyScreen.svelte';
 	import OfficeScreen from './career/screens/OfficeScreen.svelte';
+	import CalendarScreen from './career/screens/CalendarScreen.svelte';
+	import CompetitionsScreen from './career/screens/CompetitionsScreen.svelte';
+	import CupScreen from './career/screens/CupScreen.svelte';
 	import Switch from './Switch.svelte';
 	import LiveMatch from './match/LiveMatch.svelte';
 	import type { worldClubLineup, worldReplay, worldSnapshot } from '#lib/server/connected-world.ts';
@@ -378,7 +381,7 @@
 		execute({ ...values, action, revision: world.revision, op: crypto.randomUUID() });
 
 	// ── Dev 0.12: as MESMAS telas da carreira individual, sobre o universo compartilhado da liga.
-	const SHARED_SECTIONS = ['elenco', 'taticas', 'treinos', 'financas', 'clube', 'comissao', 'base', 'gabinete'];
+	const SHARED_SECTIONS = ['elenco', 'taticas', 'treinos', 'financas', 'clube', 'comissao', 'base', 'gabinete', 'calendario', 'competicoes', 'copa'];
 	const projected = $derived((world as unknown as { career?: CareerSave | null }).career ?? null);
 	const seasonResults = $derived((world as unknown as { seasonResults?: StoredRoundResult[] }).seasonResults ?? []);
 	const screenData = $derived.by<CareerScreenData | null>(() => {
@@ -671,6 +674,9 @@
 				{:else if section === 'clube'}<ClubScreen data={screenData} />
 				{:else if section === 'comissao'}<StaffScreen data={screenData} />
 				{:else if section === 'base'}<AcademyScreen data={screenData} />
+				{:else if section === 'calendario'}<CalendarScreen data={screenData} />
+				{:else if section === 'competicoes'}<CompetitionsScreen data={screenData} />
+				{:else if section === 'copa'}<CupScreen data={screenData} />
 				{:else}<OfficeScreen data={screenData} />{/if}
 			</div>
 		{:else if (section === 'elenco' || (section === 'taticas' && current?.role !== 'player')) && current}

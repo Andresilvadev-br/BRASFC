@@ -116,6 +116,9 @@ try {
 	await visible(coach.getByRole('heading', { name:'Negociar verba com a diretoria' }));
 	assert.equal(await coach.getByText('Central de Propostas').count(), 0);
 	await noOverflow(coach);
+	await coach.goto(`${room}?secao=calendario`);
+	await visible(coach.getByRole('heading', { name:'Calendário', exact:true }));
+	await noOverflow(coach);
 	await coach.goto(`${room}?secao=elenco`);
 	await visible(coach.getByRole('heading', { name:'Elenco', exact:true }));
 	await coach.setViewportSize({ width:390, height:844 });
