@@ -1,4 +1,6 @@
 import { releasesUrl, repository } from './releases.mjs';
+export const gameUrl = 'https://aldetes.vps-kinghost.net/';
+
 export const media = [
   {
     id: 'painel',

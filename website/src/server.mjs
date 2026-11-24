@@ -6,7 +6,7 @@ import { timingSafeEqual } from 'node:crypto';
 import sharp from 'sharp';
 import { authProvider } from './auth.mjs';
 import { failure, forum } from './forum.mjs';
-import { categories } from './content.mjs';
+import { categories, gameUrl } from './content.mjs';
 import * as pages from './pages.mjs';
 import { releaseCatalog } from './releases.mjs';
 
@@ -19,7 +19,7 @@ const types = {
 };
 const imageLimit = 2 * 1024 * 1024;
 const local = new Set(['127.0.0.1', 'localhost', '[::1]']);
-const gameHost = 'aldetes.vps-kinghost.net';
+const gameHost = new URL(gameUrl).hostname;
 const assetPath =
   /^\/(?:media\/[a-z0-9-]+\.(svg|webp)|fonts\/[a-z0-9-]+\.woff2|(?:site|motion)\.(?:css|js))$/;
 const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;

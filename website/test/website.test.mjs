@@ -101,6 +101,9 @@ test('estrutura web separada, estados vazios e rotas do jogo ausentes', async (t
     assert.equal(res.status, 200, path);
     assert.match(res.headers.get('content-security-policy'), /frame-ancestors 'none'/);
   }
+  const home = await (await get('/')).text();
+  assert.match(home, /href="https:\/\/aldetes\.vps-kinghost\.net\/">Jogar no navegador<\/a>/);
+  assert.match(home, /href="\/download">.*Baixar para Windows<\/a>/);
   assert.match(await (await get('/download')).text(), /Instalador indisponível/);
   assert.match(await (await get('/conta')).text(), /Login indisponível/);
   assert.equal((await get('/conta/entrar')).status, 503);
