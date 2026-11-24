@@ -152,16 +152,50 @@ Nas Configurações, a **Qualidade visual** tem cinco modos: Automático, Alto, 
 
 **Testes novos:** `legacy-player-saves` e `round-prefetch`.
 
+## 6.1 Etapa 2 (continuação)
+
+**Auditoria de interface da carreira**
+
+A auditoria passou por 26 rotas, em seis resoluções: 1280×720, 1366×768, 1600×900, 1920×1080, 2560×1440 e 3840×2160.
+
+| | Resultado |
+|---|---|
+| Antes | Sem rolagem horizontal em nenhuma tela, mas com textos cortados e tamanhos de fonte abaixo de 11 px |
+| Depois | 0 rolagens horizontais, 0 textos abaixo de 11 px e 0 textos cortados sem dica do texto completo |
+
+Problemas corrigidos:
+
+- **Trilho lateral:** "Carreira de Treinador · nome" ficava cortado em todas as larguras. Agora mostra "Treinador · nome" e quebra a linha quando precisa.
+- **Idade desconhecida:** aparecia como "—a" no Elenco e nas Táticas. Agora fica omitida.
+- **Fontes pequenas:** 9 textos abaixo de 11 px em Finanças e nos selos de suspensão e de forma. Todos passaram para 11 px ou mais.
+- **Siglas de clubes** cortadas nos cards de confronto: agora nunca são cortadas.
+- **Listas compactas** (nomes, funções, assuntos e notícias): mantêm as reticências e ganharam a dica com o texto completo.
+
+O script `scripts/audit-layout.mjs` passou a detectar textos cortados e ignora textos só para leitores de tela.
+
+**Carreira online**
+
+- **Prontidão:** a revalidação já existia. Mudar tática, treino ou mercado retira a confirmação do treinador, e o avanço é automático quando todos estão prontos. Isso foi conferido nesta etapa.
+- **Delegação temporária à IA:**
+  - nova ação `ai-cover`, que só o próprio treinador liga ou desliga;
+  - com ela ligada, a rodada não espera por ele e a IA comanda o clube dele na partida ao vivo;
+  - no jogo, aparece como o interruptor "IA comanda meu clube enquanto eu estiver ausente";
+  - o teste cobre a autorização e o avanço.
+- **Dynamic Island da liga:**
+  - estado de sincronização: sincronizado, sincronizando, reconectando, sem conexão ou servidor indisponível;
+  - atividades genéricas novas: base, finanças, clube, treinos e "preparando a próxima partida", sem valores nem escalações;
+  - "pronto para avançar" e "ausente";
+  - recolhe sozinha durante a partida.
+
+**Testes:** `npm run verify` com **217 aprovados** e 3 ignorados.
+
 ## 7. Pendências (não concluídas nesta etapa)
 
 1. **Unificação offline × online.** Os mesmos componentes e menus ainda não foram aplicados à carreira online: `ConnectedWorld` continua sendo uma interface própria. A camada de abstração de armazenamento (local × remoto) ainda não existe.
 2. **Hybrid Save Engine.** Ainda não existem cache local persistente, sincronização incremental, fila de operações pendentes nem indicadores de "salvo localmente / sincronizando".
-3. **Dynamic Island da carreira online.** Ainda não mostra participantes, atividades e sincronização em estados compacto e expandido.
-4. **Multiplayer.**
-   - Falta a revalidação da prontidão em mudanças relevantes.
-   - Falta a delegação temporária à IA com autorização.
-   - O código de servidor das funções antigas (atleta e auxiliar) segue ativo só para ligas legadas e deve ser removido depois de migrá-las.
+3. **Dynamic Island da carreira online.** A base está feita (seção 6.1). Falta mostrar o estado "salvo localmente", que depende do Hybrid Save Engine.
+4. **Multiplayer.** O código de servidor das funções antigas (atleta e auxiliar) segue ativo só para ligas legadas e deve ser removido depois de migrá-las.
 5. **VPS e banco.** Faltam auditoria de índices e consultas, carregamento e descarregamento de universos e medições na VPS.
-6. **Auditoria de interface.** A auditoria completa das telas da carreira (1280×720 a 4K, escala do Windows, Electron) só foi feita no menu.
+6. **Auditoria de interface.** Faltam a escala de exibição do Windows, o Electron e as telas da carreira online.
 7. **Testes ainda não executados:** 8 treinadores simultâneos, queda de servidor, Windows, rede lenta, uso prolongado e memória.
 8. **Medições ainda não feitas:** FPS, RAM, CPU do Electron e hardware de referência.

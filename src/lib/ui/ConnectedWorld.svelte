@@ -19,6 +19,7 @@
 	import { coachKit, playerKit } from '#lib/pixel/kits.ts';
 	import type { PresenceMember, RoomActivity } from '#lib/realtime/protocol.ts';
 	import Island from './Island.svelte';
+	import Switch from './Switch.svelte';
 	import LiveMatch from './match/LiveMatch.svelte';
 	import type { worldClubLineup, worldReplay, worldSnapshot } from '#lib/server/connected-world.ts';
 	import { sameTactic, type Tactic } from '#lib/domain/tactics.ts';
@@ -54,8 +55,8 @@
 
 	type World = Awaited<ReturnType<typeof worldSnapshot>>;
 	type Member = Pick<World['members'][number], 'profileId' | 'displayName' | 'role'>;
-	let { code, initial, profileId, revision, membership, online = false, onactivity, lobby, connection, leagueName, chatVersions, socialRevision }: { code: string; initial: World; profileId: string; revision?: number;
-		leagueName: string; socialRevision?: number; chatVersions?: { league: number; staff: number }; membership?: PresenceMember[]; online?: boolean; onactivity?: (value: RoomActivity) => void; lobby?: Snippet<[World, Snippet]>; connection?: Snippet } = $props();
+	let { code, initial, profileId, revision, membership, online = false, connectionStatus, onactivity, lobby, connection, leagueName, chatVersions, socialRevision }: { code: string; initial: World; profileId: string; revision?: number;
+		leagueName: string; socialRevision?: number; chatVersions?: { league: number; staff: number }; membership?: PresenceMember[]; online?: boolean; connectionStatus?: string; onactivity?: (value: RoomActivity) => void; lobby?: Snippet<[World, Snippet]>; connection?: Snippet } = $props();
 	let loadingLive = $state(false);
 	let livePanel = $state<'chat' | 'planning' | 'market'>();
 	let liveToolsOpen = $state(false);
@@ -254,6 +255,7 @@
 	const readyOnline = $derived(official ? official.readyOnlineCount : required.filter((friend) => friend.ready && friend.online).length);
 	const requiredTotal = $derived(official ? official.requiredCount : required.length);
 	const coach = $derived(current?.role === 'coach');
+	const aiCover = $derived((world.members.find((member) => member.profileId === profileId)?.assignment as { aiCover?: boolean } | null | undefined)?.aiCover ?? false);
 	const ownStaff = $derived(friends.filter((friend) => friend.club === current?.club && friend.role !== labels.player));
 	const competitionMode = $derived(world.entryMode === 'coach' ? 'Carreira de Treinador' : world.entryMode === 'player' ? 'Carreira de Jogador' : 'Universo legado');
 	const staffMode = $derived(world.entryMode !== 'player');
@@ -281,8 +283,9 @@
 	});
 	$effect(() => {
 		if (world.live) return;
-		onactivity?.(section === 'elenco' ? 'escalacao' : section === 'taticas' ? 'taticas'
-			: section === 'mercado' ? current?.role === 'player' ? 'contratos' : 'mercado' : section === 'rodada' ? 'rodada' : 'carreira');
+		onactivity?.(section === 'elenco' ? 'escalacao' : section === 'taticas' ? 'taticas' : section === 'mercado' ? 'mercado'
+			: section === 'base' ? 'base' : section === 'financas' ? 'financas' : section === 'treinos' ? 'treinos'
+			: section === 'clube' || section === 'comissao' || section === 'gabinete' ? 'clube' : section === 'rodada' ? 'preparacao' : 'carreira');
 	});
 
 	$effect(() => {
@@ -434,7 +437,7 @@
 </script>
 
 {#if friends.length && (!world.live || loadingLive)}
-	<div class="room-island"><Island {friends} loading={world.live} /></div>
+	<div class="room-island"><Island {friends} loading={world.live} status={connectionStatus ?? (online ? 'online' : 'connecting')} syncing={saving} /></div>
 {/if}
 {#if world.live}
 	<main class="page">
@@ -579,7 +582,8 @@
 					{/each}
 				</div>
 				<div class="actions">
-					{#if current}<Button disabled={saving || !online || !world.started} onclick={() => send('ready', { value: !current.ready })}>{current.ready ? 'Cancelar confirmação' : 'Estou pronto'}</Button>{/if}
+					{#if current}<Button disabled={saving || !online || !world.started || !!aiCover} onclick={() => send('ready', { value: !current.ready })}>{current.ready ? 'Cancelar confirmação' : 'Estou pronto'}</Button>{/if}
+					{#if current?.role === 'coach'}<Switch checked={!!aiCover} disabled={saving || !online} label="IA comanda meu clube enquanto eu estiver ausente" hint={aiCover ? 'A rodada não espera por você; a IA escala e joga. Desligue quando voltar.' : 'Delegação temporária: só você pode ativar ou desativar.'} onchange={(value) => send('ai-cover', { value })} />{/if}
 					{#if owner}<Button variant="primary" loading={saving} disabled={!world.started || !everyoneReady} onclick={() => send('advance')}>{world.next ? 'Simular rodada oficial' : 'Iniciar nova temporada'}</Button>{/if}
 				</div>
 			</article>

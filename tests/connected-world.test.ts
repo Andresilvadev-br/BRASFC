@@ -151,4 +151,31 @@ describe('universo compartilhado', () => {
 		expect(rows.map((r) => r.season)).toEqual([start, start + 1]);
 		expect(rows.every((r) => r.fixtures > 500)).toBe(true);
 	}, 180000);
+	it('delegação temporária à IA: só o próprio treinador autoriza e a rodada deixa de esperar por ele', async () => {
+		const [owner, rival] = await Promise.all(Array.from({ length: 2 }, () => createGuestProfile(db).then((p) => p.profile.id)));
+		const room = await createRoom(db, owner, 'Liga com ausente');
+		await joinRoom(db, room.code, rival);
+		const get = (profile: string) => worldSnapshot(db, room, profile);
+		const command = async (profile: string, action: string, params: Record<string, unknown> = {}) =>
+			applyWorldCommand(db, room, profile, { ...params, action, op: randomUUID(), revision: (await get(profile)).revision });
+		await command(owner, 'assign', { role: 'coach', club: 'flamengo' });
+		await command(rival, 'assign', { role: 'coach', club: 'palmeiras' });
+		await command(owner, 'ready', { value: true });
+		// Sem delegação, a rodada espera o rival.
+		await expect(command(owner, 'advance')).rejects.toMatchObject({ status: 409 });
+		// O administrador não delega pelo rival: o comando vale só para quem o envia.
+		await command(owner, 'ai-cover', { value: true });
+		await command(owner, 'ai-cover', { value: false });
+		await command(owner, 'ready', { value: true });
+		expect((await get(owner)).members.find((m) => m.profileId === rival)?.assignment).toMatchObject({ aiCover: false });
+		await command(rival, 'ai-cover', { value: true });
+		expect((await get(owner)).members.find((m) => m.profileId === rival)?.assignment).toMatchObject({ aiCover: true, ready: false });
+		const before = (await get(owner)).date;
+		await command(owner, 'advance');
+		expect((await get(owner)).date).not.toBe(before);
+		// De volta: desliga a delegação e a rodada volta a esperar por ele.
+		await command(rival, 'ai-cover', { value: false });
+		await command(owner, 'ready', { value: true });
+		await expect(command(owner, 'advance')).rejects.toMatchObject({ status: 409 });
+	}, 60000);
 });
