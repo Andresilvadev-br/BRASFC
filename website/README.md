@@ -12,7 +12,7 @@ npm run build
 npm start
 ```
 
-Abra [http://127.0.0.1:4175](http://127.0.0.1:4175). Para testar sem consultar o GitHub a cada início, use `WEBSITE_RELEASE_LOOKUP=0 npm start`. O catálogo local conserva a data da consulta. Use `npm run releases:refresh` para atualizá-lo com a API pública do GitHub.
+Abra [http://127.0.0.1:4175](http://127.0.0.1:4175). Para testar sem consultar o GitHub a cada início, use `WEBSITE_RELEASE_LOOKUP=0 npm start`. O catálogo local conserva a data da consulta. O servidor atualiza esse catálogo em segundo plano para evitar que a latência do GitHub atrase as páginas. Use `npm run releases:refresh` para atualizá-lo com a API pública do GitHub.
 
 O servidor usa SQLite próprio em `website/data/community.sqlite` por padrão e cria um fórum vazio. Para configurar variáveis com arquivo local, copie `.env.example` para `.env`, faça o build e inicie com `node --env-file=.env dist/server.mjs`. O arquivo de exemplo deixa a autenticação desabilitada. Nenhuma credencial faz parte dos arquivos versionados.
 

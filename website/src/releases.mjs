@@ -45,7 +45,7 @@ export async function fetchReleases(fetcher = fetch) {
   const response = await fetcher(api, {
     redirect: 'error',
     headers: { accept: 'application/vnd.github+json', 'user-agent': 'BRASFC-website' },
-    signal: AbortSignal.timeout(2700),
+    signal: AbortSignal.timeout(8000),
   });
   if (!response.ok) throw new Error(`GitHub respondeu ${response.status}`);
   return { checkedAt: new Date().toISOString(), releases: stableReleases(await response.json()) };
@@ -59,23 +59,22 @@ export function releaseCatalog({ fetcher = fetch, dynamic = true } = {}) {
   let inflight;
   let expires = 0;
   return async () => {
-    if (!dynamic) return { ...(await snapshot), cached: true };
-    if (Date.now() < expires) return current;
-    if (!inflight)
+    const saved = await snapshot;
+    current ??= { ...saved, cached: true };
+    if (dynamic && Date.now() >= expires && !inflight) {
       inflight = fetchReleases(fetcher)
         .then((result) => {
           current = { ...result, cached: false };
           expires = Date.now() + 15 * 60 * 1000;
-          return current;
         })
-        .catch(async () => {
-          current = { ...(current ?? (await snapshot)), cached: true };
+        .catch(() => {
+          current = { ...current, cached: true };
           expires = Date.now() + 60 * 1000;
-          return current;
         })
         .finally(() => {
           inflight = null;
         });
-    return inflight;
+    }
+    return current;
   };
 }

@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import sharp from 'sharp';
 import { createApp } from '../src/server.mjs';
 import { forum } from '../src/forum.mjs';
-import { stableReleases, releasesUrl } from '../src/releases.mjs';
+import { releaseCatalog, stableReleases, releasesUrl } from '../src/releases.mjs';
 
 const fixture = (tag = 'v2.0.0') => ({
   tag_name: tag,
@@ -225,4 +225,23 @@ test('SQLite recupera publicações e sessões após reiniciar a comunidade', as
   } finally {
     db.close();
   }
+});
+
+test('páginas recebem o catálogo local enquanto uma consulta atualiza o cache em segundo plano', async () => {
+  let finish;
+  let calls = 0;
+  const catalog = releaseCatalog({
+    fetcher: () => {
+      calls++;
+      return new Promise((resolve) => { finish = resolve; });
+    },
+  });
+  const first = await catalog();
+  assert.equal(first.cached, true);
+  assert.equal((await catalog()).cached, true);
+  assert.equal(calls, 1);
+  finish(Response.json([fixture()]));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal((await catalog()).cached, false);
+  assert.equal((await catalog()).releases[0].version, '2.0.0');
 });

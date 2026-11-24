@@ -23,7 +23,7 @@ Base verificada em 24/11/2026, commit `c51f0da` da `main`. A mudança fica exclu
 ## Verificação
 
 - `npm run build` aprovado no Node 24.
-- `npm test` cobre a seleção das releases, indisponibilidade do instalador, rotas do jogo ausentes do website, proteção das mutações, identidade vinculada, uploads, escape de texto, votos idempotentes, notificações, moderação, encerramento de sessão, perfil privado e persistência do SQLite após reinício. O teste usa identidades controladas em memória.
+- `npm test` cobre a seleção das releases, atualização do catálogo em segundo plano, indisponibilidade do instalador, rotas do jogo ausentes do website, proteção das mutações, identidade vinculada, uploads, escape de texto, votos idempotentes, notificações, moderação, encerramento de sessão, perfil privado e persistência do SQLite após reinício. O teste usa identidades controladas em memória.
 - Chromium conferiu dez rotas em sete larguras de 320 a 1920 px, carregamento das imagens, teclado na galeria, apresentação pulável, movimento reduzido, filtros do fórum e URL do download. Axe avaliou as quatro páginas principais.
 - O isolamento foi conferido por rotas e pelo diff do Git. Os testes do website não executam Electron, multiplayer, saves ou atualizador do jogo.
 - A hospedagem e os testes com a identidade BRASFC real dependem da configuração descrita no README.
