@@ -40,7 +40,10 @@
 	import Switch from './Switch.svelte';
 	import LiveMatch from './match/LiveMatch.svelte';
 	import type { worldClubLineup, worldReplay, worldSnapshot } from '#lib/server/connected-world.ts';
-	import { sameTactic, type Tactic } from '#lib/domain/tactics.ts';
+	import { sameTactic, tacticKey, type Tactic } from '#lib/domain/tactics.ts';
+	import { reportSync } from '#lib/career/local-port.ts';
+	import { SyncChannel } from '#lib/stores/sync.svelte.ts';
+	import type { Delivery, PendingOp } from '#lib/sync/outbox.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { formatShort } from '#lib/domain/dates.ts';
 	import { DEFAULT_PLAN, type TrainingPlan } from '#lib/domain/drills.ts';
@@ -382,7 +385,75 @@
 
 	// ── Dev 0.12: as MESMAS telas da carreira individual, sobre o universo compartilhado da liga.
 	const SHARED_SECTIONS = ['elenco', 'taticas', 'treinos', 'financas', 'clube', 'comissao', 'base', 'gabinete', 'calendario', 'competicoes', 'copa'];
-	const projected = $derived((world as unknown as { career?: CareerSave | null }).career ?? null);
+	const serverCareer = $derived((world as unknown as { career?: CareerSave | null }).career ?? null);
+
+	// ── Dev 0.12 · Hybrid Save Engine: fila local da liga (sobrevive a recarregar/reconectar).
+	const QUEUED = 'Salvo localmente. Será sincronizado quando a conexão voltar.';
+	const RETRY_LATER = /universo mudou|rodada está em andamento/i;
+	async function deliverOnline(op: PendingOp): Promise<Delivery> {
+		try {
+			if (op.kind === 'tactic') {
+				await refresh();
+				const official = serverCareer?.data.tactic;
+				const sent = op.payload.tactic as Tactic;
+				if (official && tacticKey(official) === tacticKey(sent)) return 'ok';
+				if (op.meta && official && tacticKey(official) !== op.meta.baseKey) return 'conflict';
+			}
+			await api(path, { body: { ...op.payload, op: op.id, revision: world.revision } });
+			return 'ok';
+		} catch (e) {
+			if (connectionIssue(e)) return 'retry';
+			if (e instanceof ApiError && e.status === 409 && RETRY_LATER.test(e.message)) {
+				await refresh().catch(() => {});
+				return 'retry';
+			}
+			op.lastError = e instanceof Error ? e.message : 'O servidor recusou a alteração.';
+			return 'drop';
+		}
+	}
+	const sync = new SyncChannel(untrack(() => `room:${code}:${profileId}`), {
+		deliver: deliverOnline,
+		onReport: (report) => reportSync(report, () => refresh().catch(() => {}))
+	});
+	onMount(() => sync.start());
+	/** Envia já; se a conexão cair, a operação permitida fica na fila com o MESMO id (idempotente). */
+	async function sendOrQueue(action: string, values: Record<string, unknown>, dedupe?: string, meta?: Record<string, unknown>): Promise<'ok' | 'queued' | 'failed'> {
+		const payload = { ...values, action };
+		if (dedupe && sync.pending.some((op) => op.dedupe === dedupe)) {
+			await sync.enqueue({ kind: action, payload, dedupe, meta });
+			void sync.flush(true);
+			message = QUEUED;
+			return 'queued';
+		}
+		const command = { ...payload, revision: world.revision, op: crypto.randomUUID() };
+		sync.mark('syncing');
+		if (await execute(command)) {
+			sync.mark('synced');
+			return 'ok';
+		}
+		if (retry === command) {
+			retry = null;
+			failed = false;
+			quiet = true;
+			message = QUEUED;
+			await sync.enqueue({ id: command.op, kind: action, payload, dedupe, meta });
+			return 'queued';
+		}
+		sync.mark('synced');
+		return 'failed';
+	}
+	/** a tela mostra o que o treinador salvou, mesmo antes de chegar ao servidor */
+	const projected = $derived.by<CareerSave | null>(() => {
+		const queued = sync.pending;
+		if (!serverCareer || !queued.length) return serverCareer;
+		const tactic = queued.findLast((op) => op.dedupe === 'tactic')?.payload.tactic as Tactic | undefined;
+		const plan = queued.findLast((op) => op.dedupe === 'training')?.payload.plan as TrainingPlan | undefined;
+		const tips = queued.filter((op) => op.kind === 'dismiss-tip').map((op) => String(op.payload.tip));
+		return { ...serverCareer, data: { ...serverCareer.data,
+			...(tactic ? { tactic } : {}),
+			...(plan ? { trainingPlan: plan } : {}),
+			...(tips.length ? { dismissedTips: [...new Set([...(serverCareer.data.dismissedTips ?? []), ...tips])] } : {}) } };
+	});
 	const seasonResults = $derived((world as unknown as { seasonResults?: StoredRoundResult[] }).seasonResults ?? []);
 	const screenData = $derived.by<CareerScreenData | null>(() => {
 		if (!projected) return null;
@@ -402,26 +473,33 @@
 			return { message: message || 'Alteração salva' };
 		},
 		async saveTactic(tactic, base) {
-			// Edição concorrente: compara com a tática oficial que a própria tela exibiu.
-			const official = projected?.data.tactic ?? screenData?.view.tactic;
-			if (official && !sameTactic(official, base)) {
+			// Edição concorrente: compara com a tática que a própria tela exibiu (oficial + fila local).
+			const shown = projected?.data.tactic ?? screenData?.view.tactic;
+			if (shown && !sameTactic(shown, base)) {
 				await refresh().catch(() => {});
 				return { ok: false, message: 'A tática do clube mudou em outra janela. Confira a escalação oficial antes de salvar.' };
 			}
-			const ok = await send('tactic', { tactic });
-			return { ok, message: ok ? undefined : message };
+			// base da fila = tática OFICIAL do servidor (a da fila ainda não chegou lá)
+			const pendingBase = sync.pending.find((op) => op.dedupe === 'tactic')?.meta?.baseKey;
+			const official = serverCareer?.data.tactic;
+			const meta = { baseKey: pendingBase ?? (official ? tacticKey(official) : null) };
+			const out = await sendOrQueue('tactic', { tactic }, 'tactic', meta);
+			return out === 'queued' ? { ok: true, queued: true, message: QUEUED } : { ok: out === 'ok', message: out === 'ok' ? undefined : message };
 		},
 		async saveTrainingPlan(plan) {
-			const ok = await send('training', { plan });
-			return { ok, message: ok ? undefined : message };
+			const out = await sendOrQueue('training', { plan }, 'training');
+			return out === 'queued' ? { ok: true, queued: true, message: QUEUED } : { ok: out === 'ok', message: out === 'ok' ? undefined : message };
 		},
 		async presetOp(preset) {
-			if (!(await send('preset', { preset }))) throw failure('Não foi possível atualizar a biblioteca.');
-			return { message: message || 'Biblioteca atualizada.' };
+			// No online o servidor reconhece o id da operação: até criar/duplicar pode esperar na fila.
+			const out = await sendOrQueue('preset', { preset });
+			if (out === 'failed') throw failure('Não foi possível atualizar a biblioteca.');
+			return out === 'queued' ? { message: 'Na fila: a biblioteca será atualizada quando a conexão voltar.', queued: true } : { message: message || 'Biblioteca atualizada.' };
 		},
 		async dismissTip(tip) {
-			await send('dismiss-tip', { tip });
+			await sendOrQueue('dismiss-tip', { tip }, `tip:${tip}`);
 		},
+		sync,
 		refresh: () => refresh().catch(() => {}),
 		supports: (feature) => feature !== 'job-market'
 	} satisfies CareerPort);
@@ -501,7 +579,7 @@
 </script>
 
 {#if friends.length && (!world.live || loadingLive)}
-	<div class="room-island"><Island {friends} loading={world.live} status={connectionStatus ?? (online ? 'online' : 'connecting')} syncing={saving} /></div>
+	<div class="room-island"><Island {friends} loading={world.live} status={connectionStatus ?? (online ? 'online' : 'connecting')} syncing={saving} channel={sync} /></div>
 {/if}
 {#if world.live}
 	<main class="page">

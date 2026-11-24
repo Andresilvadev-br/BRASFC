@@ -62,6 +62,30 @@ try {
 	await playerCard.waitFor({ state: 'detached' });
 	const { careers } = await (await page.request.get('/api/careers')).json();
 	assert.deepEqual(careers.map(({ id, label }) => ({ id, label })), [{ id: coach.id, label: 'Projeto Bahia' }]);
+
+	// Dev 0.12 · Hybrid Save Engine na carreira individual: servidor fora do ar ao salvar a tática.
+	await page.setViewportSize({ width: 1366, height: 768 });
+	await page.goto(`/carreira/${coach.id}/taticas`);
+	await page.getByRole('heading', { name: 'Táticas', exact: true }).waitFor();
+	const careerApi = `**/api/careers/${coach.id}`;
+	const cut = (route) => route.request().method() === 'PATCH' ? route.abort('internetdisconnected') : route.continue();
+	await page.route(careerApi, cut);
+	await page.getByRole('button', { name: 'Montar melhor 11' }).click();
+	await page.getByRole('button', { name: 'Aplicar na prancheta' }).click();
+	await page.getByRole('button', { name: 'Salvar tática', exact: true }).click();
+	await page.getByText('Tática salva localmente', { exact: true }).first().waitFor();
+	const badge = page.locator('[data-sync]').first();
+	await page.waitForFunction(() => /\(1\)/.test(document.querySelector('[data-sync]')?.textContent ?? ''));
+	await page.reload();
+	await page.getByRole('heading', { name: 'Táticas', exact: true }).waitFor();
+	await page.waitForFunction(() => /\(1\)/.test(document.querySelector('[data-sync]')?.textContent ?? ''), null, { timeout: 15_000 });
+	assert.equal((await (await page.request.get('/api/careers/' + coach.id)).json()).career.data.tactic ?? null, null, 'nada chegou ao servidor ainda');
+	await page.unroute(careerApi, cut);
+	await page.waitForFunction(() => document.querySelector('[data-sync]')?.getAttribute('data-sync') === 'synced', null, { timeout: 40_000 });
+	assert.match(await badge.textContent(), /Sincronizado/);
+	const synced = (await (await page.request.get('/api/careers/' + coach.id)).json()).career;
+	assert.ok(synced.data.tactic, 'a tática da fila local chegou ao save');
+	assert(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1), 'Overflow com o indicador de sincronização');
 	assert.deepEqual(errors, []);
 	console.log('Biblioteca de carreiras aprovada no Chromium em cinco resoluções.');
 } finally {

@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { provideCareerPort } from '#lib/career/port.ts';
-	import { localCareerPort } from '#lib/career/local-port.ts';
+	import { localCareerPort, localSyncChannel } from '#lib/career/local-port.ts';
+	import type { SyncChannel } from '#lib/stores/sync.svelte.ts';
+	import SyncBadge from '#lib/ui/SyncBadge.svelte';
 	import { page } from '$app/state';
 	import { invalidate } from '$app/navigation';
 	import { api } from '#lib/api.ts';
@@ -15,7 +17,18 @@
 
 	let { data, children } = $props();
 	// Dev 0.12: as telas da carreira falam com o armazenamento por esta porta (a online usa a da liga).
-	provideCareerPort(localCareerPort(() => data.career));
+	// Hybrid Save Engine: cada carreira tem sua fila local (sobrevive a recarregar e reconectar).
+	let sync = $state.raw<SyncChannel | null>(null);
+	provideCareerPort(localCareerPort(() => data.career, () => sync));
+	$effect(() => {
+		const channel = localSyncChannel(data.career.id);
+		sync = channel;
+		const stop = channel.start();
+		return () => {
+			stop();
+			if (sync === channel) sync = null;
+		};
+	});
 
 	const base = $derived(`/carreira/${data.career.id}`);
 	let visited = '';
@@ -102,6 +115,7 @@
 		? { href: `${base}/gabinete`, label: 'Ver propostas de emprego' }
 		: { href: `${base}/partida`, label: data.view.next ? 'Ir para o jogo' : data.view.seasonOver ? 'Encerrar temporada' : 'Avançar' }}>
 	{#snippet status()}
+		{#if sync}<SyncBadge channel={sync} />{/if}
 		<WardrobeDialog value={data.career.data.appearance} clubId={data.career.clubId} uniformOptions={!coach} onsave={saveAppearance}
 			kit={coach ? coachKit(data.career.clubId) : playerKit(data.career.clubId, data.career.data.position ?? 'ATA')} />
 	{/snippet}

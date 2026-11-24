@@ -265,7 +265,9 @@
 			const out = await port.saveTactic(sent, baseTactic);
 			if (!out.ok) throw new Error(out.message ?? 'Não foi possível salvar a tática.');
 			baseTactic = structuredClone(sent);
-			notify({ icon: 'save', tone: 'success', title: 'Tática salva', detail: `${sent.formation} · ${MENTALITY_LABELS[sent.mentality]}` });
+			notify(out.queued
+				? { icon: 'save', tone: 'info', title: 'Tática salva localmente', detail: out.message, duration: 6000 }
+				: { icon: 'save', tone: 'success', title: 'Tática salva', detail: `${sent.formation} · ${MENTALITY_LABELS[sent.mentality]}` });
 		} catch (e) {
 			const conflict = e instanceof Error && 'status' in e && (e as { status: number }).status === 409;
 			if (conflict) await port.refresh();

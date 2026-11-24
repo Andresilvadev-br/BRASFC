@@ -3,19 +3,24 @@
 	import { onMount } from 'svelte';
 	import Crest from './Crest.svelte';
 	import type { RoomActivity } from '#lib/realtime/protocol.ts';
+	import { SYNC_LABEL, SYNC_TONE, type SyncChannel } from '#lib/stores/sync.svelte.ts';
 
 	type Friend = { id: string; name: string; club: string; role: string; online: boolean; ready: boolean; activity?: RoomActivity; activityUntil?: number };
-	let { friends, loading = false, status = 'online', syncing = false }: { friends: Friend[]; loading?: boolean; status?: string; syncing?: boolean } = $props();
+	let { friends, loading = false, status = 'online', syncing = false, channel }: { friends: Friend[]; loading?: boolean; status?: string; syncing?: boolean; channel?: SyncChannel } = $props();
 	let open = $state(false);
 	// Durante a partida a ilha se recolhe sozinha para não disputar atenção com o jogo.
 	$effect(() => {
 		if (loading) open = false;
 	});
-	const sync = $derived(status === 'reconnecting' ? { text: 'Reconectando…', tone: 'warn' }
+	// Hybrid Save Engine: a fila local tem prioridade (o usuário precisa saber que há algo a enviar).
+	const queued = $derived(channel?.pending.length ?? 0);
+	const sync = $derived(queued && channel ? { text: `${SYNC_LABEL[channel.status]} · ${queued}`, tone: SYNC_TONE[channel.status] }
+		: channel?.status === 'failed' ? { text: SYNC_LABEL.failed, tone: 'bad' }
+		: status === 'reconnecting' ? { text: 'Reconectando…', tone: 'warn' }
 		: status === 'offline' ? { text: 'Sem conexão: alterações locais aguardam', tone: 'bad' }
 		: status === 'unavailable' ? { text: 'Servidor indisponível', tone: 'bad' }
 		: status !== 'online' ? { text: 'Conectando…', tone: 'warn' }
-		: syncing ? { text: 'Sincronizando…', tone: 'warn' } : { text: 'Sincronizado', tone: 'ok' });
+		: syncing || channel?.status === 'syncing' ? { text: 'Sincronizando…', tone: 'warn' } : { text: 'Sincronizado', tone: 'ok' });
 	let now = $state(0);
 	const activity: Record<RoomActivity, string> = { rodada: 'Na Central da Rodada', carreira: 'Na central do clube', mercado: 'Negociando transferências', admin: 'Administrando a liga',
 		escalacao: 'Administrando o elenco', taticas: 'Configurando táticas', contratos: 'Analisando contratos', base: 'Observando a base',
@@ -42,7 +47,7 @@
 		<span class="dot"></span>
 		{#key ready}<strong use:pop>{ready}/{friends.length} prontos</strong>{/key}
 		<span>{loading ? 'Partida em andamento' : `${online} online`}</span>
-		<span class="sync {sync.tone}" title={sync.text}><i></i>{loading ? '' : sync.text}</span>
+		<span class="sync {sync.tone}" title={channel?.error || sync.text} data-sync={channel?.status}><i></i>{loading ? '' : sync.text}</span>
 		<span aria-hidden="true">{open ? '−' : '+'}</span>
 	</button>
 	{#if open}

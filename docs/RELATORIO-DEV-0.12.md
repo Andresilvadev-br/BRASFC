@@ -1,4 +1,4 @@
-# BRASFC Dev 0.12 — Carreira única e desempenho: relatório parcial (etapa 1)
+# BRASFC Dev 0.12 — Carreira única e desempenho: relatório parcial (etapas 1 a 3)
 
 - **Branch:** `dev-0.12`, criada sobre `dev-87mxsh` (PR #27, Carreira de Treinador 2.0).
 - **Publicação:** nada foi publicado. A versão **não está concluída**; as pendências estão na seção 7.
@@ -207,11 +207,92 @@ O script `scripts/audit-layout.mjs` passou a detectar textos cortados e ignora t
 
 **Testes:** `npm run verify` com **217 aprovados** e 3 ignorados.
 
+## 6.2 Etapa 3 — Carreira única (offline × online) e Hybrid Save Engine
+
+### 6.2.1 Uma interface, dois armazenamentos
+
+As telas da carreira deixaram de pertencer às rotas e foram para `src/lib/ui/career/screens/`:
+Elenco, Táticas, Treinos, Finanças, Clube, Base, Comissão, Gabinete, Calendário, Competições e Copa.
+As mesmas telas, sem cópia, rodam:
+
+- na carreira individual (`/carreira/[id]/…`), onde as rotas viraram invólucros de duas linhas;
+- na carreira online (`/multiplayer/sala/[código]?secao=…`), dentro do `ConnectedWorld`.
+
+As telas nunca chamam a API diretamente: falam com uma **porta de armazenamento** (`src/lib/career/port.ts`).
+
+| Porta | Onde grava | Concorrência |
+|---|---|---|
+| `local` (`local-port.ts`) | save da carreira (servidor local no offline ou API de carreiras) | versão da carreira (409 → reconsulta) |
+| `online` (no `ConnectedWorld`) | universo compartilhado da liga, por comandos autoritativos | revisão do universo + id de operação (idempotência) |
+
+Para as telas receberem os mesmos dados, o servidor projeta o clube do treinador online numa `Career` (`projectCareer`, com `sharedWorld: true`). O navegador calcula `careerView`, `manageView` e `officeView` exatamente como na carreira individual. O teste confirma que o elenco calculado pela tela é o elenco oficial da liga, e que caixa e tática batem.
+
+Também passaram a ser servidor compartilhado:
+
+- a biblioteca **Minhas Táticas** (`applyPresetOperation`);
+- a dispensa de dicas do auxiliar.
+
+O que continua diferente, por regra de jogo e não por duplicação:
+
+- a Central online é o hub da liga (prontidão, convites, chat);
+- a troca de clube online acontece pelas vagas da liga (não há Central de Propostas);
+- Mundo, Estatísticas, História e Mercado têm implementação própria (o Mercado já usa o `MarketWorkspace` compartilhado).
+
+### 6.2.2 Hybrid Save Engine
+
+| Peça | Arquivo | Função |
+|---|---|---|
+| Armazenamento local | `src/lib/sync/local-store.ts` | IndexedDB (navegador e Electron); sem ele, cai para a memória e avisa que a fila vale só naquela janela. Limite de 4 MB por registro. |
+| Fila de operações | `src/lib/sync/outbox.ts` | Persistente, entregue em ordem, deduplicada por campo, com espera exponencial (1 s → 30 s) e no máximo 40 tentativas. |
+| Canal reativo | `src/lib/stores/sync.svelte.ts` | Um por carreira ou liga. Mostra o estado nos indicadores e reenvia ao reconectar (evento `online`, timer e ao abrir a tela). |
+| Indicadores | `SyncBadge.svelte` (carreira individual, barra superior) e `Island.svelte` (liga) | Salvo localmente · Aguardando sincronização · Sincronizando · Sincronizado · Reconectando · Falha de sincronização, com o número de alterações na fila e o botão "Tentar agora". |
+
+**Regras de segurança**
+
+- **O que pode esperar na fila:**
+  - tática, plano de treinos e dicas (nas duas carreiras);
+  - biblioteca de táticas, só no online, porque o servidor reconhece o id da operação.
+- **O que nunca vai para a fila:** dinheiro, mercado, contratos, diretoria e resultados oficiais. Essas ações continuam exigindo resposta imediata do servidor.
+- **Idempotência:**
+  - online: a operação é reenviada com o MESMO id. O servidor confere o recibo antes da revisão, então uma resposta perdida não duplica nada (há teste com revisão antiga);
+  - local: as operações enfileiradas são idempotentes por valor.
+- **Conflito na tática:** a fila guarda a tática-base. Se a tática oficial mudou em outra janela enquanto o usuário estava sem conexão, a alteração local é descartada e o usuário é avisado. Ela nunca sobrescreve em silêncio.
+- **Revisão mudou ou rodada em andamento (409):** a fila atualiza o universo e tenta de novo depois. Recusas definitivas saem da fila com o aviso "Falha de sincronização".
+- **Leitura otimista:** na liga, a tela mostra a tática e o plano salvos localmente mesmo antes de chegarem ao servidor. Na carreira individual, o rascunho continua na tela até sincronizar.
+
+**Fora desta etapa:** o *snapshot* completo do universo não é guardado em cache local, porque a tela da liga é carregada pelo servidor (SSR). Abrir uma liga sem nenhuma conexão continua indisponível. A fila e as alterações pendentes, porém, sobrevivem a recarregar e a fechar o app.
+
+### 6.2.3 Testes desta etapa
+
+- `tests/sync-engine.test.ts` (6 testes):
+  - deduplicação por campo;
+  - persistência entre recargas e isolamento por escopo;
+  - ordem e espera exponencial com o mesmo id;
+  - conflito, recusa e limite de tentativas;
+  - erro inesperado;
+  - estados do canal.
+- `tests/connected-world.test.ts`:
+  - projeção online igual à individual;
+  - reenvio com o mesmo id e revisão antiga sem duplicar;
+  - operação nova com revisão antiga bloqueada.
+- **Navegador, online (`tests/multiplayer-browser.mjs`):**
+  - Táticas, Finanças, Gabinete, Calendário e Elenco compartilhados;
+  - comandos para o servidor cortados → "Salvar tática atual" vai para a fila;
+  - a Island mostra "· 1";
+  - a fila **sobrevive ao recarregar**;
+  - com a conexão de volta, aparece "Sincronizado" e a biblioteca tem **exatamente 1** tática.
+- **Navegador, carreira individual (`tests/career-browser.mjs`):**
+  - PATCH cortado → "Tática salva localmente" e o selo mostra "(1)";
+  - após recarregar, a fila continua e nada chegou ao servidor;
+  - com a conexão de volta, aparece "Sincronizado" e a tática está no save;
+  - sem rolagem horizontal.
+- `npm run verify`: 0 erros de tipo, **225 aprovados** e 3 ignorados; build OK.
+
 ## 7. Pendências (não concluídas nesta etapa)
 
-1. **Unificação offline × online.** Os mesmos componentes e menus ainda não foram aplicados à carreira online: `ConnectedWorld` continua sendo uma interface própria. A camada de abstração de armazenamento (local × remoto) ainda não existe.
-2. **Hybrid Save Engine.** Ainda não existem cache local persistente, sincronização incremental, fila de operações pendentes nem indicadores de "salvo localmente / sincronizando".
-3. **Dynamic Island da carreira online.** A base está feita (seção 6.1). Falta mostrar o estado "salvo localmente", que depende do Hybrid Save Engine.
+1. **Unificação:** feita (seção 6.2.1). Ainda restam a Central, o Mundo, as Estatísticas e a História online, que são próprios da liga.
+2. **Hybrid Save Engine:** feito (seção 6.2.2). Falta o cache do universo inteiro para abrir uma liga sem nenhuma conexão.
+3. **Dynamic Island:** mostra "salvo localmente" e a fila (seção 6.2.2).
 4. **Multiplayer.** O código de servidor das funções antigas (atleta e auxiliar) segue ativo só para ligas legadas e deve ser removido depois de migrá-las.
 5. **VPS e banco.** Faltam auditoria de índices e consultas, carregamento e descarregamento de universos e medições na VPS.
 6. **Auditoria de interface.** Faltam a escala de exibição do Windows, o Electron e as telas da carreira online.

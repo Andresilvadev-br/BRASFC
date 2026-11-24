@@ -3,6 +3,7 @@ import type { Career } from '#lib/domain/career.ts';
 import type { NegotiationLog } from '#lib/domain/management.ts';
 import type { Tactic } from '#lib/domain/tactics.ts';
 import type { TrainingPlan } from '#lib/domain/drills.ts';
+import type { SyncChannel } from '#lib/stores/sync.svelte.ts';
 
 /**
  * Dev 0.12 · camada única entre as telas da carreira e o armazenamento.
@@ -21,6 +22,13 @@ export interface ClubActionOutcome {
 	negotiation?: NegotiationLog | null;
 }
 
+/** `queued`: a conexão caiu e a alteração ficou na fila local (Hybrid Save Engine) */
+export interface SaveOutcome {
+	ok: boolean;
+	message?: string;
+	queued?: boolean;
+}
+
 export interface CareerPort {
 	kind: 'local' | 'online';
 	/** link para outra tela da mesma carreira */
@@ -28,15 +36,17 @@ export interface CareerPort {
 	/** ações de gestão do clube (mercado, contratos, base, finanças, gabinete…), validadas no servidor */
 	clubAction(body: Record<string, unknown>): Promise<ClubActionOutcome>;
 	/** salva a tática; `base` é a tática sobre a qual o rascunho foi feito (detecta edição concorrente) */
-	saveTactic(tactic: Tactic, base: Tactic): Promise<{ ok: boolean; message?: string }>;
-	saveTrainingPlan(plan: TrainingPlan): Promise<{ ok: boolean; message?: string }>;
+	saveTactic(tactic: Tactic, base: Tactic): Promise<SaveOutcome>;
+	saveTrainingPlan(plan: TrainingPlan): Promise<SaveOutcome>;
 	/** operações da biblioteca "Minhas Táticas" */
-	presetOp(op: Record<string, unknown>): Promise<{ message: string }>;
+	presetOp(op: Record<string, unknown>): Promise<{ message: string; queued?: boolean }>;
 	/** dispensar uma dica do auxiliar (preferência do treinador) */
 	dismissTip(id: string): Promise<void>;
 	/** recarrega os dados oficiais da tela */
 	refresh(): Promise<void>;
 	supports(feature: PortFeature): boolean;
+	/** canal de sincronização (fila local + estado para os indicadores) */
+	readonly sync?: SyncChannel | null;
 }
 
 const KEY = Symbol('brasfc.career-port');

@@ -214,4 +214,30 @@ describe('universo compartilhado', () => {
 		await command('club', { request: { action: 'ingresso', price: 55 } });
 		expect((await get()).career?.data.club?.ticketPrice).toBe(55);
 	}, 60000);
+
+	it('Dev 0.12 · Hybrid Save: reenviar da fila local com o mesmo id não duplica, mesmo com revisão antiga', async () => {
+		const owner = (await createGuestProfile(db)).profile.id;
+		const room = await createRoom(db, owner, 'Fila local');
+		const get = () => worldSnapshot(db, room, owner);
+		const command = async (action: string, params: Record<string, unknown> = {}, op = randomUUID(), revision?: number) =>
+			applyWorldCommand(db, room, owner, { ...params, action, op, revision: revision ?? (await get()).revision });
+		await command('assign', { role: 'coach', club: 'palmeiras' });
+		const before = await get();
+		const { autoLineup } = await import('#lib/domain/tactics.ts');
+		const { careerView } = await import('#lib/domain/view.ts');
+		const squad = careerView(before.career!, before.seasonResults).squad;
+		const op = randomUUID();
+		const preset = { op: 'save', name: 'Offline 4-4-2', tactic: { ...before.tactic, formation: '4-4-2', lineup: autoLineup('4-4-2', squad), bench: undefined } };
+		// 1ª entrega chega ao servidor, mas a resposta "se perde" (o cliente não sabe que deu certo).
+		await command('preset', { preset }, op, before.revision);
+		// Enquanto isso, outra gravação muda a revisão do universo.
+		await command('dismiss-tip', { tip: 'formacao-ruim' });
+		// A fila reenvia a MESMA operação com a revisão antiga: o servidor reconhece e não duplica.
+		await expect(command('preset', { preset }, op, before.revision)).resolves.toBeDefined();
+		const after = await get();
+		expect(after.career?.data.tacticPresets?.map((p) => p.name)).toEqual(['Offline 4-4-2']);
+		expect(after.career?.data.dismissedTips).toEqual(['formacao-ruim']);
+		// Uma operação NOVA com revisão antiga continua bloqueada (409): a fila atualiza e reenvia.
+		await expect(command('dismiss-tip', { tip: 'outra' }, randomUUID(), before.revision)).rejects.toMatchObject({ status: 409 });
+	}, 60000);
 });

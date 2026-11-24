@@ -35,7 +35,8 @@
 		try {
 			const out = await port.saveTrainingPlan(body.trainingPlan as TrainingPlan);
 			if (!out.ok) throw new Error(out.message ?? 'Não foi possível salvar o plano.');
-			notify({ icon: 'check', tone: 'success', title: 'Treino atualizado', detail: label });
+			notify(out.queued ? { icon: 'save', tone: 'info', title: 'Treino salvo localmente', detail: out.message, duration: 6000 }
+				: { icon: 'check', tone: 'success', title: 'Treino atualizado', detail: label });
 		} catch (e) {
 			notify({ icon: 'alert', tone: 'error', title: e instanceof Error ? e.message : 'Falha ao salvar' });
 		} finally {

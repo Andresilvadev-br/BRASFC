@@ -110,6 +110,24 @@ try {
 	await coach.getByRole('button', { name:'Salvar tática', exact:true }).click();
 	await visible(coach.getByText('Tática salva', { exact:true }).first());
 	await noOverflow(coach);
+	// Dev 0.12 · Hybrid Save Engine: sem conexão com o servidor, a operação fica na fila local,
+	// sobrevive a recarregar a página e sincroniza sozinha quando a conexão volta (sem duplicar).
+	const cut = (route) => route.request().method() === 'POST' ? route.abort('internetdisconnected') : route.continue();
+	await coach.route('**/api/rooms/*/world', cut);
+	await coach.getByRole('button', { name:'Salvar tática atual' }).click();
+	await coach.getByRole('dialog').getByRole('button', { name:'Salvar', exact:true }).click();
+	await visible(coach.getByText(/será atualizada quando a conexão voltar/).first());
+	const island = coach.locator('.island .sync');
+	await coach.waitForFunction(() => /· 1/.test(document.querySelector('.island .sync')?.textContent ?? ''));
+	await coach.reload();
+	await visible(coach.getByRole('heading', { name:'Táticas', exact:true }));
+	await coach.waitForFunction(() => /· 1/.test(document.querySelector('.island .sync')?.textContent ?? ''), null, { timeout:15_000 });
+	await coach.unroute('**/api/rooms/*/world', cut);
+	await coach.waitForFunction(() => /^Sincronizado$/.test(document.querySelector('.island .sync')?.textContent?.trim() ?? ''), null, { timeout:40_000 });
+	assert.equal(await island.getAttribute('data-sync'), 'synced');
+	await coach.reload();
+	await visible(coach.getByText('Minhas Táticas'));
+	assert.equal(await coach.locator('.library .card').count(), 1, 'a operação da fila chegou uma única vez');
 	await coach.goto(`${room}?secao=financas`);
 	await visible(coach.getByText('Negociar verba com a diretoria →'));
 	await coach.goto(`${room}?secao=gabinete`);
