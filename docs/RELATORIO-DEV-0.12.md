@@ -117,8 +117,26 @@ Etapas depois da correção, em média:
 | Gravação | ~15 ms |
 | Recálculo das telas ao voltar (servidor) | ~13 ms |
 
+**Mesma medição em PostgreSQL 16.15** (banco usado na VPS), local neste contêiner, 12 passos:
+
+| | P50 | Máximo |
+|---|---:|---:|
+| Antes | 2.032 ms | 2.307 ms |
+| Depois (com pré-cálculo pronto) | 229 ms | 271 ms |
+
+Na gravação, a transação da rodada inteira leva cerca de 15 ms.
+
+**Índices:** os índices existentes cobrem as consultas mais frequentes:
+- resultados por temporada, pela chave primária de `career_matches`;
+- mensagens por carreira;
+- lançamentos por temporada;
+- lista de carreiras do perfil;
+- jogos da liga por calendário.
+
+Não foi necessária nenhuma migração.
+
 **O que ainda não foi medido:**
-- PostgreSQL da VPS;
+- a própria VPS (o PostgreSQL foi medido localmente);
 - latência de rede;
 - hardware de entrada;
 - o tempo total do clique até a tela de gestão no navegador.
