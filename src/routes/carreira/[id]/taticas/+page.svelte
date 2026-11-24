@@ -436,8 +436,8 @@
 								<span class="role">{slot.position}</span>
 								{#if p}<span class="overall num" title="Overall">{p.overall}</span>{/if}
 							</span>
-							<span class="pname">{p?.shortName ?? '—'}{p ? ` · ${visibleSquadAge(p) ?? '—'}a` : ''}</span>
-							<span class="fn">{ROLES[tactic.roles[i]]?.label ?? ''}</span>
+							<span class="pname" title={p?.name}>{p?.shortName ?? '—'}{p && visibleSquadAge(p) !== null ? ` · ${visibleSquadAge(p)}a` : ''}</span>
+							<span class="fn" title={ROLES[tactic.roles[i]]?.label ?? ''}>{ROLES[tactic.roles[i]]?.label ?? ''}</span>
 							{#if p && p.condition < 75}<span class="cond" title="Condição física: {p.condition}%">{p.condition}%</span>{/if}
 							{#if p && suspended.has(p.id)}<span class="susp" title={suspensionLabel(playerDiscipline(discipline, p.id).suspensions[0] ?? { remaining: 1 })}>SUSP</span>{/if}
 						</button>
@@ -478,7 +478,7 @@
 						ondragover={(e) => e.preventDefault()} ondrop={(e) => onDrop(e, { kind, id: p.id })}
 						onclick={() => clickOffPitch(kind, p.id)} aria-pressed={isSel(kind, p.id)}>
 						<Pixel appearance={p.appearance} kit={playerKit(data.career.clubId, p.position)} size={30} />
-						<span class="bn">{p.name} · {visibleSquadAge(p) ?? '—'} anos{#if suspended.has(p.id)} <em class="susp-tag">{suspensionLabel(playerDiscipline(discipline, p.id).suspensions[0] ?? { remaining: 1 })}</em>{/if}</span><span class="bp">{p.position}</span><span class="bo num">{p.overall}</span>
+						<span class="bn" title={p.name}>{p.name}{visibleSquadAge(p) !== null ? ` · ${visibleSquadAge(p)} anos` : ''}{#if suspended.has(p.id)} <em class="susp-tag">{suspensionLabel(playerDiscipline(discipline, p.id).suspensions[0] ?? { remaining: 1 })}</em>{/if}</span><span class="bp">{p.position}</span><span class="bo num">{p.overall}</span>
 					</button>
 				</li>
 			{/snippet}
@@ -685,7 +685,7 @@
 
 <style>
 	.library-wrap { padding: 10px 12px 12px; }
-	.susp { position: absolute; top: -6px; right: -6px; padding: 1px 5px; border-radius: 6px; background: #b91c1c; color: #fff; font: 700 0.6rem/1.4 inherit; }
+	.susp { position: absolute; top: -6px; right: -6px; padding: 1px 5px; border-radius: 6px; background: #b91c1c; color: #fff; font: 700 0.7rem/1.4 inherit; }
 	.susp-tag { font-style: normal; color: #fca5a5; font-size: var(--fs-xs); }
 	.susp-warn { display: flex; gap: 6px; align-items: center; margin: 0 12px; padding: 8px 10px; border-radius: 10px; background: rgb(239 68 68 / 0.12); color: #fca5a5; font-size: var(--fs-sm); }
 	.best-score { margin: 0 0 10px; }
@@ -1190,7 +1190,7 @@
 		font-variant-numeric: tabular-nums;
 	}
 	.money small {
-		font-size: 0.6em;
+		font-size: max(11px, 0.6em);
 		color: var(--text-3);
 		font-family: var(--font-body, inherit);
 	}

@@ -438,7 +438,7 @@
 	.facts dt { font-size: var(--fs-xs); color: var(--text-3); text-transform: uppercase; letter-spacing: 0.06em; }
 	.facts dd { margin: 2px 0 0; font-weight: 600; overflow-wrap: anywhere; }
 	.form { display: inline-flex; gap: 2px; margin-left: 6px; vertical-align: middle; }
-	.form i, .recent i { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 4px; font: 700 0.65rem/1 inherit; font-style: normal; }
+	.form i, .recent i { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 4px; font: 700 0.7rem/1 inherit; font-style: normal; }
 	.form .v, .recent .v i { background: #15803d; } .form .e, .recent .e i { background: #64748b; } .form .d, .recent .d i { background: #b91c1c; }
 	.why { margin: 0; color: var(--text-2); font-size: var(--fs-sm); }
 	.deadline { margin: 0; display: flex; gap: 6px; align-items: center; font-size: var(--fs-xs); color: var(--text-3); }

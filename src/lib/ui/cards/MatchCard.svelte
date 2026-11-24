@@ -66,7 +66,8 @@
 	.team { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--text-2); font-weight: 600; }
 	.team.away { justify-content: flex-end; }
 	.team.win { color: var(--text); }
-	.name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); }
+	/* Siglas de 3 a 4 letras nunca são cortadas. */
+	.name { white-space: nowrap; font-size: var(--fs-sm); flex: none; }
 	.center { font-family: var(--font-display); font-weight: 800; font-size: 1.25rem; min-width: 3.2em; text-align: center; letter-spacing: 0.02em; }
 	.center em { font-style: normal; color: var(--text-3); margin: 0 5px; font-weight: 600; }
 </style>

@@ -116,8 +116,8 @@
 				{#if s.p}
 					<button class="chip-p" style="left:{s.x}%;top:{s.y}%" onclick={() => open(s.id)} data-umx-press>
 						<span class="o">{s.p.overall}</span>
-						<span class="n">{s.p.shortName}</span>
-						<span class="ps">{s.pos} · {visibleSquadAge(s.p) ?? '—'}a</span>
+						<span class="n" title={s.p.name}>{s.p.shortName}</span>
+						<span class="ps">{s.pos}{visibleSquadAge(s.p) !== null ? ` · ${visibleSquadAge(s.p)}a` : ''}</span>
 						{#if suspensions.get(s.id)}<span class="susp" title={suspensions.get(s.id)}>SUSP</span>{/if}
 						<i class="cond" style="--c:{fit.get(s.id) ?? 95}%" class:low={(fit.get(s.id) ?? 95) < 75}></i>
 					</button>
@@ -132,7 +132,7 @@
 					<div class="blist">
 						{#each group.rows as p (p.id)}
 							<button class="brow" onclick={() => open(p.id)} data-umx-press>
-								<span class="ps">{p.position}</span><span class="nm">{p.name} · {visibleSquadAge(p) ?? '—'}a</span>
+								<span class="ps">{p.position}</span><span class="nm" title={p.name}>{p.name}{visibleSquadAge(p) !== null ? ` · ${visibleSquadAge(p)} anos` : ''}</span>
 								<i class="cond mini" style="--c:{fit.get(p.id) ?? 95}%" class:low={(fit.get(p.id) ?? 95) < 75} title="Condição {fit.get(p.id) ?? 95}%"></i>
 								<b>{p.overall}</b>
 								{#if p.contract && p.contract.until <= c.season}<span class="warn" title="Contrato termina nesta temporada">●</span>{/if}
@@ -233,7 +233,7 @@
 </Sheet>
 
 <style>
-	.susp { margin-left: 4px; padding: 0 5px; border-radius: 5px; background: #b91c1c; color: #fff; font: 700 0.6rem/1.5 inherit; }
+	.susp { margin-left: 4px; padding: 0 5px; border-radius: 5px; background: #b91c1c; color: #fff; font: 700 0.7rem/1.5 inherit; }
 	.head {
 		display: flex;
 		justify-content: space-between;

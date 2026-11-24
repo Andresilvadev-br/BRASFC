@@ -182,7 +182,7 @@
 		<section class="ticker glass" use:reveal={{ index: 3 }} aria-label="Últimas notícias">
 			<span class="tk"><Icon name="globe" size={16} /> Mundo</span>
 			<ul>
-				{#each [...data.office.universe.news].reverse().slice(0, 3) as n (n.id)}<li><a href="{base}/mundo">{n.title}</a></li>{/each}
+				{#each [...data.office.universe.news].reverse().slice(0, 3) as n (n.id)}<li><a href="{base}/mundo" title={n.title}>{n.title}</a></li>{/each}
 			</ul>
 		</section>
 	{/if}
@@ -241,7 +241,7 @@
 		<ul>
 			{#each inbox as msg (msg.id)}
 				<li class:unread={!msg.read} class:important={msg.kind === 'important'}>
-					<a href="{base}/mensagens?m={msg.id}"><span class="flag"></span><span class="from">{msg.sender}</span><span class="subject">{msg.subject}</span></a>
+					<a href="{base}/mensagens?m={msg.id}"><span class="flag"></span><span class="from">{msg.sender}</span><span class="subject" title={msg.subject}>{msg.subject}</span></a>
 				</li>
 			{/each}
 		</ul>

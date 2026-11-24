@@ -21,7 +21,7 @@
 			{#if unemployed}<Icon name="briefcase" size={42} />{:else}<Crest clubId={clubId} size={42} />{/if}
 			<span class="names">
 				<strong>{clubName}</strong>
-				<small>{roleLabel} · {personName}</small>
+				<small title="{roleLabel} · {personName}">{roleLabel} · {personName}</small>
 			</span>
 		</a>
 
@@ -122,9 +122,7 @@
 	.names small {
 		color: var(--text-3);
 		font-size: var(--fs-xs);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
+		overflow-wrap: anywhere;
 	}
 	nav {
 		position: relative;

@@ -5,7 +5,6 @@
 	import type { Appearance } from '#lib/domain/appearance.ts';
 	import { coachKit, playerKit } from '#lib/pixel/kits.ts';
 	import WardrobeDialog from '#lib/ui/career/WardrobeDialog.svelte';
-	import { MODE_LABELS } from '#lib/domain/career.ts';
 	import { formatShort } from '#lib/domain/dates.ts';
 	import { setIslandContext } from '#lib/stores/island.svelte.ts';
 	import CareerShell from '#lib/ui/career/CareerShell.svelte';
@@ -92,7 +91,7 @@
 	<p class="load-notice" role="status">Não foi possível carregar {data.degraded.join(' e ')}. <button type="button" onclick={() => invalidate('app:career')}>Tentar novamente</button></p>
 {/if}
 <CareerShell {base} clubId={data.career.clubId} unemployed={coach && data.manage.club.board.dismissed} clubName={coach && data.manage.club.board.dismissed ? 'Sem clube' : data.view.club.name} color={coach && data.manage.club.board.dismissed ? '#374151' : data.view.club.colors.primary}
-	personName={data.career.personName} roleLabel={MODE_LABELS[data.career.mode]} {groups} {current}
+	personName={data.career.personName} roleLabel="Treinador" {groups} {current}
 	date={data.career.gameDate} season={data.career.season} cup={step?.kind === 'cup'} {stepLabel}
 	balance={coach && !data.manage.club.board.dismissed ? data.manage.club.balance : undefined}
 	match={coach && data.manage.club.board.dismissed
