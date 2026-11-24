@@ -1,6 +1,6 @@
 # BRASFC Website
 
-Plataforma oficial de divulgação e comunidade, com servidor e banco próprios. Base do acervo BRASFC em `c51f0da`.
+Plataforma oficial de divulgação e comunidade, com servidor e banco próprios. A landing page oferece download para Windows e acesso ao jogo no navegador pelo endereço que o aplicativo já usa. Base do acervo BRASFC em `c51f0da`.
 
 ## Executar
 
@@ -27,14 +27,32 @@ npm run test:browser
 
 O ensaio de navegador usa banco em memória e a fotografia local do catálogo. É possível fornecer `WEBSITE_CHROMIUM_EXECUTABLE` e `WEBSITE_CHROMIUM_ARGS` se o ambiente oferecer outro runtime Chromium. As capturas são gravadas em `test-results/` por padrão.
 
-## Publicação futura
+## Publicação na VPS
 
-- Servir `website/` como serviço Node independente em domínio ou subdomínio dedicado. O build fica em `website/dist/`. O runtime também precisa das dependências de produção de `website/package-lock.json`.
+- `compose.yml` executa o site como um serviço independente na rede externa `brasfc-edge` do Caddy. Usa o volume `brasfc-website_community` para os dados do fórum. A porta `4175` fica acessível ao proxy pela rede Docker.
 - Configurar TLS e `WEBSITE_ORIGIN` para a origem pública do website. A origem atualmente usada pelo aplicativo Electron é recusada na inicialização do site. Preservar DNS, rotas, cookies, WebSockets e proxy da aplicação do jogo.
-- Montar um volume exclusivo para `WEBSITE_DATA`, com backup e restauração testados. SQLite usa WAL. Fazer backup consistente via mecanismo do SQLite ou com o serviço parado. O fluxo OAuth temporário reside na memória da instância Node. Iniciar com uma única instância.
+- SQLite usa WAL. Fazer backup consistente do volume via mecanismo do SQLite ou com o serviço parado. O fluxo OAuth temporário reside na memória da instância Node. Executar uma única instância.
 - O serviço assume TLS na borda, limite de tamanho coerente com 2 MB de anexo e limites de tráfego no proxy dedicado. Não confia em IP fornecido por cabeçalhos do navegador. Atrás de proxy, o limite de início de login usa o endereço da conexão e deve ser considerado na configuração da borda.
-- Executar as verificações nesta origem dedicada antes de autorizar mudança de DNS. Validar download, mídia, banco vazio, política de privacidade e testes de navegador com a configuração real.
-- A origem do jogo e os workflows existentes ficam fora do processo de publicação do website.
+
+Na VPS, confirmar a rede do proxy e registrar o resultado do endpoint `/api/health` do jogo antes da mudança. Iniciar o serviço no diretório `website/`. Substituir a origem do exemplo pelo endereço DuckDNS reservado ao projeto.
+
+```sh
+export WEBSITE_ORIGIN=https://brasfc.duckdns.org
+docker network inspect brasfc-edge
+docker compose config --quiet
+docker compose up --build --detach --wait
+```
+
+Apontar apenas o host dedicado do site para a VPS. No Caddy vigente, guardar a configuração anterior e acrescentar um bloco de host independente, usando o endereço confirmado.
+
+```caddyfile
+brasfc.duckdns.org {
+	encode zstd gzip
+	reverse_proxy brasfc-website:4175
+}
+```
+
+Validar a configuração no contêiner Caddy e aplicar com `caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile`. Conferir HTTPS, `/download`, `/galeria`, `/comunidade` e repetir a consulta ao `/api/health` na origem do jogo. Em caso de falha, restaurar a configuração anterior, recarregar o Caddy e parar somente `brasfc-website` pelo Compose local. O volume do fórum deve ser preservado.
 
 ## Identidade BRASFC
 
