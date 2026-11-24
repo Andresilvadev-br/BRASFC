@@ -1,0 +1,28 @@
+{
+  "name": "brasfc-official-website",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "npm run build && node --watch dist/server.mjs",
+    "start": "node dist/server.mjs",
+    "build": "node scripts/build.mjs",
+    "test": "node --test test/*.test.mjs",
+    "releases:refresh": "node scripts/releases.mjs",
+    "test:browser": "node test/browser.mjs"
+  },
+  "dependencies": {
+    "@fontsource/barlow-condensed": "5.2.8",
+    "@fontsource/inter": "5.2.8",
+    "openid-client": "6.8.2",
+    "sharp": "0.34.5",
+    "ultra-motion-x": "https://codeload.github.com/Andresilvadev-br/ULTRA-MOTION-X/tar.gz/25344fb5d525613860402e2a13ee22f782333eaa"
+  },
+  "devDependencies": {
+    "axe-core": "4.11.1",
+    "playwright": "1.62.1"
+  }
+}
