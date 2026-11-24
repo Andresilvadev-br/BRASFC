@@ -83,7 +83,7 @@
 	</main>
 {:else}
 	<ConnectedWorld code={data.room.code} initial={data.world} profileId={data.profileId} revision={s.worldRevision} socialRevision={s.chatVersion.league}
-		leagueName={data.room.name} chatVersions={s.chatVersion} membership={s.room?.members} online={s.status === 'online'} onactivity={conn.setActivity}>
+		leagueName={data.room.name} chatVersions={s.chatVersion} membership={s.room?.members} online={s.status === 'online'} connectionStatus={s.status} onactivity={conn.setActivity}>
 		{#snippet connection()}
 			<div class="status" role="status">
 					<span class="conn" data-s={s.status}><span class="led"></span>{s.status === 'online' ? 'Conectado em tempo real' : s.status === 'reconnecting' ? 'Reconectando…' : s.status === 'offline' ? 'Sem conexão de rede' : s.status === 'unavailable' ? 'Servidor temporariamente indisponível' : 'Conectando…'}</span>

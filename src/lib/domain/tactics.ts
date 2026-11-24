@@ -283,3 +283,26 @@ export function tacticKey(t: Tactic): string {
 export function sameTactic(a: Tactic, b: Tactic): boolean {
 	return tacticKey(a) === tacticKey(b);
 }
+
+/**
+ * Tática com os atletas disponíveis: quem saiu do elenco ou está suspenso deixa a vaga para o melhor
+ * encaixe entre os demais; o banco perde os indisponíveis. Formação, estilo e instruções ficam.
+ */
+export function eligibleTactic<T extends Pick<Tactic, 'formation' | 'lineup'> & { bench?: string[] }>(tactic: T, squad: SquadPlayer[]): T {
+	const ids = new Set(squad.map((p) => p.id));
+	const slots = FORMATIONS[tactic.formation];
+	const lineup = tactic.lineup.map((id) => (ids.has(id) ? id : ''));
+	const used = new Set(lineup.filter(Boolean));
+	for (let i = 0; i < slots.length; i++) {
+		if (lineup[i]) continue;
+		const best = squad
+			.filter((p) => !used.has(p.id))
+			.map((p) => ({ p, score: Math.max(positionFit(p.position, slots[i].position), p.secondary?.includes(slots[i].position) ? 0.92 : 0) * 100 + p.overall }))
+			.sort((a, b) => b.score - a.score)[0]?.p;
+		if (best) {
+			lineup[i] = best.id;
+			used.add(best.id);
+		}
+	}
+	return { ...tactic, lineup, ...(tactic.bench ? { bench: tactic.bench.filter((id) => ids.has(id) && !used.has(id)) } : {}) };
+}

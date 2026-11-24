@@ -98,7 +98,7 @@
 							<span class="avatar" aria-hidden="true"><Icon name={m.kind === 'important' ? 'bell' : 'mail'} size={18} /></span>
 							<span class="txt">
 								<span class="from">{m.sender}</span>
-								<span class="subj">{m.subject}</span>
+								<span class="subj" title={m.subject}>{m.subject}</span>
 							</span>
 							<span class="date">{formatShort(m.gameDate)}</span>
 						</button>

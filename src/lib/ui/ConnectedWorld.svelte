@@ -1,5 +1,4 @@
 <script lang="ts">
-	import PlayerIdentityFields from '#lib/ui/career/PlayerIdentityFields.svelte';
 	import LeagueChat from '#lib/ui/career/LeagueChat.svelte';
 	import MarketSearch from '#lib/ui/market/MarketSearch.svelte';
 	import type { MarketProfile } from '#lib/domain/market-search.ts';
@@ -13,7 +12,6 @@
 	import { page } from '$app/state';
 	import { ApiError, api, connectionIssue } from '#lib/api.ts';
 	import { DEFAULT_APPEARANCE, isAppearance, type Appearance } from '#lib/domain/appearance.ts';
-	import PositionPicker from './PositionPicker.svelte';
 	import { isStartAge, isNationality, isDominantFoot } from '#lib/domain/player-profile.ts';
 	import AppearanceEditor from './career/AppearanceEditor.svelte';
 	import WardrobeDialog from './career/WardrobeDialog.svelte';
@@ -21,9 +19,31 @@
 	import { coachKit, playerKit } from '#lib/pixel/kits.ts';
 	import type { PresenceMember, RoomActivity } from '#lib/realtime/protocol.ts';
 	import Island from './Island.svelte';
+	import { provideCareerPort, type CareerPort } from '#lib/career/port.ts';
+	import type { CareerScreenData } from '#lib/career/screen-data.ts';
+	import type { Career as CareerSave } from '#lib/domain/career.ts';
+	import type { StoredRoundResult } from '#lib/domain/league.ts';
+	import { careerView } from '#lib/domain/view.ts';
+	import { manageView } from '#lib/domain/manageview.ts';
+	import { officeView } from '#lib/domain/officeview.ts';
+	import SquadScreen from './career/screens/SquadScreen.svelte';
+	import TacticsScreen from './career/screens/TacticsScreen.svelte';
+	import TrainingScreen from './career/screens/TrainingScreen.svelte';
+	import FinanceScreen from './career/screens/FinanceScreen.svelte';
+	import ClubScreen from './career/screens/ClubScreen.svelte';
+	import StaffScreen from './career/screens/StaffScreen.svelte';
+	import AcademyScreen from './career/screens/AcademyScreen.svelte';
+	import OfficeScreen from './career/screens/OfficeScreen.svelte';
+	import CalendarScreen from './career/screens/CalendarScreen.svelte';
+	import CompetitionsScreen from './career/screens/CompetitionsScreen.svelte';
+	import CupScreen from './career/screens/CupScreen.svelte';
+	import Switch from './Switch.svelte';
 	import LiveMatch from './match/LiveMatch.svelte';
 	import type { worldClubLineup, worldReplay, worldSnapshot } from '#lib/server/connected-world.ts';
-	import { sameTactic, type Tactic } from '#lib/domain/tactics.ts';
+	import { sameTactic, tacticKey, type Tactic } from '#lib/domain/tactics.ts';
+	import { reportSync } from '#lib/career/local-port.ts';
+	import { SyncChannel } from '#lib/stores/sync.svelte.ts';
+	import type { Delivery, PendingOp } from '#lib/sync/outbox.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { formatShort } from '#lib/domain/dates.ts';
 	import { DEFAULT_PLAN, type TrainingPlan } from '#lib/domain/drills.ts';
@@ -56,8 +76,8 @@
 
 	type World = Awaited<ReturnType<typeof worldSnapshot>>;
 	type Member = Pick<World['members'][number], 'profileId' | 'displayName' | 'role'>;
-	let { code, initial, profileId, revision, membership, online = false, onactivity, lobby, connection, leagueName, chatVersions, socialRevision }: { code: string; initial: World; profileId: string; revision?: number;
-		leagueName: string; socialRevision?: number; chatVersions?: { league: number; staff: number }; membership?: PresenceMember[]; online?: boolean; onactivity?: (value: RoomActivity) => void; lobby?: Snippet<[World, Snippet]>; connection?: Snippet } = $props();
+	let { code, initial, profileId, revision, membership, online = false, connectionStatus, onactivity, lobby, connection, leagueName, chatVersions, socialRevision }: { code: string; initial: World; profileId: string; revision?: number;
+		leagueName: string; socialRevision?: number; chatVersions?: { league: number; staff: number }; membership?: PresenceMember[]; online?: boolean; connectionStatus?: string; onactivity?: (value: RoomActivity) => void; lobby?: Snippet<[World, Snippet]>; connection?: Snippet } = $props();
 	let loadingLive = $state(false);
 	let livePanel = $state<'chat' | 'planning' | 'market'>();
 	let liveToolsOpen = $state(false);
@@ -109,8 +129,8 @@
 	const requested = $derived(page.url.searchParams.get('secao'));
 	const section = $derived(requested === 'lobby' || requested === 'admin' || requested === 'comunicacao'
 		? requested : !world.current ? 'carreira' : !requested && !world.started ? 'lobby' : requested === 'carreira' ? 'central' : requested ?? 'central');
-	let legacyRole = $state<'coach' | 'assistant' | 'player' | null>(null);
-	const role = $derived(world.entryMode === 'coach' || world.entryMode === 'player' ? world.entryMode : legacyRole);
+	// Dev 0.12: só existe a função de treinador. Participantes antigos (atleta/auxiliar) seguem como legado.
+	const role = 'coach' as 'coach' | 'assistant' | 'player';
 	let club = $state<string | null>(null);
 	let lineup = $state.raw<ClubPreview>();
 	let lineupKey = $state('');
@@ -256,19 +276,17 @@
 	const readyOnline = $derived(official ? official.readyOnlineCount : required.filter((friend) => friend.ready && friend.online).length);
 	const requiredTotal = $derived(official ? official.requiredCount : required.length);
 	const coach = $derived(current?.role === 'coach');
+	const aiCover = $derived((world.members.find((member) => member.profileId === profileId)?.assignment as { aiCover?: boolean } | null | undefined)?.aiCover ?? false);
 	const ownStaff = $derived(friends.filter((friend) => friend.club === current?.club && friend.role !== labels.player));
 	const competitionMode = $derived(world.entryMode === 'coach' ? 'Carreira de Treinador' : world.entryMode === 'player' ? 'Carreira de Jogador' : 'Universo legado');
 	const staffMode = $derived(world.entryMode !== 'player');
 	const setupStorage = $derived(`brasfc:participation:${profileId}:${code}`);
 	let setupHydrated = $state(false);
-	const playerDetailsReady = $derived(normalizeName(name).length >= 2 && isStartAge(age));
-	const preparingAthlete = $derived(role === 'player' && (page.url.searchParams.get('etapa') !== 'clube' || !playerDetailsReady));
 	const setupBack = $derived(world.editableDraft ? `/multiplayer?aba=criar&modo=${role}&liga=${code}` : '/multiplayer');
 	$effect(() => {
 		if (setupHydrated || current) return;
 		try {
 			const saved = JSON.parse(sessionStorage.getItem(setupStorage) ?? 'null');
-			if (world.entryMode === 'mixed' && ['coach', 'assistant', 'player'].includes(saved?.role)) legacyRole = saved.role;
 			if (typeof saved?.club === 'string' && world.clubs.some((item) => item.id === saved.club)) club = saved.club;
 			if (typeof saved?.name === 'string') name = saved.name;
 			if (isPosition(saved?.position)) position = saved.position;
@@ -286,8 +304,9 @@
 	});
 	$effect(() => {
 		if (world.live) return;
-		onactivity?.(section === 'elenco' ? 'escalacao' : section === 'taticas' ? 'taticas'
-			: section === 'mercado' ? current?.role === 'player' ? 'contratos' : 'mercado' : section === 'rodada' ? 'rodada' : 'carreira');
+		onactivity?.(section === 'elenco' ? 'escalacao' : section === 'taticas' ? 'taticas' : section === 'mercado' ? 'mercado'
+			: section === 'base' ? 'base' : section === 'financas' ? 'financas' : section === 'treinos' ? 'treinos'
+			: section === 'clube' || section === 'comissao' || section === 'gabinete' ? 'clube' : section === 'rodada' ? 'preparacao' : 'carreira');
 	});
 
 	$effect(() => {
@@ -364,6 +383,127 @@
 	const send = (action: string, values: Record<string, unknown> = {}) =>
 		execute({ ...values, action, revision: world.revision, op: crypto.randomUUID() });
 
+	// ── Dev 0.12: as MESMAS telas da carreira individual, sobre o universo compartilhado da liga.
+	const SHARED_SECTIONS = ['elenco', 'taticas', 'treinos', 'financas', 'clube', 'comissao', 'base', 'gabinete', 'calendario', 'competicoes', 'copa'];
+	const serverCareer = $derived((world as unknown as { career?: CareerSave | null }).career ?? null);
+
+	// ── Dev 0.12 · Hybrid Save Engine: fila local da liga (sobrevive a recarregar/reconectar).
+	const QUEUED = 'Salvo localmente. Será sincronizado quando a conexão voltar.';
+	const RETRY_LATER = /universo mudou|rodada está em andamento/i;
+	async function deliverOnline(op: PendingOp): Promise<Delivery> {
+		try {
+			if (op.kind === 'tactic') {
+				await refresh();
+				const official = serverCareer?.data.tactic;
+				const sent = op.payload.tactic as Tactic;
+				if (official && tacticKey(official) === tacticKey(sent)) return 'ok';
+				if (op.meta && official && tacticKey(official) !== op.meta.baseKey) return 'conflict';
+			}
+			await api(path, { body: { ...op.payload, op: op.id, revision: world.revision } });
+			return 'ok';
+		} catch (e) {
+			if (connectionIssue(e)) return 'retry';
+			if (e instanceof ApiError && e.status === 409 && RETRY_LATER.test(e.message)) {
+				await refresh().catch(() => {});
+				return 'retry';
+			}
+			op.lastError = e instanceof Error ? e.message : 'O servidor recusou a alteração.';
+			return 'drop';
+		}
+	}
+	const sync = new SyncChannel(untrack(() => `room:${code}:${profileId}`), {
+		deliver: deliverOnline,
+		onReport: (report) => reportSync(report, () => refresh().catch(() => {}))
+	});
+	onMount(() => sync.start());
+	/** Envia já; se a conexão cair, a operação permitida fica na fila com o MESMO id (idempotente). */
+	async function sendOrQueue(action: string, values: Record<string, unknown>, dedupe?: string, meta?: Record<string, unknown>): Promise<'ok' | 'queued' | 'failed'> {
+		const payload = { ...values, action };
+		if (dedupe && sync.pending.some((op) => op.dedupe === dedupe)) {
+			await sync.enqueue({ kind: action, payload, dedupe, meta });
+			void sync.flush(true);
+			message = QUEUED;
+			return 'queued';
+		}
+		const command = { ...payload, revision: world.revision, op: crypto.randomUUID() };
+		sync.mark('syncing');
+		if (await execute(command)) {
+			sync.mark('synced');
+			return 'ok';
+		}
+		if (retry === command) {
+			retry = null;
+			failed = false;
+			quiet = true;
+			message = QUEUED;
+			await sync.enqueue({ id: command.op, kind: action, payload, dedupe, meta });
+			return 'queued';
+		}
+		sync.mark('synced');
+		return 'failed';
+	}
+	/** a tela mostra o que o treinador salvou, mesmo antes de chegar ao servidor */
+	const projected = $derived.by<CareerSave | null>(() => {
+		const queued = sync.pending;
+		if (!serverCareer || !queued.length) return serverCareer;
+		const tactic = queued.findLast((op) => op.dedupe === 'tactic')?.payload.tactic as Tactic | undefined;
+		const plan = queued.findLast((op) => op.dedupe === 'training')?.payload.plan as TrainingPlan | undefined;
+		const tips = queued.filter((op) => op.kind === 'dismiss-tip').map((op) => String(op.payload.tip));
+		return { ...serverCareer, data: { ...serverCareer.data,
+			...(tactic ? { tactic } : {}),
+			...(plan ? { trainingPlan: plan } : {}),
+			...(tips.length ? { dismissedTips: [...new Set([...(serverCareer.data.dismissedTips ?? []), ...tips])] } : {}) } };
+	});
+	const seasonResults = $derived((world as unknown as { seasonResults?: StoredRoundResult[] }).seasonResults ?? []);
+	const screenData = $derived.by<CareerScreenData | null>(() => {
+		if (!projected) return null;
+		const view = careerView(projected, seasonResults);
+		const manage = manageView(projected, view);
+		return { career: projected, view, manage, office: officeView(projected, view, manage), results: seasonResults, recent: [] };
+	});
+	const failure = (fallback: string) => new Error(message || fallback);
+	provideCareerPort({
+		kind: 'online',
+		href: (target, hash) => `${href(target || 'central')}${hash ? `#${hash}` : ''}`,
+		async clubAction(body) {
+			if (body.action === 'emprego' || (typeof body.action === 'string' && body.action.startsWith('proposta-'))) {
+				throw new Error('Na carreira online, a troca de clube acontece pelas vagas da liga.');
+			}
+			if (!(await execute({ action: 'club', request: body, revision: world.revision, op: crypto.randomUUID() }))) throw failure('Não foi possível concluir a ação.');
+			return { message: message || 'Alteração salva' };
+		},
+		async saveTactic(tactic, base) {
+			// Edição concorrente: compara com a tática que a própria tela exibiu (oficial + fila local).
+			const shown = projected?.data.tactic ?? screenData?.view.tactic;
+			if (shown && !sameTactic(shown, base)) {
+				await refresh().catch(() => {});
+				return { ok: false, message: 'A tática do clube mudou em outra janela. Confira a escalação oficial antes de salvar.' };
+			}
+			// base da fila = tática OFICIAL do servidor (a da fila ainda não chegou lá)
+			const pendingBase = sync.pending.find((op) => op.dedupe === 'tactic')?.meta?.baseKey;
+			const official = serverCareer?.data.tactic;
+			const meta = { baseKey: pendingBase ?? (official ? tacticKey(official) : null) };
+			const out = await sendOrQueue('tactic', { tactic }, 'tactic', meta);
+			return out === 'queued' ? { ok: true, queued: true, message: QUEUED } : { ok: out === 'ok', message: out === 'ok' ? undefined : message };
+		},
+		async saveTrainingPlan(plan) {
+			const out = await sendOrQueue('training', { plan }, 'training');
+			return out === 'queued' ? { ok: true, queued: true, message: QUEUED } : { ok: out === 'ok', message: out === 'ok' ? undefined : message };
+		},
+		async presetOp(preset) {
+			// No online o servidor reconhece o id da operação: até criar/duplicar pode esperar na fila.
+			const out = await sendOrQueue('preset', { preset });
+			if (out === 'failed') throw failure('Não foi possível atualizar a biblioteca.');
+			return out === 'queued' ? { message: 'Na fila: a biblioteca será atualizada quando a conexão voltar.', queued: true } : { message: message || 'Biblioteca atualizada.' };
+		},
+		async dismissTip(tip) {
+			await sendOrQueue('dismiss-tip', { tip }, `tip:${tip}`);
+		},
+		sync,
+		refresh: () => refresh().catch(() => {}),
+		supports: (feature) => feature !== 'job-market'
+	} satisfies CareerPort);
+
 	async function marketCommit(request: Record<string, unknown>, seller?: string): Promise<{ ok: boolean; log?: NegotiationLog | null }> {
 		const op = typeof request.operation === 'string' ? request.operation : crypto.randomUUID();
 		const command = seller ? { action: 'deal', target: seller, player: request.playerId, fee: request.fee }
@@ -425,20 +565,11 @@
 		return send('tactic', { tactic });
 	}
 
-	function chooseRole(next: typeof legacyRole) {
-		legacyRole = next;
-		club = null;
-		lineup = undefined;
-		lineupKey = '';
-		message = '';
-		failed = false;
-		retry = null;
-	}
 
 	async function roleForm(event: SubmitEvent) {
 		event.preventDefault();
-		if (current || saving || !role || !club || blockedClubs[club] || (role === 'player' && !playerDetailsReady)) return;
-		const ok = await send('assign', { role, club, personName: name, position, age, nationality, foot, appearance: $state.snapshot(appearance) });
+		if (current || saving || !club || blockedClubs[club]) return;
+		const ok = await send('assign', { role: 'coach', club, personName: name, appearance: $state.snapshot(appearance) });
 		if (ok) {
 			try { sessionStorage.removeItem(setupStorage); } catch { /* armazenamento opcional */ }
 			await goto(href('lobby'), { replaceState: true });
@@ -448,7 +579,7 @@
 </script>
 
 {#if friends.length && (!world.live || loadingLive)}
-	<div class="room-island"><Island {friends} loading={world.live} /></div>
+	<div class="room-island"><Island {friends} loading={world.live} status={connectionStatus ?? (online ? 'online' : 'connecting')} syncing={saving} channel={sync} /></div>
 {/if}
 {#if world.live}
 	<main class="page">
@@ -593,7 +724,8 @@
 					{/each}
 				</div>
 				<div class="actions">
-					{#if current}<Button disabled={saving || !online || !world.started} onclick={() => send('ready', { value: !current.ready })}>{current.ready ? 'Cancelar confirmação' : 'Estou pronto'}</Button>{/if}
+					{#if current}<Button disabled={saving || !online || !world.started || !!aiCover} onclick={() => send('ready', { value: !current.ready })}>{current.ready ? 'Cancelar confirmação' : 'Estou pronto'}</Button>{/if}
+					{#if current?.role === 'coach'}<Switch checked={!!aiCover} disabled={saving || !online} label="IA comanda meu clube enquanto eu estiver ausente" hint={aiCover ? 'A rodada não espera por você; a IA escala e joga. Desligue quando voltar.' : 'Delegação temporária: só você pode ativar ou desativar.'} onchange={(value) => send('ai-cover', { value })} />{/if}
 					{#if owner}<Button variant="primary" loading={saving} disabled={!world.started || !everyoneReady} onclick={() => send('advance')}>{world.next ? 'Simular rodada oficial' : 'Iniciar nova temporada'}</Button>{/if}
 				</div>
 			</article>
@@ -611,6 +743,20 @@
 					{#each world.last as row}<p>{clubName(row.home)} {row.homeGoals} × {row.awayGoals} {clubName(row.away)}</p>{/each}
 				</details>
 			</article>{/if}
+		{:else if screenData && current?.role === 'coach' && SHARED_SECTIONS.includes(section)}
+			<div class="wide shared-screen">
+				{#if section === 'elenco'}<SquadScreen data={screenData} />
+				{:else if section === 'taticas'}<TacticsScreen data={screenData} />
+				{:else if section === 'treinos'}<TrainingScreen data={screenData} />
+				{:else if section === 'financas'}<FinanceScreen data={screenData} />
+				{:else if section === 'clube'}<ClubScreen data={screenData} />
+				{:else if section === 'comissao'}<StaffScreen data={screenData} />
+				{:else if section === 'base'}<AcademyScreen data={screenData} />
+				{:else if section === 'calendario'}<CalendarScreen data={screenData} />
+				{:else if section === 'competicoes'}<CompetitionsScreen data={screenData} />
+				{:else if section === 'copa'}<CupScreen data={screenData} />
+				{:else}<OfficeScreen data={screenData} />{/if}
+			</div>
 		{:else if (section === 'elenco' || (section === 'taticas' && current?.role !== 'player')) && current}
 			{#if current.role !== 'player' && world.tactic}<div class="wide"><WorldTactics key={code} tactic={world.tactic} squad={world.roster} club={current.club} mastery={world.mastery}
 				canEdit suggest={current.role === 'assistant' && !(current.lineupDelegated ?? current.matchDelegated)} busy={saving} onsave={saveWorldTactic} /></div>{/if}
@@ -642,57 +788,23 @@
 			<div class="wide"><WorldManagement {section} data={world.management} sponsors={world.sponsors ?? []} staff={world.staff ?? {}} balance={world.balance ?? 0} busy={saving}
 				notices={current?.notices ?? []} onaction={(request) => send('club', { request })} /></div>
 		{:else if section === 'carreira' && !current}
-			{#if !role}
-				<div class="wide">
-					<h2>Escolher função no universo legado</h2>
-					<div class="role-cards">
-						<button type="button" class="role-card" onclick={() => chooseRole('coach')} data-umx-press><Icon name="whistle" size={22} /><strong>Treinador</strong></button>
-						<button type="button" class="role-card" onclick={() => chooseRole('player')} data-umx-press><Icon name="user" size={22} /><strong>Jogador</strong></button>
-					</div>
-					{#if world.members.some((member) => member.assignment?.role === 'coach')}
-						<Button variant="ghost" icon="multiplayer" onclick={() => chooseRole('assistant')}>Entrar como auxiliar técnico</Button>
-					{/if}
-				</div>
-			{:else if preparingAthlete}
-				<article class="wide athlete-setup" use:enter>
-					<h2>Crie seu atleta</h2>
-					<form class="join-profile" onsubmit={(event) => {
-						event.preventDefault();
-						if (playerDetailsReady) void goto(`${href('carreira')}&etapa=clube`);
-					}}>
-						<label>Nome do jogador<input bind:value={name} required minlength="2" maxlength="40" autocomplete="off" /></label>
-						<PlayerIdentityFields bind:age bind:nationality bind:foot />
-						<fieldset><legend>Posição em campo</legend><PositionPicker bind:value={position} /></fieldset>
-						<details><summary>Personalizar aparência</summary>
-							<AppearanceEditor bind:appearance kit={playerKit(club ?? '', position)} clubId={club ?? undefined} uniformOptions preview />
-						</details>
-						<div class="actions">
-							{#if world.entryMode === 'mixed'}<Button variant="ghost" icon="arrowLeft" onclick={() => chooseRole(null)}>Voltar</Button>{/if}
-							<Button type="submit" variant="primary" iconRight="arrowRight" disabled={!playerDetailsReady}>Continuar para o clube</Button>
-						</div>
-					</form>
-				</article>
-			{:else}
 				<div class="wide" use:enter>
 					<div class="setup-heading">
-						<h2>{role === 'assistant' ? 'Escolha uma comissão' : 'Escolha seu clube'}</h2>
-						{#if role === 'player'}<Button href={href('carreira')} variant="ghost" icon="arrowLeft" disabled={saving}>Voltar ao atleta</Button>
-						{:else if world.entryMode === 'mixed'}<Button variant="ghost" icon="arrowLeft" disabled={saving} onclick={() => chooseRole(null)}>Voltar às funções</Button>{/if}
+						<h2>Escolha seu clube</h2>
 					</div>
-					<ClubSelector clubs={world.clubs} bind:clubId={club} blocked={blockedClubs} mode={role} {position} playerOverall={role === 'player' ? 57 + Math.min(12, Math.max(0, ((age ?? 18) - 18) * 2)) : undefined}
+					<ClubSelector clubs={world.clubs} bind:clubId={club} blocked={blockedClubs}
 						season={world.season} busy={saving} coach={selectedPreview?.coach} transferBudget={selectedPreview?.transferBudget} wageBudget={selectedPreview?.wageBudget}
 						lineup={selectedPreview}
 						prefetch={(ids) => ids.forEach((id) => void readPreview(id, world.revision).catch(() => {}))}
 						error={lineupKey === selectedLineupKey ? lineupError : undefined}
 						loading={!!club && lineupKey !== selectedLineupKey} retry={() => lineupAttempt++} />
 					<form class="join-profile" onsubmit={roleForm}>
-						{#if role !== 'player'}<details><summary>Personalizar aparência</summary>
+						<details><summary>Personalizar aparência</summary>
 							<AppearanceEditor bind:appearance kit={coachKit(club ?? undefined)} clubId={club ?? undefined} preview />
-						</details>{/if}
+						</details>
 						<Button type="submit" variant="primary" iconRight="arrowRight" disabled={!club || !!blockedClubs[club]} loading={saving}>Confirmar e abrir lobby</Button>
 					</form>
 				</div>
-			{/if}
 		{:else if section === 'treinos'}
 			{#if current?.role === 'coach' || current?.delegated}
 				<div class="wide"><WeekPlanner bind:plan={() => trainingPlan, (value) => trainingDraft = value}
@@ -892,19 +1004,9 @@
 	.league-nav { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
 	.league-nav a { flex: 1; text-align: center; padding: 10px 3px; border-radius: 8px; border: 1px solid var(--line); color: var(--text-2); font-size: var(--fs-sm); text-decoration: none; }
 	.league-nav a[aria-current] { background: var(--emerald-soft); color: var(--emerald-strong); border-color: var(--emerald-line); }
-	.athlete-setup { width: min(100%, 620px); margin-inline: auto; }
-	.athlete-setup h2 { margin: 0; }
-	.athlete-setup input { min-height: 44px; font-size: max(16px, var(--fs-base)); }
-	.athlete-setup fieldset { min-width: 0; border: 0; padding: 0; margin: 0; }
-	.athlete-setup legend, .join-profile summary, article summary { font-weight: 600; }
 	.join-profile details, article details { min-width: 0; }
 	.setup-heading { display:flex; gap:8px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:12px; }
 	.setup-heading h2 { margin:0; }
-	.role-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); gap:12px; margin:12px 0; }
-	.role-card { display:grid; gap:8px; padding:18px; text-align:left; border:1px solid var(--line-strong); border-radius:var(--radius-l); background:linear-gradient(130deg,var(--emerald-soft),transparent),var(--surface); color:var(--text); }
-	.role-card:hover, .role-card:focus-visible { border-color:var(--emerald); }
-	.role-card strong { font:700 var(--fs-2xl) var(--font-display); }
-	.role-card :global(.icon) { color:var(--emerald-strong); }
 	.join-profile { display:grid; gap:12px; padding:12px 0; }
 	.join-profile > :global(button) { justify-self:start; }
 	.world { display: grid; gap: 12px; margin-bottom: 20px; min-width: 0; }

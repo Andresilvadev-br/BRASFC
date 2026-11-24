@@ -7,7 +7,7 @@
 	let { team, coach }: { team: TeamSetup; coach?: string } = $props();
 	const players = $derived(new Map(team.players.map((player) => [player.id, player])));
 	const captain = $derived(team.tactic.captains?.find((id) => team.tactic.lineup.includes(id)) ?? team.tactic.lineup[0]);
-	const bench = $derived(team.tactic.bench.flatMap((id) => players.get(id)?.shortName ?? []));
+	const bench = $derived(team.tactic.bench.flatMap((id) => { const p = players.get(id); return p ? [`${p.shortName}${p.age ? ` (${p.age})` : ''}`] : []; }));
 </script>
 
 <div class="lineup" use:enter>
@@ -18,7 +18,7 @@
 			{#if athlete}
 				<div class="player" style:left={6 + slot.x * 0.88 + '%'} style:top={7 + slot.y * 0.86 + '%'} use:enter={{ index, y: 5 }} title={athlete.name}>
 					<b>{athlete.number} · {slot.position}{captain === athlete.id ? ' · C' : ''}</b>
-					<span>{athlete.shortName}</span>
+					<span>{athlete.shortName}{athlete.age ? ` · ${athlete.age}a` : ''}</span>
 				</div>
 			{/if}
 		{/each}

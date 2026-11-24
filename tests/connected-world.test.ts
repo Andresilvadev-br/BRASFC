@@ -53,11 +53,11 @@ describe('universo compartilhado', () => {
 		expect(flamengoMarket.total).toBeGreaterThan(11);
 		expect(flamengoMarket.rows.every((player) => player.age === null)).toBe(true);
 		await expect(worldMarket(db, room, outsider, new URLSearchParams())).rejects.toMatchObject({ status: 404 });
-		await command(assistant, 'assign', { role: 'assistant', club: first });
+		// Dev 0.12: não existe mais auxiliar ou atleta humano.
+		await expect(command(assistant, 'assign', { role: 'assistant', club: first })).rejects.toMatchObject({ status: 410 });
 		const tactic = { ...(await get(owner)).tactic!, mentality: 'ofensiva' };
-		await expect(command(assistant, 'tactic', { tactic })).rejects.toMatchObject({ status: 403 });
-		await command(owner, 'delegate', { target: assistant, area: 'match', value: true });
-		await command(assistant, 'tactic', { tactic });
+		await expect(command(rival, 'tactic', { tactic })).rejects.toBeInstanceOf(Error);
+		await command(owner, 'tactic', { tactic });
 		const saved = await get(owner);
 		expect(saved.tactic?.mentality).toBe('ofensiva');
 		const preview = await worldClubLineup(db, room, player, first);
@@ -69,16 +69,9 @@ describe('universo compartilhado', () => {
 		const confirmed = await worldClubLineup(db, room, player, 'palmeiras');
 		expect(confirmed.starters.map((starter) => starter.player?.cbfId)).toContain('633571');
 		expect(confirmed.bench).toHaveLength(12);
-		expect((await get(assistant)).management).toBeNull();
-		await expect(command(assistant, 'training', { plan: {} })).rejects.toMatchObject({ status: 403 });
-		await command(owner, 'delegate', { target: assistant, value: true });
-		await command(assistant, 'training', { plan: { sessions: ['posse', 'descanso', 'posse', 'descanso', 'posse'], intensity: 'normal' } });
+		await command(owner, 'training', { plan: { sessions: ['posse', 'descanso', 'posse', 'descanso', 'posse'], intensity: 'normal' } });
 		expect((await get(owner)).plan?.sessions[0]).toBe('posse');
-		await command(player, 'assign', { role: 'player', club: first, personName: 'Atleta Um', position: 'ATA', age: 28 });
-		await command(teammate, 'assign', { role: 'player', club: first, personName: 'Atleta Dois', position: 'GOL', age: 27 });
-		expect((await get(player)).roster.filter((p) => p.id.startsWith('human-'))).toHaveLength(2);
-		await command(player, 'jogador-treinar', { focus: 'finalizacao', date: '2026-01-12' });
-		expect((await get(player)).current?.athlete?.playerCareer?.daily.drills).toHaveLength(1);
+		await expect(command(player, 'assign', { role: 'player', club: first, personName: 'Atleta Um', position: 'ATA', age: 28 })).rejects.toMatchObject({ status: 410 });
 		const search = await worldMarket(db, room, owner, new URLSearchParams({ club: second }));
 		if (!('rows' in search)) throw new Error('Pesquisa indisponível');
 		const talent = search.rows[0];
@@ -107,7 +100,7 @@ describe('universo compartilhado', () => {
 		expect((await get(rival)).roster.some((p) => p.id === talent.id)).toBe(false);
 		expect((await get(rival)).dealHistory.find((entry) => entry.id === deal.id)?.status).toBe('aceita');
 		await expect(command(owner, 'advance')).rejects.toMatchObject({ status: 409 });
-		for (const profile of [owner, rival, assistant, player, teammate]) await command(profile, 'ready', { value: true });
+		for (const profile of [owner, rival]) await command(profile, 'ready', { value: true });
 		const request = { action: 'advance', op: randomUUID(), revision: (await get(owner)).revision };
 		const competing = { ...request, op: randomUUID() };
 		const race = await Promise.allSettled([
@@ -127,57 +120,124 @@ describe('universo compartilhado', () => {
 		const replay = await worldReplay(db, room, owner, latest.home, latest.away);
 		const replayed = simulateMatch({ ...replay, ...(replay.neutral ? { rules: { homeAdvantage: false } } : {}) });
 		expect([replayed.homeGoals, replayed.awayGoals]).toEqual([latest.homeGoals, latest.awayGoals]);
-		expect((await get(player)).last.find((r) => r.home === latest.home)?.me).toBeDefined();
-		expect((await get(player)).current?.athlete?.playerCareer?.daily.gains.finalizacao).toBeGreaterThan(0);
 		await expect(leaveRoom(db, room, owner)).rejects.toMatchObject({ status: 409 });
 		await command(owner, 'transfer-owner', { target: rival });
 		expect((await getRoomByCode(db, room.code))?.ownerId).toBe(rival);
 		await command(rival, 'settings', { allowAbsent: false, inviteOpen: false });
 		await expect(joinRoom(db, room.code, outsider)).rejects.toMatchObject({ status: 403 });
 	}, 30000);
-	it('fecha duas temporadas com empréstimo autorizado, retorno, renovação e súmulas persistidas', async () => {
-		const [owner, athlete, borrower] = await Promise.all(Array.from({ length: 3 }, () => createGuestProfile(db).then((p) => p.profile.id)));
+	it('fecha duas temporadas com dois treinadores, súmulas persistidas e participantes ausentes', async () => {
+		const [owner, rival] = await Promise.all(Array.from({ length: 2 }, () => createGuestProfile(db).then((p) => p.profile.id)));
 		const room = await createRoom(db, owner, 'Universo de temporadas');
-		await joinRoom(db, room.code, athlete);
-		await joinRoom(db, room.code, borrower);
+		await joinRoom(db, room.code, rival);
 		let revision = 0;
 		const execute = async (action: string, parameters: Record<string, unknown> = {}, profile = owner) => {
 			const out = await applyWorldCommand(db, room, profile, { revision, op: randomUUID(), action, ...parameters });
 			revision = out.revision;
 		};
 		await execute('assign', { role: 'coach', club: 'flamengo' });
+		await execute('assign', { role: 'coach', club: 'palmeiras' }, rival);
+		await expect(execute('assign', { role: 'coach', club: 'flamengo' }, rival)).rejects.toMatchObject({ status: 409 });
 		await execute('settings', { inviteOpen: true, allowAbsent: true });
-		await execute('assign', { role: 'player', club: 'flamengo', personName: 'Atleta em formação', position: 'ATA', age: 19 }, athlete);
-		await execute('jogador-sondar', { kind: 'emprestimo' }, athlete);
-		const offer = (await worldSnapshot(db, room, athlete)).current?.athlete?.playerCareer?.offers[0];
-		expect(offer?.kind).toBe('emprestimo');
-		await execute('assign', { role: 'coach', club: offer!.clubId }, borrower);
-		await execute('jogador-aceitar', { offerId: offer!.id }, athlete);
-		await execute('approve-athlete', { id: offer!.id, target: athlete });
-		expect((await worldSnapshot(db, room, athlete)).current?.club).toBe('flamengo');
-		await execute('approve-athlete', { id: offer!.id, target: athlete }, borrower);
-		const loaned = (await worldSnapshot(db, room, athlete)).current;
-		expect(loaned?.club).toBe(offer!.clubId);
-		expect(loaned?.athlete?.playerCareer?.daily.loan?.parent).toBe('flamengo');
-		await leaveRoom(db, room, borrower);
-		revision = (await worldSnapshot(db, room, owner)).revision;
 		const start = (await worldSnapshot(db, room, owner)).season;
 		// O calendário atual contém 38 datas de liga e 13 da Copa, mais a transição.
 		for (let i = 0; i < 52; i++) await execute('advance');
-		const returned = (await worldSnapshot(db, room, athlete)).current;
-		expect(returned?.club).toBe('flamengo');
-		expect(returned?.history.map((entry) => entry.club)).toEqual(['flamengo', offer!.clubId, 'flamengo']);
-		expect(returned?.athlete?.playerCareer?.daily.loan).toBeNull();
-		expect(returned?.athlete?.playerCareer?.daily.clubs.at(-1)?.kind).toBe('retorno');
-		await execute('jogador-negociar', { years: 3 }, athlete);
-		await execute('jogador-renovar', {}, athlete);
-		expect((await worldSnapshot(db, room, athlete)).current?.athlete?.playerCareer?.contract.until).toBe(start + 3);
 		for (let i = 0; i < 52; i++) await execute('advance');
 		const after = await worldSnapshot(db, room, owner);
 		expect(after.season).toBe(start + 2);
 		expect(after.champions.map((year) => year.season)).toEqual([start, start + 1]);
+		expect((await worldSnapshot(db, room, rival)).current?.club).toBe('palmeiras');
 		const rows = await db.query<{ season: number; fixtures: number }>(`SELECT season, count(*)::int AS fixtures FROM room_world_matches WHERE room_id=$1 GROUP BY season ORDER BY season`, [room.id]);
 		expect(rows.map((r) => r.season)).toEqual([start, start + 1]);
 		expect(rows.every((r) => r.fixtures > 500)).toBe(true);
 	}, 180000);
+	it('delegação temporária à IA: só o próprio treinador autoriza e a rodada deixa de esperar por ele', async () => {
+		const [owner, rival] = await Promise.all(Array.from({ length: 2 }, () => createGuestProfile(db).then((p) => p.profile.id)));
+		const room = await createRoom(db, owner, 'Liga com ausente');
+		await joinRoom(db, room.code, rival);
+		const get = (profile: string) => worldSnapshot(db, room, profile);
+		const command = async (profile: string, action: string, params: Record<string, unknown> = {}) =>
+			applyWorldCommand(db, room, profile, { ...params, action, op: randomUUID(), revision: (await get(profile)).revision });
+		await command(owner, 'assign', { role: 'coach', club: 'flamengo' });
+		await command(rival, 'assign', { role: 'coach', club: 'palmeiras' });
+		await command(owner, 'ready', { value: true });
+		// Sem delegação, a rodada espera o rival.
+		await expect(command(owner, 'advance')).rejects.toMatchObject({ status: 409 });
+		// O administrador não delega pelo rival: o comando vale só para quem o envia.
+		await command(owner, 'ai-cover', { value: true });
+		await command(owner, 'ai-cover', { value: false });
+		await command(owner, 'ready', { value: true });
+		expect((await get(owner)).members.find((m) => m.profileId === rival)?.assignment).toMatchObject({ aiCover: false });
+		await command(rival, 'ai-cover', { value: true });
+		expect((await get(owner)).members.find((m) => m.profileId === rival)?.assignment).toMatchObject({ aiCover: true, ready: false });
+		const before = (await get(owner)).date;
+		await command(owner, 'advance');
+		expect((await get(owner)).date).not.toBe(before);
+		// De volta: desliga a delegação e a rodada volta a esperar por ele.
+		await command(rival, 'ai-cover', { value: false });
+		await command(owner, 'ready', { value: true });
+		await expect(command(owner, 'advance')).rejects.toMatchObject({ status: 409 });
+	}, 60000);
+	it('Dev 0.12: a carreira online entrega a mesma projeção da carreira individual e as telas calculam o mesmo elenco oficial', async () => {
+		const { careerView } = await import('#lib/domain/view.ts');
+		const { manageView } = await import('#lib/domain/manageview.ts');
+		const { officeView } = await import('#lib/domain/officeview.ts');
+		const [owner] = await Promise.all([createGuestProfile(db).then((p) => p.profile.id)]);
+		const room = await createRoom(db, owner, 'Telas iguais');
+		const get = () => worldSnapshot(db, room, owner);
+		const command = async (action: string, params: Record<string, unknown> = {}) =>
+			applyWorldCommand(db, room, owner, { ...params, action, op: randomUUID(), revision: (await get()).revision });
+		await command('assign', { role: 'coach', club: 'flamengo' });
+		await command('ready', { value: true });
+		await command('advance');
+		const snap = await get();
+		expect(snap.career?.data.sharedWorld).toBe(true);
+		const view = careerView(snap.career!, snap.seasonResults);
+		// O elenco calculado pela tela é exatamente o elenco oficial da liga.
+		expect(view.squad.map((p) => p.id).sort()).toEqual(snap.roster.map((p) => p.id).sort());
+		expect(view.club.id).toBe('flamengo');
+		expect(view.tactic.formation).toBe(snap.tactic!.formation);
+		const manage = manageView(snap.career!, view);
+		expect(manage.club.balance).toBe(snap.balance);
+		expect(officeView(snap.career!, view, manage).office.contract.until).toBeGreaterThan(0);
+		// Biblioteca de táticas e dicas também na carreira online (mesmas regras do servidor individual).
+		await command('preset', { preset: { op: 'save', name: 'Online 4-3-3', tactic: { ...snap.tactic, formation: '4-3-3', lineup: snap.tactic!.lineup.slice(0, 11) } } }).catch(async () => {
+			const { autoLineup } = await import('#lib/domain/tactics.ts');
+			await command('preset', { preset: { op: 'save', name: 'Online 4-3-3', tactic: { ...snap.tactic, formation: '4-3-3', lineup: autoLineup('4-3-3', view.squad), bench: undefined } } });
+		});
+		const after = await get();
+		expect(after.career?.data.tacticPresets?.map((p) => p.name)).toEqual(['Online 4-3-3']);
+		await expect(command('preset', { preset: { op: 'save', name: 'Online 4-3-3', tactic: snap.tactic } })).rejects.toMatchObject({ status: 422 });
+		await command('dismiss-tip', { tip: 'formacao-ruim' });
+		expect((await get()).career?.data.dismissedTips).toEqual(['formacao-ruim']);
+		// Ação de gestão pela mesma via das telas (comando "club"): preço do ingresso.
+		await command('club', { request: { action: 'ingresso', price: 55 } });
+		expect((await get()).career?.data.club?.ticketPrice).toBe(55);
+	}, 60000);
+
+	it('Dev 0.12 · Hybrid Save: reenviar da fila local com o mesmo id não duplica, mesmo com revisão antiga', async () => {
+		const owner = (await createGuestProfile(db)).profile.id;
+		const room = await createRoom(db, owner, 'Fila local');
+		const get = () => worldSnapshot(db, room, owner);
+		const command = async (action: string, params: Record<string, unknown> = {}, op = randomUUID(), revision?: number) =>
+			applyWorldCommand(db, room, owner, { ...params, action, op, revision: revision ?? (await get()).revision });
+		await command('assign', { role: 'coach', club: 'palmeiras' });
+		const before = await get();
+		const { autoLineup } = await import('#lib/domain/tactics.ts');
+		const { careerView } = await import('#lib/domain/view.ts');
+		const squad = careerView(before.career!, before.seasonResults).squad;
+		const op = randomUUID();
+		const preset = { op: 'save', name: 'Offline 4-4-2', tactic: { ...before.tactic, formation: '4-4-2', lineup: autoLineup('4-4-2', squad), bench: undefined } };
+		// 1ª entrega chega ao servidor, mas a resposta "se perde" (o cliente não sabe que deu certo).
+		await command('preset', { preset }, op, before.revision);
+		// Enquanto isso, outra gravação muda a revisão do universo.
+		await command('dismiss-tip', { tip: 'formacao-ruim' });
+		// A fila reenvia a MESMA operação com a revisão antiga: o servidor reconhece e não duplica.
+		await expect(command('preset', { preset }, op, before.revision)).resolves.toBeDefined();
+		const after = await get();
+		expect(after.career?.data.tacticPresets?.map((p) => p.name)).toEqual(['Offline 4-4-2']);
+		expect(after.career?.data.dismissedTips).toEqual(['formacao-ruim']);
+		// Uma operação NOVA com revisão antiga continua bloqueada (409): a fila atualiza e reenvia.
+		await expect(command('dismiss-tip', { tip: 'outra' }, randomUUID(), before.revision)).rejects.toMatchObject({ status: 409 });
+	}, 60000);
 });

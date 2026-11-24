@@ -2,6 +2,9 @@ import { isDominantFoot, isNationality, isStartAge, MIN_START_AGE, MAX_START_AGE
 import { ROSTER_CATALOG, type RosterCatalogId } from '#lib/data/roster-catalog.ts';
 import type { UniverseState } from './universe.ts';
 import type { OfficeState } from './office.ts';
+import type { CoachKnowledge } from './coach-knowledge.ts';
+import type { TacticPreset } from './tactic-presets.ts';
+import type { DisciplineState } from './discipline.ts';
 import { isAppearance, type Appearance } from './appearance.ts';
 import { CLUBES_2026, TEMPORADA_2026 } from '#lib/data/brasil.ts';
 import { CLUBS, getClub, LEAGUE, type Club } from './clubs.ts';
@@ -79,6 +82,15 @@ playerCareer?: PlayerCareerState;
 universe?: UniverseState;
 /** gabinete do treinador: contrato, reuniões, coletivas, marcos e histórico */
 office?: OfficeState;
+// ── Treinador 2.0
+/** conhecimento tático pessoal do treinador (acompanha as trocas de clube) */
+coachKnowledge?: CoachKnowledge;
+/** biblioteca "Minhas Táticas" (pertence ao treinador, não ao clube) */
+tacticPresets?: TacticPreset[];
+/** registro disciplinar persistente (cartões e suspensões por competição) */
+discipline?: DisciplineState;
+/** Dev 0.12: projeção de um treinador de carreira online (universo compartilhado da liga) */
+sharedWorld?: boolean;
 }
 
 export interface Career {
@@ -125,8 +137,10 @@ export function validateCreateCareer(input: unknown): ValidationResult<CreateCar
 	const errors: Record<string, string> = {};
 	const v = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
 
-	const mode = v.mode;
-	if (mode !== 'coach' && mode !== 'player') errors.mode = 'Escolha o modo de carreira.';
+	// Dev 0.12: só existe a carreira de treinador. Saves antigos de jogador continuam guardados (legado).
+	const mode = v.mode === undefined ? 'coach' : v.mode;
+	if (mode === 'player') errors.mode = 'A carreira de jogador foi descontinuada na versão 0.12. Crie uma carreira de treinador.';
+	else if (mode !== 'coach') errors.mode = 'Modo de carreira inválido.';
 
 	const personName = typeof v.personName === 'string' ? normalizeName(v.personName) : '';
 	if (personName.length < 2) errors.personName = 'Digite um nome com pelo menos 2 letras.';
@@ -144,22 +158,8 @@ export function validateCreateCareer(input: unknown): ValidationResult<CreateCar
 		else errors.appearance = 'Aparência inválida.';
 	}
 
-	let position: Position | undefined;
-	const age = v.age === undefined ? 18 : v.age;
-	const nationality = v.nationality === undefined ? 'Brasil' : typeof v.nationality === 'string' ? normalizeName(v.nationality) : '';
-	const foot = v.foot === undefined ? 'direito' : v.foot;
-
-	if (mode === 'player') {
-		if (!isStartAge(age)) errors.age = `Escolha uma idade entre ${MIN_START_AGE} e ${MAX_START_AGE} anos.`;
-		if (!isNationality(nationality)) errors.nationality = 'Selecione uma nacionalidade disponível na América do Sul.';
-		if (!isDominantFoot(foot)) errors.foot = 'Escolha o pé dominante.';
-		if (isPosition(v.position)) position = v.position;
-		else errors.position = 'Escolha a posição do seu jogador.';
-		if (!appearance) errors.appearance ??= 'Defina a aparência do seu jogador.';
-	}
-
 	if (Object.keys(errors).length) return { ok: false, errors };
-	return { ok: true, value: { mode: mode as CareerMode, personName, clubId, appearance, position, world, ...(mode === 'player' ? { age: age as number, nationality, foot: foot as DominantFoot } : {}) } };
+	return { ok: true, value: { mode: 'coach', personName, clubId, appearance, world } };
 }
 
 /** Dados iniciais persistidos de uma carreira nova. */

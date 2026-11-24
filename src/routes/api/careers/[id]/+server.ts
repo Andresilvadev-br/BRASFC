@@ -1,6 +1,8 @@
 import { error } from '@sveltejs/kit';
+import { sanitizePresets, type TacticPreset } from '#lib/domain/tactic-presets.ts';
+import { applyPresetOperation, PresetError } from '#lib/server/presets.ts';
 import { isAppearance } from '#lib/domain/appearance.ts';
-import type { CareerData } from '#lib/domain/career.ts';
+import type { Career, CareerData } from '#lib/domain/career.ts';
 // O elenco ATUAL (contratações, vendas, base), o mesmo que a tela de táticas mostra.
 import { careerSquad } from '#lib/domain/matchday.ts';
 import { sanitizeTactic } from '#lib/domain/tactics.ts';
@@ -38,6 +40,10 @@ export const PATCH: RequestHandler = async (event) => {
 
 	const version = Number(body.version);
 	if (!Number.isInteger(version)) error(400, 'Versão da carreira ausente.');
+	// Um ex-treinador não pode mais alterar o elenco, plano ou instruções do clube anterior via API.
+	if (career.mode === 'coach' && career.data.club?.board.dismissed && (body.tactic !== undefined || body.trainingFocus !== undefined || body.trainingPlan !== undefined || body.dismissTip !== undefined)) {
+		error(409, 'Seu vínculo terminou. Aceite uma nova proposta antes de modificar o trabalho de um clube.');
+	}
 	const patch: Partial<CareerData> = {};
 	if (body.appearance !== undefined) {
 		if (!isAppearance(body.appearance)) error(400, 'Aparência inválida.');
@@ -67,10 +73,18 @@ export const PATCH: RequestHandler = async (event) => {
 		if (career.mode !== 'player' || !career.data.position || !isPlayerFocus(body.playerFocus) || !isPlayerFocusForPosition(body.playerFocus, career.data.position)) error(400, 'Foco individual inválido.');
 		patch.playerFocus = body.playerFocus;
 	}
+	// Treinador 2.0: biblioteca "Minhas Táticas" (pertence ao treinador; vale entre clubes e temporadas).
+	let presetMessage: string | null = null;
+	if (body.preset !== undefined) {
+		if (career.mode !== 'coach') error(403, 'A biblioteca de táticas é do treinador.');
+		const out = presetOperation(career, body.preset);
+		patch.tacticPresets = out.presets;
+		presetMessage = out.message;
+	}
 	if (!Object.keys(patch).length) error(400, 'Nada para atualizar.');
 
 	try {
-		return noStore({ career: await patchCareerData(db, profile.id, career.id, patch, version) });
+		return noStore({ career: await patchCareerData(db, profile.id, career.id, patch, version), ...(presetMessage ? { message: presetMessage } : {}) });
 	} catch (e) {
 		if (e instanceof VersionConflictError) error(409, e.message);
 		throw e;
@@ -83,3 +97,12 @@ export const DELETE: RequestHandler = async (event) => {
 	if (!ok) error(404, 'Carreira não encontrada.');
 	return noStore({ ok: true });
 };
+
+function presetOperation(career: Career, raw: unknown): { presets: TacticPreset[]; message: string } {
+	try {
+		return applyPresetOperation(sanitizePresets(career.data.tacticPresets), raw, { squad: careerSquad(career), clubId: career.clubId, season: career.season });
+	} catch (e) {
+		if (e instanceof PresetError) error(e.status, e.message);
+		throw e;
+	}
+}

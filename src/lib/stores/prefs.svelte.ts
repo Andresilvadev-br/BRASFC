@@ -1,4 +1,4 @@
-import { setMotionPreference, type MotionPreference, type MotionProfileId } from '#lib/motion/motion.svelte.ts';
+import { setMotionPreference, setQualityPreference, type MotionPreference, type QualityPreference } from '#lib/motion/motion.svelte.ts';
 
 /**
  * Preferências deste dispositivo (localStorage). Não são dados de carreira:
@@ -9,13 +9,14 @@ export type TextScale = 100 | 112 | 125;
 
 export interface Prefs {
 	motion: MotionPreference;
-	motionProfile: MotionProfileId;
+	quality: QualityPreference;
 	intro: IntroMode;
 	textScale: TextScale;
 }
 
 const KEY = 'brasfc.prefs.v1';
-const DEFAULTS: Prefs = { motion: 'auto', motionProfile: 'ultra', intro: 'sessao', textScale: 100 };
+const DEFAULTS: Prefs = { motion: 'auto', quality: 'auto', intro: 'sessao', textScale: 100 };
+const QUALITIES: QualityPreference[] = ['auto', 'alto', 'equilibrado', 'economico', 'ultra-economico'];
 
 export const prefs = $state<Prefs>({ ...DEFAULTS });
 
@@ -28,12 +29,13 @@ function read(): Partial<Prefs> {
 	}
 }
 
-function sanitize(p: Partial<Prefs>): Prefs {
+function sanitize(p: Partial<Prefs> & { motionProfile?: string }): Prefs {
+	// Preferências anteriores à 0.12: "leve" e o perfil "Desempenho" viram qualidade Econômica.
+	const legacyQuality: QualityPreference | undefined = (p.motion as string) === 'leve' ? 'economico'
+		: p.motionProfile === 'performance' ? 'economico' : p.motionProfile === 'balanced' ? 'equilibrado' : undefined;
 	return {
-		motion: ['auto', 'completo', 'leve', 'reduzido'].includes(p.motion as string) ? (p.motion as MotionPreference) : DEFAULTS.motion,
-		motionProfile: ['ultra', 'balanced', 'performance'].includes(p.motionProfile as string)
-			? (p.motionProfile as MotionProfileId)
-			: DEFAULTS.motionProfile,
+		motion: ['auto', 'completo', 'reduzido'].includes(p.motion as string) ? (p.motion as MotionPreference) : DEFAULTS.motion,
+		quality: QUALITIES.includes(p.quality as QualityPreference) ? (p.quality as QualityPreference) : legacyQuality ?? DEFAULTS.quality,
 		intro: ['sempre', 'sessao', 'nunca'].includes(p.intro as string) ? (p.intro as IntroMode) : DEFAULTS.intro,
 		textScale: [100, 112, 125].includes(p.textScale as number) ? (p.textScale as TextScale) : DEFAULTS.textScale
 	};
@@ -55,6 +57,7 @@ export function savePrefs(patch: Partial<Prefs>) {
 }
 
 function applyPrefs() {
+	setQualityPreference(prefs.quality);
 	setMotionPreference(prefs.motion);
 	document.documentElement.style.setProperty('--text-scale', String(prefs.textScale / 100));
 }

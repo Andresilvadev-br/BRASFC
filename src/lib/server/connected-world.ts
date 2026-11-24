@@ -1,3 +1,6 @@
+import { universePreview } from '#lib/domain/universe.ts';
+import { sanitizePresets } from '#lib/domain/tactic-presets.ts';
+import { applyPresetOperation, PresetError } from './presets.ts';
 import { randomUUID } from 'node:crypto';
 import { initialCareerData, validateCreateCareer, type Career, type CareerData } from '#lib/domain/career.ts';
 import { DEFAULT_APPEARANCE, isAppearance, type Appearance } from '#lib/domain/appearance.ts';
@@ -33,7 +36,7 @@ import { ensureUniverse, officeOf, officeSeasonEnd, officeStep, universeAfterSte
 import { computeOverall } from '#lib/engine/attributes.ts';
 import { buildTeamSetup } from '#lib/engine/teams.ts';
 import { Match } from '#lib/engine/match.ts';
-import { ENGINE_VERSION, supportsEngineVersion, type MatchEvent, type MatchResult, type Side, type PlayerStats } from '#lib/engine/types.ts';
+import { ENGINE_VERSION, rulesForVersion, supportsEngineVersion, type MatchEvent, type MatchResult, type Side, type PlayerStats } from '#lib/engine/types.ts';
 import { canCommitRound, checkpoint, enginesFor, forgetRound, keepEngines, matchView, preparedFixtures, pulseRound, rememberFixtures, startRound, type LiveFixture, type LiveRound, type RoundReplay } from './live-round.ts';
 import { parseDecision } from './rounds.ts';
 import type { Db } from './db/index.ts';
@@ -49,7 +52,7 @@ type LeagueAward = { season: number; club: string; competition: string };
 
 type Assignment = {
 	profile: string; name: string; club: string; role: 'coach' | 'assistant' | 'player';
-	ready: boolean; finance?: FinanceGrant; financeIssuer?: string; delegated?: boolean; matchDelegated?: boolean; lineupDelegated?: boolean; athlete?: CareerData; appearance?: Appearance; notices?: Array<Msg & { id: string; date: string }>; history: Array<{ club: string; role: string; date: string }>;
+	ready: boolean; /** Dev 0.12: o próprio treinador autorizou a IA a comandar o clube enquanto estiver ausente */ aiCover?: boolean; finance?: FinanceGrant; financeIssuer?: string; delegated?: boolean; matchDelegated?: boolean; lineupDelegated?: boolean; athlete?: CareerData; appearance?: Appearance; notices?: Array<Msg & { id: string; date: string }>; history: Array<{ club: string; role: string; date: string }>;
 };
 type AthleteDeal = { profile: string; offer: string; from: string; to: string; approvals: string[] };
 type Deal = { id: string; from: string; to: string; player: string; fee: number; proposedAt?: string; expiresRound?: number; counter?: boolean; agreement?: boolean; contractMessage?: string };
@@ -132,6 +135,33 @@ function context(room: Room, s: WorldState, club: string, person?: Assignment): 
 			cup: s.cup ?? undefined, universe: s.universe, market: s.market, club: s.clubs[club] } };
 }
 
+/**
+ * Dev 0.12 · projeção da carreira do treinador online no MESMO formato da carreira individual.
+ * O cliente calcula as visões com as mesmas funções (careerView, manageView, officeView) e exibe as
+ * mesmas telas; as gravações continuam passando pelos comandos autoritativos da liga.
+ */
+function projectCareer(room: Room, s: WorldState, person: Assignment): Career {
+	const c = context(room, s, person.club, person);
+	const office = person.athlete?.office;
+	return {
+		...c,
+		personName: person.name,
+		data: {
+			...c.data,
+			sharedWorld: true,
+			universe: s.universe ? universePreview(s.universe, [person.club]) : undefined,
+			tactic: s.tactics[person.club],
+			tactical: s.mastery?.[person.club] ?? null,
+			fitness: s.fitness?.[person.club] ?? {},
+			trainingPlan: s.plans[person.club],
+			...(office ? { office } : {}),
+			...(person.athlete?.tacticPresets ? { tacticPresets: person.athlete.tacticPresets } : {}),
+			...(person.appearance ? { appearance: person.appearance } : {}),
+			...(person.athlete?.dismissedTips ? { dismissedTips: person.athlete.dismissedTips } : {})
+		}
+	};
+}
+
 async function results(db: Db, room: Room, season: number, compact = false, steps: string[] | null = null): Promise<Played[]> {
 	const rows = await db.query<{ result: Played }>(`SELECT result - 'replay' - 'marketStats' ${compact ? "- 'events' - 'athletes'" : ''} AS result FROM room_world_matches WHERE room_id = $1 AND season = $2 AND ($3::text[] IS NULL OR step = ANY($3::text[]))`, [room.id, season, steps]);
 	return rows.map(({ result }) => typeof result === 'string' ? JSON.parse(result) : result);
@@ -196,7 +226,7 @@ export async function worldSnapshot(db: Db, room: Room, profile: string, online:
 			&& (step.kind === 'cup' || f.competition !== 'copa-do-brasil') && f.round === (step.kind === 'league' ? step.round : step.matchday)
 			&& [f.home, f.away].includes(current.club)) : null,
 		members: members.map((m) => { const p = s.participants[m.profileId]; return {
-			...m, assignment: p ? { club: p.club, role: p.role, ready: p.ready, delegated: p.delegated, matchDelegated: p.matchDelegated, lineupDelegated: p.lineupDelegated ?? p.matchDelegated, finance: coach?.club === p.club && p.financeIssuer === profile ? p.finance : undefined, appearance: p.appearance ?? p.athlete?.appearance } : null }; }),
+			...m, assignment: p ? { club: p.club, role: p.role, ready: p.ready, aiCover: p.aiCover ?? false, delegated: p.delegated, matchDelegated: p.matchDelegated, lineupDelegated: p.lineupDelegated ?? p.matchDelegated, finance: coach?.club === p.club && p.financeIssuer === profile ? p.finance : undefined, appearance: p.appearance ?? p.athlete?.appearance } : null }; }),
 		clubs: Object.entries(s.league.divisions).flatMap(([division, ids]) =>
 			ids.map((id) => ({ id, name: getClub(id)?.name ?? id, division: division as DivisionId }))),
 		current: current?.finance && !assistant ? { ...current, finance: undefined, financeIssuer: undefined } : current, activity: (s.activity ?? []).filter((event) => event.private
@@ -235,12 +265,15 @@ export async function worldSnapshot(db: Db, room: Room, profile: string, online:
 		sponsors: current?.role === 'coach' ? ownClub?.sponsorOffers : undefined,
 		staff: current?.role === 'coach' ? ownClub?.staff : undefined,
 		athleteDeals: (s.athleteDeals ?? []).filter((x) => current?.role === 'coach' ? [x.from, x.to].includes(current.club) : x.profile === profile)
-			.map((x) => ({ ...x, name: s.participants[x.profile]?.name ?? 'Atleta' }))
+			.map((x) => ({ ...x, name: s.participants[x.profile]?.name ?? 'Atleta' })),
+		// Dev 0.12: mesmas telas da carreira individual (projeção + resultados da temporada).
+		career: coach ? projectCareer(room, s, coach) : null,
+		seasonResults: coach ? past.map(({ round, competition, home, away, homeGoals, awayGoals }) => ({ round, competition, home, away, homeGoals, awayGoals })) : []
 	};
 }
 
 async function playOfficialMatch(replay: Replay) {
-	const match = new Match({ ...replay, ...(replay.neutral ? { rules: { homeAdvantage: false } } : {}) });
+	const match = new Match({ ...replay, rules: { ...(replay.neutral ? { homeAdvantage: false } : {}), ...rulesForVersion(replay.version) } });
 	for (let tick = 0; tick <= 20_000 && match.step(); tick++) {
 		// Give HTTP/WebSocket callbacks time between slices while this room's transaction stays locked.
 		if (tick % 256 === 255) await new Promise<void>((resolve) => setImmediate(resolve));
@@ -404,8 +437,9 @@ async function advance(tx: Db, room: Room, s: WorldState, run?: RoundRun) {
 		const replay: Replay = official?.replay ?? { home, away, seed: matchSeed({ seed }, season, round, f.home, f.competition),
 			neutral: Boolean('neutral' in f && f.neutral), version: ENGINE_VERSION };
 		if (run?.prepare) {
-			replay.ai = { home: !active.some((p) => p.club === f.home && p.role === 'coach'),
-				away: !active.some((p) => p.club === f.away && p.role === 'coach') };
+			// Clube de treinador ausente com delegação autorizada: a IA comanda a partida dele.
+			replay.ai = { home: !active.some((p) => p.club === f.home && p.role === 'coach' && !p.aiCover),
+				away: !active.some((p) => p.club === f.away && p.role === 'coach' && !p.aiCover) };
 			run.prepare.push({ competition: f.competition, replay, venue: replay.neutral ? s.cup?.finalVenue : getClub(f.home)?.stadium });
 			continue;
 		}
@@ -684,34 +718,19 @@ export async function applyWorldCommand(db: Db, room: Room, profile: string, bod
 			// A proposta só altera o mercado quando executada pelo fluxo oficial.
 		} else if (action === 'assign') {
 			const role = body.role, club = body.club;
-			if (owner && !p && identity.entry_mode !== 'mixed' && role !== identity.entry_mode) fail('A função do criador deve seguir o modo escolhido.');
-			if (role !== 'coach' && role !== 'assistant' && role !== 'player') fail('Escolha uma função.');
-			if (!roleMatchesMode(identity.entry_mode, role)) fail('A função não pertence ao modo desta liga.', 403);
+			// Dev 0.12: cada participante é o treinador principal do próprio clube.
+			if (role !== 'coach') fail(role === 'assistant' || role === 'player' ? 'Desde a versão 0.12 a carreira online é só de treinadores.' : 'Escolha uma função.', role === 'assistant' || role === 'player' ? 410 : 400);
 			if (typeof club !== 'string' || !clubList(s).includes(club)) fail('Escolha um clube da temporada.');
-			if (p?.role === 'player') fail('Um atleta muda de clube pelo mercado.');
-			if (p && role === 'player') fail('Este participante já tem uma carreira técnica.');
-			if (role !== 'player') {
-				const [reserved] = await tx.query<{ recipient: string }>(`SELECT recipient FROM room_invitations
-					WHERE room_id=$1 AND club=$2 AND role=$3 AND status='pending' AND expires_at>now()`, [room.id, club, role]);
-				if (reserved && reserved.recipient !== profile) fail('A vaga está reservada para outro participante.', 409);
-				if (identity.entry_mode !== 'mixed' && role === 'assistant' && !reserved && (p?.role !== 'assistant' || p.club !== club)) fail('O treinador precisa convidar você para a comissão.', 403);
-			}
-			if (role !== 'player' && Object.values(s.participants).some((x) => x.profile !== profile && x.role === role && x.club === club)) fail('Esta função já está ocupada.', 409);
-			if (role === 'assistant' && !Object.values(s.participants).some((x) => x.role === 'coach' && x.club === club && x.profile !== profile)) fail('Escolha um clube com treinador humano.');
-			if (p?.role === 'assistant' && role === 'coach' && s.vacancies[profile] !== club) fail('Aceite uma proposta para assumir outro clube.');
-			const appearance = body.appearance ?? p?.appearance ?? p?.athlete?.appearance;
+			if (p && p.role !== 'coach') fail('Participações antigas de atleta ou auxiliar seguem como legado e não assumem clubes.', 410);
+			const [reserved] = await tx.query<{ recipient: string }>(`SELECT recipient FROM room_invitations
+				WHERE room_id=$1 AND club=$2 AND role=$3 AND status='pending' AND expires_at>now()`, [room.id, club, role]);
+			if (reserved && reserved.recipient !== profile) fail('A vaga está reservada para outro participante.', 409);
+			// Validação atômica (mesma transação da liga): dois treinadores nunca assumem o mesmo clube.
+			if (Object.values(s.participants).some((x) => x.profile !== profile && x.role === 'coach' && x.club === club)) fail('Este clube já tem treinador.', 409);
+			const appearance = body.appearance ?? p?.appearance;
 			if (appearance !== undefined && !isAppearance(appearance)) fail('Aparência inválida.');
-			let athlete: CareerData | undefined;
-			if (role === 'player') {
-				const validated = validateCreateCareer({ ...body, mode: 'player', world: 'brasil', clubId: club, appearance: appearance ?? DEFAULT_APPEARANCE });
-				if (!validated.ok) fail(Object.values(validated.errors)[0]);
-				const { player, playerCareer, appearance: playerLook, position, playerFocus } = initialCareerData(validated.value, hashString(room.id + profile));
-				playerCareer!.contract.until = s.league.season + 2;
-				playerCareer!.daily.clubs = [{ clubId: club, date: s.date, kind: 'inicio' }];
-				athlete = { player, playerCareer, appearance: playerLook, position, playerFocus };
-			}
-			const name = role === 'player' ? String(body.personName).trim() : member.displayName;
-			s.participants[profile] = { profile, name, role, club, appearance, athlete: athlete ?? p?.athlete, notices: p?.notices, ready: false, history: [...(p?.history ?? s.alumniHistory?.[profile] ?? []), { club, role, date: s.date }] };
+			const name = member.displayName;
+			s.participants[profile] = { profile, name, role, club, appearance, notices: p?.notices, ready: false, history: [...(p?.history ?? s.alumniHistory?.[profile] ?? []), { club, role, date: s.date }] };
 			if (role !== p?.role || club !== p?.club) {
 				cancelFinanceDrafts(s, profile);
 				if (p?.role === 'coach') for (const former of Object.values(s.participants)) {
@@ -745,6 +764,25 @@ export async function applyWorldCommand(db: Db, room: Room, profile: string, bod
 		} else if (action === 'ready') {
 			if (!p || typeof body.value !== 'boolean') fail('Selecione sua função antes de confirmar.');
 			p.ready = body.value;
+		} else if (action === 'preset') {
+			// Biblioteca "Minhas Táticas" do treinador online (mesmas regras da carreira individual).
+			if (!p || p.role !== 'coach') fail('A biblioteca de táticas é do treinador.', 403);
+			try {
+				const out = applyPresetOperation(sanitizePresets(p.athlete?.tacticPresets), body.preset, { squad: roster(room, s, p.club), clubId: p.club, season: s.league.season });
+				p.athlete = { ...p.athlete, tacticPresets: out.presets };
+				outcomeMessage = out.message;
+			} catch (e) {
+				if (e instanceof PresetError) fail(e.message, e.status);
+				throw e;
+			}
+		} else if (action === 'dismiss-tip') {
+			if (!p || typeof body.tip !== 'string' || body.tip.length > 120) fail('Recomendação inválida.');
+			p.athlete = { ...p.athlete, dismissedTips: [...(p.athlete?.dismissedTips ?? []), body.tip].slice(-60) };
+		} else if (action === 'ai-cover') {
+			// Delegação temporária: só o próprio treinador autoriza (nem o administrador decide por ele).
+			if (!p || p.role !== 'coach' || typeof body.value !== 'boolean') fail('Somente o treinador do clube pode delegar à IA.', 403);
+			p.aiCover = body.value;
+			p.ready = false;
 		} else if (action === 'tactic') {
 			const coach = Object.values(s.participants).find((person) => person.club === p?.club && person.role === 'coach');
 			if (!p || !coach || (p.role !== 'coach' && !(p.role === 'assistant' && (p.lineupDelegated ?? p.matchDelegated)))) {
@@ -983,8 +1021,10 @@ export async function applyWorldCommand(db: Db, room: Room, profile: string, bod
 const requiredForRound = (state: WorldState, assistantsRequired: boolean) =>
 	Object.values(state.participants).filter((member) => needsConfirmation(member, assistantsRequired));
 
-function needsConfirmation(member: Assignment, assistantsRequired: boolean) {
-	return member.role !== 'assistant' || assistantsRequired;
+function needsConfirmation(member: Assignment, _assistantsRequired: boolean) {
+	// Dev 0.12: só treinadores confirmam a rodada. Atletas e auxiliares de ligas antigas seguem como legado.
+	void _assistantsRequired;
+	return member.role === 'coach' && !member.aiCover;
 }
 
 function allReady(state: WorldState, online: ReadonlySet<string>, assistantsRequired: boolean) {

@@ -1,5 +1,15 @@
 # Novidades
 
+## 0.12.0 — Carreira única de treinador
+
+- Carreira de Treinador 2.0: contratos, desemprego, mercado de treinadores, conhecimento tático, Minhas Táticas, negociação de verba com a diretoria, expulsões com time de 10, suspensões persistentes, melhor 11 e idades.
+- Carreira de jogador descontinuada: saves antigos ficam na biblioteca como legado. Ligas online só de treinadores (um por clube; auxiliar sempre da IA).
+- Mesmas telas na carreira individual e na online, por uma camada única de armazenamento (local × liga).
+- Hybrid Save Engine: fila local persistente (IndexedDB) para tática, treinos e dicas, sincronização automática ao reconectar sem duplicar, e indicadores de salvo localmente/sincronizando/sincronizado.
+- Rodada rápida (P50 do servidor de ~2 s para ~0,25 s), menu principal sem rolagem, qualidade visual adaptativa e delegação temporária à IA nas ligas.
+- Novo site: landing page em `/` (download para Windows, galeria, novidades e comunidade); o jogo no navegador passou para `/jogar`. O app do Windows e o modo offline continuam abrindo direto no jogo.
+- Sem migração de banco. Instalador Windows 1.5.0.
+
 ## 0.11.0 — BRASFC Master
 
 - Integração das equipes de engenharia (Codex) e de experiência (Claude) sobre a 0.10.1.

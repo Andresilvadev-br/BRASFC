@@ -1,6 +1,6 @@
 import type { TieOutcome } from '#lib/domain/league.ts';
 import { Match } from '#lib/engine/match.ts';
-import { supportsEngineVersion, type AppliedDecision, type Decision, type MatchEvent, type Side, type TeamSetup } from '#lib/engine/types.ts';
+import { rulesForVersion, supportsEngineVersion, type AppliedDecision, type Decision, type MatchEvent, type Side, type TeamSetup } from '#lib/engine/types.ts';
 import { RoomError } from './repos/rooms.ts';
 
 export type RoundReplay = {
@@ -57,7 +57,7 @@ export function enginesFor(session: LiveRound) {
 	const secondHalf = ['SECOND_HALF', 'FULL_TIME'].includes(session.phase);
 	const matches = session.fixtures.map(({ replay }, fixture) => {
 		if (!supportsEngineVersion(replay.version)) throw new RoomError('Esta rodada exige a versão do motor com que foi iniciada.', 409);
-		const match = new Match({ ...replay, ...(replay.neutral ? { rules: { homeAdvantage: false } } : {}) });
+		const match = new Match({ ...replay, rules: { ...(replay.neutral ? { homeAdvantage: false } : {}), ...rulesForVersion(replay.version) } });
 		for (const entry of session.submissions) {
 			if (entry.fixture !== fixture) continue;
 			const afterInterval = entry.secondHalf;

@@ -32,7 +32,8 @@
 	let whatsNew = $state(false);
 	let navigationId = 0;
 	let navigationFeedback = $state<{ href: string; message: string; pending: boolean } | null>(null);
-	const onSplash = $derived(page.url.pathname === '/');
+	// '/' é a landing page (site) e '/jogar' é a abertura do jogo: nenhuma das duas mostra avisos do jogo.
+	const onSplash = $derived(page.url.pathname === '/' || page.url.pathname === '/jogar');
 
 	$effect(() => { void nativeUpdateAction('busy', hasUnsaved() || pendingWrites.count > 0); });
 	onMount(initNativeUpdates);

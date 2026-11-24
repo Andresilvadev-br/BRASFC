@@ -100,6 +100,8 @@ export function roleMatchesMode(mode: Room['entryMode'], role: 'coach' | 'assist
 }
 
 export async function createRoom(db: Db, ownerId: string, name: string, options?: LeagueConfig, creationKey?: string): Promise<Room> {
+	// Dev 0.12: ligas novas são sempre carreiras online de treinadores.
+	if (options && options.mode !== 'coach') throw new RoomError('Desde a versão 0.12 a carreira online é só de treinadores.', 410);
 	return db.transaction(async (tx) => {
 		await tx.query('SELECT id FROM profiles WHERE id=$1 FOR UPDATE', [ownerId]);
 		if (creationKey) {

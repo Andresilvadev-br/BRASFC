@@ -7,7 +7,7 @@
 	import { formatShort } from '#lib/domain/dates.ts';
 	import { DEFAULT_APPEARANCE } from '#lib/domain/appearance.ts';
 	import { animate } from '#lib/motion/motion.svelte.ts';
-	import { clubKit, coachKit } from '#lib/pixel/kits.ts';
+	import { coachKit } from '#lib/pixel/kits.ts';
 	import { setIslandContext } from '#lib/stores/island.svelte.ts';
 	import Badge from '#lib/ui/Badge.svelte';
 	import Button from '#lib/ui/Button.svelte';
@@ -45,7 +45,7 @@
 		latest
 			? {
 					id: 'continuar',
-					label: 'Continuar',
+					label: 'Continuar carreira',
 					hint: `${saveTitle(latest)}`,
 					icon: 'play' as IconName,
 					href: `/carreira/${latest.id}`,
@@ -57,7 +57,7 @@
 				}
 			: {
 					id: 'continuar',
-					label: 'Continuar',
+					label: 'Continuar carreira',
 					hint: data.careers.length ? 'Nenhum save compatível' : 'Nenhuma carreira salva',
 					icon: 'play' as IconName,
 					href: '/continuar',
@@ -73,14 +73,27 @@
 		{
 			id: 'nova',
 			label: 'Nova carreira',
-			hint: 'Treinador ou jogador',
+			hint: 'Escolha seu clube',
 			icon: 'plus',
 			href: '/nova-carreira',
-			eyebrow: 'Modo carreira',
+			eyebrow: 'Carreira de treinador',
 			headline: 'Pronto para escrever sua história?',
-			text: 'Comande um clube do banco de reservas ou comece como jovem promessa e conquiste a titularidade.',
-			chips: ['Carreira de Treinador', 'Carreira de Jogador', 'Salvamento automático'],
+			text: 'Assuma qualquer clube das Séries A a D, monte o elenco, defina a tática e responda à diretoria rodada após rodada.',
+			chips: ['Clubes reais 2026', 'Mercado e base', 'Salvamento automático'],
 			cta: 'Criar carreira'
+		},
+		{
+			id: 'multiplayer',
+			label: 'Carreira online',
+			hint: 'Ligas com amigos',
+			icon: 'multiplayer',
+			href: '/multiplayer',
+			eyebrow: 'Com amigos',
+			headline: 'Monte sua liga entre amigos',
+			text: 'Crie uma liga, convide amigos ou compartilhe o código. Cada um treina o próprio clube no mesmo universo, sem turnos.',
+			chips: ['Ligas privadas', 'Todos jogam ao mesmo tempo', 'Mesmo jogo da carreira offline'],
+			cta: 'Abrir carreira online',
+			badge: 'Beta'
 		},
 		{
 			id: 'carregar',
@@ -106,19 +119,6 @@
 			chips: ['Motor 2D determinístico', 'Clubes reais 2026', 'Elencos ainda pendentes'],
 			cta: 'Abrir laboratório',
 			badge: 'Novo'
-		},
-		{
-			id: 'multiplayer',
-			label: 'Carreiras compartilhadas',
-			hint: 'Ligas multiplayer',
-			icon: 'multiplayer',
-			href: '/multiplayer',
-			eyebrow: 'Com amigos',
-			headline: 'Monte sua liga entre amigos',
-			text: 'Crie um universo privado, compartilhe o código e dispute temporadas com seus amigos no mesmo futebol.',
-			chips: ['Salas privadas', 'Presença em tempo real', 'Carreiras compartilhadas'],
-			cta: 'Abrir multiplayer',
-			badge: 'Beta'
 		},
 		{
 			id: 'config',
@@ -195,7 +195,7 @@
 	});
 
 	const heroAppearance = $derived(latest?.data.appearance ?? DEFAULT_APPEARANCE);
-	const heroKit = $derived(latest ? (latest.mode === 'coach' ? coachKit(latest.clubId) : clubKit(latest.clubId)) : { shirt: '#10B981', trim: '#E7EDF0', shorts: '#101418', socks: '#10B981' });
+	const heroKit = $derived(coachKit(latest?.clubId));
 </script>
 
 <svelte:head><title>Menu · BRASFC</title></svelte:head>
@@ -238,7 +238,7 @@
 					{item.label}
 					{#if item.badge}<Badge tone="gold">{item.badge}</Badge>{/if}
 				</span>
-				<span class="hint">{item.hint}</span>
+				<span class="hint" title={item.hint}>{item.hint}</span>
 			</a>
 		{/each}
 	</nav>
@@ -253,11 +253,11 @@
 					{#each item.chips as chip (chip)}<li>{chip}</li>{/each}
 				</ul>
 				<div class="cta" data-stage>
-					<Button variant="primary" size="lg" iconRight="arrowRight" disabled={item.disabled} onclick={() => activate(item)}>{item.cta}</Button>
-					{#if item.id === 'continuar' && item.disabled}
-						<Button variant="secondary" icon="plus" href="/nova-carreira">Nova carreira</Button>
-					{:else if item.id === 'continuar' && data.careers.length > 1}
-						<Button variant="ghost" href="/continuar">Biblioteca de carreiras</Button>
+					{#if item.id === 'continuar'}
+						<!-- A ação "Continuar carreira" fica só no menu: aqui aparece o resumo do save. -->
+						{#if item.disabled}<Button variant="secondary" icon="plus" href="/nova-carreira">Criar uma carreira</Button>{:else}<span class="hint-key"><kbd>Enter</kbd> ou clique em “Continuar carreira” para entrar</span>{/if}
+					{:else}
+						<Button variant="primary" size="lg" iconRight="arrowRight" disabled={item.disabled} onclick={() => activate(item)}>{item.cta}</Button>
 					{/if}
 				</div>
 				{#if item.id === 'novidades'}<div class="desk" data-stage><DesktopDownload compact /></div>{/if}
@@ -266,26 +266,19 @@
 	</section>
 
 	<div class="hero" aria-hidden="true">
-		{#if current.id === 'nova'}
-			<div class="duo">
-				<div class="figure coach"><Pixel variant="full" appearance={{ skin: 3, hairColor: 0, hairStyle: 'curto' }} kit={coachKit()} size={300} idle ball={false} /></div>
-				<div class="figure"><Pixel variant="full" appearance={DEFAULT_APPEARANCE} kit={{ shirt: '#10B981', trim: '#E7EDF0', shorts: '#101418', socks: '#10B981' }} size={360} idle /></div>
-			</div>
-		{:else}
 			<div class="figure solo">
 				{#if current.id === 'continuar' && latest}
 					<div class="crest-float"><Crest clubId={latest.clubId} size={96} /></div>
 				{/if}
-				<Pixel variant="full" appearance={heroAppearance} kit={heroKit} clubId={latest?.clubId} styled size={400} idle ball={latest?.mode !== 'coach'} />
+				<Pixel variant="full" appearance={heroAppearance} kit={heroKit} clubId={latest?.clubId} styled size={320} idle ball={false} />
 			</div>
-		{/if}
 		<div class="floor"></div>
 	</div>
 
 	<footer class="keys">
-		<span><kbd>←</kbd><kbd>→</kbd> Navegar</span>
+		<span><kbd>↑</kbd><kbd>↓</kbd> Navegar</span>
 		<span><kbd>Enter</kbd> Selecionar</span>
-		<span class="subtle">Clubes brasileiros das Séries A–D 2026. Elencos documentados e pendências aparecem na seleção de clube.</span>
+		<span class="subtle">Clubes brasileiros das Séries A–D 2026.</span>
 	</footer>
 </div>
 
@@ -294,19 +287,24 @@
 		margin-top: var(--sp-4);
 		max-width: 620px;
 	}
+	/*
+	 * Dev 0.12: menu de jogo para computador — lista vertical à esquerda, apresentação no centro e
+	 * treinador à direita, tudo dentro da altura da janela (1280×720 a 4K, sem rolagem).
+	 */
 	.menu-screen {
 		position: relative;
-		min-height: var(--app-h, 100vh);
+		height: var(--app-h, 100vh);
+		min-height: 560px;
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) minmax(220px, 30vw);
-		grid-template-rows: auto 1fr auto auto;
+		grid-template-columns: minmax(250px, 320px) minmax(0, 1fr) minmax(200px, 26vw);
+		grid-template-rows: auto minmax(0, 1fr) auto;
 		grid-template-areas:
-			'top top'
-			'stage hero'
-			'items items'
-			'keys keys';
-		padding: var(--sp-6) clamp(24px, 4vw, 64px);
-		gap: var(--sp-6);
+			'top top top'
+			'items stage hero'
+			'keys keys keys';
+		padding: clamp(14px, 2.2vh, 32px) clamp(24px, 4vw, 72px);
+		column-gap: clamp(24px, 3vw, 56px);
+		row-gap: clamp(10px, 2vh, 28px);
 		overflow: hidden;
 	}
 	.top {
@@ -315,7 +313,7 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding-top: 44px;
+		padding-top: clamp(8px, 3vh, 44px);
 	}
 	.who {
 		display: flex;
@@ -345,25 +343,34 @@
 	.items {
 		grid-area: items;
 		position: relative;
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-		gap: var(--sp-3);
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		gap: clamp(6px, 1vh, 12px);
+		min-height: 0;
 	}
 	.item {
 		display: grid;
-		grid-template-rows: auto auto 1fr;
-		gap: 6px;
-		min-height: 128px;
-		padding: var(--sp-4);
+		grid-template-columns: auto minmax(0, 1fr);
+		grid-template-rows: auto auto;
+		column-gap: 12px;
+		row-gap: 2px;
+		align-items: center;
+		padding: clamp(8px, 1.3vh, 14px) 14px;
 		outline: none;
-		transition: box-shadow 0.25s var(--ease-out);
+		min-width: 0;
+		transition: box-shadow 0.25s var(--ease-out), transform 0.2s var(--ease-out);
+	}
+	.item[data-active='true'] {
+		transform: translateX(4px);
 	}
 	.item:focus-visible {
 		box-shadow: 0 0 0 2px var(--emerald-strong);
 	}
 	.ic {
-		width: 40px;
-		height: 40px;
+		grid-row: 1 / 3;
+		width: 38px;
+		height: 38px;
 		border-radius: 12px;
 		display: grid;
 		place-items: center;
@@ -372,21 +379,27 @@
 		transition: background 0.25s, color 0.25s;
 	}
 	.label {
-		display: inline-flex;
+		display: flex;
 		align-items: center;
+		justify-content: space-between;
 		gap: var(--sp-2);
+		min-width: 0;
+		white-space: nowrap;
 		font-family: var(--font-display);
 		font-weight: 700;
-		font-size: calc(1.35rem * var(--text-scale));
-		line-height: 1.05;
+		font-size: calc(clamp(1.05rem, 1.25vw, 1.35rem) * var(--text-scale));
+		line-height: 1.1;
 		text-transform: uppercase;
 		letter-spacing: 0.03em;
 		color: rgb(231 237 240 / 0.72);
 	}
 	.hint {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 		font-size: var(--fs-xs);
 		color: var(--text-3);
-		align-self: end;
 	}
 	.item[data-active='true'] {
 		box-shadow: var(--glow-emerald);
@@ -419,14 +432,19 @@
 		flex-direction: column;
 		gap: var(--sp-4);
 		visibility: hidden;
-		max-width: 560px;
-		padding: var(--sp-6) 0;
+		max-width: 600px;
+		padding: var(--sp-3) 0;
 	}
 	.copy.active {
 		visibility: visible;
 	}
+	.hint-key {
+		color: var(--text-3);
+		font-size: var(--fs-sm);
+	}
 	.copy h1 {
-		font-size: calc(clamp(2.5rem, 4vw, 3.75rem) * var(--text-scale));
+		font-size: calc(clamp(2rem, min(3.4vw, 6vh), 3.75rem) * var(--text-scale));
+		text-wrap: balance;
 		font-weight: 800;
 		text-transform: uppercase;
 		line-height: 0.98;
@@ -468,21 +486,9 @@
 		padding-bottom: var(--sp-4);
 		pointer-events: none;
 	}
-	.duo {
-		display: flex;
-		align-items: flex-end;
-		gap: 0;
-	}
-	.duo .coach {
-		margin-right: -40px;
-		filter: brightness(0.82);
-	}
 	.figure :global(svg.pixel) {
-		height: min(50vh, 380px);
+		height: min(44vh, 340px);
 		width: auto;
-	}
-	.duo .coach :global(svg.pixel) {
-		height: min(42vh, 320px);
 	}
 	.figure {
 		position: relative;
@@ -540,15 +546,15 @@
 			padding-block: var(--sp-3);
 		}
 		.figure :global(svg.pixel) {
-			height: min(42vh, 330px);
-		}
-		.duo .coach :global(svg.pixel) {
-			height: min(34vh, 280px);
+			height: min(38vh, 300px);
 		}
 	}
 	@media (max-width: 1100px) {
 		.menu-screen {
+			height: auto;
+			min-height: var(--app-h, 100vh);
 			grid-template-columns: 1fr;
+			grid-template-rows: auto auto auto auto;
 			grid-template-areas:
 				'top'
 				'stage'

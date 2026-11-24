@@ -1,11 +1,14 @@
 <script lang="ts">
+	import { provideCareerPort } from '#lib/career/port.ts';
+	import { localCareerPort, localSyncChannel } from '#lib/career/local-port.ts';
+	import type { SyncChannel } from '#lib/stores/sync.svelte.ts';
+	import SyncBadge from '#lib/ui/SyncBadge.svelte';
 	import { page } from '$app/state';
 	import { invalidate } from '$app/navigation';
 	import { api } from '#lib/api.ts';
 	import type { Appearance } from '#lib/domain/appearance.ts';
 	import { coachKit, playerKit } from '#lib/pixel/kits.ts';
 	import WardrobeDialog from '#lib/ui/career/WardrobeDialog.svelte';
-	import { MODE_LABELS } from '#lib/domain/career.ts';
 	import { formatShort } from '#lib/domain/dates.ts';
 	import { setIslandContext } from '#lib/stores/island.svelte.ts';
 	import CareerShell from '#lib/ui/career/CareerShell.svelte';
@@ -13,6 +16,19 @@
 	import type { IconName } from '#lib/ui/icons.ts';
 
 	let { data, children } = $props();
+	// Dev 0.12: as telas da carreira falam com o armazenamento por esta porta (a online usa a da liga).
+	// Hybrid Save Engine: cada carreira tem sua fila local (sobrevive a recarregar e reconectar).
+	let sync = $state.raw<SyncChannel | null>(null);
+	provideCareerPort(localCareerPort(() => data.career, () => sync));
+	$effect(() => {
+		const channel = localSyncChannel(data.career.id);
+		sync = channel;
+		const stop = channel.start();
+		return () => {
+			stop();
+			if (sync === channel) sync = null;
+		};
+	});
 
 	const base = $derived(`/carreira/${data.career.id}`);
 	let visited = '';
@@ -26,7 +42,9 @@
 	const unread = $derived(data.career.unreadMessages ?? 0);
 	const coach = $derived(data.career.mode === 'coach');
 	const brasil = $derived(data.view.world === 'brasil');
-	const groups = $derived<CareerGroup[]>([
+	const groups = $derived<CareerGroup[]>(coach && data.manage.club.board.dismissed
+		? [{ label: 'Carreira', items: [{ href: `${base}/gabinete`, label: 'Propostas de emprego', icon: 'briefcase' as IconName }] }]
+		: [
 		{
 			label: 'Jogo',
 			items: [
@@ -89,12 +107,15 @@
 {#if data.degraded.length}
 	<p class="load-notice" role="status">Não foi possível carregar {data.degraded.join(' e ')}. <button type="button" onclick={() => invalidate('app:career')}>Tentar novamente</button></p>
 {/if}
-<CareerShell {base} clubId={data.career.clubId} clubName={data.view.club.name} color={data.view.club.colors.primary}
-	personName={data.career.personName} roleLabel={MODE_LABELS[data.career.mode]} {groups} {current}
+<CareerShell {base} clubId={data.career.clubId} unemployed={coach && data.manage.club.board.dismissed} clubName={coach && data.manage.club.board.dismissed ? 'Sem clube' : data.view.club.name} color={coach && data.manage.club.board.dismissed ? '#374151' : data.view.club.colors.primary}
+	personName={data.career.personName} roleLabel="Treinador" {groups} {current}
 	date={data.career.gameDate} season={data.career.season} cup={step?.kind === 'cup'} {stepLabel}
-	balance={coach ? data.manage.club.balance : undefined}
-	match={{ href: `${base}/partida`, label: data.view.next ? 'Ir para o jogo' : data.view.seasonOver ? 'Encerrar temporada' : 'Avançar' }}>
+	balance={coach && !data.manage.club.board.dismissed ? data.manage.club.balance : undefined}
+	match={coach && data.manage.club.board.dismissed
+		? { href: `${base}/gabinete`, label: 'Ver propostas de emprego' }
+		: { href: `${base}/partida`, label: data.view.next ? 'Ir para o jogo' : data.view.seasonOver ? 'Encerrar temporada' : 'Avançar' }}>
 	{#snippet status()}
+		{#if sync}<SyncBadge channel={sync} />{/if}
 		<WardrobeDialog value={data.career.data.appearance} clubId={data.career.clubId} uniformOptions={!coach} onsave={saveAppearance}
 			kit={coach ? coachKit(data.career.clubId) : playerKit(data.career.clubId, data.career.data.position ?? 'ATA')} />
 	{/snippet}

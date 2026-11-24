@@ -1,10 +1,11 @@
 <script lang="ts">
+	import { visibleSquadAge } from '#lib/domain/squad.ts';
 	import { formatExactMoney } from '#lib/domain/market.ts';
 	import type { Position } from '#lib/domain/positions.ts';
 	import Button from '../Button.svelte';
 
 	let { players, listed, toggle }: {
-		players: { id: string; name: string; position: Position; overall: number; value?: number; loan?: unknown; pending?: boolean }[];
+		players: { id: string; name: string; position: Position; overall: number; value?: number; loan?: unknown; pending?: boolean; age?: number; cbfId?: string; birthDate?: string }[];
 		listed: string[]; toggle: (id: string) => Promise<boolean>;
 	} = $props();
 	let saving = $state('');
@@ -26,7 +27,7 @@
 	{#if error}<p role="alert">{error}</p>{/if}
 	{#each eligible as player (player.id)}
 		<article>
-			<div><strong>{player.name}</strong><small>{player.position} · Overall {player.overall}{player.value === undefined ? '' : ` · ${formatExactMoney(player.value)}`}</small></div>
+			<div><strong>{player.name}</strong><small>{player.position}{typeof player.age === 'number' ? ` · ${visibleSquadAge({ age: player.age, cbfId: player.cbfId, birthDate: player.birthDate }) ?? '—'} anos` : ''} · Overall {player.overall}{player.value === undefined ? '' : ` · ${formatExactMoney(player.value)}`}</small></div>
 			{#if player.loan}<small>Emprestado</small>
 			{:else}
 				<Button size="sm" variant={listed.includes(player.id) ? 'secondary' : 'ghost'} disabled={!!saving && saving !== player.id}

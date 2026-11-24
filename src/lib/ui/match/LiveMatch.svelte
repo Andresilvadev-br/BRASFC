@@ -141,7 +141,7 @@
 		return [...groups.entries()].sort(([a], [b]) => (a === mine ? -1 : b === mine ? 1 : a.localeCompare(b))).map(([id, games]) => ({ id, games, mine: id === mine }));
 	});
 	const decisionLabels: Record<Decision['type'], string> = { individual: 'Instrução individual', captains: 'Ordem de capitães', sub: 'Substituição', swap: 'Troca de posições',
-		mentality: 'Mentalidade', style: 'Estilo de jogo', formation: 'Formação', instructions: 'Instruções coletivas' };
+		mentality: 'Mentalidade', style: 'Estilo de jogo', formation: 'Formação', instructions: 'Instruções coletivas', move: 'Reorganização' };
 	const phaseShort: Record<string, string> = { first_half: '1º tempo', half_time: 'Intervalo', second_half: '2º tempo', finished: 'Encerrado' };
 	const viewModes = [{ value: 'classico', label: 'Clássico', icon: 'field' }, { value: 'pixel', label: 'Pixel', icon: 'shirt' }, { value: 'narracao', label: 'Narração', icon: 'news' }] as const;
 
@@ -230,7 +230,8 @@
 		const squad = relevant.replay[relevant.side].players.filter((p) => match?.players.some((row) => row.id === p.id));
 		const available = new Set(squad.map((p) => p.id));
 		const lineup = autoLineup(value, squad.map((p) => ({ ...p, overall: computeOverall(p.attributes, p.position) } as Parameters<typeof autoLineup>[1][number])));
-		if (lineup.every((id) => available.has(id))) decision({ type: 'formation', value, lineup });
+		// Com expulsões a nova formação tem vagas (''): o motor confere que os demais estão em campo.
+		if (lineup.every((id) => id === '' || available.has(id)) && lineup.filter(Boolean).length === available.size) decision({ type: 'formation', value, lineup });
 	}
 	function replay() {
 		if (frameSet.length < 2 || replayIndex !== null) return;

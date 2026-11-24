@@ -2,7 +2,7 @@
 	import { untrack } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { api } from '#lib/api.ts';
-	import { motion, setMotionProfile, type MotionPreference, type MotionProfileId } from '#lib/motion/motion.svelte.ts';
+	import { effectiveQuality, motion, type MotionPreference, type QualityPreference } from '#lib/motion/motion.svelte.ts';
 	import { notify, setIslandContext } from '#lib/stores/island.svelte.ts';
 	import { prefs, savePrefs, type IntroMode, type TextScale } from '#lib/stores/prefs.svelte.ts';
 	import Button from '#lib/ui/Button.svelte';
@@ -38,15 +38,22 @@
 	type Opt<T> = { value: T; label: string; hint: string; icon: IconName };
 	const MOTION: Opt<MotionPreference>[] = [
 		{ value: 'auto', label: 'Automático', hint: 'Segue a preferência do sistema', icon: 'sparkle' },
-		{ value: 'completo', label: 'Completo', hint: 'Transições e efeitos cinematográficos', icon: 'play' },
-		{ value: 'leve', label: 'Leve', hint: 'Menos efeitos, ideal para computadores modestos', icon: 'refresh' },
-		{ value: 'reduzido', label: 'Reduzido', hint: 'Sem deslocamentos nem efeitos', icon: 'eye' }
+		{ value: 'completo', label: 'Completo', hint: 'Transições e microinterações', icon: 'play' },
+		{ value: 'reduzido', label: 'Reduzido', hint: 'Sem deslocamentos (acessibilidade)', icon: 'eye' }
 	];
-	const PROFILES: Array<Opt<MotionProfileId> & { level: number }> = [
-		{ value: 'ultra', label: 'Ultra', hint: 'Partículas, brilho e luz', icon: 'sparkle', level: 3 },
-		{ value: 'balanced', label: 'Equilibrado', hint: 'Menos efeitos decorativos', icon: 'chart', level: 2 },
-		{ value: 'performance', label: 'Desempenho', hint: 'PCs modestos: só o essencial', icon: 'training', level: 1 }
+	// Dev 0.12: qualidade visual adaptativa (efeitos), separada do movimento (acessibilidade).
+	const QUALITY: Array<Opt<QualityPreference> & { level: number }> = [
+		{ value: 'auto', label: 'Automático', hint: 'Escolhe pelo seu computador', icon: 'sparkle', level: 0 },
+		{ value: 'alto', label: 'Alto', hint: 'Luz, partículas, desfoque e 2.5D', icon: 'star', level: 4 },
+		{ value: 'equilibrado', label: 'Equilibrado', hint: 'Menos efeitos decorativos', icon: 'chart', level: 3 },
+		{ value: 'economico', label: 'Econômico', hint: 'Sem desfoque nem luz de cursor', icon: 'training', level: 2 },
+		{ value: 'ultra-economico', label: 'Ultra Econômico', hint: 'PCs de entrada: transições simples e leves', icon: 'refresh', level: 1 }
 	];
+	let qualityNow = $state('');
+	$effect(() => {
+		void prefs.quality;
+		qualityNow = QUALITY.find((q) => q.value === effectiveQuality())?.label ?? '';
+	});
 	const INTRO: Opt<IntroMode>[] = [
 		{ value: 'sessao', label: 'Uma vez por sessão', hint: 'Ao abrir o navegador', icon: 'clock' },
 		{ value: 'sempre', label: 'Sempre', hint: 'Toda vez que entrar', icon: 'play' },
@@ -54,10 +61,6 @@
 	];
 	const SIZES: TextScale[] = [100, 112, 125];
 
-	async function setProfile(p: MotionProfileId) {
-		savePrefs({ motionProfile: p });
-		await setMotionProfile(p);
-	}
 
 	async function saveName(e: SubmitEvent) {
 		e.preventDefault();
@@ -95,16 +98,17 @@
 			<p class="state muted">Agora: <strong>{motion.reduced ? 'movimento reduzido' : 'movimento completo'}</strong>{#if motion.ready} · Ultra Motion X {motion.version}{/if}</p>
 		</Panel>
 
-		<Panel title="Desempenho visual" icon="chart" index={1}>
-			<div class="opts three" role="radiogroup" aria-label="Perfil de desempenho">
-				{#each PROFILES as o (o.value)}
-					<button type="button" role="radio" aria-checked={prefs.motionProfile === o.value} class="opt" onclick={() => setProfile(o.value)}>
-						<span class="gauge" aria-hidden="true">{#each [1, 2, 3] as l (l)}<span class:on={l <= o.level}></span>{/each}</span>
+		<Panel title="Qualidade visual" icon="chart" index={1}>
+			<div class="opts five" role="radiogroup" aria-label="Qualidade visual">
+				{#each QUALITY as o (o.value)}
+					<button type="button" role="radio" aria-checked={prefs.quality === o.value} class="opt" onclick={() => savePrefs({ quality: o.value })}>
+						{#if o.level}<span class="gauge" aria-hidden="true">{#each [1, 2, 3, 4] as l (l)}<span class:on={l <= o.level}></span>{/each}</span>{:else}<span class="oi"><Icon name={o.icon} size={22} /></span>{/if}
 						<strong>{o.label}</strong>
 						<small>{o.hint}</small>
 					</button>
 				{/each}
 			</div>
+			<p class="state muted">Em uso: <strong>{qualityNow}</strong>. O clique responde na hora em qualquer modo.</p>
 		</Panel>
 
 		<Panel title="Tamanho do texto" icon="eye" index={2}>
@@ -168,6 +172,7 @@
 </div>
 
 <style>
+	.opts.five { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
 	.page {
 		max-width: 1100px;
 		margin: 0 auto;

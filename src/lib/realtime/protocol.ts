@@ -1,7 +1,8 @@
 /** Protocolo do canal de tempo real (servidor autoritativo). */
 export const REALTIME_PATH = '/ws/realtime';
 
-export const ROOM_ACTIVITIES = ['rodada', 'carreira', 'mercado', 'admin', 'escalacao', 'taticas', 'contratos'] as const;
+// Atividades GENÉRICAS (Dev 0.12: Dynamic Island da carreira online). Nunca levam valores, nomes ou escalações.
+export const ROOM_ACTIVITIES = ['rodada', 'carreira', 'mercado', 'admin', 'escalacao', 'taticas', 'contratos', 'base', 'financas', 'clube', 'treinos', 'preparacao'] as const;
 export type RoomActivity = (typeof ROOM_ACTIVITIES)[number];
 
 export type ClientMessage =

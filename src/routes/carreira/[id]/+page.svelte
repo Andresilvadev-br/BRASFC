@@ -10,10 +10,8 @@
 	import { POSITION_INFO } from '#lib/domain/positions.ts';
 	import { MASTERY_LABEL } from '#lib/domain/tactical.ts';
 	import { count, reveal } from '#lib/motion/actions.ts';
-	import { playerKit } from '#lib/pixel/kits.ts';
 	import AssistantTips from '#lib/ui/AssistantTips.svelte';
 	import Button from '#lib/ui/Button.svelte';
-	import PlayerHub from '#lib/ui/career/PlayerHub.svelte';
 	import StandingsTable from '#lib/ui/career/StandingsTable.svelte';
 	import Crest from '#lib/ui/Crest.svelte';
 	import Icon from '#lib/ui/Icon.svelte';
@@ -70,7 +68,6 @@
 			...(isCoach && m.window ? [{ tone: 'ok', icon: 'briefcase' as const, text: `Janela de transferências aberta (${m.window === 'pre-temporada' ? 'pré-temporada' : 'meio do ano'}).`, href: `${base}/mercado` }] : []),
 			...(isCoach && !m.club.sponsors.length && m.club.sponsorOffers.length ? [{ tone: 'gold', icon: 'star' as const, text: 'Nenhum patrocínio assinado: há propostas na mesa.', href: `${base}/financas` }] : []),
 			...(isCoach && m.club.balance < 0 ? [{ tone: 'bad', icon: 'chart' as const, text: `Caixa negativo: ${formatMoney(m.club.balance)}.`, href: `${base}/financas` }] : []),
-			...(!isCoach && c.data.playerCareer?.offers?.length ? [{ tone: 'gold', icon: 'briefcase' as const, text: 'Seu empresário trouxe propostas.', href: `${base}/clube` }] : []),
 			...(avgFitness < 75 ? [{ tone: 'gold', icon: 'training' as const, text: `Condição média do elenco em ${avgFitness}%: considere poupar titulares.`, href: `${base}/treinos` }] : []),
 			...(isCoach && data.office.advice.length ? [{ tone: 'ok', icon: 'whistle' as const, text: `Comissão técnica — ${data.office.advice[0].title}`, href: `${base}/comissao` }] : [])
 		] as Array<{ tone: string; icon: 'alert' | 'briefcase' | 'clock' | 'star' | 'chart' | 'training' | 'news' | 'whistle'; text: string; href: string }>
@@ -81,7 +78,7 @@
 			? analyze({
 					squad: v.squad,
 					tactic: v.tactic,
-					tactical: v.tactical,
+					tactical: v.effective,
 					fitness: v.fitness,
 					recent: data.recent ?? [],
 					clubId: c.clubId,
@@ -111,9 +108,6 @@
 
 <svelte:head><title>Painel · {v.club.name} · BRASFC</title></svelte:head>
 
-{#if c.mode === 'player' && c.data.player && c.data.position}
-	<PlayerHub career={c} view={v} recent={data.recent} history={data.playerHistory} />
-{:else}
 <div class="greet" use:reveal>
 	<span class="eyebrow">{formatLong(c.gameDate)}</span>
 	<h1 class="display">Olá, {c.personName.split(' ')[0]}</h1>
@@ -182,23 +176,13 @@
 				<a class="link" href="{base}/financas">Finanças →</a>
 			</div>
 		</section>
-	{:else}
-		<section class="board glass me" use:reveal={{ index: 2 }}>
-			<Pixel variant="full" {appearance} kit={playerKit(c.clubId, c.data.position ?? 'ATA')} size={130} />
-			<div class="money">
-				<span class="k">#{c.data.player?.number} · {POSITION_INFO[c.data.position ?? 'ATA'].label}</span>
-				<strong>{c.data.player?.overall} <small class="muted">/ {c.data.player?.potential}</small></strong>
-				<span class="muted small">{c.data.player?.age} anos · reputação {c.data.playerCareer?.reputation ?? c.data.player?.reputation}</span>
-				<a class="link" href="{base}/clube">Minha carreira →</a>
-			</div>
-		</section>
 	{/if}
 
 	{#if data.office.universe?.news.length}
 		<section class="ticker glass" use:reveal={{ index: 3 }} aria-label="Últimas notícias">
 			<span class="tk"><Icon name="globe" size={16} /> Mundo</span>
 			<ul>
-				{#each [...data.office.universe.news].reverse().slice(0, 3) as n (n.id)}<li><a href="{base}/mundo">{n.title}</a></li>{/each}
+				{#each [...data.office.universe.news].reverse().slice(0, 3) as n (n.id)}<li><a href="{base}/mundo" title={n.title}>{n.title}</a></li>{/each}
 			</ul>
 		</section>
 	{/if}
@@ -257,14 +241,12 @@
 		<ul>
 			{#each inbox as msg (msg.id)}
 				<li class:unread={!msg.read} class:important={msg.kind === 'important'}>
-					<a href="{base}/mensagens?m={msg.id}"><span class="flag"></span><span class="from">{msg.sender}</span><span class="subject">{msg.subject}</span></a>
+					<a href="{base}/mensagens?m={msg.id}"><span class="flag"></span><span class="from">{msg.sender}</span><span class="subject" title={msg.subject}>{msg.subject}</span></a>
 				</li>
 			{/each}
 		</ul>
 	</section>
 </div>
-
-{/if}
 
 <style>
 	.greet {

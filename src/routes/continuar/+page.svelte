@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto, invalidate } from '$app/navigation';
+	import { page } from '$app/state';
 	import { api, ApiError, connectionIssue } from '#lib/api.ts';
 	import { DEFAULT_APPEARANCE } from '#lib/domain/appearance.ts';
 	import { MODE_LABELS, type Career } from '#lib/domain/career.ts';
@@ -7,7 +8,7 @@
 	import { formatShort } from '#lib/domain/dates.ts';
 	import { latestValidSave, SAVE_SORTS, saveCompetition, saveIssue, savedAgo, saveTitle, sortSaves, type SaveSort } from '#lib/domain/saves.ts';
 	import { enter, indicator } from '#lib/motion/actions.ts';
-	import { coachKit, playerKit } from '#lib/pixel/kits.ts';
+	import { coachKit } from '#lib/pixel/kits.ts';
 	import { notify, setIslandContext } from '#lib/stores/island.svelte.ts';
 	import Button from '#lib/ui/Button.svelte';
 	import Crest from '#lib/ui/Crest.svelte';
@@ -44,7 +45,7 @@
 	const invalidCount = $derived(data.careers.filter((c) => saveIssue(c)).length);
 	const latestClub = $derived(latest ? getClub(latest.clubId) : undefined);
 
-	const kit = (c: Career) => (c.mode === 'coach' ? coachKit(c.clubId) : playerKit(c.clubId, c.data.position ?? 'ATA'));
+	const kit = (c: Career) => coachKit(c.clubId);
 	const failure = (e: unknown, fallback: string) =>
 		connectionIssue(e) ? 'Sem conexão com o servidor. Nada foi alterado; tente de novo.' : e instanceof Error ? e.message : fallback;
 
@@ -122,18 +123,22 @@
 		{#snippet actions()}<Button variant="primary" icon="plus" href="/nova-carreira" disabled={data.careers.length >= MAX}>Nova carreira</Button>{/snippet}
 	</ScreenHeader>
 
+	{#if page.url.searchParams.get('legado')}
+		<p class="legacy" role="status"><Icon name="info" size={16} /> A carreira de jogador foi descontinuada na versão 0.12. Seu save continua guardado aqui como legado e só sai da biblioteca se você excluir.</p>
+	{/if}
+
 	{#if data.careers.length === 0}
 		<section class="empty" use:enter>
 			<span class="empty-art" aria-hidden="true"><Icon name="trophy" size={40} /></span>
 			<h2 class="display">Nenhuma carreira salva</h2>
-			<p class="muted">Crie uma carreira de treinador ou de jogador. Cada uma fica salva no servidor, separada das outras.</p>
+			<p class="muted">Crie uma carreira de treinador. Cada uma fica salva separada das outras.</p>
 			<Button variant="primary" size="lg" icon="plus" href="/nova-carreira">Começar uma carreira</Button>
 		</section>
 	{:else}
 		{#if latest}
 			<section class="continue" style:--club={latestClub?.colors.primary ?? 'var(--emerald-deep)'} use:enter>
 				<span class="stripes" aria-hidden="true"></span>
-				<div class="continue-art"><Pixel variant="full" appearance={latest.data.appearance ?? DEFAULT_APPEARANCE} kit={kit(latest)} clubId={latest.clubId} styled size={140} ball={latest.mode === 'player'} /></div>
+				<div class="continue-art"><Pixel variant="full" appearance={latest.data.appearance ?? DEFAULT_APPEARANCE} kit={kit(latest)} clubId={latest.clubId} styled size={140} /></div>
 				<div class="continue-copy">
 					<p class="eyebrow">Continuar · {MODE_LABELS[latest.mode]}</p>
 					<h2 class="display">{saveTitle(latest)}</h2>
@@ -167,17 +172,17 @@
 				<article class="save" class:selected class:invalid={!!issue} style:--c={club?.colors.primary ?? 'var(--surface-3)'} use:enter={{ index: i }}>
 					<button type="button" class="save-main" aria-expanded={selected} aria-controls="detalhes-{c.id}" onclick={() => toggle(c.id)} data-umx-press>
 						<span class="art">
-							<Pixel variant="full" appearance={c.data.appearance ?? DEFAULT_APPEARANCE} kit={kit(c)} clubId={club ? c.clubId : undefined} styled size={112} ball={c.mode === 'player'} />
+							<Pixel variant="full" appearance={c.data.appearance ?? DEFAULT_APPEARANCE} kit={kit(c)} clubId={club ? c.clubId : undefined} styled size={112} />
 						</span>
 						<span class="info">
 							<span class="tags">
-								<span class="mode"><Icon name={c.mode === 'coach' ? 'whistle' : 'shirt'} size={13} />{c.mode === 'coach' ? 'Treinador' : 'Jogador'}</span>
+								<span class="mode"><Icon name={c.mode === 'coach' ? 'whistle' : 'shirt'} size={13} />{c.mode === 'coach' ? 'Treinador' : 'Legado'}</span>
 								{#if latest?.id === c.id}<span class="recent">Mais recente</span>{/if}
 								{#if issue}<span class="bad">Save incompatível</span>{/if}
 							</span>
 							<strong>{saveTitle(c)}</strong>
 							<span class="club">{#if club}<Crest clubId={c.clubId} size={22} />{:else}<span class="crest-fallback" aria-hidden="true">?</span>{/if}{club?.name ?? 'Clube indisponível'}</span>
-							<span class="meta">{c.personName}{c.mode === 'player' && c.data.position ? ` · ${c.data.position}` : ''}</span>
+							<span class="meta">{c.personName}</span>
 							<span class="meta"><Icon name="calendar" size={13} />{formatShort(c.gameDate)} · Temporada {c.season}{competition ? ` · ${competition}` : ''}</span>
 						</span>
 						<span class="chev" aria-hidden="true"><Icon name="chevronDown" size={18} /></span>
@@ -222,7 +227,7 @@
 				{#each data.shared as room (room.code)}
 					<a class="league" href="/multiplayer/sala/{room.code}" style:--c={room.club ? getClub(room.club)?.colors.primary ?? 'var(--surface-3)' : 'var(--surface-3)'} data-umx-press>
 						<span class="league-mark">{#if room.club}<Crest clubId={room.club} size={30} />{:else}<Icon name="trophy" size={20} />{/if}</span>
-						<span class="league-copy"><strong>{room.name}</strong><small>{room.entryMode === 'coach' ? 'Treinadores' : room.entryMode === 'player' ? 'Jogadores' : 'Misto'}{room.season ? ` · ${room.season}` : ''} · {room.members}/{room.maxMembers}{room.owner ? ' · Anfitrião' : ''}</small></span>
+						<span class="league-copy"><strong>{room.name}</strong><small>Carreira online{room.season ? ` · ${room.season}` : ''} · {room.members}/{room.maxMembers}{room.owner ? ' · Anfitrião' : ''}</small></span>
 						<Icon name="chevronRight" size={18} />
 					</a>
 				{/each}
@@ -262,6 +267,7 @@
 </Modal>
 
 <style>
+	.legacy { display: flex; gap: 8px; align-items: center; margin: 0; padding: 10px 14px; border-radius: 12px; background: rgb(59 130 246 / 0.12); }
 	.page { max-width: 1240px; margin: 0 auto; padding: 60px clamp(16px, 3vw, 40px) var(--sp-8); }
 	.empty { display: grid; justify-items: center; gap: var(--sp-3); padding: var(--sp-8) var(--sp-5); text-align: center; border-radius: var(--radius-xl); border: 1px dashed var(--line-strong);
 		background: radial-gradient(60% 80% at 50% 0, var(--emerald-soft), transparent); }

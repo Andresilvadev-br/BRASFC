@@ -45,6 +45,9 @@ import {
 const OTHER: Record<Side, Side> = { home: 'away', away: 'home' };
 const HALF_LENGTH = PITCH.length / 2;
 
+const DEFENSIVE = new Set<string>(['ZAG', 'LD', 'LE', 'VOL']);
+const ATTACKING = new Set<string>(['ATA', 'PD', 'PE', 'MEI']);
+
 interface TeamRuntime {
 	setup: TeamSetup;
 	tactic: TeamTactic;
@@ -509,23 +512,50 @@ export class Match {
 		}
 		if (d.type === 'formation') {
 			const active = this.onPitch(side).map((s) => s.id);
-			if (d.lineup.length !== FORMATIONS[d.value].length || [...d.lineup].sort().join() !== [...active].sort().join()) {
-				// Com expulsões, mantemos os mesmos 10/9 e só trocamos o desenho.
-				if (active.length === 11 || !d.lineup.every((id) => active.includes(id))) return record('Escalação não corresponde aos atletas em campo');
-			}
+			const size = FORMATIONS[d.value].length;
+			const named = d.lineup.filter((id) => active.includes(id));
+			const vacancies = d.lineup.filter((id) => !active.includes(id));
+			// Com expulsões (10 ou 9 em campo), o desenho tem vagas: elas vêm vazias ('') ou com o expulso.
+			const valid = d.lineup.length === size && named.length === active.length && new Set(named).size === named.length &&
+				vacancies.every((id) => id === '' || (this.states.get(id)?.side === side && !this.states.get(id)?.onPitch));
+			if (!valid) return record('Escalação não corresponde aos atletas em campo');
+			const gone = [...t.tactic.lineup].filter((id) => !active.includes(id));
 			t.tactic.formation = d.value;
-			d.lineup.forEach((id, slot) => {
-				const st = this.states.get(id);
+			const lineup = d.lineup.map((id) => (active.includes(id) ? id : ''));
+			lineup.forEach((id, slot) => {
+				const st = id ? this.states.get(id) : null;
 				if (st) st.slot = slot;
 			});
-			t.tactic.lineup = [...d.lineup];
+			// Vagas guardam quem deixou o campo (o motor usa o slot de quem está em campo).
+			t.tactic.lineup = lineup.map((id) => id || gone.shift() || '');
+			const gk = lineup.findIndex((_, i) => FORMATIONS[d.value][i].position === 'GOL');
+			if (gk >= 0 && lineup[gk]) t.gkId = lineup[gk];
 			t.params = withFormation(paramsFromInstructions(t.tactic.mentality, t.tactic.style, t.instructions), d.value);
 			t.roles = FORMATIONS[d.value].map((_, i) => {
 				const r = d.roles?.[i];
 				return r && ROLES[r] ? r : defaultRoleForSlot(FORMATIONS[d.value], i);
 			});
+			this.dirtyPitch();
 			record();
 			this.emit('tactic', { side, data: { kind: 'formation', value: d.value } });
+			return;
+		}
+		if (d.type === 'move') {
+			const st = this.states.get(d.playerId);
+			const formation = FORMATIONS[t.tactic.formation];
+			const occupied = this.onPitch(side).some((s) => s.slot === d.slot);
+			if (!st?.onPitch || st.side !== side || st.sentOff || !Number.isInteger(d.slot) || d.slot < 0 || d.slot >= formation.length) return record('Escolha um atleta seu em campo e uma posição válida');
+			if (occupied) return record('A posição está ocupada: troque os dois atletas de lugar');
+			const from = st.slot;
+			const leaving = t.tactic.lineup[d.slot];
+			t.tactic.lineup[d.slot] = st.id;
+			t.tactic.lineup[from] = leaving && leaving !== st.id ? leaving : '';
+			st.slot = d.slot;
+			if (formation[d.slot].position === 'GOL') t.gkId = st.id;
+			else if (t.gkId === st.id) t.gkId = this.onPitch(side).find((s) => formation[s.slot]?.position === 'GOL')?.id ?? t.gkId;
+			this.dirtyPitch();
+			record();
+			this.emit('tactic', { side, player: st.id, data: { kind: 'move', value: formation[d.slot].position } });
 			return;
 		}
 		if (d.type === 'swap') {
@@ -551,6 +581,7 @@ export class Match {
 		else if (!incoming || !t.tactic.bench.includes(d.inId) || t.usedBench.has(d.inId)) reason = 'Reserva indisponível';
 		else if (t.subsUsed >= this.rules.maxSubs) reason = 'Limite de substituições atingido';
 		else if (!halfTime && !t.windows.includes(this.tick) && t.windows.length >= this.rules.maxWindows) reason = 'Janelas de substituição esgotadas';
+		else if (d.slot !== undefined && d.slot !== out.slot && (!Number.isInteger(d.slot) || d.slot < 0 || d.slot >= FORMATIONS[t.tactic.formation].length || this.onPitch(side).some((s) => s.slot === d.slot))) reason = 'A posição escolhida para o reserva não está vaga';
 		if (reason) {
 			if (!fromReplay) record(reason);
 			return;
@@ -561,7 +592,9 @@ export class Match {
 		out!.onPitch = false;
 		out!.minuteOut = this.tick;
 		this.dirtyPitch();
-		const slot = out!.slot;
+		// O reserva entra na vaga indicada (ex.: zagueiro no lugar do expulso); a do que saiu fica aberta.
+		const slot = d.slot ?? out!.slot;
+		if (slot !== out!.slot) t.tactic.lineup[out!.slot] = '';
 		this.states.set(d.inId, {
 			id: d.inId, side, slot, x: out!.x, y: out!.y, px: out!.x, py: out!.y, condition: incoming!.condition, onPitch: true,
 			sentOff: false, injured: false, yellow: 0, minutesIn: this.tick, minuteOut: null
@@ -634,6 +667,11 @@ export class Match {
 				}
 			}
 		}
+		// Expulsão na defesa: a IA recompõe a linha (reserva na vaga, tirando um atacante; sem trocas, recua um atacante).
+		if (this.rules.redCardReorg !== false) {
+			const plan = this.redCardPlan(side, stopped);
+			if (plan) this.queue[side].push(plan);
+		}
 		// Leitura do jogo a cada 5 minutos: o treinador ajusta instruções com o que dá para ver.
 		if (this.tick % 300 === 0 && this.tick >= 15 * 60 && this.phase !== 'half_time') {
 			const adj = inMatchAdjustment(t.coach, t.instructions, t.tactic.mentality, this.matchView(side), t.aiDone, hashNoise(this.tick, side === 'home' ? 7 : 11, 3) * 0.5 + 0.5);
@@ -645,6 +683,37 @@ export class Match {
 				this.queue[side].push({ type: 'instructions', value: { ...nextPreset, ...custom, ...adj.change } });
 			}
 		}
+	}
+
+	/** Vaga aberta por expulsão numa posição defensiva → decisão de reorganização (uma vez por vaga). */
+	private redCardPlan(side: Side, stopped: boolean): Decision | null {
+		const t = this.teams[side];
+		const formation = FORMATIONS[t.tactic.formation];
+		const pitch = this.onPitch(side);
+		if (pitch.length >= formation.length) return null;
+		const taken = new Set(pitch.map((s) => s.slot));
+		const vacant = formation.map((_, i) => i).find((i) => !taken.has(i) && DEFENSIVE.has(formation[i].position));
+		if (vacant === undefined) return null;
+		const key = `reorg:${vacant}:${pitch.length}`;
+		if (t.aiDone.has(key)) return null;
+		const attackers = pitch.filter((s) => ATTACKING.has(formation[s.slot]?.position) && !s.injured);
+		if (!attackers.length) {
+			t.aiDone.add(key);
+			return null;
+		}
+		const need = formation[vacant].position;
+		const newWindow = !t.windows.includes(this.tick) && this.phase !== 'half_time';
+		const canSub = stopped && t.subsUsed < this.rules.maxSubs && (!newWindow || t.windows.length < this.rules.maxWindows);
+		const best = this.bench(side).filter((p) => p.position !== 'GOL' || need === 'GOL').sort((a, b) => fitScore(b, need) - fitScore(a, need))[0];
+		if (canSub && best && positionFit(best.position, need) >= 0.6) {
+			const out = [...attackers].sort((a, b) => a.condition - b.condition || this.player(a.id)!.attributes.desarme - this.player(b.id)!.attributes.desarme)[0];
+			t.aiDone.add(key);
+			return { type: 'sub', outId: out.id, inId: best.id, slot: vacant };
+		}
+		if (!stopped && t.subsUsed < this.rules.maxSubs && best) return null; // espera a próxima parada para trocar
+		const mover = [...attackers].sort((a, b) => fitScore(this.player(b.id)!, need) - fitScore(this.player(a.id)!, need))[0];
+		t.aiDone.add(key);
+		return { type: 'move', playerId: mover.id, slot: vacant };
 	}
 
 	// ──────────────────────────────────────────────── posicionamento

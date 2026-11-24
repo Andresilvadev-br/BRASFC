@@ -187,7 +187,7 @@
 		white-space: nowrap;
 	}
 	.money small {
-		font-size: 0.6em;
+		font-size: max(11px, 0.6em);
 		color: var(--text-3);
 	}
 	.slotl {
@@ -343,7 +343,7 @@
 		font-size: var(--fs-lg);
 	}
 	.big small {
-		font-size: 0.55em;
+		font-size: max(11px, 0.55em);
 		color: var(--text-3);
 	}
 	.warn {

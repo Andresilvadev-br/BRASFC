@@ -69,7 +69,8 @@ export async function roomAccess(db: Db, room: Room, profile: string, lock = fal
 
 export async function sendInvitation(db: Db, room: Room, profile: string, body: Record<string, unknown>) {
 	const target = usernameOf(body.username);
-	const role = body.role === 'assistant' || body.role === 'coach' ? body.role : body.role === 'member' ? null : refuse('Função inválida.');
+	// Dev 0.12: não existe mais auxiliar técnico humano (o auxiliar é sempre da IA).
+	const role = body.role === 'coach' ? body.role : body.role === 'member' ? null : body.role === 'assistant' ? refuse('O auxiliar técnico agora é sempre controlado pela IA.', 410) : refuse('Função inválida.');
 	const hours = body.hours ?? 72;
 	if (!target || typeof hours !== 'number' || !Number.isInteger(hours) || hours < 1 || hours > 168) refuse('Convite inválido.');
 	return db.transaction(async (tx) => {
@@ -78,9 +79,8 @@ export async function sendInvitation(db: Db, room: Room, profile: string, body: 
 		if (access.mode !== 'mixed' && !access.role) refuse('Confirme sua participação antes de convidar.', 409);
 		const [person] = await tx.query<Person>('SELECT id FROM profiles WHERE username=$1 AND id<>$2', [target, profile]);
 		if (!person) refuse('Conta BRASFC não encontrada.', 404);
-		const club = role === 'assistant' ? access.club : role === 'coach' && typeof body.club === 'string' ? body.club : null;
-		if (role === 'assistant' && (access.role !== 'coach' || !club)) refuse('Apenas o treinador pode convidar seu auxiliar.', 403);
-		if (role !== 'assistant' && access.owner_id !== profile) refuse('Somente o anfitrião pode oferecer outras vagas.', 403);
+		const club = role === 'coach' && typeof body.club === 'string' ? body.club : null;
+		if (access.owner_id !== profile) refuse('Somente o anfitrião pode oferecer vagas.', 403);
 		if (access.invite_open === 'false') refuse('A liga fechou os convites.', 403);
 		if (role === 'coach' && (!club || !(await tx.query(`SELECT 1 FROM room_worlds w,
 			jsonb_each(w.state->'league'->'divisions') d WHERE w.room_id=$1 AND d.value ? $2`, [room.id, club])).length)) refuse('Clube inválido para a liga.');

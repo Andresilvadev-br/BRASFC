@@ -31,14 +31,14 @@ async function capture(page, name) {
 	await noOverflow(page);
 	await page.screenshot({ path:`${output}/${name}.png`, fullPage:true, animations:'disabled' });
 }
-async function start(page, mode, name) {
+async function start(page, name, first = false) {
 	await page.goto('/multiplayer');
 	await page.getByRole('link', { name:'Criar liga' }).click();
-	await visible(page.getByRole('heading', { name:'Treinador', exact:true }));
-	await visible(page.getByRole('heading', { name:'Jogador', exact:true }));
-	assert.equal(await page.getByLabel('Nome da liga').count(),0);
-	if (mode==='Treinador') await capture(page,'01-cards-mobile');
-	await page.getByRole('button', { name:new RegExp(`Carreira de ${mode}`, 'i') }).click();
+	// Dev 0.12: não existe escolha de modo; toda liga é uma carreira online de treinadores.
+	await visible(page.getByLabel('Nome da liga'));
+	assert.equal(await page.getByRole('heading', { name:'Jogador', exact:true }).count(),0);
+	assert.equal(await page.getByText('Exigir prontidão dos auxiliares').count(),0);
+	if (first) await capture(page,'01-criar-liga-mobile');
 	await page.getByLabel('Nome da liga').fill(name);
 	assert.equal(await page.getByRole('heading', { name:'Amigos', exact:true }).count(),0);
 }
@@ -53,11 +53,10 @@ async function clubs(page, name) {
 	assert.equal(await page.getByRole('heading', { name:'Participantes', exact:true }).count(),1);
 	assert.equal(await page.getByRole('heading', { name:'Escolha seu clube', exact:true }).count(),0);
 }
-async function invite(page, username, role) {
+async function invite(page, username) {
 	await page.getByText('Convidar amigos', { exact:true }).click();
 	await page.getByLabel('Usuário BRASFC').fill(username);
-	if (role) await page.getByLabel('Oferecer função').selectOption(role);
-	else assert.equal(await page.getByLabel('Oferecer função').count(),0);
+	assert.equal(await page.locator('option[value="assistant"]').count(),0);
 	await page.getByRole('button', { name:'Enviar convite' }).click();
 	await visible(page.getByText(`Convite enviado para @${username}.`));
 	await visible(page.getByText('Pendentes · 1'));
@@ -70,21 +69,21 @@ async function accepted(page, name) {
 }
 try {
 	const { page: coach, context:coachSession } = await account('tecnico_teste','Camila Técnica',390,844);
-	const { page: assistant } = await account('auxiliar_teste','Ivo Auxiliar',390,844);
-	await start(coach,'Treinador','Liga da comissão');
+	const { page: rival } = await account('rival_teste','Ivo Treinador',390,844);
+	await start(coach,'Liga dos treinadores', true);
 	await coach.getByText('Temporada e competição', { exact:true }).click();
 	await coach.getByRole('radiogroup', { name:'Temporada inicial' }).getByRole('radio', { name:'2028' }).click();
 	await coach.getByText('Temporada e competição', { exact:true }).click();
 	await capture(coach,'02-configuracao-mobile');
 	await coach.reload();
 	await visible(coach.getByLabel('Nome da liga'));
-	await coach.waitForFunction(() => document.querySelector('input[placeholder="Ex.: Liga dos amigos"]').value === 'Liga da comissão');
+	await coach.waitForFunction(() => document.querySelector('input[placeholder="Ex.: Liga dos amigos"]').value === 'Liga dos treinadores');
 	await coach.getByRole('button', { name:'Continuar para o clube' }).click();
 	await visible(coach.getByRole('heading', { name:'Escolha seu clube' }));
 	const created = coach.url().split('/').at(-1);
 	await coach.goBack();
 	await visible(coach.getByRole('button', { name:'Salvar e continuar' }));
-	assert.equal(await coach.getByLabel('Nome da liga').inputValue(),'Liga da comissão');
+	assert.equal(await coach.getByLabel('Nome da liga').inputValue(),'Liga dos treinadores');
 	await coach.getByRole('button', { name:'Salvar e continuar' }).click();
 	await visible(coach.getByRole('heading', { name:'Escolha seu clube' }));
 	assert.equal(coach.url().split('/').at(-1),created);
@@ -94,47 +93,78 @@ try {
 	await clubs(coach,'Palmeiras');
 	await coach.getByRole('button', { name:'Marcar como pronto' }).click();
 	await visible(coach.getByRole('button', { name:'Retirar prontidão' }));
-	await invite(coach,'auxiliar_teste','assistant');
+	await invite(coach,'rival_teste');
 	await capture(coach,'04-lobby-mobile');
-	await accepted(assistant,'Liga da comissão');
-	await visible(assistant.getByRole('heading', { name:'Participantes' }));
-	await visible(assistant.getByText('Auxiliar', { exact:true }));
+	await accepted(rival,'Liga dos treinadores');
+	await clubs(rival,'Flamengo');
 	await coach.getByRole('button', { name:'Iniciar temporada' }).click();
 	await visible(coach.getByRole('link', { name:'Central da carreira' }));
+	// Dev 0.12: as mesmas telas da carreira individual, sobre o universo da liga.
+	const room = coach.url().split('?')[0];
+	await coach.setViewportSize({ width:1366, height:768 });
+	await coach.goto(`${room}?secao=taticas`);
+	await visible(coach.getByRole('heading', { name:'Táticas', exact:true }));
+	await visible(coach.getByText('Minhas Táticas'));
+	await coach.getByRole('button', { name:'Montar melhor 11' }).click();
+	await coach.getByRole('button', { name:'Aplicar na prancheta' }).click();
+	await coach.getByRole('button', { name:'Salvar tática', exact:true }).click();
+	await visible(coach.getByText('Tática salva', { exact:true }).first());
+	await noOverflow(coach);
+	// Dev 0.12 · Hybrid Save Engine: sem conexão com o servidor, a operação fica na fila local,
+	// sobrevive a recarregar a página e sincroniza sozinha quando a conexão volta (sem duplicar).
+	const cut = (route) => route.request().method() === 'POST' ? route.abort('internetdisconnected') : route.continue();
+	await coach.route('**/api/rooms/*/world', cut);
+	await coach.getByRole('button', { name:'Salvar tática atual' }).click();
+	await coach.getByRole('dialog').getByRole('button', { name:'Salvar', exact:true }).click();
+	await visible(coach.getByText(/será atualizada quando a conexão voltar/).first());
+	const island = coach.locator('.island .sync');
+	await coach.waitForFunction(() => /· 1/.test(document.querySelector('.island .sync')?.textContent ?? ''));
+	await coach.reload();
+	await visible(coach.getByRole('heading', { name:'Táticas', exact:true }));
+	await coach.waitForFunction(() => /· 1/.test(document.querySelector('.island .sync')?.textContent ?? ''), null, { timeout:15_000 });
+	await coach.unroute('**/api/rooms/*/world', cut);
+	await coach.waitForFunction(() => /^Sincronizado$/.test(document.querySelector('.island .sync')?.textContent?.trim() ?? ''), null, { timeout:40_000 });
+	assert.equal(await island.getAttribute('data-sync'), 'synced');
+	await coach.reload();
+	await visible(coach.getByText('Minhas Táticas'));
+	assert.equal(await coach.locator('.library .card').count(), 1, 'a operação da fila chegou uma única vez');
+	await coach.goto(`${room}?secao=financas`);
+	await visible(coach.getByText('Negociar verba com a diretoria →'));
+	await coach.goto(`${room}?secao=gabinete`);
+	await visible(coach.getByRole('heading', { name:'Negociar verba com a diretoria' }));
+	assert.equal(await coach.getByText('Central de Propostas').count(), 0);
+	await noOverflow(coach);
+	await coach.goto(`${room}?secao=calendario`);
+	await visible(coach.getByRole('heading', { name:'Calendário', exact:true }));
+	await noOverflow(coach);
+	await coach.goto(`${room}?secao=elenco`);
+	await visible(coach.getByRole('heading', { name:'Elenco', exact:true }));
+	await coach.setViewportSize({ width:390, height:844 });
 
-	const { page: athlete } = await account('atleta_teste','Lia Atleta',1440,900);
-	const { page: teammate } = await account('parceiro_teste','Noa Jogador',360,780);
-	await start(athlete,'Jogador','Liga dos atletas');
-	assert.equal(await athlete.getByText('Exigir prontidão dos auxiliares').count(),0);
-	await athlete.getByRole('button', { name:'Continuar para o atleta' }).click();
-	await visible(athlete.getByRole('heading', { name:'Crie seu atleta' }));
-	await athlete.getByLabel('Nome do jogador').fill('Lia do Vale');
-	await capture(athlete,'05-atleta-desktop');
-	await athlete.getByRole('button', { name:'Continuar para o clube' }).click();
-	await clubs(athlete,'Palmeiras');
-	await invite(athlete,'parceiro_teste');
-	const startSeason = await athlete.getByRole('button', { name:'Iniciar temporada' }).boundingBox();
-	const inviteForm = await athlete.getByRole('button', { name:'Enviar convite' }).boundingBox();
+	const { page: host } = await account('anfitriao_teste','Lia Treinadora',1440,900);
+	const { page: friend } = await account('parceiro_teste','Noa Treinador',360,780);
+	await start(host,'Liga dos amigos');
+	await host.getByRole('button', { name:'Continuar para o clube' }).click();
+	await clubs(host,'Palmeiras');
+	await invite(host,'parceiro_teste');
+	const startSeason = await host.getByRole('button', { name:'Iniciar temporada' }).boundingBox();
+	const inviteForm = await host.getByRole('button', { name:'Enviar convite' }).boundingBox();
 	assert.ok(startSeason && inviteForm && startSeason.x < inviteForm.x && startSeason.y < inviteForm.y);
-	await capture(athlete,'06-lobby-desktop');
-	await accepted(teammate,'Liga dos atletas');
-	await visible(teammate.getByRole('heading', { name:'Crie seu atleta' }));
-	await teammate.getByLabel('Nome do jogador').fill('Noa do Vale');
-	await teammate.getByRole('button', { name:'Continuar para o clube' }).click();
-	await clubs(teammate,'Palmeiras');
-	await noOverflow(teammate);
-	await teammate.setViewportSize({ width:780, height:360 });
-	await capture(teammate,'07-lobby-paisagem');
-	await teammate.setViewportSize({ width:768, height:1024 });
-	await noOverflow(teammate);
-	await teammate.getByRole('link', { name:'Minhas ligas' }).click();
-	await visible(teammate.getByText('Liga dos atletas', { exact:true }));
-	await visible(teammate.getByText('Noa do Vale · Palmeiras', { exact:true }));
-	await teammate.getByRole('link', { name:'Central Social' }).click();
-	await visible(teammate.getByRole('heading', { name:'Amigos' }));
-	assert.equal(await teammate.getByLabel('Código da liga').count(),0);
+	await capture(host,'05-lobby-desktop');
+	await accepted(friend,'Liga dos amigos');
+	await clubs(friend,'Santos');
+	await noOverflow(friend);
+	await friend.setViewportSize({ width:780, height:360 });
+	await capture(friend,'06-lobby-paisagem');
+	await friend.setViewportSize({ width:768, height:1024 });
+	await noOverflow(friend);
+	await friend.getByRole('link', { name:'Minhas ligas' }).click();
+	await visible(friend.getByText('Liga dos amigos', { exact:true }));
+	await friend.getByRole('link', { name:'Central Social' }).click();
+	await visible(friend.getByRole('heading', { name:'Amigos' }));
+	assert.equal(await friend.getByLabel('Código da liga').count(),0);
 	assert.deepEqual(errors, []);
-	console.log('Fluxos de treinador e atleta validados em Chromium com convites, retorno, recarga e quatro larguras.');
+	console.log('Carreira online de treinadores validada em Chromium com convites, clubes exclusivos, retorno, recarga e quatro larguras.');
 } catch (error) {
 	for (const [index, context] of contexts.entries()) {
 		for (const page of context.pages()) {

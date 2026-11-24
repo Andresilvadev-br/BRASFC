@@ -1,3 +1,5 @@
+import { sanitizeDiscipline, suspendedFor } from './discipline.ts';
+import { eligibleTactic } from './tactics.ts';
 import { catalogClub, fixedOpeningFormation } from '#lib/data/roster-catalog.ts';
 import { initialClubTactic } from './club-selection.ts';
 import { computeOverall } from '#lib/engine/attributes.ts';
@@ -81,8 +83,9 @@ export interface MatchdayContext {
 }
 
 /** Time do usuário: tática salva (treinador) ou plano do técnico da IA (modo jogador). */
-export function userTeam(career: Career, myTactic: Tactic, ctx: MatchdayContext, round: number): { setup: TeamSetup; tactic: Tactic & { roles: RoleId[] } } {
-	const squad = withFitness(careerSquad(career), ctx.fitness);
+export function userTeam(career: Career, myTactic: Tactic, ctx: MatchdayContext, round: number, unavailable: Set<string> = new Set()): { setup: TeamSetup; tactic: Tactic & { roles: RoleId[] } } {
+	// Suspensos não entram na partida: nem titulares, nem banco (o servidor garante, não só a tela).
+	const squad = withFitness(careerSquad(career), ctx.fitness).filter((p) => !unavailable.has(p.id));
 	if (career.mode === 'player') {
 		const d = career.data.playerCareer?.daily;
 		const fit = squad.filter((p) => p.id !== CAREER_PLAYER_ID || !d || (!d.injuryUntil && d.condition >= 55))
@@ -99,6 +102,7 @@ export function userTeam(career: Career, myTactic: Tactic, ctx: MatchdayContext,
 		setup.tactic.roles = t.roles;
 		return { setup, tactic: t };
 	}
+	if (unavailable.size) myTactic = eligibleTactic(myTactic, squad);
 	const roles = resolveRoles(myTactic.formation, myTactic.roles);
 	const setup = buildTeamSetup(identity(career.clubId), squad, myTactic);
 	setup.tactic.roles = roles;
@@ -150,7 +154,8 @@ export function fixtureSetup(career: Career, fixture: Fixture, myTactic: Tactic,
 		if (state.daily.injuryUntil && state.daily.injuryUntil <= fixture.date) state.daily.injuryUntil = null;
 		prepared = { ...career, data: { ...career.data, playerCareer: state } };
 	}
-	const me = userTeam(prepared, myTactic, ctx, fixture.round);
+	const suspended = career.mode === 'coach' ? suspendedFor(sanitizeDiscipline(career.data.discipline, career.season), fixture.competition) : new Set<string>();
+	const me = userTeam(prepared, myTactic, ctx, fixture.round, suspended);
 	const them = aiTeam(career, opp, ctx, fixture.round, ctx.observed);
 	const mySide: Side = fixture.home === mine ? 'home' : 'away';
 	// Preparação específica (treino "adversário" + analista): execução um pouco melhor contra ESTE rival.
@@ -166,7 +171,9 @@ export function fixtureSetup(career: Career, fixture: Fixture, myTactic: Tactic,
 		control: career.mode === 'coach' ? mySide : null,
 		myTactic: me.tactic,
 		opponentPlan: them.reasons,
-		opponentCoach: them.coachLabel
+		opponentCoach: them.coachLabel,
+		/** atletas suspensos para esta partida (retirados da escalação pelo servidor) */
+		suspended: [...suspended]
 	};
 }
 
@@ -223,7 +230,7 @@ export interface MatchSummary {
 	/** estatísticas individuais do time do usuário */
 	players: Record<string, PlayerStats>;
 	goals: Array<{ tick: number; side: Side; player: string; assist?: string; minute: string }>;
-	cards: Array<{ tick: number; side: Side; player: string; kind: 'yellow' | 'red'; minute: string }>;
+	cards: Array<{ tick: number; side: Side; player: string; kind: 'yellow' | 'red'; minute: string; secondYellow?: boolean }>;
 	me?: PlayerStats;
 	assessment?: PlayerAssessment;
 	playerEvents?: Array<{ minute: string; kind: 'entrou' | 'saiu' | 'lesao' }>;
@@ -249,7 +256,7 @@ export function summarize(match: Match, result: EngineResult, mySide: Side, extr
 			.map((e) => ({ tick: e.tick, side: e.side!, player: e.player!, ...(e.other ? { assist: e.other } : {}), minute: match.minuteLabel(e.tick) })),
 		cards: result.events
 			.filter((e) => e.type === 'yellow' || e.type === 'red')
-			.map((e) => ({ tick: e.tick, side: e.side!, player: e.player!, kind: e.type as 'yellow' | 'red', minute: match.minuteLabel(e.tick) })),
+			.map((e) => ({ tick: e.tick, side: e.side!, player: e.player!, kind: e.type as 'yellow' | 'red', minute: match.minuteLabel(e.tick), ...(e.data?.secondYellow ? { secondYellow: true } : {}) })),
 		...(result.players[CAREER_PLAYER_ID]?.minutes ? { me: result.players[CAREER_PLAYER_ID] } : {}),
 		starters: [...match.teams[mySide].setup.tactic.lineup],
 		mySide,

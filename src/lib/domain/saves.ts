@@ -22,7 +22,8 @@ export function saveIssue(c: SaveLike): string | null {
 	if (!(c.mode in MODE_LABELS)) return 'Modalidade desconhecida nesta versão do jogo.';
 	if (!getClub(c.clubId)) return 'O clube deste save não existe nesta versão do jogo.';
 	if (!/^\d{4}-\d{2}-\d{2}$/.test(c.gameDate) || !Number.isInteger(c.season)) return 'A data salva da carreira está corrompida.';
-	if (c.mode === 'player' && !c.data.position) return 'Os dados do atleta estão incompletos.';
+	// Dev 0.12: a carreira de jogador foi descontinuada. O save fica guardado (legado), sem exclusão silenciosa.
+	if (c.mode === 'player') return 'Carreira de jogador (legado): descontinuada na versão 0.12. O save continua guardado e pode ser excluído quando você quiser.';
 	return null;
 }
 

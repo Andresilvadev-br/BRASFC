@@ -61,14 +61,21 @@ describe('biblioteca de carreiras', () => {
 		}
 	});
 
-	it('"Continuar" abre a carreira usada por último', async () => {
+	it('"Continuar" abre a carreira de treinador usada por último; save de jogador fica como legado', async () => {
 		const { profile, coach, player } = await twoCareers();
 		let list = await listCareers(db, profile.id, true);
-		expect(latestValidSave(list)?.id).toBe(player.id);
+		// O save de jogador é o mais recente, mas é legado (0.12): continua guardado e não é oferecido.
+		expect(list.some((c) => c.id === player.id)).toBe(true);
+		expect(latestValidSave(list)?.id).toBe(coach.id);
+		const second = await createCareer(db, profile.id, { mode: 'coach', personName: 'Bia Técnica', clubId: 'aurora' });
 		await tick();
 		expect(await touchCareer(db, profile.id, coach.id)).toBe(true);
 		list = await listCareers(db, profile.id, true);
 		expect(latestValidSave(list)?.id).toBe(coach.id);
+		await tick();
+		expect(await touchCareer(db, profile.id, second.id)).toBe(true);
+		list = await listCareers(db, profile.id, true);
+		expect(latestValidSave(list)?.id).toBe(second.id);
 	});
 
 	it('sobrevive a fechar e reabrir o banco (modo offline em disco)', async () => {
@@ -166,7 +173,7 @@ describe('biblioteca de carreiras', () => {
 		const broken = list.find((c) => c.id === coach.id)!;
 		expect(saveIssue(broken)).toMatch(/clube/);
 		expect(latestValidSave(list)?.id).not.toBe(coach.id);
-		expect(saveIssue({ ...list[1], mode: 'player', data: {} })).toMatch(/atleta/);
+		expect(saveIssue({ ...list[1], mode: 'player', data: {} })).toMatch(/legado/);
 		expect(latestValidSave([broken])).toBeUndefined();
 	});
 
