@@ -19,6 +19,26 @@ export interface Release {
 
 export const RELEASES: Release[] = [
 	{
+		version: '0.12.0', date: '2026-11-24', title: 'Carreira única de treinador', channel: 'estavel',
+		added: ['Contratos de treinador, desemprego e mercado de treinadores com propostas de outros clubes',
+			'Minhas Táticas: biblioteca pessoal de táticas que acompanha o treinador em qualquer clube',
+			'Negociação de verba com a diretoria, expulsões com time de 10, suspensões e melhor 11 da rodada',
+			'Carreira online com as mesmas telas da carreira individual',
+			'Salvamento híbrido: alterações ficam salvas no aparelho quando a conexão cai e sincronizam sozinhas'],
+		highlights: [
+			{ title: 'Uma carreira, offline e online', text: 'Elenco, Táticas, Treinos, Finanças, Clube, Base, Comissão, Gabinete e Calendário são as mesmas telas na carreira individual e nas ligas.', icon: 'multiplayer' },
+			{ title: 'Nunca perca uma alteração', text: 'Sem conexão, tática e treinos ficam salvos no aparelho e são enviados quando a rede volta. O indicador mostra se está salvo localmente, sincronizando ou sincronizado.', icon: 'save' },
+			{ title: 'Vida de treinador', text: 'Contratos, demissão, propostas de outros clubes e reuniões com a diretoria para pedir verba.', icon: 'briefcase' },
+			{ title: 'Rodada muito mais rápida', text: 'Os outros jogos da rodada são calculados em segundo plano: a volta para a gestão caiu de cerca de 2 s para 0,25 s no servidor.', icon: 'play' }
+		],
+		improved: ['Menu principal sem rolagem, com um único Continuar carreira', 'Qualidade visual adaptativa: Automático, Alto, Equilibrado, Econômico e Ultra Econômico',
+			'Ligas só de treinadores: um treinador por clube e auxiliar sempre da IA', 'IA pode comandar seu clube na liga enquanto você estiver ausente',
+			'Dynamic Island da liga com estado de sincronização e atividades dos amigos', 'Textos sem cortes e com no mínimo 11 px em todas as telas da carreira'],
+		fixed: ['Idade desconhecida aparecendo como "—a"', 'Siglas de clubes cortadas nos confrontos', 'Nome do treinador cortado no menu lateral'],
+		compat: { database: 'sem migração', saves: 'carreiras de treinador e ligas preservadas', notes: 'A carreira de jogador foi descontinuada: saves antigos de jogador continuam na biblioteca como legado (podem ser excluídos, não abrem).' },
+		next: []
+	},
+	{
 		version: '0.11.0', date: '2026-11-22', title: 'BRASFC Master', channel: 'estavel',
 		added: ['Prontidão oficial da rodada: prontos, online e apto a iniciar informados pelo servidor',
 			'Campo ao vivo com movimento contínuo entre os quadros oficiais', 'Comparativo de estatísticas no intervalo e na súmula',
