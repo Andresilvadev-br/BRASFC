@@ -242,8 +242,12 @@ describe('partidas da carreira (Dev 0.2/0.3)', () => {
 		const office = res.career.data.office!;
 		expect(office.history).toHaveLength(1);
 		const userGames = (await listResults(db, career.id, 2026)).filter((r) => r.home === 'mirassol' || r.away === 'mirassol').length;
-		expect(office.totals.games).toBe(userGames);
-		expect(office.history[0].games).toBe(userGames);
+		// Treinador 2.0: a temporada simulada pode terminar em demissão; aí só contam os jogos no cargo.
+		if (office.history[0].outcome === 'demitido' || office.history[0].outcome === 'saiu') {
+			expect(office.totals.games).toBeGreaterThan(0);
+			expect(office.totals.games).toBeLessThan(userGames);
+		} else expect(office.totals.games).toBe(userGames);
+		expect(office.history[0].games).toBe(office.totals.games);
 		expect(ledger.some((l) => l.description === 'Salários da comissão técnica')).toBe(true);
 	}, 400_000);
 
