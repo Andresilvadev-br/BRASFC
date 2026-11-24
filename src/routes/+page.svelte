@@ -1,287 +1,401 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { goto, preloadCode, preloadData } from '$app/navigation';
-	import { api } from '#lib/api.ts';
-	import { loadMotion, motion } from '#lib/motion/motion.svelte.ts';
-	import { markIntroSeen, shouldPlayIntro } from '#lib/stores/prefs.svelte.ts';
-	import Icon from '#lib/ui/Icon.svelte';
 	import Logo from '#lib/ui/Logo.svelte';
+	import { COMMUNITY, REPOSITORY } from '#lib/site.ts';
 
-	/**
-	 * Abertura: carregamento REAL dos recursos (motor de animação, fontes,
-	 * sessão no servidor, código e dados do menu) + apresentação curta e pulável.
-	 */
-	type Step = { label: string; run: () => Promise<unknown> };
+	let { data } = $props();
 
-	const steps: Step[] = [
-		{ label: 'Preparando o motor de animação', run: () => loadMotion() },
+	const NAV = [
+		{ id: 'jogo', label: 'O jogo' },
+		{ id: 'galeria', label: 'Galeria' },
+		{ id: 'novidades', label: 'Novidades' },
+		{ id: 'comunidade', label: 'Comunidade' }
+	] as const;
+
+	const FEATURES = [
 		{
-			label: 'Carregando tipografia',
-			run: () =>
-				Promise.all([
-					document.fonts.load('700 32px "Barlow Condensed"'),
-					document.fonts.load('800 32px "Barlow Condensed"'),
-					document.fonts.load('500 16px "Inter Variable"')
-				])
+			title: 'Seja o treinador.',
+			lead: 'Comande o clube da primeira escalação à última rodada.',
+			text: 'Escolha seu esquema, distribua funções e acompanhe o elenco. Negocie no mercado, peça verba à diretoria, renove contratos e encare o calendário das competições.',
+			image: 'central', caption: 'Central do treinador'
 		},
-		{ label: 'Conectando ao servidor', run: () => api('/api/session', { method: 'POST' }) },
-		{ label: 'Preparando o menu', run: () => Promise.all([preloadCode('/menu'), preloadData('/menu')]) }
+		{
+			title: 'Pense o jogo.',
+			lead: 'Táticas que o elenco aprende com o tempo.',
+			text: 'Formação, mentalidade, estilo, funções e ordens individuais. Guarde suas favoritas em Minhas Táticas e leve-as para qualquer clube que assumir.',
+			image: 'taticas', caption: 'Prancheta tática'
+		},
+		{
+			title: 'Viva a partida.',
+			lead: 'Acompanhe cada lance em 2D.',
+			text: 'Transmissão clássica ou em pixel art, substituições, ajustes no intervalo, expulsões com time de 10 e o placar da rodada inteira ao lado.',
+			image: 'partida', caption: 'Partida em pixel art'
+		},
+		{
+			title: 'Divida a temporada.',
+			lead: 'Jogue uma liga online com seus amigos.',
+			text: 'Crie um universo, convide amigos e assuma um clube cada. A rodada só começa quando todos estão prontos, e a IA cobre quem precisar se ausentar.',
+			image: 'liga', caption: 'Liga dos amigos'
+		}
 	];
 
-	let progress = $state(0);
-	let current = $state('Iniciando');
-	let failed = $state<string | null>(null);
-	let loaded = $state(false);
-	let skipping = $state(false);
-	let showIntro = $state(false);
-	let mounted = $state(false);
+	const GALLERY = [
+		{ image: 'central', caption: 'Central do treinador' },
+		{ image: 'taticas', caption: 'Táticas' },
+		{ image: 'mercado', caption: 'Mercado de transferências' },
+		{ image: 'dia-de-jogo', caption: 'Dia de jogo' },
+		{ image: 'partida', caption: 'Partida em pixel art' },
+		{ image: 'liga', caption: 'Lobby da liga online' }
+	];
 
-	let bar: HTMLDivElement | undefined = $state();
-	let finished = false;
-	let releaseIntro: (() => void) | undefined;
-	let introTimer: ReturnType<typeof setTimeout> | undefined;
+	let active = $state<string>('jogo');
+	let viewing = $state<(typeof GALLERY)[number] | null>(null);
+	let dialog = $state<HTMLDialogElement>();
 
-	async function load() {
-		failed = null;
-		progress = 0;
-		let complete = 0;
-		const count = async (step: Step) => {
-			await step.run();
-			progress = ++complete / steps.length;
-		};
-		try {
-			current = 'Preparando o BRASFC';
-			await Promise.all([
-				count(steps[0]), count(steps[1]),
-				count(steps[2]).then(() => count(steps[3]))
-			]);
-			current = 'Pronto';
-			loaded = true;
-			return true;
-		} catch (e) {
-			failed = e instanceof Error ? e.message : 'Falha ao carregar.';
-			return false;
-		}
-	}
+	const formatDate = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
 
-	async function finish() {
-		if (finished) return;
-		finished = true;
-		markIntroSeen();
-		await goto(new URLSearchParams(location.search).has('rever') ? '/configuracoes' : '/menu', { replaceState: true });
-	}
-
-	function skip() {
-		if (skipping) return;
-		skipping = true;
-		releaseIntro?.();
-		if (loaded) void finish();
+	function open(item: (typeof GALLERY)[number]) {
+		viewing = item;
+		dialog?.showModal();
 	}
 
 	onMount(() => {
-		showIntro = !motion.reduced && !matchMedia('(prefers-reduced-motion: reduce)').matches && (new URLSearchParams(location.search).has('rever') || shouldPlayIntro());
-		mounted = true;
-		void (async () => {
-			const introPromise = showIntro ? new Promise<void>((resolve) => {
-				releaseIntro = resolve;
-				introTimer = setTimeout(resolve, 4700);
-			}) : Promise.resolve();
-			const ok = await load();
-			if (!ok) return;
-			if (!skipping) await introPromise;
-			await finish();
-		})();
-		return () => { clearTimeout(introTimer); releaseIntro?.(); };
-	});
-
-	function onKey(e: KeyboardEvent) {
-		if (['Enter', 'Escape', ' '].includes(e.key)) {
-			e.preventDefault();
-			skip();
-		}
-	}
-
-	$effect(() => {
-		if (bar) bar.style.transform = `scaleX(${progress})`;
+		const sections = NAV.map((n) => document.getElementById(n.id)).filter((el): el is HTMLElement => !!el);
+		const observer = new IntersectionObserver((entries) => {
+			for (const entry of entries) if (entry.isIntersecting) active = entry.target.id;
+		}, { rootMargin: '-45% 0px -50% 0px' });
+		sections.forEach((s) => observer.observe(s));
+		return () => observer.disconnect();
 	});
 </script>
 
-<svelte:head><title>BRASFC</title></svelte:head>
-<svelte:window onkeydown={onKey} />
+<svelte:head>
+	<title>BRASFC · Simulador brasileiro de futebol</title>
+	<meta name="description" content="Seu clube. Sua carreira. Seu futebol. Carreira de treinador, partidas em 2D e ligas online com amigos. Grátis para Windows e no navegador." />
+	<meta property="og:title" content="BRASFC · Simulador brasileiro de futebol" />
+	<meta property="og:description" content="Carreira de treinador, partidas em 2D e ligas online com amigos." />
+	<meta property="og:image" content="/landing/central.webp" />
+	<meta property="og:type" content="website" />
+</svelte:head>
 
-<main class="splash" onclick={skip} role="presentation">
-	<div class="glow" aria-hidden="true"></div>
-	{#if showIntro && !skipping}
-	<div class="stadium" aria-hidden="true">
-		<div class="flood left"></div><div class="flood right"></div>
-		<div class="turf"></div><div class="trail"></div>
-		<svg class="ball" viewBox="0 0 120 120" aria-hidden="true">
-			<defs><radialGradient id="ball-light" cx="31%" cy="24%" r="68%"><stop stop-color="#fff9e7"/><stop offset=".57" stop-color="#b8cabf"/><stop offset="1" stop-color="#1a2f27"/></radialGradient>
-			<clipPath id="ball-edge"><circle cx="60" cy="60" r="56"/></clipPath></defs>
-			<circle cx="60" cy="60" r="56" fill="url(#ball-light)"/>
-			<g clip-path="url(#ball-edge)" stroke="#243934" stroke-width="2" stroke-linejoin="round">
-				<path fill="#0c1714" d="M60 32 83 47 75 74 47 76 37 50Z M10 27 32 14 34 32 19 51 2 46Z M94 15 111 30 119 54 98 53 89 32Z M27 96 46 91 60 116 33 119Z M83 88 104 79 116 90 96 112 77 110Z"/>
-				<path fill="none" d="M60 32 58 4 M83 47 98 53 M75 74 83 88 M47 76 46 91 M37 50 19 51 M19 51 12 69 27 96 M98 53 104 79 M60 116 77 110 M34 32 60 32 89 32"/>
-			</g>
-		</svg>
-		<div class="converge"></div>
-	</div>
-	{/if}
-	<div class="brand" class:cinematic={mounted && showIntro && !skipping}>
-		<div class="mark"><Logo size={120} wordmark={false} /></div>
-		<div class="word">BRAS<span>FC</span></div>
-		<p class="tagline">Seu clube. Sua carreira. Seu futebol.</p>
-	</div>
-	<div class="loader" aria-live="polite">
-		{#if failed}
-			<div class="error" role="alert">
-				<Icon name="alert" />
-				<span>{failed}</span>
-				<button onclick={(e) => { e.stopPropagation(); void load().then((ok) => { if (ok) void finish(); }); }}>Tentar de novo</button>
+<div class="site">
+	<header class="top">
+		<div class="bar wrap">
+			<a class="brand" href="/" aria-label="BRASFC — início"><Logo size={34} /></a>
+			<div class="actions">
+				<a class="link" href="/conta">Conta</a>
+				<a class="btn primary sm" href={data.desktop.download}><svg class="win" viewBox="0 0 16 16" aria-hidden="true"><path d="M0 2.2 6.5 1.3v6.3H0zm7.3-1L16 0v7.6H7.3zM0 8.4h6.5v6.3L0 13.8zm7.3 0H16V16l-8.7-1.2z" /></svg>Download</a>
 			</div>
-		{:else}
-			<div class="track"><div class="fill" bind:this={bar}></div></div>
-			<span class="status">{current}{#if !loaded}…{/if}</span>
-		{/if}
-	</div>
+		</div>
+		<nav class="tabs wrap" aria-label="Seções">
+			{#each NAV as item (item.id)}
+				<a href="#{item.id}" class:on={active === item.id} aria-current={active === item.id ? 'true' : undefined}>{item.label}</a>
+			{/each}
+		</nav>
+	</header>
 
-	{#if showIntro && !failed}
-		<button class="skip" onclick={(e) => { e.stopPropagation(); skip(); }}>
-			{skipping && !loaded ? 'Carregando…' : 'Pular'} <kbd>Enter</kbd>
-		</button>
+	<main>
+		<section class="hero" aria-labelledby="hero-title">
+			<div class="stadium" aria-hidden="true">
+				<span class="light l1"></span><span class="light l2"></span><span class="light l3"></span>
+				<svg class="pitch" viewBox="0 0 1200 400" preserveAspectRatio="none">
+					<path d="M-200 400 300 120H900L1400 400Z" class="grass" />
+					<path d="M300 120H900M120 225H1080M-60 330H1260M600 120V400" class="lines" />
+					<ellipse cx="600" cy="265" rx="150" ry="42" class="lines" />
+					<path d="M480 120 470 150H730L720 120" class="lines" />
+				</svg>
+			</div>
+			<div class="wrap hero-grid">
+			<div class="hero-body">
+				<p class="eyebrow"><span></span>Simulador brasileiro de futebol</p>
+				<h1 id="hero-title" class="display">Seu clube.<br />Sua carreira.<br /><em>Seu futebol.</em></h1>
+				<p class="lead">Assuma o vestiário, monte seu time do seu jeito e dispute temporadas com amigos. Um jogo de futebol para Windows e para o navegador.</p>
+				<div class="ctas">
+					<a class="btn primary" href={data.desktop.download}><svg class="win" viewBox="0 0 16 16" aria-hidden="true"><path d="M0 2.2 6.5 1.3v6.3H0zm7.3-1L16 0v7.6H7.3zM0 8.4h6.5v6.3L0 13.8zm7.3 0H16V16l-8.7-1.2z" /></svg>Baixar para Windows</a>
+					<a class="btn ghost" href="/jogar">Jogar no navegador</a>
+				</div>
+				<p class="meta">Versão {data.latest.version} · Windows {data.desktop.version} <i></i> {data.desktop.platform} <i></i> Grátis</p>
+			</div>
+			<figure class="hero-shot" aria-hidden="true">
+				<img src="/landing/central.webp" alt="" width="1200" height="750" fetchpriority="high" />
+			</figure>
+			</div>
+			<ul class="facts wrap">
+				<li><strong>Carreira de treinador</strong><span>Contratos, mercado e diretoria</span></li>
+				<li><strong>Partidas em 2D</strong><span>Clássico e pixel art</span></li>
+				<li><strong>Offline e online</strong><span>No seu ritmo ou com amigos</span></li>
+			</ul>
+		</section>
+
+		<section id="jogo" class="wrap block" aria-labelledby="jogo-title">
+			<p class="kicker">Dentro do BRASFC</p>
+			<h2 id="jogo-title" class="display">O jogo é seu.</h2>
+			{#each FEATURES as f, i (f.title)}
+				<article class="feature" class:flip={i % 2 === 1}>
+					<div class="copy">
+						<h3 class="display">{f.title}</h3>
+						<p class="feature-lead">{f.lead}</p>
+						<p class="muted">{f.text}</p>
+						<a class="more" href="#galeria">Explorar galeria</a>
+					</div>
+					<figure class="shot">
+						<img src="/landing/{f.image}.webp" alt={f.caption} width="1200" height="750" loading={i === 0 ? 'eager' : 'lazy'} decoding="async" />
+						<figcaption><span>{f.caption}</span><small>BRASFC {data.latest.version}</small></figcaption>
+					</figure>
+				</article>
+			{/each}
+		</section>
+
+		<section class="band" aria-labelledby="save-title">
+			<div class="wrap save">
+				<div>
+					<p class="kicker">Seu save em segurança</p>
+					<h2 id="save-title" class="display">Caiu a conexão? O jogo continua.</h2>
+					<p class="muted">Tática e treinos ficam salvos no aparelho e sincronizam sozinhos quando a rede volta, sem duplicar nada. No Windows, a carreira também roda totalmente offline.</p>
+				</div>
+				<ul class="states" aria-label="Estados de salvamento">
+					<li><i class="warn"></i>Salvo localmente</li>
+					<li><i class="warn"></i>Sincronizando</li>
+					<li><i class="ok"></i>Sincronizado</li>
+				</ul>
+			</div>
+		</section>
+
+		<section id="galeria" class="wrap block" aria-labelledby="galeria-title">
+			<p class="kicker">Galeria</p>
+			<h2 id="galeria-title" class="display">Veja de perto.</h2>
+			<ul class="gallery">
+				{#each GALLERY as g (g.image)}
+					<li>
+						<button type="button" onclick={() => open(g)} aria-label="Ampliar: {g.caption}">
+							<img src="/landing/{g.image}.webp" alt="" width="1200" height="750" loading="lazy" decoding="async" />
+							<span>{g.caption}</span>
+						</button>
+					</li>
+				{/each}
+			</ul>
+		</section>
+
+		<section id="novidades" class="wrap block" aria-labelledby="novidades-title">
+			<p class="kicker">Novidades · versão {data.latest.version}</p>
+			<h2 id="novidades-title" class="display">{data.latest.title}.</h2>
+			{#if data.latest.highlights.length}
+				<ul class="news">
+					{#each data.latest.highlights as h (h.title)}
+						<li><strong>{h.title}</strong><p class="muted">{h.text}</p></li>
+					{/each}
+				</ul>
+			{/if}
+			<ol class="versions" aria-label="Versões recentes">
+				{#each data.recent as r (r.version)}
+					<li><b>{r.version}</b><span>{r.title}</span><time datetime={r.date}>{formatDate(r.date)}</time></li>
+				{/each}
+			</ol>
+			<a class="more" href="/novidades">Ver todas as novidades</a>
+		</section>
+
+		<section id="comunidade" class="community" aria-labelledby="comunidade-title">
+			<div class="wrap">
+				<p class="kicker">Comunidade</p>
+				<h2 id="comunidade-title" class="display">O futebol cresce em equipe.</h2>
+				<p class="muted">Compartilhe ideias, relate problemas e acompanhe os próximos passos do BRASFC.</p>
+				<div class="ctas">
+					<a class="btn primary" href={COMMUNITY.issues} rel="noopener" target="_blank">Participar no GitHub</a>
+					<a class="btn ghost" href={COMMUNITY.newIssue} rel="noopener" target="_blank">Relatar um problema</a>
+				</div>
+			</div>
+		</section>
+
+		<section class="wrap block download" aria-labelledby="download-title">
+			<p class="kicker">BRASFC para PC</p>
+			<h2 id="download-title" class="display">Seu próximo clube espera.</h2>
+			<p class="muted">{data.desktop.platform} · {data.desktop.version} · atualizações pelo próprio app, saves preservados.</p>
+			<div class="ctas">
+				<a class="btn primary" href={data.desktop.download}>Baixar para Windows</a>
+				<a class="btn ghost" href={data.desktop.page} rel="noopener" target="_blank">Ver download e requisitos</a>
+				<a class="btn text" href="/jogar">ou jogue no navegador →</a>
+			</div>
+		</section>
+	</main>
+
+	<footer class="foot">
+		<div class="wrap">
+			<Logo size={30} />
+			<p class="muted">Seu clube. Sua carreira. Seu futebol.</p>
+			<nav aria-label="Rodapé">
+				<a href="/jogar">Jogar</a>
+				<a href="/novidades">Novidades</a>
+				<a href="/conta">Conta</a>
+				<a href={COMMUNITY.newIssue} rel="noopener" target="_blank">Suporte</a>
+				<a href={REPOSITORY} rel="noopener" target="_blank">GitHub</a>
+			</nav>
+		</div>
+	</footer>
+</div>
+
+<dialog bind:this={dialog} class="viewer" aria-label={viewing?.caption ?? 'Imagem'} onclose={() => (viewing = null)} onclick={(e) => e.target === dialog && dialog?.close()}>
+	{#if viewing}
+		<figure>
+			<img src="/landing/{viewing.image}.webp" alt={viewing.caption} width="1200" height="750" />
+			<figcaption>{viewing.caption}</figcaption>
+		</figure>
+		<button type="button" class="close" onclick={() => dialog?.close()} aria-label="Fechar">×</button>
 	{/if}
-</main>
+</dialog>
 
 <style>
-	.splash {
-		position: fixed;
-		inset: 0;
-		display: grid;
-		place-items: center;
-		background: radial-gradient(70% 60% at 50% 45%, #0f1a17 0%, var(--bg-deep) 70%);
-		overflow: hidden;
-		cursor: default;
-	}
-	.glow {
-		position: absolute;
-		width: 720px;
-		height: 720px;
-		border-radius: 50%;
-		background: radial-gradient(circle, rgb(16 185 129 / 0.16), transparent 62%);
-		filter: blur(10px);
-	}
-	.brand {
-		position: relative;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: var(--sp-4);
-	}
-	.stadium { position: absolute; inset: 0; overflow: hidden; pointer-events: none; perspective: 650px; }
-	.flood { position: absolute; width: 68vw; height: 80vh; top: -18vh; background: radial-gradient(ellipse at 12% 10%, #ffedd3 0, #ded7aa4a 8%, #10b98118 26%, transparent 62%); transform-origin: top left; animation: lights 4.6s both; }
-	.left { left: 4vw; rotate: 24deg; }
-	.right { right: 4vw; transform: scaleX(-1); rotate: -24deg; transform-origin: top center; }
-	.turf { position: absolute; inset: 55% -24% -50%; transform: rotateX(62deg); background: repeating-linear-gradient(90deg, #0c2b22 0 12%, #143a30 12% 24%); mask-image: radial-gradient(ellipse, #000, transparent 65%); animation: lights 4.6s both; }
-	.ball { position: absolute; width: clamp(100px, 20vw, 220px); left: 50%; top: 46%; transform-origin: center; filter: drop-shadow(0 16px 18px #000b); animation: flight 4.6s cubic-bezier(.32,.02,.25,1) both; }
-	.trail, .converge { position: absolute; left: 50%; top: 45%; translate: -50% -50%; width: min(75vw, 650px); aspect-ratio: 1; border: 1px solid #57ffd2; border-radius: 45%; box-shadow: 0 0 18px #10b981; animation: converge 4.6s both; }
-	.trail { border-radius: 15%; animation-delay: 80ms; }
-	.cinematic { animation: signature 4.7s cubic-bezier(.16,.8,.21,1) both; }
-	.cinematic .word { animation: typography 4.7s both; }
-	@keyframes lights { 0% { opacity: 0; } 23%,58% { opacity: .8; } 100% { opacity: .16; } }
-	@keyframes flight {
-		0% { opacity: 0; transform: translate(-75%,-35%) scale(.4) rotate(-40deg); }
-		27% { opacity: 1; transform: translate(-50%,-45%) scale(.96) rotate(0deg); }
-		52% { transform: translate(-15%,-65%) scale(1.25) rotate(130deg); }
-		68% { opacity: 1; transform: translate(-50%,-50%) scale(.45) rotate(285deg); }
-		76%,100% { opacity: 0; transform: translate(-50%,-50%) scale(.02) rotate(340deg); }
-	}
-	@keyframes converge { 0%,37%,100% { opacity: 0; } 49% { opacity: .8; transform: scale(1.4) rotate(22deg); } 73% { transform: scale(.16) rotate(135deg); opacity: .8; } 82% { opacity: 0; } }
-	@keyframes signature { 0%,64% { opacity: 0; transform: scale(.72); } 84%,100% { opacity: 1; transform: scale(1); } }
-	@keyframes typography { 0%,72% { opacity: 0; translate: 0 12px; letter-spacing: .2em; } 96%,100% { opacity: 1; translate: 0 0; letter-spacing: .08em; } }
-	@media (prefers-reduced-motion: reduce) { .splash * { animation: none !important; } }
-	.word {
-		font-family: var(--font-display);
-		font-weight: 800;
-		font-size: min(calc(4.5rem * var(--text-scale)), 16vw);
-		letter-spacing: 0.08em;
-		line-height: 1;
-	}
-	.word span {
-		color: var(--emerald-strong);
-	}
-	.tagline {
-		font-size: var(--fs-lg);
-		color: var(--text-2);
-		letter-spacing: 0.02em;
-	}
-	.loader {
-		position: absolute;
-		bottom: 12vh;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: var(--sp-3);
-		width: min(360px, 80vw);
-	}
-	.track {
-		width: 100%;
-		height: 3px;
-		border-radius: 3px;
-		background: var(--surface-2);
-		overflow: hidden;
-	}
-	.fill {
-		height: 100%;
-		background: linear-gradient(90deg, var(--emerald-deep), var(--emerald-strong));
-		transform: scaleX(0);
-		transform-origin: 0 50%;
-		transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
-	}
-	.status {
-		font-size: var(--fs-sm);
-		color: var(--text-3);
-	}
-	.error {
-		display: flex;
-		align-items: center;
-		gap: var(--sp-3);
-		padding: var(--sp-3) var(--sp-4);
-		border-radius: var(--radius-m);
-		background: var(--danger-soft);
-		color: #fecaca;
-		font-size: var(--fs-sm);
-	}
-	.error button {
-		border: 0;
-		border-radius: var(--radius-s);
-		padding: 6px 12px;
-		background: var(--surface-3);
-		font-weight: 600;
-	}
-	.skip {
-		position: absolute;
-		right: var(--sp-7);
-		bottom: var(--sp-7);
-		display: inline-flex;
-		align-items: center;
-		gap: var(--sp-2);
-		padding: 8px 14px;
-		border-radius: var(--radius-pill);
-		border: 1px solid var(--line-strong);
-		background: rgb(16 20 24 / 0.6);
-		color: var(--text-2);
-		font-size: var(--fs-sm);
-		font-weight: 600;
-	}
-	.skip:hover {
-		color: var(--text);
-	}
-	kbd {
+	.site {
+		--mint: #6ee7a8;
+		--mint-ink: #052e1b;
+		--ink: #eef5f1;
+		--ink-2: #b4c3bc;
+		--ink-3: #8a9a93;
+		--line: rgb(238 245 241 / 0.12);
+		--bg: #0b1311;
+		--bg-2: #0f1a17;
+		min-height: 100vh;
+		background: var(--bg);
+		color: var(--ink);
 		font-family: var(--font-ui);
-		font-size: 11px;
-		padding: 2px 6px;
-		border-radius: 5px;
-		background: var(--surface-3);
-		color: var(--text-2);
+		overflow-x: clip;
 	}
+	.wrap { width: min(1180px, 100% - 32px); margin-inline: auto; }
+	.display { font-family: var(--font-display); font-weight: 800; text-transform: uppercase; letter-spacing: -0.01em; line-height: 0.92; margin: 0; }
+	.muted { color: var(--ink-2); line-height: 1.6; }
+
+	/* cabeçalho */
+	.top { position: sticky; top: 0; z-index: 20; background: rgb(11 19 17 / 0.86); backdrop-filter: blur(14px); border-bottom: 1px solid var(--line); }
+	.bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+	.brand { color: inherit; text-decoration: none; }
+	.actions { display: flex; align-items: center; gap: 18px; }
+	.link { color: var(--ink-2); text-decoration: none; font-weight: 600; }
+	.link:hover { color: var(--ink); }
+	.tabs { display: flex; gap: clamp(18px, 6vw, 56px); overflow-x: auto; scrollbar-width: none; }
+	.tabs a { padding: 14px 0 12px; color: var(--ink-2); text-decoration: none; font-weight: 600; white-space: nowrap; border-bottom: 2px solid transparent; }
+	.tabs a:hover { color: var(--ink); }
+	@media (max-width: 420px) { .tabs { justify-content: space-between; gap: 10px; } .tabs a { font-size: 0.92rem; } }
+	.tabs a.on { color: var(--mint); border-color: var(--mint); }
+
+	/* botões */
+	.btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 52px; padding: 0 24px; border-radius: 8px; font-weight: 800; font-size: 1.05rem; text-decoration: none; transition: transform 0.15s, background 0.15s, border-color 0.15s; }
+	.btn:hover { transform: translateY(-1px); }
+	.btn:focus-visible, .tabs a:focus-visible, .gallery button:focus-visible { outline: 3px solid var(--mint); outline-offset: 3px; }
+	.btn.sm { min-height: 42px; padding: 0 16px; font-size: 0.95rem; }
+	.primary { background: var(--mint); color: var(--mint-ink); }
+	.primary:hover { background: #8ef0bd; }
+	.ghost { border: 1px solid rgb(238 245 241 / 0.28); color: var(--ink); }
+	.ghost:hover { border-color: var(--mint); }
+	.text { color: var(--mint); padding-inline: 4px; }
+	.win { width: 18px; height: 18px; fill: currentColor; flex: none; }
+	.ctas { display: flex; flex-wrap: wrap; gap: 14px; }
+
+	/* herói */
+	.hero { position: relative; isolation: isolate; padding-top: clamp(48px, 7vw, 88px); background: radial-gradient(120% 80% at 70% 15%, #173a2b 0%, transparent 60%), linear-gradient(180deg, #0c1714 0%, #0d1d17 70%, var(--bg) 100%); border-bottom: 1px solid var(--line); }
+	.stadium { position: absolute; inset: 0; z-index: -1; overflow: hidden; }
+	.light { position: absolute; top: 6%; width: 46vw; height: 10px; border-radius: 99px; background: #e9fff4; filter: blur(14px); opacity: 0.35; }
+	.l1 { right: -8vw; transform: rotate(-14deg); }
+	.l2 { right: 6vw; top: 18%; width: 30vw; opacity: 0.22; transform: rotate(-10deg); }
+	.l3 { right: 22vw; top: 2%; width: 18vw; opacity: 0.18; }
+	.pitch { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 48%; opacity: 0.9; }
+	.grass { fill: rgb(27 77 52 / 0.45); }
+	.lines { fill: none; stroke: rgb(238 245 241 / 0.14); stroke-width: 2; vector-effect: non-scaling-stroke; }
+	.hero-grid { display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; gap: 40px; padding-bottom: clamp(40px, 6vw, 72px); }
+	.hero-body { display: grid; gap: 24px; min-width: 0; }
+	.hero-shot { display: none; margin: 0; border-radius: 16px; overflow: hidden; border: 1px solid rgb(110 231 168 / 0.25); box-shadow: 0 40px 90px -30px #000, 0 0 0 8px rgb(110 231 168 / 0.04); transform: perspective(1400px) rotateY(-9deg) rotateX(3deg); }
+	.hero-shot img { display: block; width: 100%; height: auto; }
+	@media (min-width: 1100px) {
+		.hero-grid { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); }
+		.hero-shot { display: block; }
+	}
+	.eyebrow { display: flex; align-items: center; gap: 14px; margin: 0; color: var(--mint); font-weight: 800; letter-spacing: 0.22em; text-transform: uppercase; font-size: clamp(0.78rem, 2.4vw, 0.95rem); }
+	.eyebrow span { width: 40px; height: 3px; background: var(--mint); flex: none; }
+	h1 { font-size: clamp(3.3rem, min(11vw, 12vh), 6.6rem); text-shadow: 0 6px 40px rgb(0 0 0 / 0.5); }
+	h1 em { font-style: normal; color: var(--mint); }
+	.lead { max-width: 640px; margin: 0; font-size: clamp(1.05rem, 2.6vw, 1.3rem); line-height: 1.6; color: #d7e3dd; }
+	.meta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0; color: var(--ink-2); }
+	.meta i { width: 5px; height: 5px; border-radius: 50%; background: #e8b86a; }
+	.facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 8px; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+	.facts li { display: grid; gap: 6px; padding: 26px 18px 30px; border-left: 1px solid var(--line); min-width: 0; }
+	.facts li:first-child { border-left: 0; padding-left: 0; }
+	.facts strong { font-family: var(--font-display); font-weight: 800; text-transform: uppercase; font-size: clamp(1.35rem, 3.6vw, 2rem); line-height: 1; }
+	.facts span { color: var(--ink-2); font-size: 0.95rem; }
+
+	/* blocos */
+	section[id] { scroll-margin-top: 120px; }
+	.block { padding-block: clamp(64px, 9vw, 110px); }
+	.kicker { margin: 0 0 14px; color: var(--mint); font-weight: 800; letter-spacing: 0.2em; text-transform: uppercase; font-size: 0.9rem; }
+	h2 { font-size: clamp(2.6rem, 7vw, 4.6rem); }
+	.feature { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: clamp(28px, 5vw, 64px); align-items: center; padding-top: clamp(40px, 6vw, 72px); margin-top: clamp(40px, 6vw, 72px); border-top: 1px solid var(--line); }
+	.feature.flip .copy { order: 2; }
+	.copy { display: grid; gap: 14px; align-content: start; }
+	h3 { font-size: clamp(2rem, 5vw, 3rem); }
+	.feature-lead { margin: 0; font-weight: 800; font-size: clamp(1.15rem, 2.6vw, 1.45rem); line-height: 1.4; }
+	.copy .muted { margin: 0; font-size: 1.05rem; }
+	.more { color: var(--mint); font-weight: 800; text-decoration: none; justify-self: start; }
+	.more:hover { text-decoration: underline; }
+	.shot { margin: 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #060b0a; box-shadow: 0 30px 70px -30px #000; }
+	.shot img, .gallery img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; object-fit: cover; object-position: top; }
+	.shot figcaption { display: flex; justify-content: space-between; gap: 12px; padding: 16px 20px; background: var(--bg-2); border-top: 1px solid var(--line); }
+	.shot small { color: var(--ink-3); }
+
+	.band { background: linear-gradient(120deg, #0f241c, #0b1311 70%); border-block: 1px solid var(--line); }
+	.save { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 32px; align-items: center; padding-block: clamp(56px, 8vw, 96px); }
+	.save h2 { font-size: clamp(2.2rem, 5.5vw, 3.6rem); margin-bottom: 16px; }
+	.states { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+	.states li { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-radius: 999px; background: #0d1816; border: 1px solid #2b5146; font-weight: 600; }
+	.states i { width: 9px; height: 9px; border-radius: 50%; }
+	.states .warn { background: #f5c451; }
+	.states .ok { background: #46df93; }
+
+	.gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 36px 0 0; padding: 0; list-style: none; }
+	.gallery button { display: grid; width: 100%; padding: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--bg-2); color: var(--ink); cursor: zoom-in; text-align: left; font: inherit; transition: border-color 0.15s, transform 0.15s; }
+	.gallery button:hover { border-color: var(--mint); transform: translateY(-2px); }
+	.gallery span { padding: 12px 14px; font-weight: 600; }
+
+	.news { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 36px 0 0; padding: 0; list-style: none; }
+	.news li { padding: 22px; border-radius: 12px; background: var(--bg-2); border: 1px solid var(--line); }
+	.news strong { font-size: 1.1rem; }
+	.news p { margin: 8px 0 0; }
+	.versions { display: grid; gap: 0; margin: 28px 0 20px; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+	.versions li { display: grid; grid-template-columns: 70px minmax(0, 1fr) auto; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+	.versions b { color: var(--mint); }
+	.versions time { color: var(--ink-3); }
+
+	.community { background: #10201b; border-block: 1px solid var(--line); padding-block: clamp(64px, 9vw, 100px); }
+	.community h2 { margin-bottom: 18px; }
+	.community .muted { max-width: 620px; font-size: 1.1rem; margin: 0 0 32px; }
+	.download .muted { margin: 18px 0 32px; font-size: 1.1rem; }
+
+	.foot { border-top: 1px solid var(--line); padding-block: 48px 64px; }
+	.foot .wrap { display: grid; gap: 18px; }
+	.foot p { margin: 0; }
+	.foot nav { display: flex; flex-wrap: wrap; gap: 14px 28px; }
+	.foot nav a { color: var(--ink-2); text-decoration: none; font-weight: 600; }
+	.foot nav a:hover { color: var(--ink); }
+
+	.viewer { width: min(1200px, 96vw); max-width: none; padding: 0; border: 1px solid var(--line); border-radius: 14px; background: #060b0a; color: var(--ink); }
+	.viewer::backdrop { background: rgb(0 0 0 / 0.75); backdrop-filter: blur(4px); }
+	.viewer figure { margin: 0; }
+	.viewer img { display: block; width: 100%; height: auto; }
+	.viewer figcaption { padding: 14px 18px; }
+	.close { position: absolute; top: 10px; right: 10px; width: 40px; height: 40px; border-radius: 50%; border: 0; background: rgb(0 0 0 / 0.6); color: #fff; font-size: 1.6rem; line-height: 1; cursor: pointer; }
+
+	@media (max-width: 900px) {
+		.feature, .save { grid-template-columns: minmax(0, 1fr); }
+		.feature.flip .copy { order: 0; }
+		.gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+		.news { grid-template-columns: minmax(0, 1fr); }
+	}
+	@media (max-width: 560px) {
+		.actions { gap: 12px; }
+		.facts { grid-template-columns: minmax(0, 1fr); }
+		.facts li, .facts li:first-child { border-left: 0; border-top: 1px solid var(--line); padding: 18px 0; }
+		.facts li:first-child { border-top: 0; }
+		.gallery { grid-template-columns: minmax(0, 1fr); }
+		.versions li { grid-template-columns: 56px minmax(0, 1fr); }
+		.versions time { grid-column: 2; }
+		.ctas .btn { flex: 1 1 100%; }
+		.shot figcaption { flex-direction: column; gap: 2px; }
+	}
+	@media (prefers-reduced-motion: reduce) { .btn, .gallery button { transition: none; } .btn:hover, .gallery button:hover { transform: none; } }
 </style>
