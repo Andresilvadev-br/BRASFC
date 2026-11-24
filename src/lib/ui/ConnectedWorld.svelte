@@ -19,6 +19,21 @@
 	import { coachKit, playerKit } from '#lib/pixel/kits.ts';
 	import type { PresenceMember, RoomActivity } from '#lib/realtime/protocol.ts';
 	import Island from './Island.svelte';
+	import { provideCareerPort, type CareerPort } from '#lib/career/port.ts';
+	import type { CareerScreenData } from '#lib/career/screen-data.ts';
+	import type { Career as CareerSave } from '#lib/domain/career.ts';
+	import type { StoredRoundResult } from '#lib/domain/league.ts';
+	import { careerView } from '#lib/domain/view.ts';
+	import { manageView } from '#lib/domain/manageview.ts';
+	import { officeView } from '#lib/domain/officeview.ts';
+	import SquadScreen from './career/screens/SquadScreen.svelte';
+	import TacticsScreen from './career/screens/TacticsScreen.svelte';
+	import TrainingScreen from './career/screens/TrainingScreen.svelte';
+	import FinanceScreen from './career/screens/FinanceScreen.svelte';
+	import ClubScreen from './career/screens/ClubScreen.svelte';
+	import StaffScreen from './career/screens/StaffScreen.svelte';
+	import AcademyScreen from './career/screens/AcademyScreen.svelte';
+	import OfficeScreen from './career/screens/OfficeScreen.svelte';
 	import Switch from './Switch.svelte';
 	import LiveMatch from './match/LiveMatch.svelte';
 	import type { worldClubLineup, worldReplay, worldSnapshot } from '#lib/server/connected-world.ts';
@@ -362,6 +377,52 @@
 	const send = (action: string, values: Record<string, unknown> = {}) =>
 		execute({ ...values, action, revision: world.revision, op: crypto.randomUUID() });
 
+	// ── Dev 0.12: as MESMAS telas da carreira individual, sobre o universo compartilhado da liga.
+	const SHARED_SECTIONS = ['elenco', 'taticas', 'treinos', 'financas', 'clube', 'comissao', 'base', 'gabinete'];
+	const projected = $derived((world as unknown as { career?: CareerSave | null }).career ?? null);
+	const seasonResults = $derived((world as unknown as { seasonResults?: StoredRoundResult[] }).seasonResults ?? []);
+	const screenData = $derived.by<CareerScreenData | null>(() => {
+		if (!projected) return null;
+		const view = careerView(projected, seasonResults);
+		const manage = manageView(projected, view);
+		return { career: projected, view, manage, office: officeView(projected, view, manage), results: seasonResults, recent: [] };
+	});
+	const failure = (fallback: string) => new Error(message || fallback);
+	provideCareerPort({
+		kind: 'online',
+		href: (target, hash) => `${href(target || 'central')}${hash ? `#${hash}` : ''}`,
+		async clubAction(body) {
+			if (body.action === 'emprego' || (typeof body.action === 'string' && body.action.startsWith('proposta-'))) {
+				throw new Error('Na carreira online, a troca de clube acontece pelas vagas da liga.');
+			}
+			if (!(await execute({ action: 'club', request: body, revision: world.revision, op: crypto.randomUUID() }))) throw failure('Não foi possível concluir a ação.');
+			return { message: message || 'Alteração salva' };
+		},
+		async saveTactic(tactic, base) {
+			// Edição concorrente: compara com a tática oficial que a própria tela exibiu.
+			const official = projected?.data.tactic ?? screenData?.view.tactic;
+			if (official && !sameTactic(official, base)) {
+				await refresh().catch(() => {});
+				return { ok: false, message: 'A tática do clube mudou em outra janela. Confira a escalação oficial antes de salvar.' };
+			}
+			const ok = await send('tactic', { tactic });
+			return { ok, message: ok ? undefined : message };
+		},
+		async saveTrainingPlan(plan) {
+			const ok = await send('training', { plan });
+			return { ok, message: ok ? undefined : message };
+		},
+		async presetOp(preset) {
+			if (!(await send('preset', { preset }))) throw failure('Não foi possível atualizar a biblioteca.');
+			return { message: message || 'Biblioteca atualizada.' };
+		},
+		async dismissTip(tip) {
+			await send('dismiss-tip', { tip });
+		},
+		refresh: () => refresh().catch(() => {}),
+		supports: (feature) => feature !== 'job-market'
+	} satisfies CareerPort);
+
 	async function marketCommit(request: Record<string, unknown>, seller?: string): Promise<{ ok: boolean; log?: NegotiationLog | null }> {
 		const op = typeof request.operation === 'string' ? request.operation : crypto.randomUUID();
 		const command = seller ? { action: 'deal', target: seller, player: request.playerId, fee: request.fee }
@@ -601,6 +662,17 @@
 					{#each world.last as row}<p>{clubName(row.home)} {row.homeGoals} × {row.awayGoals} {clubName(row.away)}</p>{/each}
 				</details>
 			</article>{/if}
+		{:else if screenData && current?.role === 'coach' && SHARED_SECTIONS.includes(section)}
+			<div class="wide shared-screen">
+				{#if section === 'elenco'}<SquadScreen data={screenData} />
+				{:else if section === 'taticas'}<TacticsScreen data={screenData} />
+				{:else if section === 'treinos'}<TrainingScreen data={screenData} />
+				{:else if section === 'financas'}<FinanceScreen data={screenData} />
+				{:else if section === 'clube'}<ClubScreen data={screenData} />
+				{:else if section === 'comissao'}<StaffScreen data={screenData} />
+				{:else if section === 'base'}<AcademyScreen data={screenData} />
+				{:else}<OfficeScreen data={screenData} />{/if}
+			</div>
 		{:else if (section === 'elenco' || (section === 'taticas' && current?.role !== 'player')) && current}
 			{#if current.role !== 'player' && world.tactic}<div class="wide"><WorldTactics key={code} tactic={world.tactic} squad={world.roster} club={current.club} mastery={world.mastery}
 				canEdit suggest={current.role === 'assistant' && !(current.lineupDelegated ?? current.matchDelegated)} busy={saving} onsave={saveWorldTactic} /></div>{/if}

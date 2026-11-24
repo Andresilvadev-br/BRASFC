@@ -89,6 +89,8 @@ coachKnowledge?: CoachKnowledge;
 tacticPresets?: TacticPreset[];
 /** registro disciplinar persistente (cartões e suspensões por competição) */
 discipline?: DisciplineState;
+/** Dev 0.12: projeção de um treinador de carreira online (universo compartilhado da liga) */
+sharedWorld?: boolean;
 }
 
 export interface Career {

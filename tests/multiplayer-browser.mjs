@@ -99,6 +99,26 @@ try {
 	await clubs(rival,'Flamengo');
 	await coach.getByRole('button', { name:'Iniciar temporada' }).click();
 	await visible(coach.getByRole('link', { name:'Central da carreira' }));
+	// Dev 0.12: as mesmas telas da carreira individual, sobre o universo da liga.
+	const room = coach.url().split('?')[0];
+	await coach.setViewportSize({ width:1366, height:768 });
+	await coach.goto(`${room}?secao=taticas`);
+	await visible(coach.getByRole('heading', { name:'Táticas', exact:true }));
+	await visible(coach.getByText('Minhas Táticas'));
+	await coach.getByRole('button', { name:'Montar melhor 11' }).click();
+	await coach.getByRole('button', { name:'Aplicar na prancheta' }).click();
+	await coach.getByRole('button', { name:'Salvar tática', exact:true }).click();
+	await visible(coach.getByText('Tática salva', { exact:true }).first());
+	await noOverflow(coach);
+	await coach.goto(`${room}?secao=financas`);
+	await visible(coach.getByText('Negociar verba com a diretoria →'));
+	await coach.goto(`${room}?secao=gabinete`);
+	await visible(coach.getByRole('heading', { name:'Negociar verba com a diretoria' }));
+	assert.equal(await coach.getByText('Central de Propostas').count(), 0);
+	await noOverflow(coach);
+	await coach.goto(`${room}?secao=elenco`);
+	await visible(coach.getByRole('heading', { name:'Elenco', exact:true }));
+	await coach.setViewportSize({ width:390, height:844 });
 
 	const { page: host } = await account('anfitriao_teste','Lia Treinadora',1440,900);
 	const { page: friend } = await account('parceiro_teste','Noa Treinador',360,780);

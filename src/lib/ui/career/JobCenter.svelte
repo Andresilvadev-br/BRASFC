@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
 	import { api, withCareerVersion } from '#lib/api.ts';
-	import { clubAction } from '#lib/client/club.ts';
+	import { careerPort } from '#lib/career/port.ts';
 	import type { JobOfferDetail } from '#lib/domain/careerlife.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { isOfferOpen, OFFER_SOURCE_LABEL, type EmploymentStatus } from '#lib/domain/employment.ts';
@@ -27,6 +27,7 @@
 
 	const open = $derived(offers.filter((o) => isOfferOpen(o, season, round)));
 	const closed = $derived(offers.filter((o) => !isOfferOpen(o, season, round)).slice(-4).reverse());
+	const port = careerPort();
 	let busy = $state(false);
 	let advancing = $state(false);
 
@@ -81,7 +82,7 @@
 	async function closeAlert(view: boolean) {
 		alertOpen = false;
 		try {
-			await clubAction(careerId, version, { action: 'proposta-vistas' });
+			await port.clubAction({ action: 'proposta-vistas' });
 		} catch {
 			// marcar como vista é só conforto visual; a proposta segue válida
 		}
@@ -124,12 +125,12 @@
 	async function act(body: Record<string, unknown>, done?: string) {
 		busy = true;
 		try {
-			const r = await clubAction(careerId, version, body);
+			const r = await port.clubAction(body);
 			notify({ icon: 'check', tone: 'success', title: done ?? 'Decisão registrada', detail: r.message });
 			if (body.action === 'emprego') {
 				signOpen = false;
 				sheetOpen = false;
-				await goto(`/carreira/${careerId}`, { invalidateAll: true });
+				await goto(port.href('central'), { invalidateAll: true });
 			}
 		} catch (e) {
 			notify({ icon: 'alert', tone: 'error', title: 'Não foi possível concluir', detail: (e as Error).message });

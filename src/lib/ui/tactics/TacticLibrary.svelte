@@ -1,7 +1,5 @@
 <script lang="ts">
-	import { invalidate } from '$app/navigation';
-	import { api, withCareerVersion } from '#lib/api.ts';
-	import type { Career } from '#lib/domain/career.ts';
+	import { careerPort } from '#lib/career/port.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import type { SquadPlayer } from '#lib/domain/squad.ts';
 	import { applyPreset, defaultPresetName, MAX_PRESETS, presetShape, type PresetApplication, type TacticPreset } from '#lib/domain/tactic-presets.ts';
@@ -12,11 +10,12 @@
 	import Icon from '../Icon.svelte';
 	import Modal from '../Modal.svelte';
 
-	let { careerId, version, presets, tactic, squad, clubId, unavailable, fitness, dirty, onapply }: {
-		careerId: string; version: number; presets: TacticPreset[]; tactic: Tactic; squad: SquadPlayer[]; clubId: string;
+	let { presets, tactic, squad, clubId, unavailable, fitness, dirty, onapply }: {
+		presets: TacticPreset[]; tactic: Tactic; squad: SquadPlayer[]; clubId: string;
 		unavailable: Set<string>; fitness: Record<string, number>; dirty: boolean; onapply: (t: Tactic) => void;
 	} = $props();
 
+	const port = careerPort();
 	let busy = $state(false);
 	let menu = $state<string | null>(null);
 	let nameOpen = $state(false);
@@ -31,9 +30,8 @@
 	async function op(body: Record<string, unknown>, title: string) {
 		busy = true;
 		try {
-			const r = await withCareerVersion(careerId, version, (v) => api<{ career: Career; message?: string }>(`/api/careers/${careerId}`, { method: 'PATCH', body: { version: v, preset: body } }));
-			await invalidate('app:career').catch(() => {});
-			notify({ icon: 'save', tone: 'success', title, detail: r.message ?? '' });
+			const r = await port.presetOp(body);
+			notify({ icon: 'save', tone: 'success', title, detail: r.message });
 			return true;
 		} catch (e) {
 			notify({ icon: 'alert', tone: 'error', title: 'Biblioteca não atualizada', detail: (e as Error).message });

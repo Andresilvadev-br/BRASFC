@@ -1,3 +1,6 @@
+import { universePreview } from '#lib/domain/universe.ts';
+import { sanitizePresets } from '#lib/domain/tactic-presets.ts';
+import { applyPresetOperation, PresetError } from './presets.ts';
 import { randomUUID } from 'node:crypto';
 import { initialCareerData, validateCreateCareer, type Career, type CareerData } from '#lib/domain/career.ts';
 import { DEFAULT_APPEARANCE, isAppearance, type Appearance } from '#lib/domain/appearance.ts';
@@ -132,6 +135,33 @@ function context(room: Room, s: WorldState, club: string, person?: Assignment): 
 			cup: s.cup ?? undefined, universe: s.universe, market: s.market, club: s.clubs[club] } };
 }
 
+/**
+ * Dev 0.12 · projeção da carreira do treinador online no MESMO formato da carreira individual.
+ * O cliente calcula as visões com as mesmas funções (careerView, manageView, officeView) e exibe as
+ * mesmas telas; as gravações continuam passando pelos comandos autoritativos da liga.
+ */
+function projectCareer(room: Room, s: WorldState, person: Assignment): Career {
+	const c = context(room, s, person.club, person);
+	const office = person.athlete?.office;
+	return {
+		...c,
+		personName: person.name,
+		data: {
+			...c.data,
+			sharedWorld: true,
+			universe: s.universe ? universePreview(s.universe, [person.club]) : undefined,
+			tactic: s.tactics[person.club],
+			tactical: s.mastery?.[person.club] ?? null,
+			fitness: s.fitness?.[person.club] ?? {},
+			trainingPlan: s.plans[person.club],
+			...(office ? { office } : {}),
+			...(person.athlete?.tacticPresets ? { tacticPresets: person.athlete.tacticPresets } : {}),
+			...(person.appearance ? { appearance: person.appearance } : {}),
+			...(person.athlete?.dismissedTips ? { dismissedTips: person.athlete.dismissedTips } : {})
+		}
+	};
+}
+
 async function results(db: Db, room: Room, season: number, compact = false, steps: string[] | null = null): Promise<Played[]> {
 	const rows = await db.query<{ result: Played }>(`SELECT result - 'replay' - 'marketStats' ${compact ? "- 'events' - 'athletes'" : ''} AS result FROM room_world_matches WHERE room_id = $1 AND season = $2 AND ($3::text[] IS NULL OR step = ANY($3::text[]))`, [room.id, season, steps]);
 	return rows.map(({ result }) => typeof result === 'string' ? JSON.parse(result) : result);
@@ -235,7 +265,10 @@ export async function worldSnapshot(db: Db, room: Room, profile: string, online:
 		sponsors: current?.role === 'coach' ? ownClub?.sponsorOffers : undefined,
 		staff: current?.role === 'coach' ? ownClub?.staff : undefined,
 		athleteDeals: (s.athleteDeals ?? []).filter((x) => current?.role === 'coach' ? [x.from, x.to].includes(current.club) : x.profile === profile)
-			.map((x) => ({ ...x, name: s.participants[x.profile]?.name ?? 'Atleta' }))
+			.map((x) => ({ ...x, name: s.participants[x.profile]?.name ?? 'Atleta' })),
+		// Dev 0.12: mesmas telas da carreira individual (projeção + resultados da temporada).
+		career: coach ? projectCareer(room, s, coach) : null,
+		seasonResults: coach ? past.map(({ round, competition, home, away, homeGoals, awayGoals }) => ({ round, competition, home, away, homeGoals, awayGoals })) : []
 	};
 }
 
@@ -731,6 +764,20 @@ export async function applyWorldCommand(db: Db, room: Room, profile: string, bod
 		} else if (action === 'ready') {
 			if (!p || typeof body.value !== 'boolean') fail('Selecione sua função antes de confirmar.');
 			p.ready = body.value;
+		} else if (action === 'preset') {
+			// Biblioteca "Minhas Táticas" do treinador online (mesmas regras da carreira individual).
+			if (!p || p.role !== 'coach') fail('A biblioteca de táticas é do treinador.', 403);
+			try {
+				const out = applyPresetOperation(sanitizePresets(p.athlete?.tacticPresets), body.preset, { squad: roster(room, s, p.club), clubId: p.club, season: s.league.season });
+				p.athlete = { ...p.athlete, tacticPresets: out.presets };
+				outcomeMessage = out.message;
+			} catch (e) {
+				if (e instanceof PresetError) fail(e.message, e.status);
+				throw e;
+			}
+		} else if (action === 'dismiss-tip') {
+			if (!p || typeof body.tip !== 'string' || body.tip.length > 120) fail('Recomendação inválida.');
+			p.athlete = { ...p.athlete, dismissedTips: [...(p.athlete?.dismissedTips ?? []), body.tip].slice(-60) };
 		} else if (action === 'ai-cover') {
 			// Delegação temporária: só o próprio treinador autoriza (nem o administrador decide por ele).
 			if (!p || p.role !== 'coach' || typeof body.value !== 'boolean') fail('Somente o treinador do clube pode delegar à IA.', 403);

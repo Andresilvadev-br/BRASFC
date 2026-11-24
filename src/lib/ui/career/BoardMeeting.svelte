@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { clubAction } from '#lib/client/club.ts';
+	import { careerPort } from '#lib/career/port.ts';
 	import { BUDGET_KIND_LABEL, JUSTIFICATIONS, OUTCOME_LABEL, type BudgetCounter, type BudgetKind, type BudgetTalk, type JustificationId } from '#lib/domain/board-talks.ts';
 	import { formatMoney, roundMoney } from '#lib/domain/market.ts';
 	import { enter, reveal } from '#lib/motion/actions.ts';
@@ -14,6 +14,7 @@
 		talks: BudgetTalk[]; counter: BudgetCounter | null; profileLabel: string;
 	} = $props();
 
+	const port = careerPort();
 	let kind = $state<BudgetKind>('transferencias');
 	let pct = $state<'10' | '20' | '30'>('10');
 	let justification = $state<JustificationId>('carencias');
@@ -33,8 +34,8 @@
 	async function request() {
 		busy = true;
 		try {
-			const r = await clubAction(careerId, version, { action: 'verba-solicitar', kind, percent: Number(pct), justification });
-			last = r.career.data.office?.budgetTalks?.at(-1) ?? null;
+			const r = await port.clubAction({ action: 'verba-solicitar', kind, percent: Number(pct), justification });
+			last = r.career?.data.office?.budgetTalks?.at(-1) ?? null;
 			notify({ icon: 'briefcase', tone: last && (last.outcome === 'aprovado' || last.outcome === 'parcial') ? 'success' : 'info', title: last ? OUTCOME_LABEL[last.outcome] : 'Reunião encerrada', detail: r.message });
 		} catch (e) {
 			notify({ icon: 'alert', tone: 'error', title: 'A diretoria não recebeu o pedido', detail: (e as Error).message });
@@ -45,8 +46,8 @@
 	async function answer(accept: boolean) {
 		busy = true;
 		try {
-			const r = await clubAction(careerId, version, { action: 'verba-contraproposta', accept });
-			last = r.career.data.office?.budgetTalks?.at(-1) ?? null;
+			const r = await port.clubAction({ action: 'verba-contraproposta', accept });
+			last = r.career?.data.office?.budgetTalks?.at(-1) ?? null;
 			notify({ icon: accept ? 'check' : 'x', tone: accept ? 'success' : 'info', title: accept ? 'Acordo fechado' : 'Contraproposta recusada', detail: r.message });
 		} catch (e) {
 			notify({ icon: 'alert', tone: 'error', title: 'Não foi possível responder', detail: (e as Error).message });

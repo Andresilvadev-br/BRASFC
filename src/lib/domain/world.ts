@@ -20,8 +20,9 @@ export function rosterContext(career: Pick<Career, 'seed' | 'season' | 'clubId' 
 		season: career.season,
 		market: sanitizeMarket(career.data.market),
 		divisionOf: (id) => divisionOf(lg, id),
-		// No modo jogador o clube é gerido pela IA (renova contratos e repõe aposentados).
-		userClub: career.mode === 'player' ? undefined : career.clubId,
+		// No modo jogador e no universo compartilhado (carreira online) todos os clubes seguem a mesma
+		// regra de evolução e renovação: o elenco que a tela mostra é o mesmo que o servidor da liga usa.
+		userClub: career.mode === 'player' || career.data.sharedWorld ? undefined : career.clubId,
 		userDevBoost: Math.round(ctDevelopment(ct) * 100) / 100
 	};
 }

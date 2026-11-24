@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { provideCareerPort } from '#lib/career/port.ts';
+	import { localCareerPort } from '#lib/career/local-port.ts';
 	import { page } from '$app/state';
 	import { invalidate } from '$app/navigation';
 	import { api } from '#lib/api.ts';
@@ -12,6 +14,8 @@
 	import type { IconName } from '#lib/ui/icons.ts';
 
 	let { data, children } = $props();
+	// Dev 0.12: as telas da carreira falam com o armazenamento por esta porta (a online usa a da liga).
+	provideCareerPort(localCareerPort(() => data.career));
 
 	const base = $derived(`/carreira/${data.career.id}`);
 	let visited = '';

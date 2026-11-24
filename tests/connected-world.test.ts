@@ -178,4 +178,40 @@ describe('universo compartilhado', () => {
 		await command(owner, 'ready', { value: true });
 		await expect(command(owner, 'advance')).rejects.toMatchObject({ status: 409 });
 	}, 60000);
+	it('Dev 0.12: a carreira online entrega a mesma projeção da carreira individual e as telas calculam o mesmo elenco oficial', async () => {
+		const { careerView } = await import('#lib/domain/view.ts');
+		const { manageView } = await import('#lib/domain/manageview.ts');
+		const { officeView } = await import('#lib/domain/officeview.ts');
+		const [owner] = await Promise.all([createGuestProfile(db).then((p) => p.profile.id)]);
+		const room = await createRoom(db, owner, 'Telas iguais');
+		const get = () => worldSnapshot(db, room, owner);
+		const command = async (action: string, params: Record<string, unknown> = {}) =>
+			applyWorldCommand(db, room, owner, { ...params, action, op: randomUUID(), revision: (await get()).revision });
+		await command('assign', { role: 'coach', club: 'flamengo' });
+		await command('ready', { value: true });
+		await command('advance');
+		const snap = await get();
+		expect(snap.career?.data.sharedWorld).toBe(true);
+		const view = careerView(snap.career!, snap.seasonResults);
+		// O elenco calculado pela tela é exatamente o elenco oficial da liga.
+		expect(view.squad.map((p) => p.id).sort()).toEqual(snap.roster.map((p) => p.id).sort());
+		expect(view.club.id).toBe('flamengo');
+		expect(view.tactic.formation).toBe(snap.tactic!.formation);
+		const manage = manageView(snap.career!, view);
+		expect(manage.club.balance).toBe(snap.balance);
+		expect(officeView(snap.career!, view, manage).office.contract.until).toBeGreaterThan(0);
+		// Biblioteca de táticas e dicas também na carreira online (mesmas regras do servidor individual).
+		await command('preset', { preset: { op: 'save', name: 'Online 4-3-3', tactic: { ...snap.tactic, formation: '4-3-3', lineup: snap.tactic!.lineup.slice(0, 11) } } }).catch(async () => {
+			const { autoLineup } = await import('#lib/domain/tactics.ts');
+			await command('preset', { preset: { op: 'save', name: 'Online 4-3-3', tactic: { ...snap.tactic, formation: '4-3-3', lineup: autoLineup('4-3-3', view.squad), bench: undefined } } });
+		});
+		const after = await get();
+		expect(after.career?.data.tacticPresets?.map((p) => p.name)).toEqual(['Online 4-3-3']);
+		await expect(command('preset', { preset: { op: 'save', name: 'Online 4-3-3', tactic: snap.tactic } })).rejects.toMatchObject({ status: 422 });
+		await command('dismiss-tip', { tip: 'formacao-ruim' });
+		expect((await get()).career?.data.dismissedTips).toEqual(['formacao-ruim']);
+		// Ação de gestão pela mesma via das telas (comando "club"): preço do ingresso.
+		await command('club', { request: { action: 'ingresso', price: 55 } });
+		expect((await get()).career?.data.club?.ticketPrice).toBe(55);
+	}, 60000);
 });

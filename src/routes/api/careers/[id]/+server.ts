@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
-import { randomUUID } from 'node:crypto';
-import { cleanPresetName, defaultPresetName, MAX_PRESETS, presetFromTactic, sanitizePresets, type TacticPreset } from '#lib/domain/tactic-presets.ts';
+import { sanitizePresets, type TacticPreset } from '#lib/domain/tactic-presets.ts';
+import { applyPresetOperation, PresetError } from '#lib/server/presets.ts';
 import { isAppearance } from '#lib/domain/appearance.ts';
 import type { Career, CareerData } from '#lib/domain/career.ts';
 // O elenco ATUAL (contratações, vendas, base), o mesmo que a tela de táticas mostra.
@@ -99,54 +99,10 @@ export const DELETE: RequestHandler = async (event) => {
 };
 
 function presetOperation(career: Career, raw: unknown): { presets: TacticPreset[]; message: string } {
-	if (!raw || typeof raw !== 'object') error(400, 'Operação de tática inválida.');
-	const op = raw as Record<string, unknown>;
-	const presets = sanitizePresets(career.data.tacticPresets);
-	const find = () => {
-		const p = presets.find((x) => x.id === op.id);
-		if (!p) error(404, 'Tática salva não encontrada.');
-		return p;
-	};
-	const now = new Date().toISOString();
-	const fromBody = () => {
-		const tactic = sanitizeTactic(op.tactic, careerSquad(career));
-		if (!tactic) error(400, 'Tática inválida para este elenco.');
-		return tactic;
-	};
-	switch (op.op) {
-		case 'save': {
-			if (presets.length >= MAX_PRESETS) error(422, `A biblioteca comporta até ${MAX_PRESETS} táticas. Exclua ou substitua uma delas.`);
-			const tactic = fromBody();
-			const name = cleanPresetName(op.name) ?? defaultPresetName(tactic);
-			if (presets.some((p) => p.name.toLowerCase() === name.toLowerCase())) error(422, 'Já existe uma tática com este nome. Escolha outro ou substitua a existente.');
-			const preset = presetFromTactic(tactic, { id: randomUUID(), name, clubId: career.clubId, season: career.season, now });
-			return { presets: [...presets, preset], message: `Tática "${name}" salva na biblioteca.` };
-		}
-		case 'replace': {
-			const old = find();
-			const tactic = fromBody();
-			const preset = { ...presetFromTactic(tactic, { id: old.id, name: old.name, clubId: career.clubId, season: career.season, now }), createdAt: old.createdAt };
-			return { presets: presets.map((p) => (p.id === old.id ? preset : p)), message: `"${old.name}" foi substituída pela tática atual.` };
-		}
-		case 'rename': {
-			const old = find();
-			const name = cleanPresetName(op.name);
-			if (!name) error(422, 'Dê um nome com 2 a 48 caracteres.');
-			if (presets.some((p) => p.id !== old.id && p.name.toLowerCase() === name.toLowerCase())) error(422, 'Já existe uma tática com este nome.');
-			return { presets: presets.map((p) => (p.id === old.id ? { ...p, name, updatedAt: now } : p)), message: `Tática renomeada para "${name}".` };
-		}
-		case 'duplicate': {
-			if (presets.length >= MAX_PRESETS) error(422, `A biblioteca comporta até ${MAX_PRESETS} táticas.`);
-			const old = find();
-			let name = cleanPresetName(`${old.name} (cópia)`) ?? old.name;
-			for (let k = 2; presets.some((p) => p.name.toLowerCase() === name.toLowerCase()); k++) name = cleanPresetName(`${old.name} (cópia ${k})`) ?? `${old.name} ${k}`;
-			return { presets: [...presets, { ...structuredClone(old), id: randomUUID(), name, createdAt: now, updatedAt: now }], message: `Cópia "${name}" criada.` };
-		}
-		case 'delete': {
-			const old = find();
-			return { presets: presets.filter((p) => p.id !== old.id), message: `"${old.name}" foi excluída da biblioteca.` };
-		}
-		default:
-			error(400, 'Operação de tática desconhecida.');
+	try {
+		return applyPresetOperation(sanitizePresets(career.data.tacticPresets), raw, { squad: careerSquad(career), clubId: career.clubId, season: career.season });
+	} catch (e) {
+		if (e instanceof PresetError) error(e.status, e.message);
+		throw e;
 	}
 }
