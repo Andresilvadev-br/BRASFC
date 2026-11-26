@@ -1,0 +1,113 @@
+{
+  "checkedAt": "2026-11-24T09:57:13.335Z",
+  "releases": [
+    {
+      "version": "1.4.9",
+      "published": "2026-11-22T13:22:10Z",
+      "page": "https://github.com/Andresilvadev-br/BRASFC/releases/tag/v1.4.9",
+      "download": "https://github.com/Andresilvadev-br/BRASFC/releases/download/v1.4.9/BRASFC-Setup.exe",
+      "bytes": 133627174,
+      "sha256": "02762db8fb4df9abe459d7f522526d5bdf41e04591f6816f025fe91769f09833",
+      "notes": "Instalador Windows x64 com modo offline, saves locais e atualização pelo aplicativo."
+    },
+    {
+      "version": "1.4.8",
+      "published": "2026-11-22T00:06:32Z",
+      "page": "https://github.com/Andresilvadev-br/BRASFC/releases/tag/v1.4.8",
+      "download": "https://github.com/Andresilvadev-br/BRASFC/releases/download/v1.4.8/BRASFC-Setup.exe",
+      "bytes": 133530106,
+      "sha256": "a50e2d5c4bf6759377e5c177adc5d1ade67d7c52c9aba75a938ca0cf5cd8eb41",
+      "notes": "Instalador do BRASFC para Windows 10 e 11 (64 bits): janela sempre centralizada, tela cheia (F11), modo offline (o jogo roda e salva no computador) e atualização automática. O modo online se atualiza pelo servidor; o offline, a cada nova versão do aplicativo."
+    },
+    {
+      "version": "1.4.7",
+      "published": "2026-11-21T20:16:54Z",
+      "page": "https://github.com/Andresilvadev-br/BRASFC/releases/tag/v1.4.7",
+      "download": "https://github.com/Andresilvadev-br/BRASFC/releases/download/v1.4.7/BRASFC-Setup.exe",
+      "bytes": 133463787,
+      "sha256": "4ee76753e1889e65f204385b07a133452c4fe40f868e6e6861719bc7b3da7068",
+      "notes": "Instalador do BRASFC para Windows 10 e 11 (64 bits): janela sempre centralizada, tela cheia (F11), modo offline (o jogo roda e salva no computador) e atualização automática. O modo online se atualiza pelo servidor; o offline, a cada nova versão do aplicativo."
+    },
+    {
+      "version": "1.4.6",
+      "published": "2026-11-21T19:17:06Z",
+      "page": "https://github.com/Andresilvadev-br/BRASFC/releases/tag/v1.4.6",
+      "download": "https://github.com/Andresilvadev-br/BRASFC/releases/download/v1.4.6/BRASFC-Setup.exe",
+      "bytes": 133435780,
+      "sha256": "60173d44d6090d331591e857c700fc714ec91997bb451ca3893ba4208b5f9989",
+      "notes": "Instalador do BRASFC para Windows 10 e 11 (64 bits): janela sempre centralizada, tela cheia (F11), modo offline (o jogo roda e salva no computador) e atualização automática. O modo online se atualiza pelo servidor; o offline, a cada nova versão do aplicativo."
+    },
+    {
+      "version": "1.4.5",
+      "published": "2026-11-21T13:37:09Z",
+      "page": "https://github.com/Andresilvadev-br/BRASFC/releases/tag/v1.4.5",
+      "download": "https://github.com/Andresilvadev-br/BRASFC/releases/download/v1.4.5/BRASFC-Setup.exe",
+      "bytes": 133273940,
+      "sha256": "fceb1075cee9795a77c1eb2c1897854c0b2426efc46b80de44833fbabbc72b16",
+      "notes": "Instalador do BRASFC para Windows 10 e 11 (64 bits): janela sempre centralizada, tela cheia (F11), modo offline (o jogo roda e salva no computador) e atualização automática. O modo online se atualiza pelo servidor; o offline, a cada nova versão do aplicativo."
+    },
+    {
+      "version": "1.4.4",
+      "published": "2026-11-21T12:32:54Z",
+      "page": "https://github.com/Andresilvadev-br/BRASFC/releases/tag/v1.4.4",
+      "download": "https://github.com/Andresilvadev-br/BRASFC/releases/download/v1.4.4/BRASFC-Setup.exe",
+      "bytes": 133213151,
+      "sha256": "393b731b8a45f90103f9fd1d3abcc7f757d25ccfd54b23a8ccffbe0cdece009d",
+      "notes": "Instalador do BRASFC para Windows 10 e 11 (64 bits): janela sempre centralizada, tela cheia (F11), modo offline (o jogo roda e salva no computador) e atualização automática. O modo online se atualiza pelo servidor; o offline, a cada nova versão do aplicativo."
+    },
+    {
+      "version": "1.4.3",
+      "published": "2026-11-20T11:08:06Z",
+      "page": "https://github.com/Andresilvadev-br/BRASFC/releases/tag/v1.4.3",
+      "download": "https://github.com/Andresilvadev-br/BRASFC/releases/download/v1.4.3/BRASFC-Setup.exe",
+      "bytes": 132995466,
+      "sha256": "0ae6a60e66bf3f63c559211c8ce0769b74a8340bb5d649ba40fa94bfcc8f4787",
+      "notes": "Instalador do BRASFC para Windows 10 e 11 (64 bits): janela sempre centralizada, tela cheia (F11), modo offline (o jogo roda e salva no computador) e atualização automática. O modo online se atualiza pelo servidor; o offline, a cada nova versão do aplicativo."
+    },
+    {
+      "version": "1.4.2",
+      "published": "2026-11-20T01:32:26Z",
+      "page": "https://github.com/Andresilvadev-br/BRASFC/releases/tag/v1.4.2",
+      "download": "https://github.com/Andresilvadev-br/BRASFC/releases/download/v1.4.2/BRASFC-Setup.exe",
+      "bytes": 132987159,
+      "sha256": "c4413955cf449c2a1f763d67374c01556469367268d29176acd2a298b748b984",
+      "notes": "Instalador do BRASFC para Windows 10 e 11 (64 bits): janela sempre centralizada, tela cheia (F11), modo offline (o jogo roda e salva no computador) e atualização automática. O modo online se atualiza pelo servidor; o offline, a cada nova versão do aplicativo."
+    },
+    {
+      "version": "1.4.1",
+      "published": "2026-11-20T00:55:18Z",
+      "page": "https://github.com/Andresilvadev-br/BRASFC/releases/tag/v1.4.1",
+      "download": "https://github.com/Andresilvadev-br/BRASFC/releases/download/v1.4.1/BRASFC-Setup.exe",
+      "bytes": 132983645,
+      "sha256": "6fa66fe9651a8b5b9f73043440ef70cf4a2fdb7314ebd1edab252fb6321c6ffb",
+      "notes": "Instalador do BRASFC para Windows 10 e 11 (64 bits): janela sempre centralizada, tela cheia (F11), modo offline (o jogo roda e salva no computador) e atualização automática. O modo online se atualiza pelo servidor; o offline, a cada nova versão do aplicativo."
+    },
+    {
+      "version": "1.4.0",
+      "published": "2026-11-19T23:36:32Z",
+      "page": "https://github.com/Andresilvadev-br/BRASFC/releases/tag/v1.4.0",
+      "download": "https://github.com/Andresilvadev-br/BRASFC/releases/download/v1.4.0/BRASFC-Setup.exe",
+      "bytes": 132970780,
+      "sha256": "4d532a21ee39a7d71bb894ce4d8ebc2a2f0ba67e2d4b687b32337bc4e219026a",
+      "notes": "Instalador do BRASFC para Windows 10 e 11 (64 bits): janela sempre centralizada, tela cheia (F11), modo offline (o jogo roda e salva no computador) e atualização automática. O modo online se atualiza pelo servidor; o offline, a cada nova versão do aplicativo."
+    },
+    {
+      "version": "1.3.1",
+      "published": "2026-11-19T14:15:51Z",
+      "page": "https://github.com/Andresilvadev-br/BRASFC/releases/tag/v1.3.1",
+      "download": "https://github.com/Andresilvadev-br/BRASFC/releases/download/v1.3.1/BRASFC-Setup.exe",
+      "bytes": 132768351,
+      "sha256": "eeff771d74e509b012a013c8c1bb8d7b59791960e2e789df8795c1c89d9590c5",
+      "notes": "Instalador do BRASFC para Windows 10 e 11 (64 bits): janela sempre centralizada, tela cheia (F11), modo offline (o jogo roda e salva no computador) e atualização automática. O modo online se atualiza pelo servidor; o offline, a cada nova versão do aplicativo."
+    },
+    {
+      "version": "1.3.0",
+      "published": "2026-11-19T11:45:50Z",
+      "page": "https://github.com/Andresilvadev-br/BRASFC/releases/tag/v1.3.0",
+      "download": "https://github.com/Andresilvadev-br/BRASFC/releases/download/v1.3.0/BRASFC-Setup.exe",
+      "bytes": 132767775,
+      "sha256": "51e7cdacde256a74661b348998a623de7a9fd740dbbf77a61bd7b5a447ebe320",
+      "notes": "Instalador do BRASFC para Windows 10 e 11 (64 bits): janela sempre centralizada, tela cheia (F11), modo offline (o jogo roda e salva no computador) e atualização automática. O modo online se atualiza pelo servidor; o offline, a cada nova versão do aplicativo."
+    }
+  ]
+}

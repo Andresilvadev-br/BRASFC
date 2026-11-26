@@ -1,0 +1,31 @@
+name: brasfc-website
+
+services:
+  brasfc-website:
+    build: .
+    environment:
+      WEBSITE_ORIGIN: ${WEBSITE_ORIGIN:?configure a origem HTTPS dedicada ao website}
+      WEBSITE_RELEASE_LOOKUP: ${WEBSITE_RELEASE_LOOKUP:-1}
+      BRASFC_OIDC_ISSUER: ${BRASFC_OIDC_ISSUER:-}
+      BRASFC_OIDC_CLIENT_ID: ${BRASFC_OIDC_CLIENT_ID:-}
+      BRASFC_OIDC_CLIENT_SECRET: ${BRASFC_OIDC_CLIENT_SECRET:-}
+      WEBSITE_TEAM_IDS: ${WEBSITE_TEAM_IDS:-}
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:4175/', { method: 'HEAD', signal: AbortSignal.timeout(3000) }).then(response => { if (!response.ok) process.exitCode = 1 }).catch(() => { process.exitCode = 1 })"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    volumes:
+      - community:/app/data
+    networks:
+      - edge
+
+volumes:
+  community:
+
+networks:
+  edge:
+    name: brasfc-edge
+    external: true
