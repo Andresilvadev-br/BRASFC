@@ -18,7 +18,8 @@
   },
   "devDependencies": {
     "electron": "45.3.4",
-    "electron-builder": "26.18.0"
+    "electron-builder": "26.18.0",
+    "ws": "8.23.0"
   },
   "build": {
     "appId": "br.brasfc.desktop",
