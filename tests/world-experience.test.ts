@@ -113,3 +113,39 @@ describe('Escudos · padronização e correspondência', async () => {
 		expect(groups.get('world/eng/arsenal')!.map((m) => m.source)).toEqual(['brasfoot-next', 'megapatch']);
 	});
 });
+
+describe('Participação · Copa do Brasil', async () => {
+	const { CUP_ID, cupParticipation, initialCup, prepareCup } = await import('#lib/domain/cup.ts');
+	const cup = initialCup(2026);
+	const strength = () => 70;
+
+	it('diferencia clube inscrito numa fase futura de clube sem inscrição', () => {
+		const phase5 = cup.entrants['5'][0];
+		expect(cupParticipation(cup, [], 7, strength, phase5)).toMatchObject({ status: 'aguardando-estreia', stage: '5ª fase', nextDate: expect.stringMatching(/^2026-/) });
+		expect(cupParticipation(cup, [], 7, strength, 'clube-que-nao-existe').status).toBe('nao-classificado');
+	});
+
+	it('da estreia sorteada à classificação e eliminação', () => {
+		const seeded = prepareCup(cup, 1, [], 7, strength);
+		const [home, away] = seeded.stages[0][0];
+		expect(cupParticipation(seeded, [], 7, strength, home).status).toBe('aguardando-estreia');
+		const results = [{ competition: CUP_ID, round: 1, home, away, homeGoals: 2, awayGoals: 0 }];
+		expect(cupParticipation(seeded, results, 7, strength, home)).toMatchObject({ status: 'classificado', stage: '2ª fase' });
+		expect(cupParticipation(seeded, results, 7, strength, away)).toMatchObject({ status: 'eliminado', eliminatedStage: '1ª fase', eliminatedBy: home });
+	});
+});
+
+describe('Navegação de competições', async () => {
+	const { groupCompetitions } = await import('#lib/world/competitions.ts');
+	it('agrupa por país e deixa as continentais no fim', () => {
+		const mk = (id: string, kind: 'league' | 'national-cup' | 'continental', country: string | null, confederation: 'UEFA' | 'CONMEBOL' | null = null) =>
+			({ id, kind, name: id, short: id, country, confederation, season: 2026, playable: true });
+		const groups = groupCompetitions([
+			mk('continental/ucl', 'continental', null, 'UEFA'), mk('cup/esp', 'national-cup', 'esp'), mk('league/esp/1', 'league', 'esp'),
+			mk('serie-a', 'league', 'bra'), mk('copa-do-brasil', 'national-cup', 'bra')
+		], (c) => c.toUpperCase());
+		expect(groups.map((g) => g.key)).toEqual(['country:esp', 'country:bra', 'conf:UEFA']);
+		expect(groups[0].items.map((i) => i.id)).toEqual(['league/esp/1', 'cup/esp']);
+		expect(groups[2].label).toBe('Continentais · UEFA');
+	});
+});
