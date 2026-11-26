@@ -6,7 +6,7 @@ import { ensureUniverse, inboxWorthy, officeOf, officeSeasonEnd, officeStep, uni
 import type { Career, CareerData } from '#lib/domain/career.ts';
 import { addDays } from '#lib/domain/dates.ts';
 import { applyTrainingWeek, recoverFitness } from '#lib/domain/drills.ts';
-import { activeDivisions, closeSeason, divisionOf, prepareRound, seasonFixtures, seasonStartDate, type DivisionId, type SeasonSummary } from '#lib/domain/league.ts';
+import { activeDivisions, closeSeason, divisionOf, phaseOneLength, seasonStartDate, type DivisionId, type SeasonSummary } from '#lib/domain/league.ts';
 import { CUP_ID, clubCupRun, cupFixtures, cupView, projectedCup, settleCupMatchday } from '#lib/domain/cup.ts';
 import { qualifyBrazil2027 } from '#lib/domain/continental-qualification.ts';
 import { initialClubState, payroll, sanitizeMarket } from '#lib/domain/management.ts';
@@ -182,7 +182,11 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 			// Disciplina: suspensos cumprem este jogo; cartões geram acúmulo e novas suspensões (por competição).
 			const squad = r.view.squad;
 			const names = new Map(squad.map((p) => [p.id, p.name]));
-			const out = applyMatchDiscipline(sanitizeDiscipline(r.career.data.discipline, r.career.season), {
+			const discipline = sanitizeDiscipline(r.career.data.discipline, r.career.season);
+			if (f.competition === 'serie-b' && league.bPromotionPlayoff?.length && round === phaseOneLength(league, 'serie-b') + 1) {
+				delete discipline.yellows['serie-b'];
+			}
+			const out = applyMatchDiscipline(discipline, {
 				season: r.career.season, round, competition: f.competition,
 				cards: summary.cards.filter((c) => c.side === setup.mySide),
 				names: (id) => names.get(id) ?? id
@@ -452,12 +456,12 @@ async function recordedStep(db: Db, career: Career, results: StoredResult[], vie
 export function planRound(career: Career, results: StoredRoundResult[], view = careerView(career, results), divisions?: string[]) {
 	const step = view.step!;
 	const strengthOf = strengthFor(career);
-	let league = view.league;
+	const league = view.league;
 	const cup = view.cup;
 	let fixtures: Fixture[];
 	if (step.kind === 'league') {
-		league = prepareRound(league, step.round, results, career.seed, strengthOf);
-		fixtures = (league === view.league ? view.fixtures : seasonFixtures(league, career.seed)).filter((f) => f.round === step.round);
+		fixtures = view.fixtures.filter((f) => f.round === step.round);
+		if (!fixtures.length) throw new RoundError('O calendário desta rodada não pôde ser montado com os resultados salvos.', 409);
 	} else {
 		fixtures = cup ? cupFixtures(cup).filter((f) => f.round === step.matchday) : [];
 		if (!fixtures.length) throw new RoundError('A chave da Copa do Brasil não pôde ser recuperada para esta data.', 409);

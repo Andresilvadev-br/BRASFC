@@ -7,6 +7,7 @@ import {
 	divisionOf,
 	divisionStandings,
 	groupStandings,
+	prepareRound,
 	sanitizeLeague,
 	seasonFixtures,
 	totalRounds,
@@ -35,8 +36,6 @@ const KNOWN = new Set(CLUBES_2026.map((c) => c.id));
 
 export function careerCalendar(career: Career, results: StoredRoundResult[], league = sanitizeLeague(career.data.league, careerWorld(career), career.season)) {
 	const world = league.world;
-	const fixtures = seasonFixtures(league, career.seed);
-	const mine = clubFixtures(fixtures, career.clubId);
 	const cup = world === 'brasil' && (league.selection?.cup ?? true) ? sanitizeCup(career.data.cup, KNOWN) : null;
 	let activeCup = cup?.season === career.season ? cup : null;
 	if (!activeCup && world === 'brasil' && career.season === 2026 && (league.selection?.cup || (!league.selection && results.some((r) => r.competition === CUP_ID)))) {
@@ -45,12 +44,15 @@ export function careerCalendar(career: Career, results: StoredRoundResult[], lea
 	const steps = seasonSteps(league, activeCup);
 	const done = processedKeys(results);
 	const step = nextStep(steps, done);
+	const strengthOf = strengthFor(career);
+	if (step?.kind === 'league') league = prepareRound(league, step.round, results, career.seed, strengthOf);
 	if (activeCup) {
-		const strengthOf = strengthFor(career);
 		activeCup = restoreCupStages(activeCup, results, career.seed, strengthOf);
 		// O cliente vê a mesma chave que o servidor grava junto do resultado.
 		if (step?.kind === 'cup') activeCup = prepareCup(activeCup, step.matchday, results, career.seed, strengthOf);
 	}
+	const fixtures = seasonFixtures(league, career.seed);
+	const mine = clubFixtures(fixtures, career.clubId);
 	const rounds = totalRounds(league);
 	const seasonOver = step === null;
 	const everything = allFixtures(fixtures, activeCup);
@@ -59,15 +61,14 @@ export function careerCalendar(career: Career, results: StoredRoundResult[], lea
 	// Próximo passo do CALENDÁRIO (todas as competições); o usuário pode não jogar nele.
 	const next = step ? (stepFixtures(step, everything).find((f) => f.home === career.clubId || f.away === career.clubId) ?? null) : null;
 	const upcoming = mineAll.find((f) => !played.has(`${f.competition}:${f.round}:${f.home}`)) ?? null;
-	return { fixtures, mine, activeCup, steps, step, rounds, seasonOver, mineAll, next, upcoming };
+	return { league, fixtures, mine, activeCup, steps, step, rounds, seasonOver, mineAll, next, upcoming };
 }
 
 export function careerView(career: Career, results: StoredRoundResult[] = []) {
 	const club = requireClub(career.clubId);
 	const world = careerWorld(career);
-	const league = sanitizeLeague(career.data.league, world, career.season);
 	const squad = withFitness(careerSquad(career), career.data.fitness);
-	const { fixtures, mine, activeCup, steps, step, rounds, seasonOver, mineAll, next, upcoming } = careerCalendar(career, results, league);
+	const { league, fixtures, mine, activeCup, steps, step, rounds, seasonOver, mineAll, next, upcoming } = careerCalendar(career, results);
 	const division = (divisionOf(league, career.clubId) ?? 'liga-brasfc') as DivisionId;
 	const persisted = recoverTactic(career.data.tactic, squad);
 	const tactic: Tactic = persisted ?? initialClubTactic(career.data.rosterCatalog, career.clubId, squad);

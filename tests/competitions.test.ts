@@ -3,7 +3,7 @@ import '#lib/data/brasil.ts';
 import { allFixtures, seasonSteps, stepFixtures } from '#lib/domain/calendar.ts';
 import { CUP_ID, CUP_PHASES, cupFixtures, cupView, initialCup, prepareCup, projectedCup, sanitizeCup, settleCupMatchday, tieOutcome, type CupState } from '#lib/domain/cup.ts';
 import { continentalParticipation, qualifyBrazil2027 } from '#lib/domain/continental-qualification.ts';
-import { closeSeason, initialLeague, prepareRound, resolveTie, seasonFixtures, type LeagueState, type StoredRoundResult } from '#lib/domain/league.ts';
+import { closeSeason, divisionStandings, initialLeague, prepareRound, resolveTie, seasonFixtures, type LeagueState, type StoredRoundResult } from '#lib/domain/league.ts';
 import { penaltyShootout, quickMatch } from '#lib/domain/quick.ts';
 import { checkTransition, divisionRule, phaseOneRounds } from '#lib/domain/rules.ts';
 
@@ -30,6 +30,28 @@ function playSeason(league: LeagueState, cup: CupState | null, seed: number) {
 }
 
 describe('regras por edição', () => {
+	it('define dois acessos diretos e dois pelos playoffs da Série B sem alterar a tabela regular', () => {
+		const old = initialLeague('brasil', 2026, { divisions: ['serie-b'], cup: false });
+		const modern = { ...old, bPromotionPlayoff: [] };
+		const seed = 77;
+		const regular = seasonFixtures(old, seed).map((f) => ({ ...f, homeGoals: 1, awayGoals: 0 }));
+		const ranking = divisionStandings(modern, 'serie-b', regular).map((r) => r.clubId);
+		const [first, second, third, fourth, fifth, sixth] = ranking;
+		const league = prepareRound(modern, 39, regular, seed, strength);
+		expect(league.bPromotionPlayoff).toEqual([[sixth, third], [fifth, fourth]]);
+		expect(seasonSteps(old, null)).toHaveLength(38);
+		expect(seasonSteps(league, null)).toHaveLength(40);
+		const games = seasonFixtures(league, seed).filter((f) => f.round > 38);
+		expect(games).toHaveLength(4);
+		expect(games.filter((f) => f.round === 40).map((f) => f.home)).toEqual([third, fourth]);
+		const playoffs = games.map((f) => ({ ...f, homeGoals: f.home === sixth ? 2 : 0, awayGoals: 0 }));
+		const ended = closeSeason(league, [...regular, ...playoffs], seed, strength);
+		expect(ended.moves.filter((m) => m.from === 'serie-b' && m.to === 'serie-a').map((m) => m.clubId).sort())
+			.toEqual([first, second, sixth, fourth].sort());
+		expect(ended.tables['serie-b']).toEqual(divisionStandings(league, 'serie-b', regular));
+		expect(ended.next.bPromotionPlayoff).toEqual([]);
+	});
+
 	it('Série C: 20 (2026), 24 (2027), 28 em dois grupos (2028+); Série D com 96', () => {
 		expect(divisionRule('serie-c', 2026).size).toBe(20);
 		expect(divisionRule('serie-c', 2027).size).toBe(24);

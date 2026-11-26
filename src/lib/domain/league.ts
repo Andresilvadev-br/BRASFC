@@ -68,6 +68,8 @@ export interface LeagueState {
 	selection?: LeagueSelection;
 	/** grupos da 1ª fase (Série C a partir de 2028; Série D) */
 	groups?: Partial<Record<DivisionId, string[][]>>;
+	/** Série B: [] aguarda a fase regular; campo ausente mantém o formato dos saves anteriores. */
+	bPromotionPlayoff?: Tie[];
 	/** Série C: quadrangulares da 2ª fase (definidos ao fim da 1ª fase) */
 	cGroups?: [string[], string[]] | null;
 	/** Série C: final entre os líderes dos quadrangulares [1º jogo, 2º jogo] */
@@ -191,14 +193,15 @@ export function roundDate(season: number, round: number): string {
 /** Total de rodadas de domingo da temporada (a maior competição define o fim). */
 export function totalRounds(league: LeagueState): number {
 	if (!league.selection) return 38;
-	return Math.max(0, ...activeDivisions(league).map((div) => phaseOneLength(league, div) + (div === 'serie-c' ? 8 : div === 'serie-d' ? 12 : 0)));
+	return Math.max(0, ...activeDivisions(league).map((div) => phaseOneLength(league, div) +
+		(div === 'serie-b' && league.bPromotionPlayoff ? 2 : div === 'serie-c' ? 8 : div === 'serie-d' ? 12 : 0)));
 }
 
 /** Projeção de volume, independentemente do sorteio e sem construir elencos/calendário. */
 export function divisionMatchCount(league: LeagueState, div: DivisionId): number {
 	const legs = div === LEAGUE.id ? 2 : effectiveRule(league, div).phase1.legs;
 	const regular = phaseOneGroups(league, div).reduce((sum, ids) => sum + (ids.length * (ids.length - 1) / 2) * legs, 0);
-	return regular + (div === 'serie-c' ? 26 : div === 'serie-d' ? 130 : 0);
+	return regular + (div === 'serie-b' && league.bPromotionPlayoff ? 4 : div === 'serie-c' ? 26 : div === 'serie-d' ? 130 : 0);
 }
 
 // ─────────────────────────────────────────────────────────────── calendário das ligas
@@ -240,6 +243,9 @@ export function seasonFixtures(league: LeagueState, careerSeed: number): Fixture
 		const p1 = phaseOneLength(league, div);
 		if (groups.length === 1) out.push(...retarget(roundRobin(seed, ids, rule.phase1.legs, version), league.season, div));
 		else groups.forEach((g, gi) => out.push(...retarget(roundRobin(deriveSeed(seed, 'g', gi), g, rule.phase1.legs, version), league.season, div, 0, gi + 1)));
+		if (div === 'serie-b' && league.bPromotionPlayoff?.length) {
+			out.push(...tieFixtures(league.season, div, league.bPromotionPlayoff, p1 + 1, p1 + 2, 'Playoff de acesso'));
+		}
 		if (div === 'serie-c' && league.cGroups) {
 			league.cGroups.forEach((g, gi) => {
 				const base = generateLeagueFixtures(deriveSeed(careerSeed, 'grupo', `${league.season}:${gi}`), g, version);
@@ -337,6 +343,16 @@ function seededTies(ranked: string[]): Tie[] {
 export function prepareRound(league: LeagueState, round: number, results: StoredRoundResult[], careerSeed: number, strengthOf: StrengthOf): LeagueState {
 	if (league.world !== 'brasil') return league;
 	let next = league;
+	if (league.bPromotionPlayoff?.length === 0 && activeDivisions(league).includes('serie-b')) {
+		const p1 = phaseOneLength(league, 'serie-b');
+		if (round > p1 && round <= p1 + 2) {
+			const table = divisionStandings(league, 'serie-b', results);
+			if (table.length >= 6 && table.every((row) => row.played === p1)) {
+				const [third, fourth, fifth, sixth] = table.slice(2, 6).map((row) => row.clubId);
+				next = { ...next, bPromotionPlayoff: [[sixth, third], [fifth, fourth]] };
+			}
+		}
+	}
 	const c = league.divisions['serie-c'];
 	if (c?.length && (league.selection?.divisions.includes('serie-c') ?? true)) {
 		const p1 = phaseOneLength(league, 'serie-c');
@@ -362,7 +378,11 @@ export function prepareRound(league: LeagueState, round: number, results: Stored
 			const k = br.stages.length; // próxima fase a sortear
 			if (k < 6 && round === p1 + 2 * k + 1) {
 				const prev = br.stages[k - 1];
-				const winners = prev.map((t) => resolveTie(t, results, 'serie-d', [p1 + 2 * (k - 1) + 1, p1 + 2 * (k - 1) + 2], careerSeed, strengthOf)!.winner);
+				const winners = prev.flatMap((t) => {
+					const outcome = resolveTie(t, results, 'serie-d', [p1 + 2 * (k - 1) + 1, p1 + 2 * (k - 1) + 2], careerSeed, strengthOf);
+					return outcome ? [outcome.winner] : [];
+				});
+				if (winners.length !== prev.length) return next;
 				const ranked = br.seeds.filter((s) => winners.includes(s));
 				const stages = [...br.stages, seededTies(ranked)];
 				let playoff = br.playoff;
@@ -457,7 +477,13 @@ export function closeSeason(league: LeagueState, results: StoredRoundResult[], c
 	const rc = effectiveRule(league, 'serie-c');
 	const passB = active.has('serie-b') ? [] : projectedOrder('serie-b');
 	const aDown = active.has('serie-a') ? down(a, ra.relegated) : tail(projectedOrder('serie-a'), ra.relegated);
-	const bUp = active.has('serie-b') ? up(b, rb.promoted) : passB.slice(0, rb.promoted);
+	let bUp = active.has('serie-b') ? up(b, rb.promoted) : passB.slice(0, rb.promoted);
+	if (league.bPromotionPlayoff && active.has('serie-b')) {
+		const p1 = phaseOneLength(league, 'serie-b');
+		const outcomes = league.bPromotionPlayoff.map((tie) => resolveTie(tie, results, 'serie-b', [p1 + 1, p1 + 2], careerSeed, strengthOf, { byCampaign: true }));
+		if (outcomes.length !== 2 || outcomes.some((outcome) => !outcome)) throw new Error('O playoff de acesso da Série B está incompleto.');
+		bUp = [...up(b, 2), ...outcomes.map((outcome) => outcome!.winner)];
+	}
 	const bDown = active.has('serie-b') ? down(b, rb.relegated) : tail(passB, rb.relegated);
 
 	// Série C: acesso pelos quadrangulares; queda pela 1ª fase (por grupo a partir de 2028).
@@ -561,6 +587,7 @@ export function closeSeason(league: LeagueState, results: StoredRoundResult[], c
 		season: season + 1,
 		scheduleVersion: 3,
 		...(league.selection ? { selection: league.selection } : {}),
+		...(league.bPromotionPlayoff ? { bPromotionPlayoff: [] } : {}),
 		divisions: { 'serie-a': nextA, 'serie-b': nextB, 'serie-c': nextCList, ...(nextD.length ? { 'serie-d': nextD } : {}) },
 		groups: {
 			...(nextRuleC.phase1.groups > 1 && nextCList.length === nextRuleC.size ? { 'serie-c': regionalGroups(nextCList, nextRuleC.phase1.groups) } : {}),
@@ -593,6 +620,11 @@ export function sanitizeLeague(input: unknown, world: World, season: number): Le
 	const groups: LeagueState['groups'] = {};
 	for (const [d, gs] of Object.entries(raw.groups ?? {})) if (Array.isArray(gs) && gs.every(okList)) groups[d as DivisionId] = gs.map((g) => [...g]);
 	const tie = (t: unknown): t is Tie => okList(t) && t.length === 2;
+	const bPromotionPlayoff = Array.isArray(raw.bPromotionPlayoff) && raw.bPromotionPlayoff.length === 2 &&
+		raw.bPromotionPlayoff.every(tie) && new Set(raw.bPromotionPlayoff.flat()).size === 4 &&
+		raw.bPromotionPlayoff.flat().every((id) => divisions['serie-b']?.includes(id))
+		? raw.bPromotionPlayoff
+		: [];
 	const cGroups = Array.isArray(raw.cGroups) && raw.cGroups.length === 2 && raw.cGroups.every(okList) ? (raw.cGroups as [string[], string[]]) : null;
 	const cFinal = tie(raw.cFinal) ? raw.cFinal : null;
 	const br = raw.dBracket;
@@ -600,7 +632,7 @@ export function sanitizeLeague(input: unknown, world: World, season: number): Le
 	const pool = okList(raw.pool) ? [...raw.pool] : base.pool;
 	const scheduleVersion = raw.scheduleVersion === 2 || raw.scheduleVersion === 3 ? raw.scheduleVersion : undefined;
 	const selection = validateLeagueSelection(world, raw.selection);
-	return { world, season: raw.season, scheduleVersion, divisions, ...(selection ? { selection } : {}), ...(Object.keys(groups).length ? { groups } : {}), cGroups, cFinal, dBracket, ...(pool ? { pool } : {}) };
+	return { world, season: raw.season, scheduleVersion, divisions, ...(selection ? { selection } : {}), ...(raw.bPromotionPlayoff !== undefined ? { bPromotionPlayoff } : {}), ...(Object.keys(groups).length ? { groups } : {}), cGroups, cFinal, dBracket, ...(pool ? { pool } : {}) };
 }
 
 /** Clube aleatório (determinístico) — usado em testes de temporadas completas. */

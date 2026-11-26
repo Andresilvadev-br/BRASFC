@@ -198,11 +198,13 @@ export function initialCareerData(input: CreateCareerInput, seed: number): Caree
 	const world = input.world ?? (input.worldSelection ? 'brasil' : 'brasfc');
 	const start = careerStart(world);
 	const selection = input.worldSelection ? brazilCountrySelection() : input.leagueSelection;
+	const league = initialLeague(world, start.season, selection);
+	if (input.worldSelection && world === 'brasil') league.bPromotionPlayoff = [];
 	const data: CareerData = {
 		appearance: input.appearance,
 		world,
 		firstSeason: start.season,
-		league: initialLeague(world, start.season, selection),
+		league,
 		...(input.worldSelection ? { worldSelection: input.worldSelection } : {}),
 		...(world === 'brasil' ? { rosterCatalog: ROSTER_CATALOG } : {}),
 		...(world === 'brasil' && (selection?.cup ?? true) ? { cup: initialCup(start.season) } : {})
