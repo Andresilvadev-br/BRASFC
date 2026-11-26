@@ -113,3 +113,53 @@ describe('Escudos · padronização e correspondência', async () => {
 		expect(groups.get('world/eng/arsenal')!.map((m) => m.source)).toEqual(['brasfoot-next', 'megapatch']);
 	});
 });
+
+describe('Participação · Copa do Brasil', async () => {
+	const { CUP_PHASES, initialCup } = await import('#lib/domain/cup.ts');
+	const { cupParticipation } = await import('#lib/world/participation.ts');
+	type View = Parameters<typeof cupParticipation>[1];
+	const cup = initialCup(2026);
+	const phase5 = cup.entrants['5'][0];
+	const phase1 = cup.entrants['1'][0];
+	const empty = (): View => ({ phases: CUP_PHASES.map((phase) => ({ phase, ties: [] })), champion: null, runnerUp: null, current: 0 } as unknown as View);
+
+	it('clube inscrito numa fase futura aguarda a estreia (não aparece como fora da edição)', () => {
+		const p = cupParticipation(cup, empty(), phase5);
+		expect(p.status).toBe('aguardando-estreia');
+		expect(p.stage).toBe('5ª fase');
+		expect(p.nextDate).toMatch(/^2026-/);
+	});
+
+	it('clube sem inscrição: não classificado', () => {
+		expect(cupParticipation(cup, empty(), 'clube-que-nao-existe').status).toBe('nao-classificado');
+	});
+
+	it('venceu: classificado para a próxima fase; perdeu: eliminado com fase e adversário', () => {
+		const view = empty();
+		const other = cup.entrants['1'][1];
+		(view.phases[0] as { ties: unknown[] }).ties = [{ tie: [phase1, other], outcome: { winner: phase1, loser: other }, legs: [] }];
+		expect(cupParticipation(cup, view, phase1)).toMatchObject({ status: 'classificado', stage: '2ª fase' });
+		expect(cupParticipation(cup, view, other)).toMatchObject({ status: 'eliminado', eliminatedStage: '1ª fase', eliminatedBy: phase1 });
+	});
+
+	it('confronto sorteado sem resultado: em disputa', () => {
+		const view = empty();
+		(view.phases[0] as { ties: unknown[] }).ties = [{ tie: [phase1, cup.entrants['1'][1]], outcome: null, legs: [] }];
+		expect(cupParticipation(cup, view, phase1).status).toBe('em-disputa');
+	});
+});
+
+describe('Navegação de competições', async () => {
+	const { groupCompetitions } = await import('#lib/world/competitions.ts');
+	it('agrupa por país e deixa as continentais no fim', () => {
+		const mk = (id: string, kind: 'league' | 'national-cup' | 'continental', country: string | null, confederation: 'UEFA' | 'CONMEBOL' | null = null) =>
+			({ id, kind, name: id, short: id, country, confederation, season: 2026, playable: true });
+		const groups = groupCompetitions([
+			mk('continental/ucl', 'continental', null, 'UEFA'), mk('cup/esp', 'national-cup', 'esp'), mk('league/esp/1', 'league', 'esp'),
+			mk('serie-a', 'league', 'bra'), mk('copa-do-brasil', 'national-cup', 'bra')
+		], (c) => c.toUpperCase());
+		expect(groups.map((g) => g.key)).toEqual(['country:esp', 'country:bra', 'conf:UEFA']);
+		expect(groups[0].items.map((i) => i.id)).toEqual(['league/esp/1', 'cup/esp']);
+		expect(groups[2].label).toBe('Continentais · UEFA');
+	});
+});

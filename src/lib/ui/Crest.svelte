@@ -7,9 +7,17 @@
 	let { clubId, club: given, size = 40, title }: { clubId?: string; club?: Club; size?: number; title?: string } = $props();
 
 	const club = $derived(given ?? (clubId ? getClub(clubId) : undefined));
+	/** Fora de uma página SvelteKit (testes de componente, renderização isolada) não há pacote importado. */
+	function importedCrests(): Record<string, string> | undefined {
+		try {
+			return page.data?.crests as Record<string, string> | undefined;
+		} catch {
+			return undefined;
+		}
+	}
 	const entry = $derived(club && IDENTIDADE[club.id]);
 	/** Prioridade: escudo importado pelo jogador (pacote local) > escudo oficial com permissão > escudo gerado. */
-	const imported = $derived(club ? (page.data?.crests as Record<string, string> | undefined)?.[club.id] : undefined);
+	const imported = $derived(club ? importedCrests()?.[club.id] : undefined);
 	const official = $derived(imported ? { path: `/crests/${imported}` } : entry?.escudo);
 	let failed = $state('');
 	const uid = $props.id();
