@@ -16,6 +16,7 @@
 	const c = $derived(data.career);
 	const v = $derived(data.view);
 	const cup = $derived(v.cup);
+	const participation = $derived(v.cupParticipation);
 	const view = $derived(cup ? cupView(cup, v.results, c.seed, strengthMemo(data.manage.ctx)) : null);
 	let phase = $state(untrack(() => (view ? Math.max(0, view.phases.findLastIndex((p) => p.ties.length > 0)) : 0)));
 	let stage = $state<HTMLElement | null>(null);
@@ -55,7 +56,9 @@
 			<p class="muted">126 clubes, nove fases. Jogo único da 1ª à 4ª fase; ida e volta da 5ª fase à semifinal; final única em campo neutro ({cup.finalVenue}). Empates vão aos pênaltis.</p>
 		</div>
 		<div class="run">
-			{#if myRun.length}
+			{#if participation?.status === 'aguardando-estreia'}
+				<span class="muted">Estreia na {participation.stage}{participation.nextDate ? ` · ${formatDayMonth(participation.nextDate)}` : ''}</span>
+			{:else if myRun.length}
 				<span class="small muted">Sua campanha</span>
 				<div class="row">
 					{#each myRun as p (p.phase.phase)}

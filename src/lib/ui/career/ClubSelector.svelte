@@ -15,8 +15,11 @@
 	import LineupPitch from '../tactics/LineupPitch.svelte';
 
 	let { clubs, clubId = $bindable(null), blocked = {}, lineup, loading = false, error, retry, top, season,
-		transferBudget, wageBudget, coach, prefetch, busy = false }: {
-		clubs: ReadonlyArray<{ id: string; division: DivisionId }>;
+		transferBudget, wageBudget, coach, prefetch, busy = false, labels = {} }: {
+		/** `division` pode ser uma divisão nativa ou do World Database (`league/esp/1`) */
+		clubs: ReadonlyArray<{ id: string; division: DivisionId | string }>;
+		/** nomes das divisões do World Database (ex.: "Espanha · 1ª divisão") */
+		labels?: Record<string, string>;
 		clubId?: string | null;
 		blocked?: Record<string, string>;
 		lineup?: ClubLineup;
@@ -34,14 +37,17 @@
 
 	type RosterTab = 'starters' | 'bench' | 'all';
 	let tab = $state<RosterTab>('starters');
-	let division = $state<DivisionId | null>(null);
+	let division = $state<string | null>(null);
 	let search = $state('');
 	let listOpen = $state(false);
+	// Ordem: liga fictícia, Séries do Brasil e, depois, divisões de outros países na ordem recebida.
 	const divisions = $derived(clubs.some((entry) => entry.division === LEAGUE.id)
-		? [LEAGUE.id] : BRASIL_DIVISIONS.filter((div) => clubs.some((entry) => entry.division === div)));
+		? [LEAGUE.id as string] : [...BRASIL_DIVISIONS.filter((div) => clubs.some((entry) => entry.division === div)),
+			...new Set(clubs.map((entry) => entry.division).filter((div) => !(BRASIL_DIVISIONS as readonly string[]).includes(div)))]);
+	const labelOf = (div: string) => labels[div] ?? DIVISION_LABELS[div as DivisionId] ?? div;
 	const active = $derived(division && divisions.some((entry) => entry === division) ? division
 		: clubs.find((entry) => entry.id === clubId)?.division ?? divisions[0]);
-	const options = $derived(divisions.map((value) => ({ value, label: DIVISION_LABELS[value] })));
+	const options = $derived(divisions.map((value) => ({ value, label: labelOf(value) })));
 	const teams = $derived(clubs.filter((entry) => entry.division === active)
 		.flatMap(({ id }) => { const club = getClub(id); return club ? [club] : []; })
 		.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')));
@@ -56,7 +62,7 @@
 		{ value: 'starters', label: 'Titulares' }, { value: 'bench', label: 'Banco' }, { value: 'all', label: 'Elenco' }
 	];
 
-	function changeDivision(value: DivisionId) {
+	function changeDivision(value: string) {
 		if (busy) return;
 		division = value;
 		search = '';
@@ -118,7 +124,7 @@
 					<div><dt>Estádio</dt><dd>{institution ? institution.estadio ?? 'Pendente' : club.stadium}</dd></div>
 					<div><dt>Força do elenco</dt><dd>{lineup?.strength ?? '—'}</dd></div>
 					{#if coach || lineup?.opening}<div><dt>Técnico</dt><dd>{coach ?? 'Indisponível na súmula'}</dd></div>{/if}
-					<div><dt>Objetivo da diretoria</dt><dd>{boardExpectation(club, DIVISION_LABELS[active])}</dd></div>
+					<div><dt>Objetivo da diretoria</dt><dd>{boardExpectation(club, labelOf(active))}</dd></div>
 					{#if transferBudget !== undefined}<div><dt>Transferências</dt><dd>{formatMoney(transferBudget)}</dd></div>{/if}
 					{#if wageBudget}<div><dt>Orçamento salarial</dt><dd>{formatMoney(wageBudget)}/mês</dd></div>{/if}
 				</dl>
@@ -184,13 +190,19 @@
 	</div>
 	<footer>
 		<strong>Liga</strong>
-		{#if options.length > 1}
+		{#if options.length > 4}
+			<!-- Muitas divisões ativas (vários países): lista compacta em vez de abas. -->
+			<select class="divs" aria-label="Liga" value={active} disabled={busy} onchange={(e) => changeDivision(e.currentTarget.value)}>
+				{#each options as o (o.value)}<option value={o.value}>{o.label}</option>{/each}
+			</select>
+		{:else if options.length > 1}
 			<Segmented label="Liga" {options} value={active} onchange={changeDivision} />
-		{:else}<span>{DIVISION_LABELS[active]}</span>{/if}
+		{:else}<span>{labelOf(active)}</span>{/if}
 	</footer>
 </section>
 
 <style>
+	.divs { max-width: 100%; min-width: 0; padding: 8px 10px; border-radius: var(--radius-m); border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--text-1); font: inherit; }
 	@property --club-color { syntax: '<color>'; inherits: true; initial-value: #3bd3ac; }
 	.selector { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; min-width: 0; overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--radius-xl); background: var(--surface); box-shadow: var(--shadow-2); transition: --club-color 220ms ease; }
 	header, footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 10px clamp(12px, 2.4vw, 22px); }

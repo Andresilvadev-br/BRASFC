@@ -9,7 +9,8 @@
 	import '@fontsource/barlow-condensed/800.css';
 	import '../app.css';
 
-	import { onMount, tick } from 'svelte';
+	import { onMount, setContext, tick } from 'svelte';
+	import { LOCAL_CRESTS, type ReadLocalCrests } from '#lib/crests/context.ts';
 	import { beforeNavigate, onNavigate, preloadData } from '$app/navigation';
 	import { page, updated } from '$app/state';
 	import { markHydrated } from '#lib/motion/actions.ts';
@@ -26,7 +27,8 @@
 	import { goto } from '$app/navigation';
 	import { applyUpdate, initUpdates, shouldShowWhatsNew, updates } from '#lib/stores/updates.svelte.ts';
 
-	let { children } = $props();
+	let { children, data } = $props();
+	setContext<ReadLocalCrests>(LOCAL_CRESTS, () => data.crests);
 
 	let updateModal = $state(false);
 	let whatsNew = $state(false);

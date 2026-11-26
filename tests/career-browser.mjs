@@ -94,11 +94,13 @@ try {
 		if (await ready.isVisible()) await ready.click();
 	};
 	await page.goto('/nova-carreira');
-	await page.getByRole('heading', { name: 'Escolha as ligas' }).waitFor();
-	await page.getByRole('checkbox', { name: /Série A/ }).uncheck();
+	await page.getByRole('heading', { name: 'Escolha os países' }).waitFor();
+	// World Database: país ativo = todas as divisões; sem país jogável, não avança.
+	const brazil = page.getByRole('checkbox', { name: /Brasil/ });
+	assert.equal(await brazil.getAttribute('aria-checked'), 'true');
+	await brazil.click();
 	assert(await button('Criar treinador').isDisabled());
-	await page.getByRole('checkbox', { name: /Série B/ }).check();
-	await page.getByRole('checkbox', { name: /Copa do Brasil/ }).uncheck();
+	await brazil.click();
 	await button('Criar treinador').click();
 	await page.getByLabel('Nome do treinador').fill('Ana Torres');
 	await button('Escolher clube').click();
@@ -111,8 +113,9 @@ try {
 	const created = await creating;
 	assert.equal(created.status(), 201, await created.text());
 	const { career: shared } = await created.json();
-	assert.deepEqual(shared.data.league.selection, { divisions: ['serie-b'], cup: false });
-	assert(shared.data.local.coaches.every((c) => shared.data.league.divisions['serie-b'].includes(c.clubId)));
+	assert.deepEqual(shared.data.worldSelection, { countries: ['bra'] });
+	assert.deepEqual(shared.data.league.selection, { divisions: ['serie-a', 'serie-b', 'serie-c', 'serie-d'], cup: true });
+	assert(shared.data.local.coaches.every((c) => shared.data.league.divisions['serie-a'].includes(c.clubId)));
 	const careerPage = `/carreira/${shared.id}`;
 	await page.goto(careerPage + '/partida');
 	await assume();
@@ -122,7 +125,7 @@ try {
 	await assume();
 	await button('Finalizar e jogar a rodada').click();
 	await page.locator('.row .event').first().waitFor();
-	assert.equal(await page.locator('.row .event').count(), 10);
+	assert.equal(await page.locator('.row .event').count(), 78);
 	let confirmed = 0;
 	for (let i = 0; i < 60 && !(await button('Voltar à carreira').isVisible()); i++) {
 		const interruption = button('Continuar sem alterações');

@@ -20,6 +20,7 @@
 	const divisions = $derived(activeDivisions(v.league));
 	const div = $derived(divisions.includes(selected) ? selected : divisions[0] ?? v.division);
 	const brasil = $derived(v.world === 'brasil' && div !== 'liga-brasfc');
+	const bPlayoffs = $derived(div === 'serie-b' && v.league.bPromotionPlayoff !== undefined);
 	const rule = $derived(brasil ? effectiveRule(v.league, div as BrasilDivision) : null);
 	const p1 = $derived(div === 'liga-brasfc' ? 38 : phaseOneLength(v.league, div));
 	const tables = $derived(phaseOneTables(v.league, div, v.results));
@@ -42,12 +43,13 @@
 			const down = rule.relegatedPerGroup ?? rule.relegated;
 			return pos > size - down ? 'down' : '';
 		}
+		if (bPlayoffs && pos <= 6) return pos <= 2 ? 'up' : 'qual';
 		if (pos <= rule.promoted) return 'up';
 		return pos > size - rule.relegated ? 'down' : '';
 	};
 	const fixtures = $derived(v.fixtures.filter((f) => f.competition === div));
 	const maxRound = $derived(Math.max(1, ...fixtures.map((f) => f.round)));
-	let round = $state(untrack(() => Math.max(1, Math.min(data.view.nextRound, 38))));
+	let round = $state(untrack(() => Math.max(1, data.view.nextRound)));
 	const shown = $derived(Math.min(Math.max(1, round), maxRound));
 	const games = $derived(fixtures.filter((f) => f.round === shown));
 	const resultOf = (home: string, rd: number) => divResults.find((r) => r.round === rd && r.home === home);
@@ -55,7 +57,8 @@
 	const dRounds = (k: number) => dStageRounds(v.league, k);
 	const tieOut = (t: Tie, rounds: number[], byCampaign = false) => resolveTie(t, v.results, 'serie-d', rounds, c.seed, st, { byCampaign });
 	const name = (id: string) => getClub(id)?.name ?? id;
-	const ruleText = $derived(!rule ? 'Liga fictícia: 20 clubes em turno e returno.' : `${rule.size} clubes · ${rule.status === 'oficial' ? 'regra oficial' : rule.status === 'anunciado' ? 'regra anunciada pela CBF' : 'regra projetada pelo BRASFC'}. ${rule.nota ?? ''}`);
+	const ruleText = $derived(bPlayoffs ? 'Dois clubes sobem direto. Do 3º ao 6º, os clubes disputam duas vagas nos playoffs. Quatro são rebaixados.'
+		: !rule ? 'Liga fictícia: 20 clubes em turno e returno.' : `${rule.size} clubes · ${rule.status === 'oficial' ? 'regra oficial' : rule.status === 'anunciado' ? 'regra anunciada pela CBF' : 'regra projetada pelo BRASFC'}. ${rule.nota ?? ''}`);
 </script>
 
 <svelte:head><title>Competições · {v.club.name} · BRASFC</title></svelte:head>
@@ -68,6 +71,10 @@
 	</div>
 	{#if divisions.length > 1}<Segmented label="Divisão" value={div} onchange={(next) => (selected = next)} options={divisions.map((d) => ({ value: d, label: DIVISION_LABELS[d] }))} />{/if}
 </div>
+
+{#each v.continentalParticipation as entry (entry.competition)}
+	<p class="muted" use:reveal>Classificado para {entry.competition === 'continental/libertadores' ? 'Libertadores' : 'Sul-Americana'} · {entry.stage} · Calendário pendente</p>
+{/each}
 
 {#if tables.length === 1}
 	{@const t = tables[0]}
@@ -90,6 +97,7 @@
 			</table>
 			<div class="legend">
 				{#if rule && rule.promoted && div !== 'serie-c'}<span><i data-z="up"></i>Acesso</span>{/if}
+				{#if bPlayoffs}<span><i data-z="qual"></i>Playoff de acesso</span>{/if}
 				{#if div === 'serie-c'}<span><i data-z="qual"></i>2ª fase (quadrangulares)</span>{/if}
 				{#if !rule}<span><i data-z="up"></i>Topo</span>{/if}
 				<span><i data-z="down"></i>Rebaixamento</span>
