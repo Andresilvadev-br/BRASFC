@@ -1,5 +1,6 @@
 import { BRASIL_DIVISIONS, DIVISION_LABELS, divisionMatchCount, initialLeague } from '#lib/domain/league.ts';
 import { careerStart } from '#lib/domain/career.ts';
+import type { Club } from '#lib/domain/clubs.ts';
 import { cupMatchCount, initialCup } from '#lib/domain/cup.ts';
 import type { CountryCode, LoadEstimate, WorldCountry, WorldDivision } from '#lib/world/contract.ts';
 import { countryConfederation, countryFlag, countryName } from '#lib/world/countries.ts';
@@ -81,4 +82,31 @@ export function worldCountries(catalogId: string | null = newestWorldCatalog() ?
 	out.sort((a, b) => Number(b.code === 'bra') - Number(a.code === 'bra') || Number(b.playable) - Number(a.playable) || a.name.localeCompare(b.name, 'pt-BR'));
 	cache = { key, value: out };
 	return out;
+}
+
+const VALID_COLOR = /^#[a-f\d]{6}$/i;
+
+/**
+ * Dados mínimos para mostrar clubes estrangeiros na escolha de clube (nome, sigla, cores e reputação), no mesmo
+ * formato que `world-catalog.ts` registra ao abrir um elenco. Só para divisões jogáveis.
+ */
+export function worldClubCards(countries: WorldCountry[], catalogId: string | null = newestWorldCatalog() ?? null): Array<Club & { division: string }> {
+	const wanted = countries.filter((c) => c.code !== 'bra' && c.playable).flatMap((c) => c.divisions.filter((d) => d.playable).flatMap((d) => d.clubs.map((id) => ({ id, division: d.id }))));
+	const db = catalogId ? openWorldCatalog(catalogId) : undefined;
+	if (!db || !wanted.length) return [];
+	const query = db.prepare('SELECT name, stadium, reputation, colors, state FROM club WHERE id = ?');
+	return wanted.flatMap(({ id, division }) => {
+		const row = query.get(id.replace(/^world\//, ''));
+		if (!row) return [];
+		let colors: unknown[] = [];
+		try { colors = JSON.parse(String(row.colors)) as unknown[]; } catch { /* cores ausentes: neutras */ }
+		const color = (i: number, fallback: string) => (typeof colors[i] === 'string' && VALID_COLOR.test(colors[i] as string) ? colors[i] as string : fallback);
+		const name = String(row.name);
+		return [{
+			id, division, name, short: name.replace(/[^A-Za-zÀ-ÿ]/g, '').slice(0, 3).toUpperCase() || 'CLB', city: String(row.state ?? ''),
+			reputation: Math.max(1, Math.min(5, Number(row.reputation) || 2)), stadium: String(row.stadium ?? 'Estádio não informado'),
+			colors: { primary: color(0, '#293c3c'), secondary: color(1, '#f5f7fa'), shorts: '#293c3c', socks: '#293c3c' },
+			crest: { shape: 'escudo' as const, pattern: 'liso' as const }, colorsProvisional: true
+		}];
+	});
 }
