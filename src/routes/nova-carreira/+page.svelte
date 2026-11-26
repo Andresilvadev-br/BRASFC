@@ -160,6 +160,15 @@
 		else void goto('/menu');
 	}
 
+	/**
+	 * Contrato com a engine: país inteiro (todas as divisões + copa) vai como `worldSelection`; um recorte
+	 * de divisões do Brasil continua como `leagueSelection` (política do PR #32, preservada pela engine).
+	 */
+	function selectionPayload() {
+		const whole = world === 'brasil' && brazilActive && includeCup && selected.length === BRASIL_DIVISIONS.length;
+		return whole ? { worldSelection: { countries: [...countries] } } : { leagueSelection: { divisions: [...selected], cup: world === 'brasil' && brazilActive && includeCup } };
+	}
+
 	async function create() {
 		if (!clubId || saving || created || blocked[clubId] || !clubDivision) return;
 		if (addAnother && canAddCoach) {
@@ -179,7 +188,7 @@
 		try {
 			const [first, ...others] = all;
 			const res = await api<{ career: Career }>('/api/careers', {
-				body: { mode, personName: first.personName, clubId: first.clubId, appearance: first.appearance, world, leagueSelection: { divisions: [...selected], cup: world === 'brasil' && brazilActive && includeCup }, ...(world === 'brasil' ? { worldSelection: { countries: [...countries] } } : {}), previewSeed: data.previewSeed, ...(others.length ? { others } : {}) }
+				body: { mode, personName: first.personName, clubId: first.clubId, appearance: first.appearance, world, ...selectionPayload(), previewSeed: data.previewSeed, ...(others.length ? { others } : {}) }
 			});
 			created = res.career;
 		} catch (e) {
