@@ -1,0 +1,97 @@
+name: Publicar Windows 1.6.1
+run-name: BRASFC Windows 1.6.1 e World Database
+on:
+  push:
+    branches: [release/windows-1.6.1]
+    paths: [.github/workflows/release-windows-1.6.1.yml]
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: brasfc-windows-1.6.1
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: producao
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE: v1.6.1
+      TESTED_SHA: aa3d9c42471d6dd6025b5474b8748d3c5ea196f9
+      WINDOWS_RUN: '45864395959'
+      CI_RUN: '45864396014'
+      WORLD_SHA: 13fc36281bef66c1b03f3497871ef2e0a953f935
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Verificar e obter o instalador homologado
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$TESTED_SHA"
+          test "$(node -p "require('./desktop/package.json').version")" = "${RELEASE#v}"
+          gh run view "$CI_RUN" --json conclusion,headSha |
+            jq -e --arg sha "$TESTED_SHA" '.headSha == $sha and .conclusion == "success"'
+          gh run view "$WINDOWS_RUN" --json conclusion,headSha |
+            jq -e --arg sha "$TESTED_SHA" '.headSha == $sha and .conclusion == "success"'
+          mkdir -p dist
+          gh run download "$WINDOWS_RUN" -n BRASFC-Windows-candidato --dir dist
+          gh run download "$WINDOWS_RUN" -n BRASFC-Windows-evidencias --dir validation
+          jq -e '.passed == true and .fromVersion == "1.6.0" and .targetVersion == "1.6.1"' validation/brasfc-upgrade.json
+          grep -Fx 'version: 1.6.1' dist/latest.yml
+          grep -Fx 'path: BRASFC-Setup.exe' dist/latest.yml
+          grep -Fx "sha512: $(openssl dgst -sha512 -binary dist/BRASFC-Setup.exe | openssl base64 -A)" dist/latest.yml
+          test -s dist/BRASFC-Setup.exe.blockmap
+      - name: Gerar o catálogo offline validado
+        run: |
+          set -euo pipefail
+          git init -q world-source
+          git -C world-source fetch --depth=1 https://github.com/Brasfoot-Next/database.git "$WORLD_SHA"
+          git -C world-source checkout --detach FETCH_HEAD
+          test "$(git -C world-source rev-parse HEAD)" = "$WORLD_SHA"
+          catalog=00b10fbcb9d42242ac8aec75
+          mkdir world-pack
+          python3 scripts/import-world-db.py world-source --revision "$WORLD_SHA" --output "world-pack/$catalog.sqlite" --report world-pack/relatorio.json
+          jq -e --arg id "$catalog" --arg sha "$WORLD_SHA" '.catalog_id == $id and .sources[0].revision == $sha and .counts.club == 1236 and .counts.player == 34889 and .counts.competition == 153 and .counts.membership == 0 and .media_embedded == false' world-pack/relatorio.json
+          cp world-source/LICENSE world-pack/LICENSE-CC-BY-SA-4.0.txt
+          cp docs/WORLD-DATABASE.md world-pack/LEIA-ME.md
+          (cd world-pack && zip -q -9 ../dist/BRASFC-World-Database-2026-27.zip "$catalog.sqlite" relatorio.json LICENSE-CC-BY-SA-4.0.txt LEIA-ME.md)
+          unzip -t dist/BRASFC-World-Database-2026-27.zip
+      - name: Publicar a versão estável e conferir os arquivos
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE" --json isDraft,targetCommitish > release.json 2> release-error.log; then
+            jq -e --arg sha "$GITHUB_SHA" '.isDraft == true and .targetCommitish == $sha' release.json
+          else
+            grep -qi 'release not found' release-error.log
+            cat > release-notes.md <<'NOTES'
+          ## Carreira offline
+          
+          - Escolha as divisões ativas antes de criar os treinadores. O assistente estima a carga pelo número de partidas.
+          - A reabertura recupera partidas cujo placar oficial foi salvo sem súmula. Repetir o comando relê o resultado gravado.
+          - A central de rodadas exibe o último evento de cada jogo. Os detalhes mantêm o histórico.
+          
+          ## World Database 2026/27
+          
+          Baixe o ZIP complementar e extraia o arquivo SQLite em `%APPDATA%\BRASFC\saves\world-catalogs\`, mantendo o nome do arquivo. Crie uma nova carreira brasileira e abra **Mercado → Banco mundial**.
+          
+          O catálogo offline reúne 1.236 clubes, 34.889 jogadores e 153 definições de divisões. Os elencos estrangeiros estão disponíveis no mercado. O calendário jogável continua limitado às competições implementadas no BRASFC.
+          
+          Dados Brasfoot Next sob CC BY-SA 4.0. Licença, créditos e relatório acompanham o ZIP.
+          
+          [Validação no Windows e preservação dos saves](https://github.com/Andresilvadev-br/BRASFC/actions/runs/45864395959)
+          NOTES
+            gh release create "$RELEASE" --draft --target "$GITHUB_SHA" --title "BRASFC para Windows 1.6.1 — Carreira Offline e World Database" --notes-file release-notes.md
+          fi
+          for file in dist/BRASFC-Setup.exe dist/BRASFC-Setup.exe.blockmap dist/latest.yml dist/BRASFC-World-Database-2026-27.zip; do
+            gh release upload "$RELEASE" "$file" --clobber
+            gh release view "$RELEASE" --json assets |
+              jq -e --arg name "$(basename "$file")" --argjson size "$(stat -c %s "$file")" 'any(.assets[]; .name == $name and .size == $size)'
+          done
+          gh release edit "$RELEASE" --draft=false --latest
+          gh release view "$RELEASE" --json isDraft,isPrerelease,url,assets |
+            jq -e 'select(.isDraft == false and .isPrerelease == false and (.assets|length) == 4) | {url, assets: [.assets[].name]}'
