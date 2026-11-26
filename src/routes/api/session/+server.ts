@@ -1,7 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { getDb } from '#lib/server/db/index.ts';
 import { ensureProfile, noStore, readJson, requireProfile } from '#lib/server/http.ts';
-import { getRealtimeHub } from '#lib/server/realtime/hub.ts';
 import { normalizeDisplayName, renameProfile } from '#lib/server/repos/profiles.ts';
 import type { RequestHandler } from './$types';
 
@@ -19,6 +18,5 @@ export const PATCH: RequestHandler = async (event) => {
 	const name = normalizeDisplayName(body.displayName);
 	if (!name) error(400, 'Use de 2 a 32 caracteres (letras, números, espaço, ponto, hífen).');
 	const updated = await renameProfile(await getDb(), profile.id, name);
-	void getRealtimeHub().profileRenamed(profile.id).catch(() => {});
 	return noStore({ profile: updated });
 };

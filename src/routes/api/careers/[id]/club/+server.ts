@@ -13,7 +13,8 @@ import { actionContext, applyAction } from '#lib/server/management.ts';
 import { applyOfficeAction, OFFICE_ACTIONS } from '#lib/server/office-actions.ts';
 import { ensureUniverse, officeOf, universeCoachMove } from '#lib/server/universe.ts';
 import { coachWage, seasonRow } from '#lib/domain/office.ts';
-import { formatMoney, tierOfDivision } from '#lib/domain/market.ts';
+import { currentClubOf, formatMoney, tierOfDivision } from '#lib/domain/market.ts';
+import { openDeal, TurnError } from '#lib/server/local-turns.ts';
 import { isOfferOpen } from '#lib/domain/employment.ts';
 import { initialDiscipline } from '#lib/domain/discipline.ts';
 import { boardObjectivesFor, clubPreview } from '#lib/server/coach-market.ts';
@@ -21,6 +22,7 @@ import { carryKnowledge } from '#lib/server/coach-knowledge.ts';
 import { getCareer, saveCareerProgress, VersionConflictError } from '#lib/server/repos/careers.ts';
 import { changeCareerClub, insertLedger, insertMessages, insertTransfers, listHistory, listLedger, listTransfers } from '#lib/server/repos/management.ts';
 import { listResults } from '#lib/server/repos/matches.ts';
+import { activeCoachId, clubOwner, isShared } from '#lib/domain/turns.ts';
 import type { RequestHandler } from './$types';
 
 /** Históricos da gestão: lançamentos da temporada, transferências e títulos. */
@@ -29,7 +31,7 @@ export const GET: RequestHandler = async (event) => {
 	const db = await getDb();
 	const career = await getCareer(db, profile.id, event.params.id);
 	if (!career) error(404, 'Carreira não encontrada.');
-	const [ledger, transfers, history] = await Promise.all([listLedger(db, career.id, career.season), listTransfers(db, career.id), listHistory(db, career.id)]);
+	const [ledger, transfers, history] = await Promise.all([listLedger(db, career.id, career.season, activeCoachId(career)), listTransfers(db, career.id), listHistory(db, career.id, activeCoachId(career))]);
 	return noStore({ ledger, transfers, history });
 };
 
@@ -54,6 +56,20 @@ export const POST: RequestHandler = async (event) => {
 	// Dev 0.12: ações da carreira de jogador foram descontinuadas (o save legado fica guardado).
 	if (career.mode !== 'coach') error(410, 'A carreira de jogador foi descontinuada na versão 0.12.');
 	if (career.mode !== 'coach') error(403, 'Só o treinador gerencia o clube.');
+	// 0.13: proposta por atleta de outro treinador humano → o controle passa ao vendedor (negociação local).
+	if (body.action === 'oferta' && isShared(career) && body.kind !== 'livre') {
+		const owner = currentClubOf(rosterContext(career, league), String(body.playerId ?? ''));
+		if (owner && owner !== career.clubId && clubOwner(career, owner) >= 0) {
+			try {
+				const out = await openDeal(db, profile.id, career, body);
+				return noStore({ career: out.career, message: out.message, handoff: true, deal: out.deal });
+			} catch (e) {
+				if (e instanceof TurnError) error(e.status, e.message);
+				if (e instanceof VersionConflictError) error(409, e.message);
+				throw e;
+			}
+		}
+	}
 	const club = clubStateOf(career, league);
 	if (club.board.dismissed) error(409, 'Você não comanda mais o clube.');
 	const view = careerView(career, await listResults(db, career.id, career.season));
@@ -67,8 +83,8 @@ export const POST: RequestHandler = async (event) => {
 			const key = `${career.season}:gabinete:${career.version}`;
 			const updated = await db.transaction(async (tx) => {
 				const saved = await saveCareerProgress(tx, profile.id, career.id, { gameDate: career.gameDate, data: { club: out.club, office: out.office } }, career.version);
-				await insertLedger(tx, career.id, career.season, career.gameDate, out.ledger, key);
-				if (body.action === 'verba-solicitar' || body.action === 'verba-contraproposta') await insertMessages(tx, career.id, career.gameDate, [{ sender: 'Diretoria', subject: 'Reunião de orçamento', body: out.message, important: true }]);
+				await insertLedger(tx, career.id, career.season, career.gameDate, out.ledger, key, activeCoachId(career));
+				if (body.action === 'verba-solicitar' || body.action === 'verba-contraproposta') await insertMessages(tx, career.id, career.gameDate, [{ sender: 'Diretoria', subject: 'Reunião de orçamento', body: out.message, important: true }], activeCoachId(career));
 				return saved;
 			});
 			return noStore({ career: updated, message: out.message });
@@ -83,7 +99,7 @@ export const POST: RequestHandler = async (event) => {
 		const key = `${career.season}:acao:${career.version}`;
 		const updated = await db.transaction(async (tx) => {
 			const saved = await saveCareerProgress(tx, profile.id, career.id, { gameDate: career.gameDate, data: { club: out.club, market: out.market } }, career.version);
-			await insertLedger(tx, career.id, career.season, career.gameDate, out.ledger, key);
+			await insertLedger(tx, career.id, career.season, career.gameDate, out.ledger, key, activeCoachId(career));
 			await insertTransfers(tx, career.id, career.season, career.gameDate, out.transfers, `${key}:t`);
 			return saved;
 		});
@@ -116,6 +132,7 @@ async function careerDecision(db: Awaited<ReturnType<typeof getDb>>, profileId: 
 	const offer = club.jobOffers.find((o) => o.id === offerId);
 	if (!offer || !isOfferOpen(offer, career.season, round)) error(422, 'Proposta indisponível ou expirada.');
 	const clubName = getClub(offer.clubId)?.name ?? offer.clubId;
+	if (body.action === 'emprego' && isShared(career) && clubOwner(career, offer.clubId) >= 0) error(422, `O ${clubName} é comandado por outro treinador desta carreira.`);
 	if (body.action === 'proposta-recusar') {
 		const jobOffers = club.jobOffers.map((o) => (o.id === offer.id ? { ...o, status: 'recusada' as const } : o));
 		const office = { ...prevOffice, decisions: [...prevOffice.decisions, { season: career.season, round, kind: 'proposta', choice: 'recusada', effect: `Recusou a proposta do ${clubName}.` }].slice(-200), offerAlert: prevOffice.offerAlert ? { ...prevOffice.offerAlert, ids: prevOffice.offerAlert.ids.filter((id) => id !== offer.id) } : null };
@@ -155,7 +172,7 @@ async function careerDecision(db: Awaited<ReturnType<typeof getDb>>, profileId: 
 	const ok = await db.transaction(async (tx) => {
 		const changed = await changeCareerClub(tx, profileId, career.id, offer.clubId, { club: next, tactic: null, tactical: null, fitness: {}, dismissedTips: [], office, universe, discipline: initialDiscipline(career.season), ...(coachKnowledge ? { coachKnowledge } : {}) }, career.version);
 		if (changed) {
-			await insertMessages(tx, career.id, career.gameDate, [{ sender: `Diretoria — ${clubName}`, subject: `Bem-vindo ao ${clubName}`, body: `Contrato assinado até ${office.contract.until}. Objetivo principal: ${objectives[0]?.label ?? preview.project.label}. O elenco ainda vai se adaptar às suas ideias.`, important: true }]);
+			await insertMessages(tx, career.id, career.gameDate, [{ sender: `Diretoria — ${clubName}`, subject: `Bem-vindo ao ${clubName}`, body: `Contrato assinado até ${office.contract.until}. Objetivo principal: ${objectives[0]?.label ?? preview.project.label}. O elenco ainda vai se adaptar às suas ideias.`, important: true }], activeCoachId(career));
 		}
 		return changed;
 	});

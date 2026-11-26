@@ -23,8 +23,7 @@
   },
   "dependencies": {
     "postgres": "3.4.9",
-    "ultra-motion-x": "https://codeload.github.com/Andresilvadev-br/ULTRA-MOTION-X/tar.gz/25344fb5d525613860402e2a13ee22f782333eaa",
-    "ws": "8.23.0"
+    "ultra-motion-x": "https://codeload.github.com/Andresilvadev-br/ULTRA-MOTION-X/tar.gz/25344fb5d525613860402e2a13ee22f782333eaa"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.16",
@@ -34,7 +33,6 @@
     "@sveltejs/kit": "3.2.1",
     "@sveltejs/vite-plugin-svelte": "7.3.1",
     "@types/node": "24.19.2",
-    "@types/ws": "8.18.2",
     "svelte": "5.57.3",
     "svelte-check": "4.7.8",
     "typescript": "6.0.3",

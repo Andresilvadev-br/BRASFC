@@ -1,13 +1,11 @@
 // BRASFC para Windows — casca em Electron.
-// Dois modos: ONLINE (servidor oficial, carreiras na nuvem) e OFFLINE (o jogo completo roda
-// dentro do app e as carreiras ficam salvas no computador, em %APPDATA%/BRASFC/saves).
-// A casca cuida da janela, da tela cheia, do modo de jogo e da própria atualização.
+// 0.13 LOCAL LEGACY: o jogo é 100% offline. O app sobe o jogo embutido (arquivos do próprio
+// instalador) e nunca abre o site; as carreiras ficam em %APPDATA%/BRASFC/saves.
+// A casca cuida da janela, da tela cheia e da própria atualização (a única parte que usa internet).
 const { app, BrowserWindow, ipcMain, Menu, screen, shell, globalShortcut, dialog } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const GAME_URL = process.env.BRASFC_URL || 'https://aldetes.vps-kinghost.net';
-const ORIGIN = new URL(GAME_URL).origin;
 const SELFTEST = process.argv.includes('--selftest');
 const BG = '#101418';
 const BAR = 36; // altura da barra de título integrada ao jogo
@@ -55,40 +53,32 @@ function centeredBounds(prefs) {
 
 let win = null;
 let prefs = {};
-/** Modo em uso nesta execução: 'online' | 'offline'. */
-let mode = 'online';
-let offlineUrl = null;
+let gameUrl = null;
 
-const offlineAvailable = () => local.isAvailable(app);
-const currentOrigin = () => (mode === 'offline' && offlineUrl ? new URL(offlineUrl).origin : ORIGIN);
+const currentOrigin = () => (gameUrl ? new URL(gameUrl).origin : null);
 
-/** Abre o jogo no modo pedido. O offline sobe o servidor local na primeira vez. */
-async function openGame(next) {
+/** Sobe o jogo embutido (uma vez por execução) e abre a janela nele. Sem internet, sem site. */
+async function openGame() {
 	if (!win) return;
-	if (next === 'offline') {
-		if (!offlineAvailable()) {
-			void dialog.showMessageBox(win, { type: 'warning', title: 'BRASFC', message: 'O modo offline não está disponível nesta instalação.', detail: 'Atualize o aplicativo para a versão mais recente.' });
-			return;
-		}
-		try {
-			const srv = await local.startLocalServer(app, prefs.offlinePort || OFFLINE_PORT);
-			offlineUrl = srv.url;
-			if (srv.port !== prefs.offlinePort) prefs = { ...prefs, offlinePort: srv.port };
-		} catch (err) {
-			void dialog.showMessageBox(win, { type: 'error', title: 'BRASFC', message: 'Não foi possível iniciar o jogo offline.', detail: String(err?.message || err) });
-			return;
-		}
+	if (!local.isAvailable(app)) {
+		void win.loadFile(path.join(__dirname, 'pages', 'offline.html'), { query: { reason: 'missing' } });
+		return;
 	}
-	mode = next;
-	prefs = { ...prefs, mode: next };
-	writePrefs(prefs);
+	try {
+		const srv = await local.startLocalServer(app, prefs.offlinePort || OFFLINE_PORT);
+		gameUrl = srv.url;
+		if (srv.port !== prefs.offlinePort) { prefs = { ...prefs, offlinePort: srv.port }; writePrefs(prefs); }
+	} catch (err) {
+		void win.loadFile(path.join(__dirname, 'pages', 'offline.html'), { query: { reason: String(err?.message || err).slice(0, 300) } });
+		return;
+	}
 	sendState();
-	void win.loadURL(next === 'offline' ? offlineUrl : GAME_URL);
+	void win.loadURL(gameUrl);
 }
 
 function sendState() {
 	if (!win || win.isDestroyed()) return;
-	win.webContents.send('desktop:state', { fullscreen: win.isFullScreen(), maximized: win.isMaximized(), mode, offlineAvailable: offlineAvailable() });
+	win.webContents.send('desktop:state', { fullscreen: win.isFullScreen(), maximized: win.isMaximized() });
 }
 
 function setFullscreen(on) {
@@ -177,28 +167,24 @@ function createWindow() {
 	});
 	win.webContents.on('will-navigate', (e, url) => {
 		if (url.startsWith('file:')) return;
-		if (new URL(url).origin !== currentOrigin()) {
+		if (!currentOrigin() || new URL(url).origin !== currentOrigin()) {
 			e.preventDefault();
 			void shell.openExternal(url);
 		}
 	});
 
-	// Sem conexão: página própria com "tentar novamente" (nunca uma tela branca).
-	win.webContents.on('did-fail-load', (_e, code, _desc, url, isMain) => {
+	// O jogo embutido não respondeu: página própria com "tentar novamente" (nunca uma tela branca).
+	win.webContents.on('did-fail-load', (_e, code, _desc, _url, isMain) => {
 		if (!isMain || code === -3) return; // -3 = navegação cancelada
-		void win.loadFile(path.join(__dirname, 'pages', 'offline.html'), { query: { url: url || GAME_URL, offline: offlineAvailable() ? '1' : '0' } });
+		void win.loadFile(path.join(__dirname, 'pages', 'offline.html'), { query: { reason: 'load' } });
 	});
 
 	win.webContents.on('did-finish-load', () => {
 		const url = win.webContents.getURL();
-		const healthy = prefs.mode === 'offline' ? offlineUrl && url.startsWith(offlineUrl)
-			: url.startsWith(ORIGIN + '/') || url.startsWith('file:') && new URL(url).pathname.endsWith('/pages/offline.html');
-		if (healthy) void recovery?.markBooted().catch(console.error);
+		if (gameUrl && url.startsWith(gameUrl)) void recovery?.markBooted().catch(console.error);
 	});
 
-	// Abre no último modo usado (padrão: online). Sem internet, a página de erro oferece o offline.
-	if (prefs.mode === 'offline' && offlineAvailable() && !SELFTEST) void openGame('offline');
-	else void win.loadURL(GAME_URL);
+	void openGame();
 }
 
 function trustedRenderer(event) {
@@ -220,14 +206,12 @@ ipcMain.handle('desktop:get-state', () => ({
 	fullscreen: Boolean(win?.isFullScreen()),
 	maximized: Boolean(win?.isMaximized()),
 	version: app.getVersion(),
-	bar: BAR,
-	mode,
-	offlineAvailable: offlineAvailable()
+	bar: BAR
 }));
-ipcMain.handle('desktop:set-mode', async (_e, next) => {
-	if (next !== 'online' && next !== 'offline') return false;
-	await openGame(next);
-	return mode === next;
+ipcMain.handle('desktop:quit', (event) => {
+	if (!trustedRenderer(event)) return false;
+	app.quit(); // before-quit fecha o save com segurança
+	return true;
 });
 ipcMain.handle('desktop:open-saves', () => {
 	const dir = path.join(app.getPath('userData'), 'saves');
@@ -244,7 +228,7 @@ ipcMain.handle('desktop:toggle-fullscreen', () => {
 	return true;
 });
 ipcMain.handle('desktop:retry', () => {
-	if (win) void win.loadURL(mode === 'offline' && offlineUrl ? offlineUrl : GAME_URL);
+	if (win) { if (gameUrl) void win.loadURL(gameUrl); else void openGame(); }
 	return true;
 });
 
@@ -290,11 +274,11 @@ app.whenReady().then(() => {
 			automatic: prefs.automatic !== false,
 			canInstall: () => !rendererBusy,
 			drain: async () => {
-				installOfflineUrl = offlineUrl;
+				installOfflineUrl = gameUrl;
 				await local.stopLocalServer();
-				offlineUrl = null;
+				gameUrl = null;
 			},
-			recoverInstall: () => { offlineUrl = installOfflineUrl; }
+			recoverInstall: () => { gameUrl = installOfflineUrl; }
 		});
 		void (async () => {
 			const outcome = await recovery?.outcome();
@@ -307,10 +291,10 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => { updates?.close(); globalShortcut.unregisterAll(); });
 
-// Fecha o banco do jogo offline antes de sair (nenhum progresso fica pela metade).
+// Fecha o save local antes de sair (nenhum progresso fica pela metade).
 let quitting = false;
 app.on('before-quit', (e) => {
-	if (quitting || !offlineUrl) return;
+	if (quitting || !gameUrl) return;
 	e.preventDefault();
 	quitting = true;
 	const force = setTimeout(() => app.exit(0), 8000);

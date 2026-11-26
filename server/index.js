@@ -1,6 +1,5 @@
 // Servidor de produção do BRASFC.
-// HTTP do SvelteKit (adapter-node) + upgrade de WebSocket para o hub de tempo real
-// no mesmo processo e na mesma porta (o Caddy encaminha os dois).
+// HTTP do SvelteKit (adapter-node). No aplicativo do Windows é o jogo local; na VPS, só o site.
 import http from 'node:http';
 import { handler } from '../build/handler.js';
 
@@ -10,16 +9,6 @@ const host = process.env.HOST ?? '0.0.0.0';
 const server = http.createServer(handler);
 server.keepAliveTimeout = 65_000;
 server.headersTimeout = 66_000;
-
-server.on('upgrade', (req, socket, head) => {
-	const hub = globalThis[Symbol.for('brasfc.realtime')];
-	if (!hub || !req.url?.startsWith('/ws/')) {
-		socket.write('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n');
-		socket.destroy();
-		return;
-	}
-	hub.handleUpgrade(req, socket, head);
-});
 
 server.listen(port, host, () => {
 	console.log(`[brasfc] ouvindo em http://${host}:${port}`);

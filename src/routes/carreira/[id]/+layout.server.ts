@@ -1,3 +1,4 @@
+import { sharedClub } from '#lib/domain/turns.ts';
 import { error, redirect } from '@sveltejs/kit';
 import { careerCalendar } from '#lib/domain/view.ts';
 import { universePreview } from '#lib/domain/universe.ts';
@@ -33,7 +34,7 @@ export const load: LayoutServerLoad = async ({ locals, params, depends, request,
 	const [messages, results, recentMatches] = await Promise.all([
 		optional('mensagens recentes', listMessages(db, locals.profile.id, career.id, 4)),
 		listResults(db, career.id, career.season),
-		optional('partidas recentes', recentUserMatches(db, career.id, 5))
+		optional('partidas recentes', recentUserMatches(db, career.id, 5, sharedClub(career)))
 	]);
 	if (career.data.universe) {
 		const { next, upcoming } = careerCalendar(career, results);

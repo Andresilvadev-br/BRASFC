@@ -1,3 +1,4 @@
+import { sharedClub } from '#lib/domain/turns.ts';
 import { error } from '@sveltejs/kit';
 import { getDb } from '#lib/server/db/index.ts';
 import { noStore, readJson, requireProfile } from '#lib/server/http.ts';
@@ -14,7 +15,7 @@ export const GET: RequestHandler = async (event) => {
 	const db = await getDb();
 	const career = await getCareer(db, profile.id, event.params.id);
 	if (!career) error(404, 'Carreira não encontrada.');
-	return noStore({ matches: await listUserMatches(db, career.id) });
+	return noStore({ matches: await listUserMatches(db, career.id, undefined, sharedClub(career)) });
 };
 
 /**

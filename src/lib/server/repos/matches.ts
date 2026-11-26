@@ -46,36 +46,50 @@ export async function listResults(db: Db, careerId: string, season: number): Pro
 	return rows.map(map);
 }
 
+/**
+ * 0.13: numa carreira com vários treinadores há várias partidas "do usuário" por rodada; `club` filtra
+ * as do clube do treinador da vez e a súmula é lida do lado dele (no confronto entre humanos a súmula
+ * gravada é a do mandante).
+ */
+function ofClub(club: string | null | undefined) {
+	return (m: UserMatch): UserMatch => (club && m.summary && (m.home === club || m.away === club) ? { ...m, summary: { ...m.summary, mySide: m.home === club ? 'home' : 'away' } } : m);
+}
+const parseSummary = (r: Row) => (typeof r.summary === 'string' ? JSON.parse(r.summary) : r.summary) as MatchSummary;
+
 /** Partidas do usuário (com resumo), de todas as temporadas ou de uma. */
-export async function listUserMatches(db: Db, careerId: string, season?: number): Promise<UserMatch[]> {
+export async function listUserMatches(db: Db, careerId: string, season?: number, club: string | null = null): Promise<UserMatch[]> {
 	const rows = await db.query<Row>(
-		`SELECT ${COLS}, summary FROM career_matches WHERE career_id = $1 AND is_user ${season === undefined ? '' : 'AND season = $2'} ORDER BY season, played_at, round`,
-		season === undefined ? [careerId] : [careerId, season]
+		`SELECT ${COLS}, summary FROM career_matches WHERE career_id = $1 AND is_user AND ($2::int IS NULL OR season = $2) AND ($3::text IS NULL OR home = $3 OR away = $3) ORDER BY season, played_at, round`,
+		[careerId, season ?? null, club]
 	);
-	return rows.map((r) => ({ ...map(r), summary: (typeof r.summary === 'string' ? JSON.parse(r.summary) : r.summary) as MatchSummary }));
+	return rows.map((r) => ofClub(club)({ ...map(r), summary: parseSummary(r) }));
 }
 
 /** Histórico estatístico sem transportar táticas, eventos e súmulas inteiras do banco. */
-export async function listStatMatches(db: Db, careerId: string, playerId?: string): Promise<MatchRow[]> {
+export async function listStatMatches(db: Db, careerId: string, playerId?: string, club: string | null = null): Promise<MatchRow[]> {
 	const rows = await db.query<Row>(
 		`SELECT ${COLS}, jsonb_build_object(
 			'players', CASE WHEN $2::text IS NULL THEN COALESCE(summary->'players', '{}'::jsonb)
 				WHEN summary->'players'->($2::text) IS NULL THEN '{}'::jsonb
 				ELSE jsonb_build_object($2::text, summary->'players'->($2::text)) END,
 			'starters', summary->'starters', 'mySide', summary->'mySide') AS summary
-		FROM career_matches WHERE career_id = $1 AND is_user ORDER BY season, played_at, round`,
-		[careerId, playerId ?? null]
+		FROM career_matches WHERE career_id = $1 AND is_user AND ($3::text IS NULL OR home = $3 OR away = $3) ORDER BY season, played_at, round`,
+		[careerId, playerId ?? null, club]
 	);
-	return rows.map((r) => ({ ...map(r), summary: (typeof r.summary === 'string' ? JSON.parse(r.summary) : r.summary) as MatchRow['summary'] }));
+	return rows.map((r) => {
+		const summary = (typeof r.summary === 'string' ? JSON.parse(r.summary) : r.summary) as MatchRow['summary'];
+		const m = map(r);
+		return { ...m, summary: club && summary ? { ...summary, mySide: m.home === club ? 'home' : 'away' } : summary } as MatchRow;
+	});
 }
 
 /** Últimas súmulas, em ordem cronológica, sem carregar a carreira inteira. */
-export async function recentUserMatches(db: Db, careerId: string, limit: number): Promise<UserMatch[]> {
+export async function recentUserMatches(db: Db, careerId: string, limit: number, club: string | null = null): Promise<UserMatch[]> {
 	const rows = await db.query<Row>(
-		`SELECT ${COLS}, summary FROM career_matches WHERE career_id = $1 AND is_user ORDER BY played_at DESC, season DESC, round DESC LIMIT $2`,
-		[careerId, limit]
+		`SELECT ${COLS}, summary FROM career_matches WHERE career_id = $1 AND is_user AND ($3::text IS NULL OR home = $3 OR away = $3) ORDER BY played_at DESC, season DESC, round DESC LIMIT $2`,
+		[careerId, limit, club]
 	);
-	return rows.reverse().map((r) => ({ ...map(r), summary: (typeof r.summary === 'string' ? JSON.parse(r.summary) : r.summary) as MatchSummary }));
+	return rows.reverse().map((r) => ofClub(club)({ ...map(r), summary: parseSummary(r) }));
 }
 
 export interface RoundInsert {

@@ -8,8 +8,7 @@
 	const NAV = [
 		{ id: 'jogo', label: 'O jogo' },
 		{ id: 'galeria', label: 'Galeria' },
-		{ id: 'novidades', label: 'Novidades' },
-		{ id: 'comunidade', label: 'Comunidade' }
+		{ id: 'novidades', label: 'Novidades' }
 	] as const;
 
 	const FEATURES = [
@@ -33,9 +32,9 @@
 		},
 		{
 			title: 'Divida a temporada.',
-			lead: 'Jogue uma liga online com seus amigos.',
-			text: 'Crie um universo, convide amigos e assuma um clube cada. A rodada só começa quando todos estão prontos, e a IA cobre quem precisar se ausentar.',
-			image: 'liga', caption: 'Liga dos amigos'
+			lead: 'Vários treinadores no mesmo computador.',
+			text: 'Crie um treinador para cada amigo e jogue em turnos, como nos clássicos: cada um prepara o seu clube, as partidas rolam juntas na central de resultados e negociações entre vocês acontecem na hora.',
+			image: 'dia-de-jogo', caption: 'Rodada simultânea'
 		}
 	];
 
@@ -44,8 +43,7 @@
 		{ image: 'taticas', caption: 'Táticas' },
 		{ image: 'mercado', caption: 'Mercado de transferências' },
 		{ image: 'dia-de-jogo', caption: 'Dia de jogo' },
-		{ image: 'partida', caption: 'Partida em pixel art' },
-		{ image: 'liga', caption: 'Lobby da liga online' }
+		{ image: 'partida', caption: 'Partida em pixel art' }
 	];
 
 	let active = $state<string>('jogo');
@@ -71,9 +69,9 @@
 
 <svelte:head>
 	<title>BRASFC · Simulador brasileiro de futebol</title>
-	<meta name="description" content="Seu clube. Sua carreira. Seu futebol. Carreira de treinador, partidas em 2D e ligas online com amigos. Grátis para Windows e no navegador." />
+	<meta name="description" content="Seu clube. Sua carreira. Seu futebol. Carreira de treinador, partidas em 2D e vários treinadores no mesmo PC. Grátis para Windows, 100% offline." />
 	<meta property="og:title" content="BRASFC · Simulador brasileiro de futebol" />
-	<meta property="og:description" content="Carreira de treinador, partidas em 2D e ligas online com amigos." />
+	<meta property="og:description" content="Carreira de treinador, partidas em 2D e vários treinadores no mesmo PC. Grátis para Windows." />
 	<meta property="og:image" content="/landing/central.webp" />
 	<meta property="og:type" content="website" />
 </svelte:head>
@@ -83,7 +81,6 @@
 		<div class="bar wrap">
 			<a class="brand" href="/" aria-label="BRASFC — início"><Logo size={34} /></a>
 			<div class="actions">
-				<a class="link" href="/conta">Conta</a>
 				<a class="btn primary sm" href={data.desktop.download}><svg class="win" viewBox="0 0 16 16" aria-hidden="true"><path d="M0 2.2 6.5 1.3v6.3H0zm7.3-1L16 0v7.6H7.3zM0 8.4h6.5v6.3L0 13.8zm7.3 0H16V16l-8.7-1.2z" /></svg>Download</a>
 			</div>
 		</div>
@@ -109,10 +106,10 @@
 			<div class="hero-body">
 				<p class="eyebrow"><span></span>Simulador brasileiro de futebol</p>
 				<h1 id="hero-title" class="display">Seu clube.<br />Sua carreira.<br /><em>Seu futebol.</em></h1>
-				<p class="lead">Assuma o vestiário, monte seu time do seu jeito e dispute temporadas com amigos. Um jogo de futebol para Windows e para o navegador.</p>
+				<p class="lead">Assuma o vestiário, monte seu time do seu jeito e dispute temporadas sozinho ou com amigos no mesmo computador. Um jogo de futebol para Windows, 100% offline.</p>
 				<div class="ctas">
 					<a class="btn primary" href={data.desktop.download}><svg class="win" viewBox="0 0 16 16" aria-hidden="true"><path d="M0 2.2 6.5 1.3v6.3H0zm7.3-1L16 0v7.6H7.3zM0 8.4h6.5v6.3L0 13.8zm7.3 0H16V16l-8.7-1.2z" /></svg>Baixar para Windows</a>
-					<a class="btn ghost" href="/jogar">Jogar no navegador</a>
+					<a class="btn ghost" href="#jogo">Conhecer o jogo</a>
 				</div>
 				<p class="meta">Versão {data.latest.version} · Windows {data.desktop.version} <i></i> {data.desktop.platform} <i></i> Grátis</p>
 			</div>
@@ -123,7 +120,7 @@
 			<ul class="facts wrap">
 				<li><strong>Carreira de treinador</strong><span>Contratos, mercado e diretoria</span></li>
 				<li><strong>Partidas em 2D</strong><span>Clássico e pixel art</span></li>
-				<li><strong>Offline e online</strong><span>No seu ritmo ou com amigos</span></li>
+				<li><strong>100% offline</strong><span>Sozinho ou em turnos com amigos</span></li>
 			</ul>
 		</section>
 
@@ -194,17 +191,6 @@
 			<a class="more" href="/novidades">Ver todas as novidades</a>
 		</section>
 
-		<section id="comunidade" class="community" aria-labelledby="comunidade-title">
-			<div class="wrap">
-				<p class="kicker">Comunidade</p>
-				<h2 id="comunidade-title" class="display">O futebol cresce em equipe.</h2>
-				<p class="muted">Compartilhe ideias, relate problemas e acompanhe os próximos passos do BRASFC.</p>
-				<div class="ctas">
-					<a class="btn primary" href={COMMUNITY.issues} rel="noopener" target="_blank">Participar no GitHub</a>
-					<a class="btn ghost" href={COMMUNITY.newIssue} rel="noopener" target="_blank">Relatar um problema</a>
-				</div>
-			</div>
-		</section>
 
 		<section class="wrap block download" aria-labelledby="download-title">
 			<p class="kicker">BRASFC para PC</p>
@@ -213,7 +199,6 @@
 			<div class="ctas">
 				<a class="btn primary" href={data.desktop.download}>Baixar para Windows</a>
 				<a class="btn ghost" href={data.desktop.page} rel="noopener" target="_blank">Ver download e requisitos</a>
-				<a class="btn text" href="/jogar">ou jogue no navegador →</a>
 			</div>
 		</section>
 	</main>
@@ -223,9 +208,7 @@
 			<Logo size={30} />
 			<p class="muted">Seu clube. Sua carreira. Seu futebol.</p>
 			<nav aria-label="Rodapé">
-				<a href="/jogar">Jogar</a>
 				<a href="/novidades">Novidades</a>
-				<a href="/conta">Conta</a>
 				<a href={COMMUNITY.newIssue} rel="noopener" target="_blank">Suporte</a>
 				<a href={REPOSITORY} rel="noopener" target="_blank">GitHub</a>
 			</nav>
@@ -268,8 +251,6 @@
 	.bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); }
 	.brand { color: inherit; text-decoration: none; }
 	.actions { display: flex; align-items: center; gap: 18px; }
-	.link { color: var(--ink-2); text-decoration: none; font-weight: 600; }
-	.link:hover { color: var(--ink); }
 	.tabs { display: flex; gap: clamp(18px, 6vw, 56px); overflow-x: auto; scrollbar-width: none; }
 	.tabs a { padding: 14px 0 12px; color: var(--ink-2); text-decoration: none; font-weight: 600; white-space: nowrap; border-bottom: 2px solid transparent; }
 	.tabs a:hover { color: var(--ink); }
@@ -285,7 +266,6 @@
 	.primary:hover { background: #8ef0bd; }
 	.ghost { border: 1px solid rgb(238 245 241 / 0.28); color: var(--ink); }
 	.ghost:hover { border-color: var(--mint); }
-	.text { color: var(--mint); padding-inline: 4px; }
 	.win { width: 18px; height: 18px; fill: currentColor; flex: none; }
 	.ctas { display: flex; flex-wrap: wrap; gap: 14px; }
 
@@ -361,9 +341,6 @@
 	.versions b { color: var(--mint); }
 	.versions time { color: var(--ink-3); }
 
-	.community { background: #10201b; border-block: 1px solid var(--line); padding-block: clamp(64px, 9vw, 100px); }
-	.community h2 { margin-bottom: 18px; }
-	.community .muted { max-width: 620px; font-size: 1.1rem; margin: 0 0 32px; }
 	.download .muted { margin: 18px 0 32px; font-size: 1.1rem; }
 
 	.foot { border-top: 1px solid var(--line); padding-block: 48px 64px; }

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { desktop, setDesktopMode, toggleFullscreen } from '#lib/stores/desktop.svelte.ts';
+	import { desktop, toggleFullscreen } from '#lib/stores/desktop.svelte.ts';
 	import Icon from '#lib/ui/Icon.svelte';
 	import { page } from '$app/state';
 
@@ -8,7 +8,6 @@
 		if (p.startsWith('/carreira')) return 'Carreira';
 		if (p.startsWith('/configuracoes')) return 'Configurações';
 		if (p.startsWith('/novidades')) return 'Atualizações';
-		if (p.startsWith('/multiplayer')) return 'Multiplayer';
 		if (p.startsWith('/laboratorio')) return 'Laboratório';
 		if (p.startsWith('/nova-carreira')) return 'Nova carreira';
 		return '';
@@ -21,21 +20,6 @@
 			<span class="brand">BRAS<b>FC</b></span>
 			{#if section}<span class="sep" aria-hidden="true">/</span><span class="sec">{section}</span>{/if}
 			<span class="grow"></span>
-			{#if desktop.offlineAvailable || desktop.mode === 'offline'}
-				<button
-					type="button"
-					class="mode"
-					data-mode={desktop.mode}
-					onclick={() => {
-						const next = desktop.mode === 'offline' ? 'online' : 'offline';
-						const msg = next === 'offline' ? 'Jogar OFFLINE? O jogo passa a rodar no seu computador e mostra as carreiras salvas nele (as carreiras online continuam na nuvem).' : 'Voltar a jogar ONLINE? Você verá as carreiras salvas no servidor (as offline continuam no computador).';
-						if (confirm(msg)) void setDesktopMode(next);
-					}}
-					title={desktop.mode === 'offline' ? 'Jogando offline: carreiras salvas neste computador. Clique para jogar online.' : 'Jogando online: carreiras salvas no servidor. Clique para jogar offline.'}
-				>
-					<i aria-hidden="true"></i><span>{desktop.mode === 'offline' ? 'Modo local' : 'Modo online'}</span>
-				</button>
-			{/if}
 			<button type="button" class="full" onclick={toggleFullscreen} title="Tela cheia (F11)" aria-label="Entrar em tela cheia (F11)">
 				<Icon name="expand" size={15} /><span>Tela cheia</span><kbd>F11</kbd>
 			</button>
@@ -82,18 +66,6 @@
 	}
 	.grow {
 		flex: 1;
-	}
-	.mode i {
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		background: #10b981;
-	}
-	.mode[data-mode='offline'] i {
-		background: #e8b86a;
-	}
-	.mode[data-mode='offline'] {
-		color: #e8b86a;
 	}
 	button {
 		-webkit-app-region: no-drag;

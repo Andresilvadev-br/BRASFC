@@ -47,7 +47,7 @@
 
 	const kit = (c: Career) => coachKit(c.clubId);
 	const failure = (e: unknown, fallback: string) =>
-		connectionIssue(e) ? 'Sem conexão com o servidor. Nada foi alterado; tente de novo.' : e instanceof Error ? e.message : fallback;
+		connectionIssue(e) ? 'O jogo local não respondeu. Nada foi alterado; tente de novo.' : e instanceof Error ? e.message : fallback;
 
 	function toggle(id: string) {
 		selectedId = selectedId === id ? null : id;
@@ -212,37 +212,13 @@
 		{/if}
 	{/if}
 
-	<section class="shared" aria-labelledby="compartilhadas">
-		<div class="toolbar">
-			<h2 class="section-title" id="compartilhadas">Carreiras compartilhadas</h2>
-			<Button variant="ghost" size="sm" icon="multiplayer" href="/multiplayer">Abrir multiplayer</Button>
-		</div>
-		<p class="muted small">Universos com vários participantes têm regras próprias. Só o anfitrião pode excluir uma liga, e isso é feito no multiplayer. Excluir uma carreira individual nunca afeta uma liga.</p>
-		{#if data.offline}
-			<p class="state"><Icon name="globe" size={16} />As ligas ficam disponíveis no modo online.</p>
-		{:else if data.sharedFailed}
-			<p class="state"><Icon name="alert" size={16} />Não foi possível carregar as ligas agora. Suas carreiras individuais continuam disponíveis.</p>
-		{:else if data.shared.length}
-			<div class="shared-grid">
-				{#each data.shared as room (room.code)}
-					<a class="league" href="/multiplayer/sala/{room.code}" style:--c={room.club ? getClub(room.club)?.colors.primary ?? 'var(--surface-3)' : 'var(--surface-3)'} data-umx-press>
-						<span class="league-mark">{#if room.club}<Crest clubId={room.club} size={30} />{:else}<Icon name="trophy" size={20} />{/if}</span>
-						<span class="league-copy"><strong>{room.name}</strong><small>Carreira online{room.season ? ` · ${room.season}` : ''} · {room.members}/{room.maxMembers}{room.owner ? ' · Anfitrião' : ''}</small></span>
-						<Icon name="chevronRight" size={18} />
-					</a>
-				{/each}
-			</div>
-		{:else}
-			<p class="state"><Icon name="multiplayer" size={16} />Você ainda não participa de nenhuma liga.</p>
-		{/if}
-	</section>
 </div>
 
 <Modal bind:open={deleteOpen} title="Excluir carreira?" size="sm">
 	{#if target}
 		<div class="target"><Crest clubId={target.clubId} size={40} /><div><strong>{saveTitle(target)}</strong><small>{MODE_LABELS[target.mode] ?? target.mode} · {target.personName} · {formatShort(target.gameDate)} de {target.season}</small></div></div>
 		<p>Serão apagados <strong>somente desta carreira</strong>: o progresso, as partidas, as mensagens, o histórico de temporadas, as transferências e as finanças.</p>
-		<p class="muted small">Suas outras carreiras e as ligas multiplayer não são afetadas. A exclusão é permanente e não pode ser desfeita.</p>
+		<p class="muted small">Suas outras carreiras não são afetadas. A exclusão é permanente e não pode ser desfeita.</p>
 		<label class="confirm"><input type="checkbox" bind:checked={understood} /> Entendo que esta exclusão é permanente</label>
 		{#if deleteError}<p class="error" role="alert">{deleteError}</p>{/if}
 	{/if}
@@ -327,18 +303,8 @@
 	.save-actions > :global(:first-child) { margin-inline-end: auto; }
 	.more { display: flex; justify-content: center; margin-top: 16px; }
 
-	.shared { margin-top: 36px; }
 	.small { font-size: var(--fs-sm); }
-	.shared > p { margin: 0 0 12px; max-width: 760px; }
 	.state { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-radius: 12px; border: 1px dashed var(--line-strong); color: var(--text-2); font-size: var(--fs-sm); }
-	.shared-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 8px; }
-	.league { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); color: var(--text);
-		background: linear-gradient(100deg, color-mix(in srgb, var(--c) 24%, transparent), transparent 55%), var(--surface-sunken); transition: border-color var(--dur-2) var(--ease-out); }
-	.league:hover { border-color: var(--emerald-line); }
-	.league-mark { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; background: rgb(0 0 0 / .25); color: var(--emerald-strong); }
-	.league-copy { display: grid; min-width: 0; }
-	.league-copy strong, .league-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.league-copy small { color: var(--text-3); }
 
 	.target { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; padding: 10px 12px; border-radius: 12px; background: var(--surface-sunken); border: 1px solid var(--line); }
 	.target div { display: grid; min-width: 0; }

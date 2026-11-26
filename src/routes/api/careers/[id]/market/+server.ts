@@ -1,3 +1,4 @@
+import { sharedClub } from '#lib/domain/turns.ts';
 import { error } from '@sveltejs/kit';
 import { careerWorld } from '#lib/domain/career.ts';
 import { sanitizeCup } from '#lib/domain/cup.ts';
@@ -29,7 +30,7 @@ export const GET: RequestHandler = async (event) => {
 	if (!id) return noStore(queryMarket(index, readMarketFilters(event.url.searchParams)));
 	const profile = marketProfile(index, id);
 	if (!profile) error(404, 'Atleta indisponível neste mercado.');
-	const [matches, transfers] = await Promise.all([listStatMatches(db, career.id, id), listTransfers(db, career.id, 30, id)]);
+	const [matches, transfers] = await Promise.all([listStatMatches(db, career.id, id, sharedClub(career)), listTransfers(db, career.id, 30, id)]);
 	const { seasons } = playerHistory(matches, id);
 	profile.stats = seasons.map(({ season, totals: { games, minutes, goals, assists, yellow, red } }) => ({ season, games, minutes, goals, assists, yellow, red }));
 	profile.transfers = transfers.map(({ gameDate, from, to, kind, fee }) => ({ gameDate, from, to, kind, fee }));

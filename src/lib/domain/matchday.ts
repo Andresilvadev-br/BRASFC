@@ -196,6 +196,38 @@ export function matchFromSetup(s: ReturnType<typeof fixtureSetup>, replay?: Appl
 	});
 }
 
+/** Partida montada para um ou dois treinadores humanos (0.13: confronto direto entre humanos). */
+export interface SharedSetup {
+	home: TeamSetup;
+	away: TeamSetup;
+	seed: number;
+	neutral: boolean;
+	/** lados comandados por humanos */
+	humans: Side[];
+}
+
+/**
+ * Junta as montagens de cada treinador num único jogo: cada lado humano usa a tática do próprio
+ * treinador; o lado da IA, a montagem normal. Uma partida, um resultado — simulada uma só vez.
+ */
+export function sharedSetup(parts: Array<ReturnType<typeof fixtureSetup>>): SharedSetup {
+	const first = parts[0];
+	const home = parts.find((p) => p.mySide === 'home');
+	const away = parts.find((p) => p.mySide === 'away');
+	return { home: (home ?? first).home, away: (away ?? first).away, seed: first.seed, neutral: first.neutral, humans: parts.map((p) => p.mySide) };
+}
+
+export function matchFromShared(s: SharedSetup, replay?: AppliedDecision[]): Match {
+	return new Match({
+		home: s.home,
+		away: s.away,
+		seed: s.seed,
+		ai: { home: !s.humans.includes('home'), away: !s.humans.includes('away') },
+		...(s.neutral ? { rules: { homeAdvantage: false } } : {}),
+		...(replay ? { replay } : {})
+	});
+}
+
 /**
  * Demais jogos da rodada (IA × IA). `full` decide quais usam o motor completo (padrão: todos);
  * os outros usam o modelo rápido calibrado pelo motor (src/lib/domain/quick.ts).

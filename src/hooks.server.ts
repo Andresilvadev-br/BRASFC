@@ -1,22 +1,19 @@
 import { randomUUID } from 'node:crypto';
 import type { Handle, HandleServerError, ServerInit } from '@sveltejs/kit/hooks';
 import { closeDb, getDb } from '#lib/server/db/index.ts';
-import { limitedResponse, noStore, profileFromToken, RateLimiter, SESSION_COOKIE } from '#lib/server/http.ts';
+import { noStore, profileFromToken, SESSION_COOKIE } from '#lib/server/http.ts';
 import { isTemporaryServiceFailure, logRequestFailure } from '#lib/server/request-error.ts';
-import { getRealtimeHub } from '#lib/server/realtime/hub.ts';
+import { gameEnabled, sitePathAllowed } from '#lib/server/mode.ts';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
-const anonymousLimiter = new RateLimiter(90, 60_000);
-const ipMutationLimiter = new RateLimiter(900, 60_000);
-const ipPulseLimiter = new RateLimiter(1_200, 60_000);
-const profileMutationLimiter = new RateLimiter(90, 60_000);
 
-/** Executado uma vez ao iniciar o servidor: migrações + hub de tempo real. */
+const GAME = gameEnabled(process.env, import.meta.env.DEV);
+
+/** Executado uma vez ao iniciar o servidor. No jogo local: abre o save (PGlite) e aplica as migrações. */
 export const init: ServerInit = async () => {
+	if (!GAME) return; // site público: sem banco
 	await getDb();
-	const hub = getRealtimeHub();
 	(globalThis as Record<symbol, unknown>)[Symbol.for('brasfc.shutdown')] = async () => {
-		await hub.close();
 		await closeDb();
 	};
 };
@@ -26,7 +23,6 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const isApi = pathname.startsWith('/api/');
 	const method = event.request.method;
 	const mutation = isApi && !SAFE_METHODS.has(method);
-	const pulse = mutation && method === 'POST' && /^\/api\/rooms\/[^/]+\/world$/.test(pathname) && event.url.searchParams.get('live') === 'pulse';
 	const started = performance.now();
 	event.locals.requestId = randomUUID();
 	event.locals.profile = null;
@@ -43,28 +39,20 @@ export const handle: Handle = async ({ event, resolve }) => {
 		return response;
 	}
 
-	if (process.env.BRASFC_OFFLINE === '1' && (pathname.startsWith('/api/rooms') || pathname.startsWith('/api/account') || pathname.startsWith('/api/social'))) {
-		return finish(noStore({ message: 'Universos compartilhados exigem o modo online.' }, { status: 503 }));
+	// Site público (VPS): só apresentação e download. O jogo roda apenas no aplicativo do Windows.
+	if (!GAME && !sitePathAllowed(pathname)) {
+		if (isApi) return finish(noStore({ message: 'O BRASFC agora é jogado no aplicativo do Windows, 100% offline.' }, { status: 410 }));
+		return finish(new Response(null, { status: 307, headers: { location: '/' } }));
 	}
-	let address = 'local';
-	if (mutation) {
-		if (event.request.headers.get('origin') !== event.url.origin) {
-			return finish(noStore({ message: 'Origem não permitida.' }, { status: 403 }));
-		}
-		try { address = event.getClientAddress(); } catch { /* ambiente sem endereço */ }
-		const seconds = (pulse ? ipPulseLimiter : ipMutationLimiter).retryAfter(address);
-		if (seconds) return finish(limitedResponse(seconds));
+	// Jogo local: sem limites de requisição (um único jogador no próprio computador), só a checagem de origem.
+	if (mutation && event.request.headers.get('origin') !== event.url.origin) {
+		return finish(noStore({ message: 'Origem não permitida.' }, { status: 403 }));
 	}
 
 	try {
-		if (pathname !== '/api/health') {
+		if (GAME && pathname !== '/api/health') {
 			const token = event.cookies.get(SESSION_COOKIE);
 			if (token) event.locals.profile = await profileFromToken(token);
-		}
-		if (mutation && !pulse) {
-			const profile = event.locals.profile?.id;
-			const seconds = profile ? profileMutationLimiter.retryAfter(profile) : anonymousLimiter.retryAfter(address);
-			if (seconds) return finish(limitedResponse(seconds));
 		}
 		// Clone only the headers when the framework returned an immutable redirect.
 		const response = await resolve(event);

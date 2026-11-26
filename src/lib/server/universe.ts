@@ -1,3 +1,4 @@
+import { humanClubs } from '#lib/domain/turns.ts';
 import { catalogClub, fixedOpeningFormation } from '#lib/data/roster-catalog.ts';
 import { COACH_PROFILES, type CoachStyleId } from '#lib/engine/ai-coach.ts';
 import type { Career } from '#lib/domain/career.ts';
@@ -36,6 +37,7 @@ export function ensureUniverse(career: Career, league: LeagueState): UniverseSta
 		firstSeason: career.data.firstSeason ?? career.season,
 		divisions: league.divisions as Record<string, string[]>,
 		userClub: career.mode === 'coach' && !isUnemployed(career) ? career.clubId : null,
+		humans: Object.keys(humanClubs(career)),
 		formationFor: (id, style) => {
 			const roster = catalogClub(career.data.rosterCatalog, id);
 			return (roster && fixedOpeningFormation(career.data.rosterCatalog, roster)) ?? formationFor(id, style);
@@ -73,6 +75,7 @@ export function universeAfterStep(u: UniverseState, career: Career, league: Leag
 		divisionOf: (id) => divisionOf(league, id),
 		strengthOf: opts.strengthOf,
 		userClub: career.mode === 'coach' && !isUnemployed(career) ? career.clubId : null,
+		humans: Object.keys(humanClubs(career)),
 		formationFor: formationForFactory(career, league)
 	});
 }
@@ -284,6 +287,7 @@ export function universeAtSeasonEnd(u: UniverseState, career: Career, league: Le
 		next: o.next.divisions as Record<string, string[]>,
 		cupChampion: o.cupChampion,
 		userClub: career.mode === 'coach' && !isUnemployed(career) ? career.clubId : null,
+		humans: Object.keys(humanClubs(career)),
 		formationFor: formationForFactory({ ...career, season: o.next.season }, o.next)
 	});
 }

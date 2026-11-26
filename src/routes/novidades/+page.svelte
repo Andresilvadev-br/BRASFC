@@ -91,7 +91,7 @@
 		<article class="glass install" use:reveal={{ index: 2 }}>
 			<span class="eyebrow-gold">Aplicativo</span>
 			{#if desktop.active}
-				<p>Aplicativo Windows {desktop.version} · modo {desktop.mode === 'online' ? 'online' : 'offline'}</p>
+				<p>Aplicativo Windows {desktop.version} · jogo 100% offline</p>
 				{#if nativeUpdate.value}
 					{@const update = nativeUpdate.value}
 					<label><input type="checkbox" checked={update.automatic} onchange={(e) => nativeUpdateAction('auto', e.currentTarget.checked)} /> Baixar automaticamente</label>

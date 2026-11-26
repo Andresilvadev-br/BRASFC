@@ -187,6 +187,17 @@ export interface RosterContext {
 	userClub?: string;
 	/** bônus de desenvolvimento do CT do usuário */
 	userDevBoost?: number;
+	/** 0.13: todos os clubes de treinadores humanos → bônus do CT de cada um (substitui userClub/userDevBoost) */
+	humans?: Record<string, number>;
+}
+
+/** Clube comandado por um treinador humano (não segue as regras automáticas da IA). */
+export function isHumanClub(ctx: { userClub?: string | null; humans?: Record<string, number> }, clubId: string): boolean {
+	return ctx.humans ? Object.hasOwn(ctx.humans, clubId) : !!ctx.userClub && clubId === ctx.userClub;
+}
+
+function devBoostOf(ctx: RosterContext, clubId: string): number {
+	return ctx.humans?.[clubId] ?? ctx.userDevBoost ?? 1;
 }
 
 /** Clube de origem de um id de atleta-base ("flamengo-07" → "flamengo"). */
@@ -270,16 +281,16 @@ export function findPlayer(ctx: RosterContext, playerId: string): SquadPlayer | 
 	if (extra) return evolve(extra.player, ctx.seed, extra.season, ctx.season, ctx.userDevBoost);
 	const origin = originClub(playerId);
 	if (!getClub(origin)) return null;
-	const auto = origin !== ctx.userClub;
-	const base = evolvedBase(ctx.seed, origin, ctx.firstSeason, ctx.season, auto, auto ? 1 : (ctx.userDevBoost ?? 1), ctx.catalog);
+	const auto = !isHumanClub(ctx, origin);
+	const base = evolvedBase(ctx.seed, origin, ctx.firstSeason, ctx.season, auto, auto ? 1 : devBoostOf(ctx, origin), ctx.catalog);
 	return base.find((p) => p.id === playerId) ?? null;
 }
 
 /** Elenco completo do clube na temporada (com contratos e valores). */
 export function rosterOf(ctx: RosterContext, clubId: string): RosterPlayer[] {
-	const auto = clubId !== ctx.userClub;
+	const auto = !isHumanClub(ctx, clubId);
 	const tier = tierOfDivision(ctx.divisionOf(clubId));
-	const base = evolvedBase(ctx.seed, clubId, ctx.firstSeason, ctx.season, auto, auto ? 1 : (ctx.userDevBoost ?? 1), ctx.catalog);
+	const base = evolvedBase(ctx.seed, clubId, ctx.firstSeason, ctx.season, auto, auto ? 1 : devBoostOf(ctx, clubId), ctx.catalog);
 	const strength = squadStrength(base);
 	const out: RosterPlayer[] = [];
 	for (const p of base) {
@@ -427,7 +438,7 @@ export function squadNeeds(squad: SquadPlayer[]): Position[] {
 export function aiTransfers(ctx: RosterContext, clubs: string[], week: string, budgetOf: (clubId: string) => number, max = 3): AiMove[] {
 	const rng = createRng(deriveSeed(ctx.seed, 'mercado-ia', ctx.season, week));
 	const moves: AiMove[] = [];
-	const buyers = rng.shuffle(clubs.filter((c) => c !== ctx.userClub)).slice(0, 24);
+	const buyers = rng.shuffle(clubs.filter((c) => !isHumanClub(ctx, c))).slice(0, 24);
 	const taken = new Set<string>();
 	for (const buyer of buyers) {
 		if (moves.length >= max) break;
@@ -439,7 +450,7 @@ export function aiTransfers(ctx: RosterContext, clubs: string[], week: string, b
 		const strength = squadStrength(squad);
 		const tier = tierOfDivision(ctx.divisionOf(buyer));
 		// Procura em clubes de nível igual ou inferior um atleta da posição que melhore o elenco.
-		const sellers = rng.shuffle(clubs.filter((c) => c !== buyer && c !== ctx.userClub)).slice(0, 10);
+		const sellers = rng.shuffle(clubs.filter((c) => c !== buyer && !isHumanClub(ctx, c))).slice(0, 10);
 		let best: { p: RosterPlayer; seller: string; fee: number } | null = null;
 		for (const seller of sellers) {
 			const ss = rosterOf(ctx, seller);

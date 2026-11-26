@@ -27,7 +27,7 @@ import {
 	type SponsorSlot
 } from './club.ts';
 import { getClub } from './clubs.ts';
-import {
+import { isHumanClub,
 	clubResponse,
 	currentClubOf,
 	emptyMarket,
@@ -807,7 +807,7 @@ export function generateIncoming(st: ClubState, ctx: RosterContext, userClub: st
 	for (const p of candidates.slice(0, 6)) {
 		const chance = listed.includes(p.id) ? 0.5 : p.contract.role === 'reserva' ? 0.12 : 0.06;
 		if (!rng.chance(chance)) continue;
-		const buyers = clubs.filter((c) => c !== userClub && (getClub(c)?.reputation ?? 1) >= (getClub(userClub)?.reputation ?? 1) - 1);
+		const buyers = clubs.filter((c) => c !== userClub && !isHumanClub(ctx, c) && (getClub(c)?.reputation ?? 1) >= (getClub(userClub)?.reputation ?? 1) - 1);
 		if (!buyers.length) continue;
 		const buyer = rng.pick(buyers);
 		const fee = roundMoney(p.value * (0.8 + rng.next() * 0.35) * (listed.includes(p.id) ? 0.9 : 1));

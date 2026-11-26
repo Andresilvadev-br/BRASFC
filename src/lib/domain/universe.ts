@@ -162,6 +162,8 @@ export interface UniverseSetup {
 	/** clubes por divisão (ordem A → E) */
 	divisions: Record<string, string[]>;
 	userClub: string | null;
+	/** 0.13: todos os clubes de treinadores humanos (inclui userClub) */
+	humans?: string[];
 	/** formação preferida do perfil do técnico, ajustada ao elenco */
 	formationFor: (clubId: string, style: CoachStyleId) => FormationId;
 }
@@ -183,7 +185,7 @@ export function initialUniverse(s: UniverseSetup): UniverseState {
 			const style = legacy.profile.id as CoachStyleId;
 			const formation = s.formationFor(id, style);
 			let coachId: string | null = null;
-			if (id !== s.userClub) {
+			if (!isUserClub(s, id)) {
 				const c = newCoach(s.seed, `${id}-${s.season}`, s.season - Math.min(legacy.tenure, 4), style, (TIER_REP[division] ?? 20) + rep * 3, id);
 				c.name = s.coachNameFor?.(id) ?? c.name;
 				coaches[c.id] = c;
@@ -273,6 +275,8 @@ export interface RoundContext {
 	divisionOf: (clubId: string) => string | null;
 	strengthOf: (clubId: string) => number;
 	userClub: string | null;
+	/** 0.13: todos os clubes de treinadores humanos (inclui userClub) */
+	humans?: string[];
 	formationFor: (clubId: string, style: CoachStyleId) => FormationId;
 }
 
@@ -338,14 +342,14 @@ export function universeAfterRound(prev: UniverseState, ctx: RoundContext): Univ
 			if (streak >= 6 && (!ls || streak > ls.wins)) {
 				u.records.longestStreak = { season: ctx.season, clubId: club, wins: streak };
 				pushNews(u, { season: ctx.season, round: ctx.round, kind: 'recorde', title: `${clubName(club)} chega a ${streak} vitórias seguidas`, body: 'É a maior sequência de vitórias registrada nesta carreira.', clubs: [club], tone: 'boa', importance: 2 });
-			} else if (streak === 5 && club !== ctx.userClub) {
+			} else if (streak === 5 && !isUserClub(ctx, club)) {
 				pushNews(u, { season: ctx.season, round: ctx.round, kind: 'sequencia', title: `${clubName(club)} vence a quinta seguida`, body: `Embalado, o time de ${coachOf(u, club)?.name ?? 'seu técnico'} sobe de produção.`, clubs: [club], tone: 'boa', importance: 1 });
 			}
 			// Aprendizado tático da IA: cada jogo consolida o sistema em uso; os outros esquecem devagar.
 			const cur = mind.mastery[mind.formation] ?? 45;
 			mind.mastery[mind.formation] = r1(clamp(cur + 1.6 * Math.pow(1 - cur / 100, 1.3), 0, 92));
 			for (const f of FORMATION_IDS) if (f !== mind.formation && (mind.mastery[f] ?? 0) > 30) mind.mastery[f] = r1((mind.mastery[f] ?? 0) - 0.15);
-			if (club === ctx.userClub || !mind.coachId) continue;
+			if (isUserClub(ctx, club) || !mind.coachId) continue;
 			const diffStrength = ctx.strengthOf(club) - ctx.strengthOf(opp) + (club === r.home ? 2 : -2);
 			let delta = confidenceAfterMatch(mind.board, out, diffStrength, false);
 			// Pressão de sequência (cultura do futebol brasileiro): 3+ derrotas nos últimos 5 jogos pesam mais.
@@ -363,7 +367,7 @@ export function universeAfterRound(prev: UniverseState, ctx: RoundContext): Univ
 		if (n < 8 || ctx.round < 6) continue;
 		table.forEach((club, i) => {
 			const mind = u.clubs[club];
-			if (!mind || club === ctx.userClub || !mind.coachId) return;
+			if (!mind || isUserClub(ctx, club) || !mind.coachId) return;
 			const rep = getClub(club)?.reputation ?? 2;
 			const expected = clamp(Math.round(n * (1 - (rep - 1) / 5)), 1, n);
 			const gap = (expected - (i + 1)) / n; // >0: acima do esperado
@@ -378,7 +382,7 @@ export function universeAfterRound(prev: UniverseState, ctx: RoundContext): Univ
 
 	// Demissões: confiança abaixo do limite do perfil, com carência após troca recente.
 	for (const [club, mind] of Object.entries(u.clubs)) {
-		if (club === ctx.userClub || !mind.coachId) continue;
+		if (isUserClub(ctx, club) || !mind.coachId) continue;
 		const patience = BOARD_PROFILES[mind.board].patience;
 		const limit = SACK_FLOOR * (1.3 - patience * 0.3);
 		if (mind.confidence >= limit) continue;
@@ -419,6 +423,8 @@ export interface SeasonEndContext {
 	next: Record<string, string[]>;
 	cupChampion: string | null;
 	userClub: string | null;
+	/** 0.13: todos os clubes de treinadores humanos (inclui userClub) */
+	humans?: string[];
 	formationFor: RoundContext['formationFor'];
 }
 
@@ -468,14 +474,14 @@ export function universeSeasonEnd(prev: UniverseState, ctx: SeasonEndContext): U
 		else if (mind.project === 'reconstrucao' && ctx.season - mind.projectSince >= 2 && pos && pos <= n / 3) mind.project = 'crescimento';
 		if (mind.project !== prevProject) {
 			mind.projectSince = ctx.season + 1;
-			if (club !== ctx.userClub && (relegated || promoted || mind.project === 'reconstrucao')) pushNews(u, { season: ctx.season, round, kind: 'projeto', title: `${clubName(club)}: ${PROJECT_INFO[mind.project].label.toLowerCase()}`, body: relegated ? 'Após a queda, a diretoria reformula o planejamento.' : promoted ? 'Com o acesso, o clube planeja crescer na nova divisão.' : 'A diretoria anuncia um novo ciclo para o elenco.', clubs: [club], tone: relegated ? 'ruim' : 'neutra', importance: 1 });
+			if (!isUserClub(ctx, club) && (relegated || promoted || mind.project === 'reconstrucao')) pushNews(u, { season: ctx.season, round, kind: 'projeto', title: `${clubName(club)}: ${PROJECT_INFO[mind.project].label.toLowerCase()}`, body: relegated ? 'Após a queda, a diretoria reformula o planejamento.' : promoted ? 'Com o acesso, o clube planeja crescer na nova divisão.' : 'A diretoria anuncia um novo ciclo para o elenco.', clubs: [club], tone: relegated ? 'ruim' : 'neutra', importance: 1 });
 		}
 		// Crise financeira muda a filosofia de clubes investidores rebaixados.
 		if (relegated && mind.philosophy === 'compradora') mind.philosophy = 'sustentavel';
 		mind.form = '';
 		mind.changedAt = null;
 		mind.confidence = r1(clamp(55 + (mind.confidence - 55) * 0.4 + (promoted || champion ? 15 : 0) - (relegated ? 10 : 0), 20, 90));
-		if (!mind.coachId || club === ctx.userClub) continue;
+		if (!mind.coachId || isUserClub(ctx, club)) continue;
 		const coach = u.coaches[mind.coachId];
 		if (!coach) continue;
 		const expected = clamp(Math.round(n * (1 - (rep - 1) / 5)), 1, n);
@@ -501,9 +507,9 @@ export function universeSeasonEnd(prev: UniverseState, ctx: SeasonEndContext): U
 	}
 	// Mercado de técnicos: clubes grandes que decepcionaram buscam quem está em alta.
 	const nextDiv = (id: string) => Object.entries(ctx.next).find(([, ids]) => ids.includes(id))?.[0] ?? null;
-	const vacancies = Object.entries(u.clubs).filter(([club, m]) => club !== ctx.userClub && !m.coachId).map(([club]) => club);
+	const vacancies = Object.entries(u.clubs).filter(([club, m]) => !isUserClub(ctx, club) && !m.coachId).map(([club]) => club);
 	const ambitious = Object.entries(u.clubs)
-		.filter(([club, m]) => club !== ctx.userClub && m.coachId && (getClub(club)?.reputation ?? 1) >= 4 && m.confidence < 50)
+		.filter(([club, m]) => !isUserClub(ctx, club) && m.coachId && (getClub(club)?.reputation ?? 1) >= 4 && m.confidence < 50)
 		.map(([club]) => club);
 	for (const club of [...vacancies, ...ambitious].sort()) {
 		const mind = u.clubs[club];
@@ -573,4 +579,9 @@ export function universeIssues(u: UniverseState): string[] {
 	}
 	if (u.news.length > NEWS_CAP) issues.push('notícias acima do limite');
 	return issues;
+}
+
+/** Clube de um treinador humano (a IA não troca o técnico nem mexe no projeto dele). */
+function isUserClub(ctx: { userClub: string | null; humans?: string[] }, club: string): boolean {
+	return club === ctx.userClub || !!ctx.humans?.includes(club);
 }

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
-<title>BRASFC · sem conexão</title>
+<title>BRASFC · iniciando o jogo</title>
 <style>
 	html,body{margin:0;height:100%;background:#101418;color:#e7edf0;font:15px 'Segoe UI',system-ui,sans-serif}
 	.bar{height:36px;-webkit-app-region:drag;display:flex;align-items:center;padding-left:14px;font-weight:800;letter-spacing:.06em;font-size:13px}
@@ -24,24 +24,16 @@
 <body>
 <div class="bar">BRAS<span>FC</span></div>
 <main><div class="box">
-	<h1><i class="dot"></i>Sem conexão com o servidor</h1>
-	<p>As partidas e a carreira são processadas no servidor do BRASFC para manter tudo salvo e seguro. Verifique sua internet.</p>
+	<h1><i class="dot"></i>O jogo não iniciou</h1>
+	<p>O BRASFC roda inteiro no seu computador, sem internet. Algo impediu o jogo embutido de abrir.</p>
+	<p id="d" class="hint"></p>
 	<button id="r" autofocus>Tentar novamente</button>
-	<button id="o" class="alt" hidden>Jogar offline</button>
-	<p id="oh" class="hint" hidden>No modo offline o jogo roda no seu computador e as carreiras ficam salvas aqui (separadas das carreiras online).</p>
 	<p id="s" aria-live="polite"></p>
 </div></main>
 <script>
-	const retry = () => { document.getElementById('s').textContent = 'Conectando…'; window.brasfcDesktop.retry(); };
-	document.getElementById('r').addEventListener('click', retry);
-	if (new URLSearchParams(location.search).get('offline') === '1') {
-		const o = document.getElementById('o');
-		o.hidden = false;
-		document.getElementById('oh').hidden = false;
-		o.addEventListener('click', () => { document.getElementById('s').textContent = 'Abrindo o jogo offline…'; window.brasfcDesktop.setMode('offline'); });
-	}
-	window.addEventListener('online', retry);
-	setInterval(() => { if (navigator.onLine) retry(); }, 15000);
+	const reason = new URLSearchParams(location.search).get('reason') || '';
+	document.getElementById('d').textContent = reason === 'missing' ? 'Os arquivos do jogo não foram encontrados. Reinstale o BRASFC.' : reason && reason !== 'load' ? reason : 'Suas carreiras continuam salvas.';
+	document.getElementById('r').addEventListener('click', () => { document.getElementById('s').textContent = 'Abrindo…'; window.brasfcDesktop.retry(); });
 </script>
 </body>
 </html>

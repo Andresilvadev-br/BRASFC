@@ -3,7 +3,7 @@ import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import adapter from '@sveltejs/adapter-node';
 import { sveltekit } from '@sveltejs/kit/vite';
-import { defineConfig, isRunnableDevEnvironment, type Plugin } from 'vite';
+import { defineConfig } from 'vite';
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as {
 	version: string;
@@ -25,35 +25,8 @@ const APP_VERSION = pkg.version;
 const GIT_SHA = gitSha();
 const BUILD_TIME = process.env.BUILD_TIME || new Date().toISOString();
 
-/**
- * Em desenvolvimento, o WebSocket de tempo real é anexado ao servidor do Vite.
- * O hub é carregado pelo mesmo runner SSR usado pelo SvelteKit, então compartilha
- * banco e estado com as rotas da API. Em produção, quem faz isso é server/index.js.
- */
-function realtimeDevPlugin(): Plugin {
-	return {
-		name: 'brasfc-realtime-dev',
-		apply: 'serve',
-		configureServer(server) {
-			server.httpServer?.on('upgrade', async (req, socket, head) => {
-				if (!req.url?.startsWith('/ws/')) return; // HMR do Vite segue intacto
-				try {
-					const ssr = server.environments.ssr;
-					if (!isRunnableDevEnvironment(ssr)) throw new Error('Ambiente SSR não executável');
-					const mod = (await ssr.runner.import('/src/lib/server/realtime/hub.ts')) as typeof import('./src/lib/server/realtime/hub.ts');
-					mod.getRealtimeHub().handleUpgrade(req, socket, head);
-				} catch (err) {
-					server.config.logger.error(`[realtime] ${(err as Error).message}`);
-					socket.destroy();
-				}
-			});
-		}
-	};
-}
-
 export default defineConfig({
 	plugins: [
-		realtimeDevPlugin(),
 		sveltekit({
 			adapter: adapter({ out: 'build', precompress: true }),
 			// O service worker é registrado pelo app (só na versão publicada) — ver src/lib/stores/updates.svelte.ts.
@@ -70,7 +43,7 @@ export default defineConfig({
 					'style-src': ['self', 'unsafe-inline'],
 					'img-src': ['self', 'data:', 'blob:'],
 					'font-src': ['self'],
-					'connect-src': ['self', 'ws:', 'wss:'],
+					'connect-src': ['self'],
 					'object-src': ['none'],
 					'base-uri': ['self'],
 					'form-action': ['self'],

@@ -5,6 +5,7 @@ import { divisionOf, sanitizeLeague, type LeagueState } from './league.ts';
 import { sanitizeClubState, sanitizeMarket } from './management.ts';
 import { rosterOf, type RosterContext } from './market.ts';
 import { squadStrength } from './squad.ts';
+import { humanClubs, isShared } from './turns.ts';
 
 /**
  * Contexto de elencos da carreira: base determinística + evolução por temporada + mercado persistido.
@@ -23,7 +24,9 @@ export function rosterContext(career: Pick<Career, 'seed' | 'season' | 'clubId' 
 		// No modo jogador e no universo compartilhado (carreira online) todos os clubes seguem a mesma
 		// regra de evolução e renovação: o elenco que a tela mostra é o mesmo que o servidor da liga usa.
 		userClub: career.mode === 'player' || career.data.sharedWorld ? undefined : career.clubId,
-		userDevBoost: Math.round(ctDevelopment(ct) * 100) / 100
+		userDevBoost: Math.round(ctDevelopment(ct) * 100) / 100,
+		// 0.13: com vários treinadores, todos os clubes humanos seguem a mesma regra, quem quer que esteja no controle.
+		...(career.mode !== 'player' && !career.data.sharedWorld && isShared(career) ? { humans: humanClubs(career as Career) } : {})
 	};
 }
 
