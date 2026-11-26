@@ -11,6 +11,8 @@
 	import Crest from '#lib/ui/Crest.svelte';
 	import Icon from '#lib/ui/Icon.svelte';
 	import Trophy from '#lib/ui/v4/Trophy.svelte';
+	import ParticipationBadge from '#lib/ui/world/ParticipationBadge.svelte';
+	import { cupParticipation } from '#lib/world/participation.ts';
 
 	let { data }: { data: CareerScreenData } = $props();
 	const c = $derived(data.career);
@@ -38,6 +40,8 @@
 	});
 	const bracketFrom = 5; // oitavas em diante como chaveamento
 	const myRun = $derived(view ? view.phases.filter((p) => p.ties.some((t) => mine(t.tie))) : []);
+	/** situação oficial do clube: separa quem ainda vai estrear (entra numa fase futura) de quem está fora */
+	const status = $derived(cup && view ? cupParticipation(cup, view, c.clubId) : null);
 </script>
 
 <svelte:head><title>Copa do Brasil · BRASFC</title></svelte:head>
@@ -55,6 +59,7 @@
 			<p class="muted">126 clubes, nove fases. Jogo único da 1ª à 4ª fase; ida e volta da 5ª fase à semifinal; final única em campo neutro ({cup.finalVenue}). Empates vão aos pênaltis.</p>
 		</div>
 		<div class="run">
+			{#if status}<ParticipationBadge participation={status} />{/if}
 			{#if myRun.length}
 				<span class="small muted">Sua campanha</span>
 				<div class="row">
@@ -63,7 +68,7 @@
 						<span class="chip" class:on={t.outcome?.winner === c.clubId} class:lost={t.outcome && t.outcome.winner !== c.clubId}>{p.phase.name}</span>
 					{/each}
 				</div>
-			{:else}
+			{:else if status?.status === 'nao-classificado'}
 				<span class="muted">Seu clube não está nesta edição.</span>
 			{/if}
 		</div>

@@ -5,7 +5,7 @@
 	import { DEFAULT_APPEARANCE, type Appearance } from '#lib/domain/appearance.ts';
 	import AppearanceEditor from '#lib/ui/career/AppearanceEditor.svelte';
 	import type { Career } from '#lib/domain/career.ts';
-	import { getClub } from '#lib/domain/clubs.ts';
+	import { getClub, registerClubs } from '#lib/domain/clubs.ts';
 	import Segmented from '#lib/ui/Segmented.svelte';
 	import { BRASIL_DIVISIONS, DIVISION_LABELS, divisionMatchCount, initialLeague, type BrasilDivision, type DivisionId } from '#lib/domain/league.ts';
 	import { cupMatchCount, initialCup } from '#lib/domain/cup.ts';
@@ -19,6 +19,8 @@
 	import Pixel from '#lib/ui/Pixel.svelte';
 	import Presentation from '#lib/ui/Presentation.svelte';
 	import Stadium from '#lib/ui/Stadium.svelte';
+	import CountryPicker, { formatSeconds, impactOf } from '#lib/ui/world/CountryPicker.svelte';
+	import Flag from '#lib/ui/world/Flag.svelte';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -26,7 +28,7 @@
 	// Dev 0.12: o BRASFC tem uma única carreira — a de treinador.
 	type Step = 'ligas' | 'perfil' | 'clube';
 	const STEPS: Array<{ id: Step; label: string }> = [
-		{ id: 'ligas', label: 'Ligas' },
+		{ id: 'ligas', label: 'Países' },
 		{ id: 'perfil', label: 'Treinador' },
 		{ id: 'clube', label: 'Clube' }
 	];
@@ -50,25 +52,38 @@
 	const stepIndex = $derived(STEPS.findIndex((s) => s.id === step));
 	const previewKit = $derived(coachKit(clubId ?? undefined));
 	let world = $state<'brasil' | 'brasfc'>('brasil');
-	let divisions = $state<BrasilDivision[]>(['serie-a']);
+	// World Database: ativar um país ativa todas as divisões. No Brasil, o ajuste fino do PR #32 continua como opção avançada.
+	let countries = $state<string[]>(['bra']);
+	let divisions = $state<BrasilDivision[]>([...BRASIL_DIVISIONS]);
 	let includeCup = $state(true);
 	const league = $derived(initialLeague(world, data.seasons[world]));
 	const available = $derived(world === 'brasil' ? BRASIL_DIVISIONS : ['liga-brasfc'] as const);
-	const selected = $derived<readonly DivisionId[]>(world === 'brasil' ? divisions : available);
-	const selectionClubs = $derived(selected.flatMap((division) => (league.divisions[division] ?? []).map((id) => ({ id, division }))));
+	const brazilActive = $derived(countries.includes('bra'));
+	const selected = $derived<readonly DivisionId[]>(world === 'brasil' ? (brazilActive ? divisions : []) : available);
+	const foreign = $derived(world === 'brasil' ? data.countries.filter((c) => c.code !== 'bra' && c.playable && countries.includes(c.code)) : []);
+	// Clubes estrangeiros de países ativos e jogáveis (World Database), registrados para escudo, nome e cores.
+	$effect.pre(() => registerClubs(data.foreignClubs));
+	const foreignClubs = $derived(data.foreignClubs.filter((c) => foreign.some((country) => c.division.startsWith(`league/${country.code}/`))).map((c) => ({ id: c.id, division: c.division })));
+	const divisionLabels = $derived(Object.fromEntries(foreign.flatMap((c) => c.divisions.map((d) => [d.id, `${c.name} · ${d.name}`]))));
+	const selectionClubs = $derived([...selected.flatMap((division) => (league.divisions[division] ?? []).map((id) => ({ id, division: division as string }))), ...foreignClubs]);
 	const canAddCoach = $derived(coachNumber < data.maxCoaches && coachNumber < selectionClubs.length);
-	const cupMatches = $derived(world === 'brasil' && includeCup ? cupMatchCount(initialCup(league.season)) : 0);
-	const matches = $derived(selected.reduce((sum, div) => sum + divisionMatchCount(league, div), cupMatches));
-	const impact = $derived(matches <= 550 ? 'Leve' : matches <= 1100 ? 'Moderado' : 'Alto');
+	const cupMatches = $derived(world === 'brasil' && brazilActive && includeCup ? cupMatchCount(initialCup(league.season)) : 0);
+	const matches = $derived(selected.reduce((sum, div) => sum + divisionMatchCount(league, div), cupMatches) + foreign.reduce((sum, c) => sum + c.load.matches, 0));
+	const impact = $derived(impactOf(matches));
+	/** custo por partida informado pela estimativa do servidor (o mesmo para todos os países) */
+	const msPerMatch = $derived.by(() => { const c = data.countries.find((x) => x.load.matches); return c ? c.load.seasonMs / c.load.matches : 2.5; });
+	const kbPerMatch = $derived.by(() => { const c = data.countries.find((x) => x.load.matches); return c ? c.load.saveKb / c.load.matches : 0.35; });
 	const clubDivision = $derived(selectionClubs.find((entry) => entry.id === clubId)?.division);
 	let tools = $state.raw<Awaited<ReturnType<typeof clubTools>>>();
 	let loadingClubs = $state(false);
 	let clubLoadError = $state(false);
 	const catalog = $derived(world === 'brasil' ? tools?.ROSTER_CATALOG : undefined);
 	const rosterCache = new Map<string, ClubLineup>();
-	const lineup = $derived(step === 'clube' && clubId && tools ? previewClub(clubId, data.previewSeed, catalog, tools) : undefined);
+	/** elenco estrangeiro vem do catálogo no servidor ao criar a carreira; a prévia local cobre os clubes nativos */
+	const isWorldClub = $derived(!!clubId?.startsWith('world/'));
+	const lineup = $derived(step === 'clube' && clubId && tools && !isWorldClub ? previewClub(clubId, data.previewSeed, catalog, tools) : undefined);
 	const coach = $derived(step === 'clube' && clubId ? tools?.catalogClub(catalog, clubId)?.coach : undefined);
-	const finances = $derived(clubId && step === 'clube' ? tools?.initialClubState(data.previewSeed, clubId, clubDivision ?? null, league.season) : undefined);
+	const finances = $derived(clubId && step === 'clube' ? tools?.initialClubState(data.previewSeed, clubId, isWorldClub ? null : (clubDivision as DivisionId | undefined) ?? null, league.season) : undefined);
 
 	async function clubTools() {
 		const [component, catalog, management, lineup, squad] = await Promise.all([
@@ -145,6 +160,15 @@
 		else void goto('/menu');
 	}
 
+	/**
+	 * Contrato com a engine: país inteiro (todas as divisões + copa) vai como `worldSelection`; um recorte
+	 * de divisões do Brasil continua como `leagueSelection` (política do PR #32, preservada pela engine).
+	 */
+	function selectionPayload() {
+		const whole = world === 'brasil' && brazilActive && includeCup && selected.length === BRASIL_DIVISIONS.length;
+		return whole ? { worldSelection: { countries: [...countries] } } : { leagueSelection: { divisions: [...selected], cup: world === 'brasil' && brazilActive && includeCup } };
+	}
+
 	async function create() {
 		if (!clubId || saving || created || blocked[clubId] || !clubDivision) return;
 		if (addAnother && canAddCoach) {
@@ -164,7 +188,7 @@
 		try {
 			const [first, ...others] = all;
 			const res = await api<{ career: Career }>('/api/careers', {
-				body: { mode, personName: first.personName, clubId: first.clubId, appearance: first.appearance, world, leagueSelection: { divisions: [...selected], cup: world === 'brasil' && includeCup }, previewSeed: data.previewSeed, ...(others.length ? { others } : {}) }
+				body: { mode, personName: first.personName, clubId: first.clubId, appearance: first.appearance, world, ...selectionPayload(), previewSeed: data.previewSeed, ...(others.length ? { others } : {}) }
 			});
 			created = res.career;
 		} catch (e) {
@@ -220,36 +244,64 @@
 		{#if step === 'ligas'}
 			<div class="intro" data-umx-enter>
 				<span class="eyebrow">Passo 1 de 3 · Universo da carreira</span>
-				<h1>Escolha as ligas</h1>
-				<p class="muted">As divisões selecionadas terão calendário e simulação completa para todos os treinadores. Os demais clubes continuam no mercado.</p>
+				<h1>Escolha os países</h1>
+				<p class="muted">Cada país ativado entra com todas as divisões e copas, com calendário e simulação completa para todos os treinadores. Os clubes dos demais países continuam no mercado.</p>
 			</div>
 			<div class="split league-setup">
 				<div class="form" data-umx-enter>
-					<Segmented label="País ou universo" bind:value={world} onchange={() => (clubId = null)}
-						options={[{ value: 'brasil', label: 'Brasil' }, { value: 'brasfc', label: 'Universo fictício' }]} />
-					<fieldset class="league-options">
-						<legend>{world === 'brasil' ? 'Campeonato Brasileiro' : 'Liga fictícia'}</legend>
-						{#each available as division (division)}
-							<label class="league-option">
-								<input type="checkbox" checked={selected.includes(division)} disabled={world === 'brasfc'} onchange={() => toggleDivision(division)} />
-								<span>{DIVISION_LABELS[division]}</span>
-								<small>{league.divisions[division]?.length} clubes</small>
-							</label>
-						{/each}
-					</fieldset>
+					<Segmented label="Universo" bind:value={world} onchange={() => (clubId = null)}
+						options={[{ value: 'brasil', label: 'Mundo real' }, { value: 'brasfc', label: 'Universo fictício' }]} />
 					{#if world === 'brasil'}
-						<label class="league-option">
-							<input type="checkbox" bind:checked={includeCup} />
-							<span>Copa do Brasil</span>
-							<small>Inclui classificados de divisões inativas</small>
-						</label>
+						<CountryPicker countries={data.countries} bind:selected={countries} />
+						{#if brazilActive}
+							<details class="brazil-custom">
+								<summary><Flag flag="br" size={18} /> Ajustar divisões do Brasil <small class="muted">{selected.length} de {BRASIL_DIVISIONS.length}{includeCup ? ' + Copa do Brasil' : ''}</small></summary>
+								<fieldset class="league-options">
+									<legend class="sr-only">Divisões do Brasil</legend>
+									{#each available as division (division)}
+										<label class="league-option">
+											<input type="checkbox" checked={selected.includes(division)} onchange={() => toggleDivision(division)} />
+											<span>{DIVISION_LABELS[division]}</span>
+											<small>{league.divisions[division]?.length} clubes</small>
+										</label>
+									{/each}
+									<label class="league-option">
+										<input type="checkbox" bind:checked={includeCup} />
+										<span>Copa do Brasil</span>
+										<small>Inclui classificados de divisões inativas</small>
+									</label>
+								</fieldset>
+							</details>
+						{/if}
+					{:else}
+						<fieldset class="league-options">
+							<legend>Liga fictícia</legend>
+							{#each available as division (division)}
+								<label class="league-option">
+									<input type="checkbox" checked disabled />
+									<span>{DIVISION_LABELS[division]}</span>
+									<small>{league.divisions[division]?.length} clubes</small>
+								</label>
+							{/each}
+						</fieldset>
 					{/if}
 				</div>
-				<aside class="form" aria-live="polite" data-umx-enter>
-					<span class="eyebrow">Impacto estimado · {impact}</span>
+				<aside class="form summary" aria-live="polite" data-umx-enter>
+					<span class="eyebrow">Processamento estimado · {impact}</span>
 					<strong>{matches.toLocaleString('pt-BR')} partidas na temporada</strong>
-					<p class="muted">{selectionClubs.length} clubes disponíveis para começar. Mais jogos ativos aumentam o tempo de processamento das rodadas.</p>
-					{#if !selected.length}<p class="err">Selecione ao menos uma divisão para continuar.</p>{/if}
+					<dl class="totals">
+						<div><dt>Tempo por temporada</dt><dd>{formatSeconds(matches * msPerMatch)}</dd></div>
+						<div><dt>Save por temporada</dt><dd>≈ {Math.max(1, Math.round((matches * kbPerMatch) / 1024 * 10) / 10).toLocaleString('pt-BR')} MB</dd></div>
+						<div><dt>Clubes para começar</dt><dd>{selectionClubs.length}</dd></div>
+					</dl>
+					{#if world === 'brasil' && (brazilActive || foreign.length)}
+						<ul class="chosen">
+							{#if brazilActive}<li><Flag flag="br" size={18} /> Brasil <small>{selected.length} div.{includeCup ? ' + copa' : ''}</small></li>{/if}
+							{#each foreign as c (c.code)}<li><Flag flag={c.flag} size={18} /> {c.name} <small>{c.divisions.length} div.</small></li>{/each}
+						</ul>
+					{/if}
+					<p class="muted small">Estimativa no computador de referência. Mais países ativos aumentam o tempo das rodadas e o tamanho do save.</p>
+					{#if !selected.length}<p class="err">Ative ao menos um país com divisão jogável para continuar.</p>{/if}
 					<div class="actions">
 						<Button variant="primary" size="lg" iconRight="arrowRight" disabled={!selected.length} onclick={next}>Criar treinador</Button>
 					</div>
@@ -302,7 +354,7 @@
 			</div>
 			{#key world}
 				{#if tools}
-					<tools.Selector clubs={selectionClubs} bind:clubId {lineup} {coach} {blocked}
+					<tools.Selector clubs={selectionClubs} labels={divisionLabels} bind:clubId {lineup} {coach} {blocked}
 						season={league.season} transferBudget={finances?.transferBudget} wageBudget={finances?.wageBudget} busy={saving || !!created} />
 				{:else if clubLoadError}
 					<p class="err" role="alert">Não foi possível carregar os clubes.</p>
@@ -354,6 +406,21 @@
 	.league-option input { width: 18px; height: 18px; padding: 0; accent-color: var(--emerald); }
 	.league-option small { color: var(--text-3); text-align: right; }
 	.league-setup aside p { margin: 0; }
+	.split.league-setup { grid-template-columns: minmax(0, 1.6fr) minmax(260px, 0.7fr); }
+	@media (max-width: 980px) { .split.league-setup { grid-template-columns: minmax(0, 1fr); } .summary { position: static; } }
+	.summary { position: sticky; top: var(--sp-4); }
+	.totals { display: grid; gap: 6px; margin: 0; }
+	.totals div { display: flex; justify-content: space-between; gap: var(--sp-3); padding: 8px 10px; border-radius: var(--radius-s, 8px); background: var(--surface-2); }
+	.totals dt { color: var(--text-3); font-size: var(--fs-sm); }
+	.totals dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+	.chosen { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+	.chosen li { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 6px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); font-size: var(--fs-sm); }
+	.chosen small { color: var(--text-3); }
+	.brazil-custom { border: 1px solid var(--line); border-radius: var(--radius-m); padding: 10px 12px; }
+	.brazil-custom summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; }
+	.brazil-custom summary small { font-weight: 400; }
+	.brazil-custom .league-options { margin-top: var(--sp-3); }
+	.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 	.screen {
 		position: relative;

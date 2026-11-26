@@ -9,9 +9,12 @@
 	import { reveal } from '#lib/motion/actions.ts';
 	import Crest from '#lib/ui/Crest.svelte';
 	import Icon from '#lib/ui/Icon.svelte';
-	import Segmented from '#lib/ui/Segmented.svelte';
+	import { careerPort } from '#lib/career/port.ts';
+	import CompetitionNav from '#lib/ui/world/CompetitionNav.svelte';
+	import { nativeCompetitions } from '#lib/world/competitions.ts';
 
 	let { data }: { data: CareerScreenData } = $props();
+	const port = careerPort();
 	const c = $derived(data.career);
 	const v = $derived(data.view);
 	const st = $derived(strengthMemo(data.manage.ctx));
@@ -20,6 +23,8 @@
 	const divisions = $derived(activeDivisions(v.league));
 	const div = $derived(divisions.includes(selected) ? selected : divisions[0] ?? v.division);
 	const brasil = $derived(v.world === 'brasil' && div !== 'liga-brasfc');
+	/** World Database: navegação agrupada por país/continente (a engine acrescenta ligas estrangeiras e continentais). */
+	const competitions = $derived(nativeCompetitions(v.league, !!v.cup));
 	const rule = $derived(brasil ? effectiveRule(v.league, div as BrasilDivision) : null);
 	const p1 = $derived(div === 'liga-brasfc' ? 38 : phaseOneLength(v.league, div));
 	const tables = $derived(phaseOneTables(v.league, div, v.results));
@@ -66,7 +71,9 @@
 		<h1 class="display">{DIVISION_LABELS[div]}</h1>
 		<p class="muted rule">{ruleText}</p>
 	</div>
-	{#if divisions.length > 1}<Segmented label="Divisão" value={div} onchange={(next) => (selected = next)} options={divisions.map((d) => ({ value: d, label: DIVISION_LABELS[d] }))} />{/if}
+	{#if competitions.length > 1}
+		<CompetitionNav {competitions} active={div} onselect={(id) => (selected = id as DivisionId)} href={(comp) => (comp.id === 'copa-do-brasil' ? port.href('copa') : null)} />
+	{/if}
 </div>
 
 {#if tables.length === 1}

@@ -1,13 +1,24 @@
 <script lang="ts">
 	import { IDENTIDADE } from '#lib/data/brasil.ts';
 	import { getClub, type Club } from '#lib/domain/clubs.ts';
+	import { page } from '$app/state';
 
 	/** Escudo genérico gerado a partir das cores do clube — nunca reproduz marcas reais. */
 	let { clubId, club: given, size = 40, title }: { clubId?: string; club?: Club; size?: number; title?: string } = $props();
 
 	const club = $derived(given ?? (clubId ? getClub(clubId) : undefined));
+	/** Fora de uma página SvelteKit (testes de componente, renderização isolada) não há pacote importado. */
+	function importedCrests(): Record<string, string> | undefined {
+		try {
+			return page.data?.crests as Record<string, string> | undefined;
+		} catch {
+			return undefined;
+		}
+	}
 	const entry = $derived(club && IDENTIDADE[club.id]);
-	const official = $derived(entry?.escudo);
+	/** Prioridade: escudo importado pelo jogador (pacote local) > escudo oficial com permissão > escudo gerado. */
+	const imported = $derived(club ? importedCrests()?.[club.id] : undefined);
+	const official = $derived(imported ? { path: `/crests/${imported}` } : entry?.escudo);
 	let failed = $state('');
 	const uid = $props.id();
 	/** Sigla clara em fundos escuros e escura em fundos claros (ex.: camisas brancas). */
@@ -26,7 +37,7 @@
 </script>
 
 {#if club && official && failed !== official.path}
-	<img class="crest" src={official.path} width={size} height={size} loading="lazy" decoding="async"
+	<img class="crest" class:imported={!!imported} src={official.path} width={size} height={size} loading="lazy" decoding="async"
 		alt={title ?? `Escudo do ${club.name}`} onerror={() => (failed = official.path)} />
 {:else if club}
 	<svg

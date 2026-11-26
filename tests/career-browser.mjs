@@ -94,8 +94,17 @@ try {
 		if (await ready.isVisible()) await ready.click();
 	};
 	await page.goto('/nova-carreira');
-	await page.getByRole('heading', { name: 'Escolha as ligas' }).waitFor();
-	await page.getByRole('checkbox', { name: /Série A/ }).uncheck();
+	await page.getByRole('heading', { name: 'Escolha os países' }).waitFor();
+	// World Database: país ativo = todas as divisões; sem país jogável, não avança.
+	const brazil = page.getByRole('checkbox', { name: /Brasil/ });
+	assert.equal(await brazil.getAttribute('aria-checked'), 'true');
+	await brazil.click();
+	assert(await button('Criar treinador').isDisabled());
+	await brazil.click();
+	// Ajuste fino do PR #32 continua: só a Série B, sem Copa.
+	await page.getByText('Ajustar divisões do Brasil').click();
+	for (const serie of [/Série A/, /Série C/, /Série D/]) await page.getByRole('checkbox', { name: serie }).uncheck();
+	await page.getByRole('checkbox', { name: /Série B/ }).uncheck();
 	assert(await button('Criar treinador').isDisabled());
 	await page.getByRole('checkbox', { name: /Série B/ }).check();
 	await page.getByRole('checkbox', { name: /Copa do Brasil/ }).uncheck();
