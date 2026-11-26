@@ -1,5 +1,5 @@
 import { CUP_AFTER_ROUND, CUP_ID, cupDate, cupFixtures, type CupState } from './cup.ts';
-import { roundDate, totalRounds, type LeagueState, type StoredRoundResult } from './league.ts';
+import { leagueRoundDate, totalRounds, type LeagueState, type StoredRoundResult } from './league.ts';
 import type { Fixture } from './season.ts';
 
 /**
@@ -16,7 +16,7 @@ export function seasonSteps(league: LeagueState, cup: CupState | null): Step[] {
 	const out: Step[] = [];
 	const n = totalRounds(league);
 	for (let r = 1; r <= n; r++) {
-		out.push({ kind: 'league', round: r, date: roundDate(league.season, r), key: `league:${r}` });
+		out.push({ kind: 'league', round: r, date: leagueRoundDate(league, r), key: `league:${r}` });
 	}
 	if (cup) for (let md = 1; md <= CUP_AFTER_ROUND.length; md++) {
 		out.push({ kind: 'cup', matchday: md, date: cupDate(league.season, md), key: `cup:${md}` });

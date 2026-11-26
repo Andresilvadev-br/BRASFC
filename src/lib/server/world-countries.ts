@@ -5,6 +5,7 @@ import { cupMatchCount } from '#lib/domain/cup.ts';
 import type { CountryCode, LoadEstimate, WorldCountry, WorldDivision } from '#lib/world/contract.ts';
 import { countryConfederation, countryFlag, countryName } from '#lib/world/countries.ts';
 import { newestWorldCatalog, openWorldCatalog } from './world-catalog.ts';
+import { worldDivisions } from './world-league.ts';
 
 /**
  * PROVISÓRIO (branch de interface): a engine (`feature/world-database-engine`) substitui esta função
@@ -62,6 +63,7 @@ export function worldCountries(catalogId: string | null = newestWorldCatalog() ?
 		const byCountry = new Map<CountryCode, WorldDivision[]>();
 		const matches = new Map<CountryCode, number>();
 		const verified = new Map<string, string[]>();
+		const planned = new Map(worldDivisions(catalogId).map((d) => [d.id, d]));
 		if (db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'membership_evidence'").get()) {
 			for (const row of db.prepare("SELECT competition, club FROM membership_evidence WHERE edition = '2026/27' ORDER BY competition, club").all()) {
 				const competition = String(row.competition);
@@ -76,7 +78,9 @@ export function worldCountries(catalogId: string | null = newestWorldCatalog() ?
 			let rules: CatalogRules = {};
 			try { rules = JSON.parse(String(row.rules)) as CatalogRules; } catch { /* regulamento ilegível: sem jogos estimados */ }
 			const list = byCountry.get(code) ?? [];
-			list.push({ id: `league/${code}/${row.division}`, country: code, level: Number(row.division), name: String(row.name ?? `${row.division}ª divisão`), clubs: verified.get(String(row.id)) ?? [], playable: false });
+			// Jogável = todos os inscritos 2026/27 conferidos e formato suportado (src/lib/server/world-league.ts).
+			const plan = planned.get(`league/${code}/${row.division}`);
+			list.push({ id: `league/${code}/${row.division}`, country: code, level: Number(row.division), name: plan?.name ?? String(row.name ?? `${row.division}ª divisão`), clubs: plan?.playable ? [...plan.verified] : verified.get(String(row.id)) ?? [], playable: !!plan?.playable });
 			byCountry.set(code, list);
 			matches.set(code, (matches.get(code) ?? 0) + rulesMatchCount(rules));
 		}

@@ -3,7 +3,7 @@ import { careerWorld, type Career } from './career.ts';
 import { requireClub } from './clubs.ts';
 import { DEFAULT_PLAN, sanitizePlan } from './drills.ts';
 import {
-	DIVISION_LABELS,
+	divisionLabel,
 	divisionOf,
 	divisionStandings,
 	groupStandings,
@@ -88,7 +88,7 @@ export function careerView(career: Career, results: StoredRoundResult[] = []) {
 		world,
 		league,
 		division,
-		divisionLabel: DIVISION_LABELS[division],
+		divisionLabel: divisionLabel(league, division),
 		squad,
 		fixtures,
 		clubFixtures: mineAll,

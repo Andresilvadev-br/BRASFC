@@ -127,7 +127,9 @@ export function worldCatalog(career: Pick<Career, 'data' | 'seed'>) {
 
 export function withWorldRoster(career: Pick<Career, 'data' | 'seed'>, ctx: RosterContext): RosterContext {
 	const catalog = worldCatalog(career);
-	return catalog ? { ...ctx, externalRoster: catalog.roster } : ctx;
+	// O save (mundo `mundo`) tem prioridade: os clubes da liga ficam iguais no servidor e no navegador.
+	const own = ctx.externalRoster;
+	return catalog ? { ...ctx, externalRoster: own ? (id) => own(id) ?? catalog.roster(id) : catalog.roster } : ctx;
 }
 
 /** Abertura somente leitura do catálogo instalado (usada pela lista de países da interface). */
