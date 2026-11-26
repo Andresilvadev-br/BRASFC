@@ -8,6 +8,7 @@
 	import Panel from '#lib/ui/Panel.svelte';
 	import ScreenHeader from '#lib/ui/ScreenHeader.svelte';
 	import DesktopDownload from '#lib/ui/desktop/DesktopDownload.svelte';
+	import CrestImporter from '#lib/ui/settings/CrestImporter.svelte';
 	import { desktop, openSavesFolder } from '#lib/stores/desktop.svelte.ts';
 
 
@@ -98,7 +99,11 @@
 			<Button href="/?rever=1" size="sm">Reproduzir abertura</Button>
 		</Panel>
 
-		<Panel title="Janela e aplicativo" icon="windows" index={4} class="wide">
+		<Panel title="Escudos" icon="trophy" index={4} class="wide">
+			<CrestImporter />
+		</Panel>
+
+		<Panel title="Janela e aplicativo" icon="windows" index={5} class="wide">
 			{#if desktop.active}
 				<p class="muted small modehint">
 					O BRASFC roda inteiro neste computador, sem internet. As carreiras ficam na pasta de saves do Windows e são preservadas nas atualizações.
