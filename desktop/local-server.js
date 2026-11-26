@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const net = require('node:net');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
+const { installBundledCatalog } = require('./world-catalog-install.js');
 
 /** Pasta do jogo embutido: no instalador fica em resources/app-offline; em desenvolvimento, o build do repositório. */
 function gameDir(app) {
@@ -67,6 +68,14 @@ async function startLocalServer(app, preferredPort) {
 		const dir = gameDir(app);
 		const saves = path.join(app.getPath('userData'), 'saves', 'pglite');
 		fs.mkdirSync(saves, { recursive: true });
+		// Catálogo mundial embutido → <dados>/saves/world-catalogs (o mesmo lugar que o jogo consulta).
+		try {
+			const bundled = app.isPackaged ? path.join(dir, 'world-catalogs') : path.join(__dirname, 'assets', 'world');
+			installBundledCatalog(bundled, path.join(path.dirname(saves), 'world-catalogs'));
+		} catch (error) {
+			// Sem o catálogo o jogo segue com a base brasileira; o erro fica no log do app.
+			console.error('[world-catalog]', error);
+		}
 		const port = preferredPort && (await portFree(preferredPort)) ? preferredPort : await randomPort();
 		Object.assign(process.env, {
 			NODE_ENV: 'production',

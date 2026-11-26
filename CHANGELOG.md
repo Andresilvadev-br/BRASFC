@@ -1,5 +1,12 @@
 # Novidades
 
+## 0.13.1 — Mundo pronto para jogar
+
+- Banco mundial (Brasfoot Next 2026.10, CC BY-SA 4.0, com as inscrições 2026/27 da engine) embutido no instalador e instalado sozinho em `<dados>/saves/world-catalogs` na primeira abertura: SHA-256 conferido, nunca sobrescreve um catálogo existente.
+- "Baixar escudos": o app baixa os pacotes oficiais do Brasfoot Next (≈17 MB, SHA-256 do índice conferido), extrai só os escudos, padroniza e instala; oferta única no menu e botão em Configurações › Escudos. Nenhum escudo é distribuído pelo BRASFC.
+- "Importar pasta" aceita a instalação do Brasfoot Next (`clubs-*.zip`) além de pastas soltas e Megapatch.
+- Créditos do banco mundial em Configurações. Sem migração de banco. Instalador Windows 1.6.3.
+
 ## 0.13.0 — LOCAL LEGACY
 
 - Jogo 100% offline no Windows: o aplicativo sobe o jogo embutido (arquivos do instalador, save PGlite na pasta do usuário) e nunca abre o site. A internet fica só para distribuição e atualização.

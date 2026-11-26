@@ -2,73 +2,71 @@
 	import { onMount } from 'svelte';
 	import { invalidate } from '$app/navigation';
 	import { api } from '#lib/api.ts';
-	import { processCrest, toBase64 } from '#lib/crests/process.ts';
+	import { downloadOfficialCrests, expandZips, importCrestFiles, type Coverage, type ImportReport } from '#lib/crests/importer.ts';
 	import { notify } from '#lib/stores/island.svelte.ts';
 	import Button from '../Button.svelte';
 	import Icon from '../Icon.svelte';
 
 	/**
-	 * Importação de escudos de uma pasta que o jogador já tem (Brasfoot Next, Megapatch ou pasta solta).
-	 * Tudo acontece neste computador: as imagens são lidas, padronizadas e gravadas na pasta de dados do jogo.
+	 * Escudos dos clubes. "Baixar escudos" busca os pacotes oficiais do Brasfoot Next e instala tudo sozinho;
+	 * "Importar pasta" aceita uma pasta que o jogador já tem (Brasfoot Next, inclusive os .zip da instalação,
+	 * Megapatch ou imagens soltas). O processamento acontece neste computador e o resultado fica na pasta do jogo.
 	 */
-	type Coverage = { native: { covered: number; total: number }; world: { covered: number; total: number } };
-	type Group = { club: string; candidates: Array<{ path: string; source: string }> };
+	let { compact = false, onstart, ondone }: { compact?: boolean; onstart?: () => void; ondone?: (report: ImportReport) => void } = $props();
 
 	let coverage = $state<Coverage | null>(null);
+	let catalog = $state<{ version: string; clubs: number; countries: number; players: number } | null>(null);
 	let busy = $state(false);
-	let progress = $state({ done: 0, total: 0 });
-	let report = $state<{ scanned: number; matched: number; saved: number; unreadable: number; rejected: number } | null>(null);
+	let stage = $state<{ label: string; done: number; total: number; bytes?: boolean } | null>(null);
+	let report = $state<ImportReport | null>(null);
 	let input = $state<HTMLInputElement>();
 
 	onMount(() => {
-		void api<{ coverage: Coverage }>('/api/crests').then((r) => (coverage = r.coverage)).catch(() => {});
+		void api<{ coverage: Coverage; catalog: typeof catalog }>('/api/crests').then((r) => { coverage = r.coverage; catalog = r.catalog; }).catch(() => {});
 	});
 
 	const pct = (c: { covered: number; total: number }) => (c.total ? Math.round((c.covered / c.total) * 100) : 0);
-	const BATCH = 24;
+	const mb = (n: number) => (n / 1024 / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+	const LABELS = { baixando: 'Baixando escudos', lendo: 'Abrindo pacotes', padronizando: 'Padronizando' } as const;
+	const progress = (s: keyof typeof LABELS, done: number, total: number) => (stage = { label: LABELS[s], done, total, bytes: s === 'baixando' });
+
+	async function finish(files: Map<string, Blob>, origin: string) {
+		report = await importCrestFiles(files, progress, (c) => (coverage = c));
+		await invalidate('app:crests');
+		notify({ icon: 'check', tone: 'success', title: 'Escudos instalados', detail: `${report.saved} clubes com escudo · ${origin}.` });
+		ondone?.(report);
+	}
+
+	async function download() {
+		if (busy) return;
+		busy = true;
+		report = null;
+		onstart?.();
+		try {
+			const { files, version } = await downloadOfficialCrests(progress);
+			await finish(files, `Brasfoot Next ${version}`);
+		} catch (e) {
+			notify({ icon: 'alert', tone: 'error', title: 'Download interrompido', detail: e instanceof Error ? e.message : 'Verifique a internet e tente de novo.', duration: 8000 });
+		} finally {
+			busy = false;
+			stage = null;
+		}
+	}
 
 	async function choose(event: Event) {
-		const files = [...((event.currentTarget as HTMLInputElement).files ?? [])];
+		const picked = [...((event.currentTarget as HTMLInputElement).files ?? [])];
 		(event.currentTarget as HTMLInputElement).value = '';
-		if (!files.length || busy) return;
+		if (!picked.length || busy) return;
 		busy = true;
 		report = null;
 		try {
-			const byPath = new Map(files.map((f) => [f.webkitRelativePath || f.name, f]));
-			const { groups, scanned } = await api<{ groups: Group[]; scanned: number }>('/api/crests', { body: { action: 'match', paths: [...byPath.keys()] } });
-			progress = { done: 0, total: groups.length };
-			let saved = 0, unreadable = 0, rejected = 0, batch: Array<{ club: string; source: string; data: string }> = [];
-			const flush = async () => {
-				if (!batch.length) return;
-				const r = await api<{ saved: number; rejected: number; coverage: Coverage }>('/api/crests', { body: { action: 'save', items: batch } });
-				saved += r.saved;
-				rejected += r.rejected;
-				coverage = r.coverage;
-				batch = [];
-			};
-			for (const group of groups) {
-				// Entre as fontes disponíveis, fica a de maior arte visível (melhor resolução); empate segue a ordem do servidor.
-				let best: { data: Uint8Array; area: number; source: string } | null = null;
-				for (const candidate of group.candidates) {
-					const file = byPath.get(candidate.path);
-					const out = file ? await processCrest(file) : null;
-					if (!out) continue;
-					const area = out.box.w * out.box.h;
-					if (!best || area > best.area) best = { data: out.data, area, source: candidate.source };
-				}
-				if (best) batch.push({ club: group.club, source: best.source, data: toBase64(best.data) });
-				else unreadable++;
-				progress = { done: progress.done + 1, total: groups.length };
-				if (batch.length >= BATCH) await flush();
-			}
-			await flush();
-			report = { scanned, matched: groups.length, saved, unreadable, rejected };
-			await invalidate('app:crests');
-			notify({ icon: 'check', tone: 'success', title: 'Escudos importados', detail: `${saved} clubes com escudo padronizado.` });
+			const files = await expandZips(new Map(picked.map((f) => [f.webkitRelativePath || f.name, f])), progress);
+			await finish(files, 'pasta local');
 		} catch (e) {
 			notify({ icon: 'alert', tone: 'error', title: 'Importação interrompida', detail: e instanceof Error ? e.message : 'Tente novamente.' });
 		} finally {
 			busy = false;
+			stage = null;
 		}
 	}
 
@@ -87,10 +85,13 @@
 </script>
 
 <div class="importer">
-	<p class="muted small lead">
-		Escolha a pasta do <b>Brasfoot Next</b> (banco <code>database</code>), do <b>Megapatch</b> ou uma pasta com imagens nomeadas pelo clube.
-		Os escudos são padronizados aqui mesmo, sem internet, e ficam só neste computador. Clubes sem imagem continuam com o escudo gerado pelas cores.
-	</p>
+	{#if !compact}
+		<p class="muted small lead">
+			<b>Baixar escudos</b> busca o banco oficial do <b>Brasfoot Next</b> (cerca de 17 MB) e instala tudo sozinho. A internet só é usada nesse momento.
+			Também dá para importar uma pasta que você já tenha (Brasfoot Next, Megapatch ou imagens com o nome do clube).
+			Clubes sem imagem continuam com o escudo gerado pelas cores.
+		</p>
+	{/if}
 
 	{#if coverage}
 		<dl class="cover">
@@ -100,23 +101,34 @@
 	{/if}
 
 	<div class="row">
-		<input bind:this={input} type="file" class="hidden" webkitdirectory multiple accept="image/*" onchange={choose} aria-label="Pasta de escudos" />
-		<Button variant="primary" icon="download" loading={busy} disabled={busy} onclick={() => input?.click()}>Importar pasta de escudos</Button>
-		{#if coverage && (coverage.native.covered || coverage.world.covered)}
-			<Button variant="ghost" icon="trash" disabled={busy} onclick={clear}>Remover escudos importados</Button>
+		<input bind:this={input} type="file" class="hidden" webkitdirectory multiple onchange={choose} aria-label="Pasta de escudos" />
+		<Button variant="primary" icon="download" loading={busy} disabled={busy} onclick={download}>Baixar escudos</Button>
+		{#if !compact}
+			<Button variant="secondary" icon="save" disabled={busy} onclick={() => input?.click()}>Importar pasta</Button>
+			{#if coverage && (coverage.native.covered || coverage.world.covered)}
+				<Button variant="ghost" icon="trash" disabled={busy} onclick={clear}>Remover escudos</Button>
+			{/if}
 		{/if}
 	</div>
 
-	{#if busy && progress.total}
-		<div class="progress" role="progressbar" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.done} aria-label="Padronizando escudos">
-			<span class="bar"><i style="width:{(progress.done / progress.total) * 100}%"></i></span>
-			<small>{progress.done} de {progress.total} clubes</small>
+	{#if busy && stage && stage.total}
+		<div class="progress" role="progressbar" aria-valuemin={0} aria-valuemax={stage.total} aria-valuenow={stage.done} aria-label={stage.label}>
+			<span class="bar"><i style="width:{Math.min(100, (stage.done / stage.total) * 100)}%"></i></span>
+			<small>{stage.label} · {stage.bytes ? `${mb(stage.done)} de ${mb(stage.total)} MB` : `${stage.done} de ${stage.total}`}</small>
 		</div>
+	{/if}
+
+	{#if catalog && !compact}
+		<p class="muted small credit">
+			Banco mundial instalado: {catalog.clubs.toLocaleString('pt-BR')} clubes de {catalog.countries} países e {catalog.players.toLocaleString('pt-BR')} jogadores.
+			Dados do <a href="https://github.com/Brasfoot-Next/database" target="_blank" rel="noopener">Brasfoot Next</a>{catalog.version ? ` ${catalog.version}` : ''}, licença
+			<a href="https://creativecommons.org/licenses/by-sa/4.0/deed.pt-br" target="_blank" rel="noopener">CC BY-SA 4.0</a>. Escudos e marcas pertencem aos respectivos clubes.
+		</p>
 	{/if}
 
 	{#if report}
 		<p class="result small" role="status">
-			<Icon name="check" size={14} /> {report.scanned} arquivos lidos · {report.matched} clubes reconhecidos · <b>{report.saved} escudos salvos</b>
+			<Icon name="check" size={14} /> {report.matched} clubes reconhecidos · <b>{report.saved} escudos instalados</b>
 			{#if report.unreadable} · {report.unreadable} sem imagem utilizável{/if}{#if report.rejected} · {report.rejected} recusados{/if}
 		</p>
 	{/if}
@@ -124,8 +136,8 @@
 
 <style>
 	.importer { display: grid; gap: var(--sp-3); }
-	.lead { margin: 0; }
-	code { font-size: 0.92em; }
+	.lead, .credit { margin: 0; }
+	.credit a { color: var(--emerald-strong); }
 	.hidden { display: none; }
 	.row { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 	.cover { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); margin: 0; }
