@@ -4,15 +4,13 @@
 	import { api, ApiError } from '#lib/api.ts';
 	import { DEFAULT_APPEARANCE, type Appearance } from '#lib/domain/appearance.ts';
 	import AppearanceEditor from '#lib/ui/career/AppearanceEditor.svelte';
-	import { careerStart, type Career } from '#lib/domain/career.ts';
+	import type { Career } from '#lib/domain/career.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import Segmented from '#lib/ui/Segmented.svelte';
-	import { initialLeague, type DivisionId } from '#lib/domain/league.ts';
-	import { catalogClub, ROSTER_CATALOG } from '#lib/data/roster-catalog.ts';
-	import { initialClubState } from '#lib/domain/management.ts';
-	import { clubLineup, initialClubTactic } from '#lib/domain/club-selection.ts';
-	import { careerBaseSquad } from '#lib/domain/squad.ts';
-	import ClubSelector from '#lib/ui/career/ClubSelector.svelte';
+	import { BRASIL_DIVISIONS, DIVISION_LABELS, divisionMatchCount, initialLeague, type BrasilDivision, type DivisionId } from '#lib/domain/league.ts';
+	import { cupMatchCount, initialCup } from '#lib/domain/cup.ts';
+	import type { RosterCatalogId } from '#lib/data/roster-catalog.ts';
+	import type { ClubLineup } from '#lib/domain/club-selection.ts';
 	import { coachKit } from '#lib/pixel/kits.ts';
 	import { notify, setIslandContext } from '#lib/stores/island.svelte.ts';
 	import Button from '#lib/ui/Button.svelte';
@@ -26,19 +24,19 @@
 	let { data }: PageProps = $props();
 
 	// Dev 0.12: o BRASFC tem uma única carreira — a de treinador.
-	type Step = 'perfil' | 'clube';
+	type Step = 'ligas' | 'perfil' | 'clube';
 	const STEPS: Array<{ id: Step; label: string }> = [
+		{ id: 'ligas', label: 'Ligas' },
 		{ id: 'perfil', label: 'Treinador' },
 		{ id: 'clube', label: 'Clube' }
 	];
 	const mode = 'coach' as const;
 
-	let step = $state<Step>('perfil');
+	let step = $state<Step>('ligas');
 	// 0.13: carreira local com vários treinadores — cada um cria o seu e escolhe o clube, em sequência.
 	type Draft = { personName: string; appearance: Appearance; clubId: string };
 	let drafts = $state<Draft[]>([]);
 	let addAnother = $state(false);
-	const MAX_COACHES = 8;
 	const coachNumber = $derived(drafts.length + 1);
 	/** clubes já escolhidos por outro treinador desta carreira */
 	const blocked = $derived(Object.fromEntries(drafts.map((d) => [d.clubId, `Já escolhido por ${d.personName}. Cada treinador comanda um clube diferente.`])));
@@ -52,17 +50,51 @@
 	const stepIndex = $derived(STEPS.findIndex((s) => s.id === step));
 	const previewKit = $derived(coachKit(clubId ?? undefined));
 	let world = $state<'brasil' | 'brasfc'>('brasil');
-	const league = $derived(initialLeague(world, careerStart(world).season));
-	const selectionClubs = $derived(Object.entries(league.divisions).flatMap(([division, ids]) =>
-		ids.map((id) => ({ id, division: division as DivisionId }))));
+	let divisions = $state<BrasilDivision[]>(['serie-a']);
+	let includeCup = $state(true);
+	const league = $derived(initialLeague(world, data.seasons[world]));
+	const available = $derived(world === 'brasil' ? BRASIL_DIVISIONS : ['liga-brasfc'] as const);
+	const selected = $derived<readonly DivisionId[]>(world === 'brasil' ? divisions : available);
+	const selectionClubs = $derived(selected.flatMap((division) => (league.divisions[division] ?? []).map((id) => ({ id, division }))));
+	const canAddCoach = $derived(coachNumber < data.maxCoaches && coachNumber < selectionClubs.length);
+	const cupMatches = $derived(world === 'brasil' && includeCup ? cupMatchCount(initialCup(league.season)) : 0);
+	const matches = $derived(selected.reduce((sum, div) => sum + divisionMatchCount(league, div), cupMatches));
+	const impact = $derived(matches <= 550 ? 'Leve' : matches <= 1100 ? 'Moderado' : 'Alto');
 	const clubDivision = $derived(selectionClubs.find((entry) => entry.id === clubId)?.division);
-	const catalog = $derived(world === 'brasil' ? ROSTER_CATALOG : undefined);
-	const rosterCache = new Map<string, ReturnType<typeof clubLineup>>();
-	const lineup = $derived(step === 'clube' && clubId ? previewClub(clubId, data.previewSeed, catalog) : undefined);
-	const coach = $derived(clubId ? catalogClub(catalog, clubId)?.coach : undefined);
-	const finances = $derived(clubId && step === 'clube' ? initialClubState(data.previewSeed, clubId, clubDivision ?? null, league.season) : undefined);
+	let tools = $state.raw<Awaited<ReturnType<typeof clubTools>>>();
+	let loadingClubs = $state(false);
+	let clubLoadError = $state(false);
+	const catalog = $derived(world === 'brasil' ? tools?.ROSTER_CATALOG : undefined);
+	const rosterCache = new Map<string, ClubLineup>();
+	const lineup = $derived(step === 'clube' && clubId && tools ? previewClub(clubId, data.previewSeed, catalog, tools) : undefined);
+	const coach = $derived(step === 'clube' && clubId ? tools?.catalogClub(catalog, clubId)?.coach : undefined);
+	const finances = $derived(clubId && step === 'clube' ? tools?.initialClubState(data.previewSeed, clubId, clubDivision ?? null, league.season) : undefined);
 
-	function previewClub(id: string, seed: number, version: typeof catalog) {
+	async function clubTools() {
+		const [component, catalog, management, lineup, squad] = await Promise.all([
+			import('#lib/ui/career/ClubSelector.svelte'),
+			import('#lib/data/roster-catalog.ts'),
+			import('#lib/domain/management.ts'),
+			import('#lib/domain/club-selection.ts'),
+			import('#lib/domain/squad.ts')
+		]);
+		return { Selector: component.default, catalogClub: catalog.catalogClub, ROSTER_CATALOG: catalog.ROSTER_CATALOG, initialClubState: management.initialClubState, clubLineup: lineup.clubLineup, initialClubTactic: lineup.initialClubTactic, careerBaseSquad: squad.careerBaseSquad };
+	}
+
+	async function loadClubs() {
+		if (tools || loadingClubs) return;
+		loadingClubs = true;
+		clubLoadError = false;
+		try {
+			tools = await clubTools();
+		} catch {
+			clubLoadError = true;
+		} finally {
+			loadingClubs = false;
+		}
+	}
+
+	function previewClub(id: string, seed: number, version: RosterCatalogId | undefined, { careerBaseSquad, clubLineup, initialClubTactic, catalogClub }: NonNullable<typeof tools>) {
 		const key = `${id}:${seed}:${version}`;
 		let preview = rosterCache.get(key);
 		if (!preview) {
@@ -75,6 +107,13 @@
 
 	onMount(() => setIslandContext('Nova carreira'));
 
+	function toggleDivision(division: DivisionId) {
+		if (division === 'liga-brasfc') return;
+		divisions = divisions.includes(division) ? divisions.filter((id) => id !== division) : [...divisions, division];
+		if (clubId && !selectionClubs.some((entry) => entry.id === clubId)) clubId = null;
+		errors = {};
+	}
+
 	function validateProfile(): boolean {
 		const name = personName.trim();
 		errors = {};
@@ -84,7 +123,11 @@
 	}
 
 	function next() {
-		if (step === 'perfil' && validateProfile()) step = 'clube';
+		if (step === 'ligas' && selected.length) step = 'perfil';
+		else if (step === 'perfil' && validateProfile()) {
+			step = 'clube';
+			void loadClubs();
+		}
 	}
 
 	function back() {
@@ -98,12 +141,13 @@
 			clubId = last.clubId;
 			addAnother = true;
 			step = 'clube';
-		} else void goto('/menu');
+		} else if (step === 'perfil') step = 'ligas';
+		else void goto('/menu');
 	}
 
 	async function create() {
-		if (!clubId || saving || created || blocked[clubId]) return;
-		if (addAnother && coachNumber < MAX_COACHES) {
+		if (!clubId || saving || created || blocked[clubId] || !clubDivision) return;
+		if (addAnother && canAddCoach) {
 			// Guarda este treinador e recomeça o fluxo para o próximo (mesmo mundo, outro clube).
 			drafts = [...drafts, { personName: personName.trim(), appearance: { ...appearance }, clubId }];
 			notify({ icon: 'check', tone: 'success', title: `Treinador ${drafts.length} confirmado`, detail: `${drafts.at(-1)!.personName} · ${getClub(clubId)?.name}` });
@@ -120,7 +164,7 @@
 		try {
 			const [first, ...others] = all;
 			const res = await api<{ career: Career }>('/api/careers', {
-				body: { mode, personName: first.personName, clubId: first.clubId, appearance: first.appearance, world, previewSeed: data.previewSeed, ...(others.length ? { others: others.map((o) => ({ personName: o.personName, clubId: o.clubId, appearance: o.appearance })) } : {}) }
+				body: { mode, personName: first.personName, clubId: first.clubId, appearance: first.appearance, world, leagueSelection: { divisions: [...selected], cup: world === 'brasil' && includeCup }, previewSeed: data.previewSeed, ...(others.length ? { others } : {}) }
 			});
 			created = res.career;
 		} catch (e) {
@@ -159,7 +203,7 @@
 	<header class="top" data-umx-enter>
 		<button class="back" onclick={back} data-umx-press>
 			<Icon name="arrowLeft" />
-			<span>{step === 'perfil' ? 'Menu' : 'Voltar'}</span>
+			<span>{step === 'ligas' ? 'Menu' : 'Voltar'}</span>
 		</button>
 		<Logo size={30} />
 		<ol class="steps" aria-label="Etapas">
@@ -173,10 +217,48 @@
 	</header>
 
 	<main class="body">
-		{#if step === 'perfil'}
+		{#if step === 'ligas'}
+			<div class="intro" data-umx-enter>
+				<span class="eyebrow">Passo 1 de 3 · Universo da carreira</span>
+				<h1>Escolha as ligas</h1>
+				<p class="muted">As divisões selecionadas terão calendário e simulação completa para todos os treinadores. Os demais clubes continuam no mercado.</p>
+			</div>
+			<div class="split league-setup">
+				<div class="form" data-umx-enter>
+					<Segmented label="País ou universo" bind:value={world} onchange={() => (clubId = null)}
+						options={[{ value: 'brasil', label: 'Brasil' }, { value: 'brasfc', label: 'Universo fictício' }]} />
+					<fieldset class="league-options">
+						<legend>{world === 'brasil' ? 'Campeonato Brasileiro' : 'Liga fictícia'}</legend>
+						{#each available as division (division)}
+							<label class="league-option">
+								<input type="checkbox" checked={selected.includes(division)} disabled={world === 'brasfc'} onchange={() => toggleDivision(division)} />
+								<span>{DIVISION_LABELS[division]}</span>
+								<small>{league.divisions[division]?.length} clubes</small>
+							</label>
+						{/each}
+					</fieldset>
+					{#if world === 'brasil'}
+						<label class="league-option">
+							<input type="checkbox" bind:checked={includeCup} />
+							<span>Copa do Brasil</span>
+							<small>Inclui classificados de divisões inativas</small>
+						</label>
+					{/if}
+				</div>
+				<aside class="form" aria-live="polite" data-umx-enter>
+					<span class="eyebrow">Impacto estimado · {impact}</span>
+					<strong>{matches.toLocaleString('pt-BR')} partidas na temporada</strong>
+					<p class="muted">{selectionClubs.length} clubes disponíveis para começar. Mais jogos ativos aumentam o tempo de processamento das rodadas.</p>
+					{#if !selected.length}<p class="err">Selecione ao menos uma divisão para continuar.</p>{/if}
+					<div class="actions">
+						<Button variant="primary" size="lg" iconRight="arrowRight" disabled={!selected.length} onclick={next}>Criar treinador</Button>
+					</div>
+				</aside>
+			</div>
+		{:else if step === 'perfil'}
 			<div class="split">
 				<div class="form" data-umx-enter>
-					<span class="eyebrow">Passo 1 de 2 · {drafts.length ? `Treinador ${coachNumber}` : 'Carreira de treinador'}</span>
+					<span class="eyebrow">Passo 2 de 3 · {drafts.length ? `Treinador ${coachNumber}` : 'Carreira de treinador'}</span>
 					<h1>{drafts.length ? `Quem é o treinador ${coachNumber}?` : 'Quem é o novo treinador?'}</h1>
 					{#if drafts.length}
 						<ul class="roster" aria-label="Treinadores confirmados">
@@ -215,22 +297,22 @@
 			</div>
 		{:else}
 			<div class="intro" data-umx-enter>
+				<span class="eyebrow">Passo 3 de 3 · Divisões ativas</span>
 				<h1>{drafts.length ? `Clube do treinador ${coachNumber} · ${personName.trim()}` : 'Escolha seu clube'}</h1>
 			</div>
 			{#key world}
-				<ClubSelector clubs={selectionClubs} bind:clubId {lineup} {coach} {blocked}
-					season={league.season} transferBudget={finances?.transferBudget} wageBudget={finances?.wageBudget} busy={saving || !!created}
-					prefetch={(ids) => ids.forEach((id) => previewClub(id, data.previewSeed, catalog))}>
-					{#snippet top()}
-						{#if !drafts.length}
-							<Segmented label="Base de clubes" bind:value={world} onchange={() => (clubId = null)}
-								options={[{ value: 'brasil', label: 'Clubes nacionais' }, { value: 'brasfc', label: 'Liga fictícia' }]} />
-						{/if}
-					{/snippet}
-				</ClubSelector>
+				{#if tools}
+					<tools.Selector clubs={selectionClubs} bind:clubId {lineup} {coach} {blocked}
+						season={league.season} transferBudget={finances?.transferBudget} wageBudget={finances?.wageBudget} busy={saving || !!created} />
+				{:else if clubLoadError}
+					<p class="err" role="alert">Não foi possível carregar os clubes.</p>
+					<Button onclick={loadClubs}>Tentar novamente</Button>
+				{:else}
+					<p class="muted" role="status">Carregando os clubes…</p>
+				{/if}
 			{/key}
 			<div class="actions finish">
-				{#if coachNumber < MAX_COACHES}
+				{#if canAddCoach}
 					<label class="another">
 						<input type="checkbox" bind:checked={addAnother} disabled={saving} />
 						<span><strong>Adicionar outro treinador</strong><small>Carreira compartilhada no mesmo computador, em turnos</small></span>
@@ -265,6 +347,13 @@
 	.another input { width: 18px; height: 18px; accent-color: var(--emerald); }
 	.another span { display: grid; line-height: 1.2; }
 	.another small { color: var(--text-3); font-size: var(--fs-xs, 12px); }
+	.league-options { display: grid; gap: var(--sp-2); min-width: 0; border: 0; margin: 0; padding: 0; }
+	.league-options legend { font-weight: 700; margin-bottom: var(--sp-3); }
+	.league-option { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, auto); align-items: center; gap: var(--sp-3); padding: var(--sp-3); border: 1px solid var(--line-strong); border-radius: var(--radius-m); }
+	.league-option:has(:checked) { border-color: var(--emerald-line); background: var(--emerald-soft); }
+	.league-option input { width: 18px; height: 18px; padding: 0; accent-color: var(--emerald); }
+	.league-option small { color: var(--text-3); text-align: right; }
+	.league-setup aside p { margin: 0; }
 
 	.screen {
 		position: relative;

@@ -15,6 +15,7 @@ export const MARKET_STATUS: Record<MarketStatus, string> = {
 };
 
 export interface MarketFilters {
+	world?: boolean;
 	q?: string;
 	position?: Position;
 	secondary?: Position;
@@ -83,6 +84,7 @@ export interface MarketProfile extends MarketAthlete {
 }
 
 export interface MarketResults {
+	worldAvailable?: boolean;
 	rows: MarketAthlete[];
 	total: number;
 	pages: number;

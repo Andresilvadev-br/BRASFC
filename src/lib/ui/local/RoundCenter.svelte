@@ -5,7 +5,7 @@
 	import type { Career } from '#lib/domain/career.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { DIVISION_LABELS, type DivisionId } from '#lib/domain/league.ts';
-	import { matchFromShared, type SharedSetup } from '#lib/domain/matchday.ts';
+	import { HIGHLIGHT_LABELS, matchFromShared, matchHighlight, type MatchHighlight, type SharedSetup } from '#lib/domain/matchday.ts';
 	import { liveCoaches } from '#lib/domain/turns.ts';
 	import type { Match } from '#lib/engine/match.ts';
 	import type { Side } from '#lib/engine/types.ts';
@@ -15,6 +15,7 @@
 	import Crest from '../Crest.svelte';
 	import Icon from '../Icon.svelte';
 	import Segmented from '../Segmented.svelte';
+	import Modal from '../Modal.svelte';
 	import TacticCommand from './TacticCommand.svelte';
 
 	/**
@@ -23,15 +24,15 @@
 	 * motor completo aqui mesmo (com as decisões deles); os demais jogos já foram simulados pelo motor
 	 * e os lances aparecem no minuto em que aconteceram. Nada é sorteado na tela.
 	 */
-	let { career, onfinish }: { career: Career; onfinish: (out: { round: number; coaches?: Array<{ index: number; match: { homeGoals: number; awayGoals: number } | null }> }) => void } = $props();
+	type RoundReport = { round: number; coaches?: Array<{ index: number; match: { homeGoals: number; awayGoals: number } | null }> };
+	let { career, onfinish }: { career: Career; onfinish: (out: RoundReport) => void } = $props();
 
 	type Venue = { stadium: string; attendance: number | null };
-	type Ev = { side: Side; minute: number; player: string; assist?: string };
-	type Inc = Ev & { kind: 'yellow' | 'red' | 'injury' };
+	type Other = { competition: string; home: string; away: string; homeGoals: number; awayGoals: number; quick: boolean; venue: Venue; highlights: MatchHighlight[] };
 	type Preview = {
 		version: number; step: string; kind: 'league' | 'cup'; round: number; date: string;
 		matches: Array<{ key: string; competition: string; home: string; away: string; venue: Venue; coaches: Array<{ index: number; side: Side; name: string }>; setup: SharedSetup }>;
-		others: Array<{ competition: string; home: string; away: string; homeGoals: number; awayGoals: number; quick: boolean; venue: Venue; goals: Ev[]; incidents: Inc[] }>;
+		others: Other[];
 	};
 	type Live = { key: string; competition: string; home: string; away: string; venue: Venue; coaches: Array<{ index: number; side: Side; name: string }>; match: Match; seen: number };
 	type Intervention = { live: Live; side: Side; coach: string; kind: 'red' | 'injury'; player: string; minute: string; secondYellow: boolean };
@@ -45,6 +46,33 @@
 	const HALF = 45 * 60;
 	const FULL = 90 * 60;
 
+	class Scoreline {
+		hg = $state(0);
+		ag = $state(0);
+		status = $state('');
+		visible = $state(0);
+		cursor = 0;
+		history: MatchHighlight[];
+		readonly game: Live | Other;
+		readonly key: string;
+		readonly live?: Live;
+		readonly other?: Other;
+		constructor(game: Live | Other, key: string, live?: Live, other?: Other) {
+			this.game = game;
+			this.key = key;
+			this.live = live;
+			this.other = other;
+			this.history = other?.highlights ?? [];
+			if (other?.quick) this.status = 'No apito final';
+		}
+		get latest() { return this.history[this.visible - 1]; }
+		get home() { return this.game.home; }
+		get away() { return this.game.away; }
+		get venue() { return this.game.venue; }
+	}
+	let rows = $state.raw<Scoreline[]>([]);
+	let details = $state.raw<Scoreline>();
+	let detailsOpen = $state(false);
 	let data = $state.raw<Preview | null>(null);
 	let lives: Live[] = [];
 	let loadError = $state('');
@@ -60,6 +88,7 @@
 	let halftime = $state<Array<{ live: Live; side: Side; coach: string; index: number }>>([]);
 	let halftimeDone = $state<number[]>([]);
 	let saveError = $state('');
+	let saved = $state.raw<RoundReport>();
 	const coaches = $derived(liveCoaches(career));
 	const tps = $derived(SPEEDS.find((s) => s.value === speed)!.tps);
 
@@ -67,6 +96,11 @@
 		try {
 			const res = await api<Preview>(`/api/careers/${career.id}/rodada`);
 			lives = res.matches.map((m) => ({ ...m, match: matchFromShared(m.setup), seen: 0 }));
+			rows = [
+				...lives.map((game) => new Scoreline(game, game.key, game)),
+				...res.others.map((game) => new Scoreline(game, `${game.competition}:${game.home}:${game.away}`, undefined, game))
+			];
+			flushScoreboard();
 			data = res;
 			markDirty('rodada', 'Rodada em andamento (os resultados só valem quando forem registrados)');
 		} catch (e) {
@@ -92,6 +126,7 @@
 		}
 		if (now - lastUi > 150) {
 			lastUi = now;
+			flushScoreboard();
 			version++;
 		}
 	}
@@ -144,6 +179,7 @@
 
 	function startInterval() {
 		phase = 'interval';
+		flushScoreboard();
 		halftimeDone = [];
 		// Ordem de criação dos treinadores; só quem tem partida em andamento.
 		const order = lives.flatMap((l) => l.coaches.filter(() => !l.match.finished).map((c) => ({ live: l, side: c.side, coach: c.name, index: c.index })));
@@ -162,6 +198,7 @@
 
 	function finish() {
 		phase = 'done';
+		flushScoreboard();
 		version++;
 		void save();
 	}
@@ -177,6 +214,7 @@
 	function closeCommand(confirmed: boolean) {
 		const c = command;
 		command = null;
+		flushScoreboard();
 		version++;
 		if (!c) return;
 		if (phase === 'interval') {
@@ -207,7 +245,7 @@
 			matches[l.key] = l.match.result().decisions.filter((d) => sides.includes(d.side) && !d.rejected);
 		}
 		try {
-			const res = await api<{ round: number; coaches?: Array<{ index: number; match: { homeGoals: number; awayGoals: number } | null }> }>(`/api/careers/${career.id}/matches`, { body: { version: data.version, step: data.step, matches } });
+			const res = await api<RoundReport>(`/api/careers/${career.id}/matches`, { body: { version: data.version, season: career.season, step: data.step, matches } });
 			for (const l of lives) {
 				const official = res.coaches?.find((c) => l.coaches.some((x) => x.index === c.index))?.match;
 				const local = l.match.result();
@@ -215,10 +253,10 @@
 					notify({ icon: 'alert', tone: 'warning', title: 'Resultado conferido no save', detail: `${getClub(l.home)?.short} × ${getClub(l.away)?.short}: vale o placar oficial ${official.homeGoals}–${official.awayGoals}.` });
 				}
 			}
+			saved = res;
 			phase = 'saved';
 			markClean('rodada');
 			notify({ icon: 'check', tone: 'success', title: 'Rodada registrada', detail: 'O controle volta ao primeiro treinador.' });
-			onfinish(res);
 		} catch (e) {
 			phase = 'error';
 			saveError = e instanceof ApiError || e instanceof Error ? e.message : 'Não foi possível registrar a rodada.';
@@ -239,6 +277,7 @@
 		while (guard++ < 12_000 && !command && !queue.length && phase !== 'interval' && phase !== 'done') {
 			if (!advance()) break;
 		}
+		flushScoreboard();
 		version++;
 	}
 
@@ -260,31 +299,45 @@
 		const s = clockTick % 60;
 		return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 	});
-	const reveal = (m: number) => (phase === 'done' || phase === 'saving' || phase === 'saved' ? Infinity : phase === 'interval' || (phase === 'first' && clockTick >= HALF) ? 45 : minute(clockTick));
-	const humanClubs = $derived(new Set(lives.flatMap((l) => l.coaches.map((c) => (c.side === 'home' ? l.home : l.away)))));
-	type Row = { key: string; competition: string; home: string; away: string; venue: Venue; hg: number; ag: number; goals: Ev[]; incidents: Inc[]; live?: Live; quick?: boolean; status: string };
-	const rows = $derived.by<Row[]>(() => {
-		void version;
-		if (!data) return [];
-		const out: Row[] = [];
-		for (const l of lives) {
-			const m = l.match;
-			const name = (id?: string) => (id ? (m.player(id)?.shortName ?? '—') : '—');
-			const goals = m.events.filter((e) => e.type === 'goal').map((e) => ({ side: e.side!, minute: minute(e.tick), player: name(e.player), ...(e.other ? { assist: name(e.other) } : {}) }));
-			const incidents = m.events.filter((e) => e.type === 'yellow' || e.type === 'red' || e.type === 'injury').map((e) => ({ kind: e.type as Inc['kind'], side: e.side!, minute: minute(e.tick), player: name(e.player) }));
-			out.push({ key: l.key, competition: l.competition, home: l.home, away: l.away, venue: l.venue, hg: m.score.home, ag: m.score.away, goals, incidents, live: l, status: m.finished ? 'Fim' : m.phase === 'half_time' ? 'Int.' : m.clock() });
+	function flushScoreboard() {
+		const finished = phase === 'done' || phase === 'saving' || phase === 'saved';
+		for (const row of rows) {
+			const match = row.live?.match;
+			if (match) {
+				for (; row.cursor < match.events.length; row.cursor++) {
+					const event = matchHighlight(match.events[row.cursor]);
+					if (!event) continue;
+					row.history.push({ ...event, player: event.player && match.player(event.player)?.shortName, other: event.other && match.player(event.other)?.shortName });
+				}
+				row.visible = row.history.length;
+				row.hg = match.score.home;
+				row.ag = match.score.away;
+				row.status = match.finished ? 'Fim' : match.phase === 'half_time' ? 'Int.' : match.clock();
+			} else if (row.other?.quick) {
+				if (finished) {
+					row.hg = row.other.homeGoals;
+					row.ag = row.other.awayGoals;
+					row.status = 'Fim';
+				}
+			} else {
+				while (row.cursor < row.history.length && (finished || row.history[row.cursor].tick <= clockTick)) {
+					const event = row.history[row.cursor++];
+					if (event.kind === 'goal') event.side === 'home' ? row.hg++ : row.ag++;
+				}
+				row.visible = row.cursor;
+			}
 		}
-		for (const o of data.others) {
-			const r = reveal(0);
-			const goals = o.goals.filter((g) => Math.min(g.minute, g.minute < 45 ? 44 : 89) < r || r === Infinity);
-			const shown = (side: Side) => (o.quick ? (r === Infinity ? (side === 'home' ? o.homeGoals : o.awayGoals) : 0) : goals.filter((g) => g.side === side).length);
-			out.push({ key: `${o.competition}:${o.home}:${o.away}`, competition: o.competition, home: o.home, away: o.away, venue: o.venue, hg: shown('home'), ag: shown('away'), goals, incidents: o.incidents.filter((x) => x.minute < r || r === Infinity), quick: o.quick, status: o.quick && r !== Infinity ? 'no apito final' : '' });
-		}
-		return out;
-	});
+	}
+	const eventText = (event: MatchHighlight) => [HIGHLIGHT_LABELS[event.kind], event.player, event.kind === 'sub' && event.other ? `sai ${event.other}` : null].filter(Boolean).join(' · ');
+	const eventMinute = (row: Scoreline, event: MatchHighlight) => row.live?.match.minuteLabel(event.tick) ?? `${Math.min(90, minute(event.tick) + 1)}’`;
 	const groups = $derived.by(() => {
-		const map = new Map<string, Row[]>();
-		for (const r of rows) map.set(r.competition, [...(map.get(r.competition) ?? []), r]);
+		const map = new Map<string, Scoreline[]>();
+		for (const r of rows) {
+			const comp = r.game.competition;
+			const list = map.get(comp);
+			if (list) list.push(r);
+			else map.set(comp, [r]);
+		}
 		// Competições com treinadores primeiro.
 		return [...map.entries()].sort(([, a], [, b]) => Number(b.some((r) => r.live)) - Number(a.some((r) => r.live)));
 	});
@@ -341,7 +394,7 @@
 									<small>{mineH.name}</small><span>{getClub(r.home)?.name}</span><Crest clubId={r.home} size={20} /><Icon name="tactics" size={14} />
 								</button>
 							{:else}
-								<span class="club home" class:human-club={humanClubs.has(r.home)}><span>{getClub(r.home)?.name}</span><Crest clubId={r.home} size={20} /></span>
+								<span class="club home"><span>{getClub(r.home)?.name}</span><Crest clubId={r.home} size={20} /></span>
 							{/if}
 							<span class="score"><b>{r.hg}</b><i>—</i><b>{r.ag}</b>{#if r.status}<small>{r.status}</small>{/if}</span>
 							{#if mineA && r.live}
@@ -351,19 +404,36 @@
 							{:else}
 								<span class="club away"><Crest clubId={r.away} size={20} /><span>{getClub(r.away)?.name}</span></span>
 							{/if}
-							<span class="events">
-								{#each r.goals as g, i (i)}<span class="g" data-side={g.side}>⚽ {g.minute + 1}' {g.player}{#if g.assist} <small>(assist. {g.assist})</small>{/if}</span>{/each}
-								{#each r.incidents as x, i (i)}<span class="x {x.kind}" data-side={x.side} title={x.kind === 'injury' ? 'Lesão' : x.kind === 'red' ? 'Expulsão' : 'Amarelo'}><i></i>{x.minute + 1}' {x.player}</span>{/each}
-							</span>
+							<button type="button" class="event" data-kind={r.latest?.kind} title={r.latest ? eventText(r.latest) : 'Histórico de lances'}
+								aria-label={`Lances de ${getClub(r.home)?.name ?? r.home} e ${getClub(r.away)?.name ?? r.away}`}
+								onclick={() => { details = r; detailsOpen = true; }}>
+								<span>{#if r.latest}{eventMinute(r, r.latest)} {eventText(r.latest)}{:else}—{/if}</span>
+								<Icon name="news" size={13} />
+							</button>
 						</div>
 					{/each}
 				</div>
 			</div>
 		{/each}
 		{#if phase === 'saving'}<p class="muted">Registrando a rodada no save…</p>{/if}
+		{#if phase === 'saved' && saved}<Button variant="primary" iconRight="arrowRight" onclick={() => saved && onfinish(saved)}>Voltar à carreira</Button>{/if}
 		{#if phase === 'error'}<p class="err" role="alert">{saveError} <Button size="sm" onclick={save}>Tentar de novo</Button></p>{/if}
 	{/if}
 </section>
+
+{#if details}
+	<Modal bind:open={detailsOpen} title={`${getClub(details.home)?.name ?? details.home} × ${getClub(details.away)?.name ?? details.away}`} size="sm">
+		{#if details.visible}
+			<ol class="event-history">
+				{#each details.history.slice(0, details.visible) as event, i (i)}
+					<li><strong>{eventMinute(details, event)}</strong> {eventText(event)} <small>{getClub(event.side === 'home' ? details.home : details.away)?.short}</small></li>
+				{/each}
+			</ol>
+		{:else}
+			<p class="muted">{details.other?.quick ? 'Esta partida usa simulação rápida, com placar final.' : 'Nenhum lance registrado até agora.'}</p>
+		{/if}
+	</Modal>
+{/if}
 
 {#if current && !command}
 	{@const p = current.live.match.player(current.player)}
@@ -420,17 +490,20 @@
 	.club small { color: #E7EDF0; opacity: .8; font-size: 11px; white-space: nowrap; }
 	button.club { border: 0; border-radius: 8px; padding: 4px 8px; color: #fff; background: color-mix(in srgb, var(--c) 70%, #101418); cursor: pointer; font: inherit; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .15); }
 	button.club:hover, button.club:focus-visible { box-shadow: inset 0 0 0 2px #E8B86A; }
-	.human-club span { color: var(--emerald-strong); }
 	.score { display: flex; align-items: center; justify-content: center; gap: 6px; font-variant-numeric: tabular-nums; position: relative; }
 	.score b { font-size: 16px; min-width: 1.2ch; text-align: center; }
 	.score i { color: var(--text-3); font-style: normal; }
 	.score small { position: absolute; bottom: -12px; font-size: 10px; color: var(--text-3); white-space: nowrap; }
-	.events { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 11.5px; color: var(--text-2); min-width: 0; }
-	.events small { color: var(--text-3); }
-	.x { display: inline-flex; align-items: center; gap: 3px; }
-	.x i { width: 7px; height: 10px; border-radius: 1px; background: #facc15; }
-	.x.red i { background: #ef4444; }
-	.x.injury i { width: 9px; height: 9px; border-radius: 2px; background: #fff; box-shadow: inset 0 0 0 3px #ef4444; }
+	.event { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 4px; min-width: 0; font-size: 12px; color: var(--text-2); text-align: left; border: 0; border-radius: 4px; background: transparent; }
+	.event:hover, .event:focus-visible { background: rgb(255 255 255 / .08); }
+	.event span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.event :global(svg) { flex: 0 0 auto; }
+	.event[data-kind='goal'] { color: var(--emerald-strong); }
+	.event[data-kind='yellow'] { color: #facc15; }
+	.event[data-kind='red'], .event[data-kind='injury'] { color: #f87171; }
+	.event-history { margin: 0; padding-left: 22px; }
+	.event-history li { padding: 5px 0; }
+	.event-history small { color: var(--text-3); }
 	.ht { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 	.ht li { display: grid; grid-template-columns: auto auto 1fr auto; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 10px; background: #1C252B; box-shadow: inset 0 0 0 1px var(--line); }
 	.ht li span { color: var(--text-3); font-size: 13px; }
@@ -452,5 +525,5 @@
 	.player small { color: var(--text-3); }
 	.note { display: grid; gap: 4px; padding: 12px; border-radius: 10px; background: #101418; font-size: 13px; color: var(--text-3); }
 	.note strong { color: #E7EDF0; }
-	@media (max-width: 1100px) { .row { grid-template-columns: minmax(0, 1fr) 80px minmax(0, 1fr); } .venue, .events { grid-column: 1 / -1; } }
+	@media (max-width: 1100px) { .row { grid-template-columns: minmax(0, 1fr) 80px minmax(0, 1fr); } .venue { display: none; } .event { grid-column: 1 / -1; } }
 </style>

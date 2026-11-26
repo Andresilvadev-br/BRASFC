@@ -35,7 +35,7 @@ export function careerCalendar(career: Career, results: StoredRoundResult[], lea
 	const world = league.world;
 	const fixtures = seasonFixtures(league, career.seed);
 	const mine = clubFixtures(fixtures, career.clubId);
-	const cup = world === 'brasil' ? sanitizeCup(career.data.cup, KNOWN) : null;
+	const cup = world === 'brasil' && (league.selection?.cup ?? true) ? sanitizeCup(career.data.cup, KNOWN) : null;
 	const activeCup = cup && cup.season === career.season ? cup : null;
 	const steps = seasonSteps(league, activeCup);
 	const done = processedKeys(results);

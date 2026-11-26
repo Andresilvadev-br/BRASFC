@@ -85,8 +85,71 @@ try {
 	const synced = (await (await page.request.get('/api/careers/' + coach.id)).json()).career;
 	assert.ok(synced.data.tactic, 'a tática da fila local chegou ao save');
 	assert(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1), 'Overflow com o indicador de sincronização');
+
+	// Nova carreira: seleção independente e o mesmo calendário para os dois treinadores.
+	const button = (name) => page.getByRole('button', { name, exact: typeof name === 'string' });
+	const assume = async () => {
+		const ready = button('Assumir o controle');
+		await ready.waitFor({ timeout: 2500 }).catch(() => {});
+		if (await ready.isVisible()) await ready.click();
+	};
+	await page.goto('/nova-carreira');
+	await page.getByRole('heading', { name: 'Escolha as ligas' }).waitFor();
+	await page.getByRole('checkbox', { name: /Série A/ }).uncheck();
+	assert(await button('Criar treinador').isDisabled());
+	await page.getByRole('checkbox', { name: /Série B/ }).check();
+	await page.getByRole('checkbox', { name: /Copa do Brasil/ }).uncheck();
+	await button('Criar treinador').click();
+	await page.getByLabel('Nome do treinador').fill('Ana Torres');
+	await button('Escolher clube').click();
+	await page.getByRole('checkbox', { name: /Adicionar outro treinador/ }).check();
+	await button('Confirmar e criar o próximo treinador').click();
+	await page.getByLabel('Nome do treinador').fill('Bia Santos');
+	await button('Escolher clube').click();
+	const creating = page.waitForResponse((r) => r.url().endsWith('/api/careers') && r.request().method() === 'POST');
+	await button('Iniciar carreira com 2 treinadores').click();
+	const created = await creating;
+	assert.equal(created.status(), 201, await created.text());
+	const { career: shared } = await created.json();
+	assert.deepEqual(shared.data.league.selection, { divisions: ['serie-b'], cup: false });
+	assert(shared.data.local.coaches.every((c) => shared.data.league.divisions['serie-b'].includes(c.clubId)));
+	const careerPage = `/carreira/${shared.id}`;
+	await page.goto(careerPage + '/partida');
+	await assume();
+	await button('Finalizar preparação').click();
+	await page.waitForURL('**' + careerPage);
+	await page.goto(careerPage + '/partida');
+	await assume();
+	await button('Finalizar e jogar a rodada').click();
+	await page.locator('.row .event').first().waitFor();
+	assert.equal(await page.locator('.row .event').count(), 10);
+	let confirmed = 0;
+	for (let i = 0; i < 60 && !(await button('Voltar à carreira').isVisible()); i++) {
+		const interruption = button('Continuar sem alterações');
+		const halftime = button('Confirmar e continuar');
+		const skip = button(/^(Ir ao intervalo|Resultado)$/);
+		if (await interruption.isVisible()) await interruption.click();
+		else if (await halftime.isVisible()) { await halftime.click(); confirmed++; }
+		else if (await skip.isVisible() && await skip.isEnabled()) await skip.click();
+		await page.waitForTimeout(150);
+	}
+	assert.equal(confirmed, 2);
+	await button('Voltar à carreira').waitFor({ timeout: 30_000 });
+	let maxHistory = 0;
+	for (const cell of await page.locator('.row .event[data-kind]').all()) {
+		assert.equal(await cell.locator('span').count(), 1);
+		await cell.click();
+		const detail = page.getByRole('dialog');
+		maxHistory = Math.max(maxHistory, await detail.locator('ol li').count());
+		await detail.getByRole('button', { name: 'Fechar' }).click();
+		await detail.waitFor({ state: 'hidden' });
+		if (maxHistory > 1) break;
+	}
+	assert(maxHistory > 1, 'A lista mostra só o último lance, e os detalhes preservam os anteriores');
+	await button('Voltar à carreira').click();
+	await page.waitForURL('**' + careerPage);
 	assert.deepEqual(errors, []);
-	console.log('Biblioteca de carreiras aprovada no Chromium em cinco resoluções.');
+	console.log('Biblioteca de carreiras, ligas selecionáveis e placar simultâneo aprovados no Chromium.');
 } finally {
 	await browser.close();
 }

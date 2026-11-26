@@ -1,9 +1,9 @@
 import { CLUBES_2026, SERIE_D_2026, TEMPORADA_2026 } from '#lib/data/brasil.ts';
-import { CLUBS, LEAGUE } from './clubs.ts';
+import { CLUBS, getClub, LEAGUE } from './clubs.ts';
 import { addDays, weekday } from './dates.ts';
 import { penaltyShootout } from './quick.ts';
 import { createRng, deriveSeed } from './rng.ts';
-import { divisionRule, phaseOneRounds, type DivisionRule, type NationalDivision } from './rules.ts';
+import { divisionRule, type DivisionRule, type NationalDivision } from './rules.ts';
 import { computeStandings, generateLeagueFixtures, type Fixture, type MatchResult, type ScheduleVersion, type StandingRow } from './season.ts';
 
 /**
@@ -29,6 +29,22 @@ export const DIVISION_LABELS: Record<DivisionId, string> = {
 	[LEAGUE.id]: LEAGUE.name
 };
 
+/** A seleção é compartilhada pelos treinadores e pertence ao save, não aos perfis. */
+export interface LeagueSelection {
+	divisions: DivisionId[];
+	cup: boolean;
+}
+
+export function validateLeagueSelection(world: World, input: unknown): LeagueSelection | undefined {
+	if (!input || typeof input !== 'object') return;
+	const { divisions, cup } = input as Partial<LeagueSelection>;
+	const allowed: readonly DivisionId[] = world === 'brasil' ? BRASIL_DIVISIONS : [LEAGUE.id];
+	if (!Array.isArray(divisions) || !divisions.length || divisions.length > allowed.length ||
+		new Set(divisions).size !== divisions.length || !divisions.every((id) => allowed.includes(id)) ||
+		typeof cup !== 'boolean' || (world === 'brasfc' && cup)) return;
+	return { divisions: allowed.filter((id) => divisions.includes(id)), cup };
+}
+
 /** Mata-mata em ida e volta: [quem manda o 1º jogo, quem manda o 2º (melhor campanha)]. */
 export type Tie = [string, string];
 
@@ -48,6 +64,8 @@ export interface LeagueState {
 	scheduleVersion?: Exclude<ScheduleVersion, 1>;
 	/** clubes de cada divisão */
 	divisions: Partial<Record<DivisionId, string[]>>;
+	/** Ausente em saves antigos, que preservam calendário e motor anteriores. */
+	selection?: LeagueSelection;
 	/** grupos da 1ª fase (Série C a partir de 2028; Série D) */
 	groups?: Partial<Record<DivisionId, string[][]>>;
 	/** Série C: quadrangulares da 2ª fase (definidos ao fim da 1ª fase) */
@@ -119,8 +137,8 @@ export function regionalGroups(ids: string[], groups: number): string[][] {
 	return Array.from({ length: groups }, (_, i) => sorted.slice(i * size, (i + 1) * size));
 }
 
-export function initialLeague(world: World, season: number): LeagueState {
-	if (world === 'brasfc') return { world, season, scheduleVersion: 3, divisions: { [LEAGUE.id]: CLUBS.map((c) => c.id) } };
+export function initialLeague(world: World, season: number, selection?: LeagueSelection): LeagueState {
+	if (world === 'brasfc') return { world, season, scheduleVersion: 3, divisions: { [LEAGUE.id]: CLUBS.map((c) => c.id) }, ...(selection ? { selection } : {}) };
 	const divisions: LeagueState['divisions'] = {};
 	for (const comp of TEMPORADA_2026.competicoes) divisions[comp.id as BrasilDivision] = [...comp.clubes];
 	return {
@@ -128,6 +146,7 @@ export function initialLeague(world: World, season: number): LeagueState {
 		season,
 		scheduleVersion: 3,
 		divisions,
+		...(selection ? { selection } : {}),
 		groups: { 'serie-d': SERIE_D_2026.grupos.map((g) => [...g]) },
 		cGroups: null,
 		cFinal: null,
@@ -139,6 +158,18 @@ export function initialLeague(world: World, season: number): LeagueState {
 export function divisionOf(league: LeagueState, clubId: string): DivisionId | null {
 	for (const [d, ids] of Object.entries(league.divisions)) if (ids?.includes(clubId)) return d as DivisionId;
 	return null;
+}
+
+export function activeDivisions(league: LeagueState): DivisionId[] {
+	return (league.selection?.divisions ?? Object.keys(league.divisions) as DivisionId[]).filter((div) => league.divisions[div]?.length);
+}
+
+export function activeMembership(league: LeagueState): Record<string, string[]> {
+	return Object.fromEntries(activeDivisions(league).map((div) => [div, league.divisions[div]!]));
+}
+
+export function isActiveClub(league: LeagueState, clubId: string): boolean {
+	return activeDivisions(league).some((div) => league.divisions[div]!.includes(clubId));
 }
 
 /** Primeira rodada da temporada: primeiro domingo a partir de 24/01. */
@@ -158,8 +189,16 @@ export function roundDate(season: number, round: number): string {
 }
 
 /** Total de rodadas de domingo da temporada (a maior competição define o fim). */
-export function totalRounds(_league: LeagueState): number {
-	return 38;
+export function totalRounds(league: LeagueState): number {
+	if (!league.selection) return 38;
+	return Math.max(0, ...activeDivisions(league).map((div) => phaseOneLength(league, div) + (div === 'serie-c' ? 8 : div === 'serie-d' ? 12 : 0)));
+}
+
+/** Projeção de volume, independentemente do sorteio e sem construir elencos/calendário. */
+export function divisionMatchCount(league: LeagueState, div: DivisionId): number {
+	const legs = div === LEAGUE.id ? 2 : effectiveRule(league, div).phase1.legs;
+	const regular = phaseOneGroups(league, div).reduce((sum, ids) => sum + (ids.length * (ids.length - 1) / 2) * legs, 0);
+	return regular + (div === 'serie-c' ? 26 : div === 'serie-d' ? 130 : 0);
 }
 
 // ─────────────────────────────────────────────────────────────── calendário das ligas
@@ -189,8 +228,8 @@ const D_STAGE_NAMES = ['2ª fase', '3ª fase', '4ª fase', 'Quartas de final', '
 export function seasonFixtures(league: LeagueState, careerSeed: number): Fixture[] {
 	const out: Fixture[] = [];
 	const version = league.scheduleVersion ?? 1;
-	for (const [div, ids] of Object.entries(league.divisions) as Array<[DivisionId, string[]]>) {
-		if (!ids?.length) continue;
+	for (const div of activeDivisions(league)) {
+		const ids = league.divisions[div]!;
 		const seed = deriveSeed(careerSeed, 'cal', `${league.season}:${div}`);
 		if (div === LEAGUE.id) {
 			out.push(...(league.season === 2027 ? generateLeagueFixtures(careerSeed, ids, version) : retarget(generateLeagueFixtures(seed, ids, version), league.season, div)));
@@ -222,6 +261,7 @@ const inComp = (div: DivisionId) => (r: StoredRoundResult) => (r.competition ?? 
 
 /** Tabelas da 1ª fase (uma por grupo). */
 export function phaseOneTables(league: LeagueState, div: DivisionId, results: StoredRoundResult[]): StandingRow[][] {
+	if (league.selection && !league.selection.divisions.includes(div)) return [];
 	const p1 = div === LEAGUE.id ? Infinity : phaseOneLength(league, div);
 	const rs = results.filter((r) => inComp(div)(r) && r.round <= p1);
 	return phaseOneGroups(league, div).map((g) => computeStandings(g, rs));
@@ -298,7 +338,7 @@ export function prepareRound(league: LeagueState, round: number, results: Stored
 	if (league.world !== 'brasil') return league;
 	let next = league;
 	const c = league.divisions['serie-c'];
-	if (c?.length) {
+	if (c?.length && (league.selection?.divisions.includes('serie-c') ?? true)) {
 		const p1 = phaseOneLength(league, 'serie-c');
 		if (!next.cGroups && round === p1 + 1) next = { ...next, cGroups: computeCGroups(next, results) };
 		if (next.cGroups && !next.cFinal && round === p1 + 7) {
@@ -308,7 +348,7 @@ export function prepareRound(league: LeagueState, round: number, results: Stored
 		}
 	}
 	const d = league.divisions['serie-d'];
-	if (d?.length) {
+	if (d?.length && (league.selection?.divisions.includes('serie-d') ?? true)) {
 		const p1 = phaseOneLength(league, 'serie-d');
 		const rule = effectiveRule(league, 'serie-d');
 		const perGroup = rule.phase2?.kind === 'mata-mata' ? rule.phase2.qualifiersPerGroup : 4;
@@ -354,7 +394,7 @@ export function computeCGroups(league: LeagueState, results: StoredRoundResult[]
 /** Compatibilidade com a Dev 0.3. */
 export function needsCGroups(league: LeagueState, round: number): boolean {
 	const c = league.divisions['serie-c'];
-	return league.world === 'brasil' && !!c && !league.cGroups && round === phaseOneLength(league, 'serie-c') + 1;
+	return league.world === 'brasil' && (league.selection?.divisions.includes('serie-c') ?? true) && !!c && !league.cGroups && round === phaseOneLength(league, 'serie-c') + 1;
 }
 
 // ─────────────────────────────────────────────────────────────── fim de temporada
@@ -384,6 +424,17 @@ export function closeSeason(league: LeagueState, results: StoredRoundResult[], c
 	const season = league.season;
 	const up = (t: StandingRow[], n: number) => t.slice(0, n).map((r) => r.clubId);
 	const down = (t: StandingRow[], n: number) => (n > 0 ? t.slice(t.length - n).map((r) => r.clubId) : []);
+	const active = new Set(activeDivisions(league));
+	// Nas divisões inativas, só resolve a ordem anual necessária aos acessos e quedas.
+	// Usa metadados do clube, sem montar elencos, inventar placares ou registrar campeões.
+	const projectedOrder = (div: BrasilDivision) => (league.divisions[div] ?? [])
+		.map((id) => ({
+			id,
+			score: (getClub(id)?.reputation ?? 2) * 8 + createRng(deriveSeed(careerSeed, 'acessos', `${season}:${div}:${id}`)).int(0, 30)
+		}))
+		.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id))
+		.map(({ id }) => id);
+	const tail = (ids: string[], n: number) => n > 0 ? ids.slice(-n) : [];
 	const A = league.divisions['serie-a'] ?? [];
 	const B = league.divisions['serie-b'] ?? [];
 	const C = league.divisions['serie-c'] ?? [];
@@ -391,25 +442,32 @@ export function closeSeason(league: LeagueState, results: StoredRoundResult[], c
 
 	const a = divisionStandings(league, 'serie-a', results);
 	const b = divisionStandings(league, 'serie-b', results);
-	tables['serie-a'] = a;
-	tables['serie-b'] = b;
-	champions['serie-a'] = a[0]?.clubId;
-	runnersUp['serie-a'] = a[1]?.clubId;
-	champions['serie-b'] = b[0]?.clubId;
-	runnersUp['serie-b'] = b[1]?.clubId;
+	if (active.has('serie-a')) {
+		tables['serie-a'] = a;
+		champions['serie-a'] = a[0]?.clubId;
+		runnersUp['serie-a'] = a[1]?.clubId;
+	}
+	if (active.has('serie-b')) {
+		tables['serie-b'] = b;
+		champions['serie-b'] = b[0]?.clubId;
+		runnersUp['serie-b'] = b[1]?.clubId;
+	}
 	const ra = effectiveRule(league, 'serie-a');
 	const rb = effectiveRule(league, 'serie-b');
 	const rc = effectiveRule(league, 'serie-c');
-	const aDown = down(a, ra.relegated);
-	const bUp = up(b, rb.promoted);
-	const bDown = down(b, rb.relegated);
+	const passB = active.has('serie-b') ? [] : projectedOrder('serie-b');
+	const aDown = active.has('serie-a') ? down(a, ra.relegated) : tail(projectedOrder('serie-a'), ra.relegated);
+	const bUp = active.has('serie-b') ? up(b, rb.promoted) : passB.slice(0, rb.promoted);
+	const bDown = active.has('serie-b') ? down(b, rb.relegated) : tail(passB, rb.relegated);
 
 	// Série C: acesso pelos quadrangulares; queda pela 1ª fase (por grupo a partir de 2028).
 	const cTables = phaseOneTables(league, 'serie-c', results);
-	tables['serie-c'] = cTables.length === 1 ? cTables[0] : rankCampaigns(cTables.flat());
-	const quads = groupStandings(league, results);
-	const cUp = quads.length === 2 ? quads.flatMap((q) => up(q, 2)) : up(tables['serie-c'], rc.promoted);
-	if (league.cFinal) {
+	const cTable = cTables.length === 1 ? cTables[0] : rankCampaigns(cTables.flat());
+	if (active.has('serie-c')) tables['serie-c'] = cTable;
+	const passC = active.has('serie-c') ? [] : projectedOrder('serie-c');
+	const quads = active.has('serie-c') ? groupStandings(league, results) : [];
+	const cUp = active.has('serie-c') ? (quads.length === 2 ? quads.flatMap((q) => up(q, 2)) : up(cTable, rc.promoted)) : passC.slice(0, rc.promoted);
+	if (active.has('serie-c') && league.cFinal) {
 		const p1 = phaseOneLength(league, 'serie-c');
 		const fin = resolveTie(league.cFinal, results, 'serie-c', [p1 + 7, p1 + 8], careerSeed, strengthOf);
 		if (fin) {
@@ -417,8 +475,12 @@ export function closeSeason(league: LeagueState, results: StoredRoundResult[], c
 			runnersUp['serie-c'] = fin.loser;
 		}
 	}
-	champions['serie-c'] ??= quads.length ? [quads[0][0], quads[1][0]].sort((x, y) => y.points - x.points || y.goalDiff - x.goalDiff)[0]?.clubId : tables['serie-c'][0]?.clubId;
-	const cDown = rc.relegatedPerGroup && cTables.length > 1 ? cTables.flatMap((t) => down(t, rc.relegatedPerGroup!)) : down(tables['serie-c'], rc.relegated);
+	if (active.has('serie-c')) {
+		champions['serie-c'] ??= quads.length ? [quads[0][0], quads[1][0]].sort((x, y) => y.points - x.points || y.goalDiff - x.goalDiff)[0]?.clubId : cTable[0]?.clubId;
+	}
+	const cDown = active.has('serie-c')
+		? (rc.relegatedPerGroup && cTables.length > 1 ? cTables.flatMap((t) => down(t, rc.relegatedPerGroup!)) : down(cTable, rc.relegated))
+		: tail(passC, rc.relegated);
 
 	// Série D: semifinalistas + vencedores dos playoffs sobem; piores campanhas voltam aos estaduais.
 	let dUp: string[] = [];
@@ -426,7 +488,11 @@ export function closeSeason(league: LeagueState, results: StoredRoundResult[], c
 	const nextC = divisionRule('serie-c', season + 1).size;
 	const stayingC = C.length - cUp.length - cDown.length + bDown.length;
 	const neededFromD = nextC - stayingC;
-	if (D.length) {
+	if (D.length && !active.has('serie-d')) {
+		const ranking = projectedOrder('serie-d');
+		dUp = ranking.slice(0, Math.max(0, neededFromD));
+		dOut = tail(ranking.slice(dUp.length), effectiveRule(league, 'serie-d').backToState ?? 0);
+	} else if (D.length) {
 		const dTables = phaseOneTables(league, 'serie-d', results);
 		const dRank = rankCampaigns(dTables.flat());
 		tables['serie-d'] = dRank;
@@ -494,6 +560,7 @@ export function closeSeason(league: LeagueState, results: StoredRoundResult[], c
 		world: 'brasil',
 		season: season + 1,
 		scheduleVersion: 3,
+		...(league.selection ? { selection: league.selection } : {}),
 		divisions: { 'serie-a': nextA, 'serie-b': nextB, 'serie-c': nextCList, ...(nextD.length ? { 'serie-d': nextD } : {}) },
 		groups: {
 			...(nextRuleC.phase1.groups > 1 && nextCList.length === nextRuleC.size ? { 'serie-c': regionalGroups(nextCList, nextRuleC.phase1.groups) } : {}),
@@ -532,7 +599,8 @@ export function sanitizeLeague(input: unknown, world: World, season: number): Le
 	const dBracket = br && okList(br.seeds) && Array.isArray(br.stages) && br.stages.every((s) => Array.isArray(s) && s.every(tie)) ? { seeds: [...br.seeds], stages: br.stages.map((s) => s.map((t) => [...t] as Tie)), playoff: Array.isArray(br.playoff) && br.playoff.every(tie) ? br.playoff : null } : null;
 	const pool = okList(raw.pool) ? [...raw.pool] : base.pool;
 	const scheduleVersion = raw.scheduleVersion === 2 || raw.scheduleVersion === 3 ? raw.scheduleVersion : undefined;
-	return { world, season: raw.season, scheduleVersion, divisions, ...(Object.keys(groups).length ? { groups } : {}), cGroups, cFinal, dBracket, ...(pool ? { pool } : {}) };
+	const selection = validateLeagueSelection(world, raw.selection);
+	return { world, season: raw.season, scheduleVersion, divisions, ...(selection ? { selection } : {}), ...(Object.keys(groups).length ? { groups } : {}), cGroups, cFinal, dBracket, ...(pool ? { pool } : {}) };
 }
 
 /** Clube aleatório (determinístico) — usado em testes de temporadas completas. */

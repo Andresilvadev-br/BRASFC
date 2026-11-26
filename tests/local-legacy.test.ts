@@ -122,9 +122,9 @@ describe('carreira local com vários treinadores', () => {
 				expect({ homeGoals: rows[0].homeGoals, awayGoals: rows[0].awayGoals }).toEqual(expected);
 				// Cada treinador vê a partida do próprio lado.
 				const mineA = (await listUserMatches(db, career.id, undefined, 'flamengo')).find((m) => m.round === round && m.competition === 'serie-a')!;
-				expect(mineA.summary.mySide).toBe(fx.home === 'flamengo' ? 'home' : 'away');
+				expect(mineA.summary?.mySide).toBe(fx.home === 'flamengo' ? 'home' : 'away');
 				const mineB = (await listUserMatches(db, career.id, undefined, rival)).find((m) => m.round === round && m.competition === 'serie-a')!;
-				expect(mineB.summary.mySide).toBe(fx.home === rival ? 'home' : 'away');
+				expect(mineB.summary?.mySide).toBe(fx.home === rival ? 'home' : 'away');
 				expect('coaches' in out && out.coaches).toHaveLength(2);
 			}
 		}

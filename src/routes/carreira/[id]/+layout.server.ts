@@ -1,4 +1,4 @@
-import { sharedClub } from '#lib/domain/turns.ts';
+import { isShared, sharedClub } from '#lib/domain/turns.ts';
 import { error, redirect } from '@sveltejs/kit';
 import { careerCalendar } from '#lib/domain/view.ts';
 import { universePreview } from '#lib/domain/universe.ts';
@@ -19,6 +19,7 @@ export const load: LayoutServerLoad = async ({ locals, params, depends, request,
 	// Dev 0.12: carreira de jogador descontinuada — o save legado fica guardado na biblioteca, mas não abre.
 	if (career.mode === 'player') redirect(303, `/continuar?legado=${career.id}`);
 	const freeAgentPages = ['gabinete', 'mensagens', 'mundo', 'historia'].map((p) => `/carreira/${career.id}/${p}`);
+	if (isShared(career)) freeAgentPages.push(`/carreira/${career.id}/partida`);
 	if (career.mode === 'coach' && career.data.club?.board.dismissed && !freeAgentPages.includes(url.pathname)) {
 		redirect(303, `/carreira/${career.id}/gabinete`);
 	}

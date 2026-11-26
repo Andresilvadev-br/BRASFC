@@ -10,7 +10,7 @@ import { isAppearance, type Appearance } from './appearance.ts';
 import { CLUBES_2026, TEMPORADA_2026 } from '#lib/data/brasil.ts';
 import { CLUBS, getClub, LEAGUE, type Club } from './clubs.ts';
 import type { TrainingPlan } from './drills.ts';
-import { DIVISION_LABELS, divisionOf, firstRoundDate, initialLeague, seasonStartDate, type LeagueState, type SeasonSummary, type World } from './league.ts';
+import { DIVISION_LABELS, divisionOf, firstRoundDate, initialLeague, isActiveClub, seasonStartDate, validateLeagueSelection, type LeagueSelection, type LeagueState, type SeasonSummary, type World } from './league.ts';
 import type { TacticalState } from './tactical.ts';
 import { initialCup, type CupState } from './cup.ts';
 import type { ClubState } from './management.ts';
@@ -46,6 +46,8 @@ export interface PlayerProfile {
 export interface CareerData {
 /** Edição imutável do elenco inicial. Ausente em saves legados. */
 rosterCatalog?: RosterCatalogId;
+/** Identificador imutável do catálogo mundial local usado pelo mercado. */
+worldCatalog?: string;
 appearance?: Appearance;
 position?: Position;
 player?: PlayerProfile;
@@ -126,6 +128,7 @@ nationality?: string;
 foot?: DominantFoot;
 /** 'brasil' = clubes reais (Séries A/B/C 2026); padrão: liga fictícia */
 world?: World;
+leagueSelection?: LeagueSelection;
 }
 
 export type ValidationResult<T> = { ok: true; value: T } | { ok: false; errors: Record<string, string> };
@@ -151,9 +154,16 @@ export function validateCreateCareer(input: unknown): ValidationResult<CreateCar
 	else if (!NAME_PATTERN.test(personName)) errors.personName = 'Use apenas letras, espaços, apóstrofo, ponto ou hífen.';
 
 	const world: World = v.world === 'brasil' ? 'brasil' : 'brasfc';
+	const leagueSelection = validateLeagueSelection(world, v.leagueSelection);
+	if (v.leagueSelection !== undefined && (!leagueSelection || (v.world !== 'brasil' && v.world !== 'brasfc'))) {
+		errors.leagueSelection = 'Selecione ao menos uma divisão disponível na base escolhida.';
+	}
 	const clubId = typeof v.clubId === 'string' ? v.clubId : '';
 	const validClub = world === 'brasil' ? CLUBES_2026.some((c) => c.id === clubId && c.serie !== 'E') : CLUBS.some((c) => c.id === clubId);
 	if (!getClub(clubId) || !validClub) errors.clubId = 'Escolha um clube.';
+	else if (leagueSelection && !isActiveClub(initialLeague(world, careerStart(world).season, leagueSelection), clubId)) {
+		errors.clubId = 'Escolha um clube de uma divisão ativa.';
+	}
 
 	let appearance: Appearance | undefined;
 	if (v.appearance !== undefined) {
@@ -162,14 +172,21 @@ export function validateCreateCareer(input: unknown): ValidationResult<CreateCar
 	}
 
 	if (Object.keys(errors).length) return { ok: false, errors };
-	return { ok: true, value: { mode: 'coach', personName, clubId, appearance, world } };
+	return { ok: true, value: { mode: 'coach', personName, clubId, appearance, world, ...(leagueSelection ? { leagueSelection } : {}) } };
 }
 
 /** Dados iniciais persistidos de uma carreira nova. */
 export function initialCareerData(input: CreateCareerInput, seed: number): CareerData {
 	const world = input.world ?? 'brasfc';
 	const start = careerStart(world);
-	const data: CareerData = { appearance: input.appearance, world, firstSeason: start.season, league: initialLeague(world, start.season), ...(world === 'brasil' ? { cup: initialCup(start.season), rosterCatalog: ROSTER_CATALOG } : {}) };
+	const data: CareerData = {
+		appearance: input.appearance,
+		world,
+		firstSeason: start.season,
+		league: initialLeague(world, start.season, input.leagueSelection),
+		...(world === 'brasil' ? { rosterCatalog: ROSTER_CATALOG } : {}),
+		...(world === 'brasil' && (input.leagueSelection?.cup ?? true) ? { cup: initialCup(start.season) } : {})
+	};
 	if (input.mode === 'player' && input.position) {
 		const rng = createRng(deriveSeed(seed, 'player'));
 		const age = input.age ?? 18;

@@ -242,7 +242,7 @@
 		}}>
 			<label class="searchbox">
 				<Icon name="search" size={20} />
-				<input type="search" bind:this={input} bind:value={f.q} placeholder="Nome, clube ou nacionalidade"
+				<input type="search" bind:this={input} bind:value={f.q} placeholder={f.world ? 'Nome do atleta ou clube' : 'Nome, clube ou nacionalidade'}
 					aria-label="Pesquisar jogadores" maxlength="100" autocomplete="off" onfocus={() => inputFocus = true} oninput={() => inputFocus = true} onkeydown={keydown} />
 				{#if f.q}<button type="button" aria-label="Limpar pesquisa" data-umx-press onclick={(event) => { event.preventDefault(); f.q = undefined; input?.focus(); }}><Icon name="x" size={16} /></button>{/if}
 			</label>
@@ -256,14 +256,23 @@
 		</div>
 		<div class="quick">
 			{@render position('position', 'Posição')}
-			<label>Campeonato
+			{#if !f.world}<label>Campeonato
 				<select bind:value={f.division}>
 					<option value={undefined}>Todos</option>
 					{#each divisions as division (division)}<option value={division}>{competitionName(division)}</option>{/each}
 				</select>
-			</label>
+			</label>{/if}
+			{#if result?.worldAvailable}
+				<Button variant={f.world ? 'primary' : 'secondary'} size="sm" aria-pressed={!!f.world} onclick={() => {
+					f.world = !f.world;
+					delete f.club;
+					delete f.division;
+					delete f.nationality;
+				}}>Banco mundial</Button>
+			{/if}
 			<Button variant="secondary" size="sm" onclick={() => showFilters = true}>Filtros{chips.length ? ` (${chips.length})` : ''}</Button>
 		</div>
+		{#if f.world && !f.club && !(f.q?.trim().length && f.q.trim().length >= 3)}<p class="muted">Pesquise pelo nome com pelo menos três letras ou escolha um clube nos filtros.</p>{/if}
 		{#if chips.length}
 			<div class="chips" aria-label="Filtros aplicados">
 				{#each chips as [key, value] (key)}

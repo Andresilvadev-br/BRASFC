@@ -4,7 +4,7 @@ import { COACH_PROFILES, type CoachStyleId } from '#lib/engine/ai-coach.ts';
 import type { Career } from '#lib/domain/career.ts';
 import { getClub } from '#lib/domain/clubs.ts';
 import { coachFormation } from '#lib/domain/coaches.ts';
-import { divisionOf, divisionStandings, type DivisionId, type LeagueState, type StoredRoundResult } from '#lib/domain/league.ts';
+import { activeDivisions, activeMembership, divisionOf, divisionStandings, type LeagueState, type StoredRoundResult } from '#lib/domain/league.ts';
 import type { ClubState } from '#lib/domain/management.ts';
 import { formatMoney, rosterOf, tierOfDivision } from '#lib/domain/market.ts';
 import { coachOffers, coachWage, seasonRow, maybeMeeting, maybePress, recordGame, sanitizeOffice, type BoardSnapshot, type OfficeState } from '#lib/domain/office.ts';
@@ -35,7 +35,7 @@ export function ensureUniverse(career: Career, league: LeagueState): UniverseSta
 		seed: career.seed,
 		season: career.season,
 		firstSeason: career.data.firstSeason ?? career.season,
-		divisions: league.divisions as Record<string, string[]>,
+		divisions: activeMembership(league),
 		userClub: career.mode === 'coach' && !isUnemployed(career) ? career.clubId : null,
 		humans: Object.keys(humanClubs(career)),
 		formationFor: (id, style) => {
@@ -48,7 +48,7 @@ export function ensureUniverse(career: Career, league: LeagueState): UniverseSta
 
 export function tablesOf(league: LeagueState, results: StoredRoundResult[]): Record<string, string[]> {
 	const out: Record<string, string[]> = {};
-	for (const div of Object.keys(league.divisions)) out[div] = divisionStandings(league, div as DivisionId, results).map((r) => r.clubId);
+	for (const div of activeDivisions(league)) out[div] = divisionStandings(league, div, results).map((r) => r.clubId);
 	return out;
 }
 
@@ -125,7 +125,7 @@ export function officeStep(i: OfficeStepInput): { office: OfficeState; club: Clu
 	}
 	const marketRound = i.isLeague ? i.round : Math.max(0, (i.leagueRound ?? 0));
 	const offerKey = i.career.season * 100 + marketRound;
-	const divisions = i.league.divisions as Record<string, string[]>;
+	const divisions = activeMembership(i.league);
 	const tierOf = (d: string) => tierOfDivision(d);
 	const wasUnemployed = !!(i.career.data.club as ClubState | undefined)?.board?.dismissed;
 	// Demissão nesta semana: o vínculo termina, o clube antigo volta para a IA e chegam propostas coerentes.
@@ -159,7 +159,7 @@ export function officeStep(i: OfficeStepInput): { office: OfficeState; club: Clu
 	}
 	club.jobOffers = pruneOffers(club.jobOffers, i.career.season, marketRound);
 	if (!i.isLeague || club.board.dismissed) return { office, club, universe, news };
-	const table = division ? divisionStandings(i.league, division as DivisionId, i.seasonResults) : [];
+	const table = division ? divisionStandings(i.league, division, i.seasonResults) : [];
 	const row = table.find((r) => r.clubId === me);
 	// Ultimato: promessa feita na reunião de advertência.
 	if (office.ultimatum && office.ultimatum.season === i.career.season && i.round >= office.ultimatum.untilRound) {
@@ -264,9 +264,14 @@ export function officeSeasonEnd(o: { career: Career; office: OfficeState; club: 
 		office.milestones.push({ key: `saida-${o.career.season}-${o.career.clubId}`, season: o.career.season, round: 99, label: `Saída do ${clubName}`, detail: declined ? 'Você decidiu não renovar.' : 'Contrato encerrado sem renovação.' });
 		news.push({ sender, subject: 'Fim de contrato', body: `Seu contrato com o ${clubName} chegou ao fim${declined ? ', como você decidiu' : ' sem renovação'}. Você está sem clube: avalie as propostas na Central de Propostas.`, important: true });
 	}
+	if (o.next.selection && !club.board.dismissed && !divisionOf(o.next, o.career.clubId)) {
+		club.board.dismissed = true;
+		Object.assign(office, markUnemployed(office, o.career.season, 99, 'fim-contrato'));
+		news.push({ sender, subject: 'Clube retorna aos estaduais', body: 'O clube saiu das divisões nacionais. Sem calendário estadual no save, seu vínculo foi encerrado. Você pode assumir outro clube pela Central de Propostas.', important: true });
+	}
 	if (club.board.dismissed) {
 		const source = office.unemployedSince?.reason === 'fim-contrato' && office.unemployedSince.season === o.career.season ? 'fim-contrato' as const : 'temporada' as const;
-		const offers = coachOffers(o.career.seed, o.career.season + 1, 0, club.coachReputation, o.career.clubId, o.universe, o.next.divisions as Record<string, string[]>, { dismissed: true, tierOf: (d) => tierOfDivision(d) })
+		const offers = coachOffers(o.career.seed, o.career.season + 1, 0, club.coachReputation, o.career.clubId, o.universe, activeMembership(o.next), { dismissed: true, tierOf: (d) => tierOfDivision(d) })
 			.map((x) => persistOffer({ ...o.career, season: o.career.season + 1 }, o.next, x, { season: o.career.season + 1, round: 0, source, expiresSeason: o.career.season + 1, expiresRound: 6 }));
 		club.jobOffers = mergeOffers(pruneOffers(club.jobOffers, o.career.season + 1, 0), offers, o.career.season + 1, 0);
 		office.lastOfferAt = (o.career.season + 1) * 100;
@@ -284,7 +289,8 @@ export function universeAtSeasonEnd(u: UniverseState, career: Career, league: Le
 		champions: o.champions,
 		promoted: o.promoted,
 		relegated: o.relegated,
-		next: o.next.divisions as Record<string, string[]>,
+		next: activeMembership(o.next),
+		activeOnly: Boolean(o.next.selection),
 		cupChampion: o.cupChampion,
 		userClub: career.mode === 'coach' && !isUnemployed(career) ? career.clubId : null,
 		humans: Object.keys(humanClubs(career)),

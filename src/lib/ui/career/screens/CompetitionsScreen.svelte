@@ -3,7 +3,7 @@
 	import { untrack } from 'svelte';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { formatShort } from '#lib/domain/dates.ts';
-	import { D_STAGE_NAMES, DIVISION_LABELS, dStageRounds, effectiveRule, groupStandings, phaseOneLength, phaseOneTables, resolveTie, type BrasilDivision, type DivisionId, type Tie } from '#lib/domain/league.ts';
+	import { activeDivisions, D_STAGE_NAMES, DIVISION_LABELS, dStageRounds, effectiveRule, groupStandings, phaseOneLength, phaseOneTables, resolveTie, type BrasilDivision, type DivisionId, type Tie } from '#lib/domain/league.ts';
 	import { computeStandings } from '#lib/domain/season.ts';
 	import { strengthMemo } from '#lib/domain/world.ts';
 	import { reveal } from '#lib/motion/actions.ts';
@@ -16,8 +16,9 @@
 	const v = $derived(data.view);
 	const st = $derived(strengthMemo(data.manage.ctx));
 
-	let div = $state<DivisionId>(untrack(() => data.view.division));
-	const divisions = $derived((Object.keys(v.league.divisions) as DivisionId[]).filter((d) => v.league.divisions[d]?.length));
+	let selected = $state<DivisionId>(untrack(() => data.view.division));
+	const divisions = $derived(activeDivisions(v.league));
+	const div = $derived(divisions.includes(selected) ? selected : divisions[0] ?? v.division);
 	const brasil = $derived(v.world === 'brasil' && div !== 'liga-brasfc');
 	const rule = $derived(brasil ? effectiveRule(v.league, div as BrasilDivision) : null);
 	const p1 = $derived(div === 'liga-brasfc' ? 38 : phaseOneLength(v.league, div));
@@ -65,7 +66,7 @@
 		<h1 class="display">{DIVISION_LABELS[div]}</h1>
 		<p class="muted rule">{ruleText}</p>
 	</div>
-	{#if divisions.length > 1}<Segmented label="Divisão" bind:value={div} options={divisions.map((d) => ({ value: d, label: DIVISION_LABELS[d] }))} />{/if}
+	{#if divisions.length > 1}<Segmented label="Divisão" value={div} onchange={(next) => (selected = next)} options={divisions.map((d) => ({ value: d, label: DIVISION_LABELS[d] }))} />{/if}
 </div>
 
 {#if tables.length === 1}

@@ -1,13 +1,14 @@
 import { estimateRange } from '#lib/domain/academy.ts';
 import { scoutMargin } from '#lib/domain/club.ts';
 import { getClub } from '#lib/domain/clubs.ts';
-import { freeAgents, rosterOf, type RosterContext, type RosterPlayer } from '#lib/domain/market.ts';
+import { currentClubOf, freeAgents, rosterOf, type RosterContext, type RosterPlayer } from '#lib/domain/market.ts';
 import type { ClubState } from '#lib/domain/management.ts';
 import { POSITIONS, type Position } from '#lib/domain/positions.ts';
 import type { DivisionId, LeagueState } from '#lib/domain/league.ts';
 import { visibleSquadAge } from '#lib/domain/squad.ts';
 import { ALL_ATTRIBUTES, GOALKEEPING, type AttributeKey } from '#lib/engine/attributes.ts';
 import { MARKET_SORTS, MARKET_STATUS, normalizeSearch, type MarketAthlete, type MarketCompetition, type MarketFilters, type MarketProfile, type MarketResults, type Rating } from '#lib/domain/market-search.ts';
+import type { worldCatalog } from './world-catalog.ts';
 
 const PAGE_SIZE = 24;
 const collator = new Intl.Collator('pt-BR', { sensitivity: 'base', numeric: true });
@@ -24,9 +25,8 @@ interface Entry {
 }
 interface Index {
 	clubs: MarketResults['clubs'];
-	nationalities: string[];
-	entries: Entry[];
-	byId: Map<string, Entry>;
+	world?: ReturnType<typeof worldCatalog>;
+	entriesFor: (clubId: string) => Entry[];
 	ctx: RosterContext;
 	clubId: string;
 	humans: ReadonlyMap<string, string>;
@@ -35,7 +35,7 @@ interface Index {
 }
 const cache = new Map<string, Index>();
 
-export function marketIndex(key: string, clubId: string, ctx: RosterContext, league: LeagueState, club: ClubState, humans: ReadonlyMap<string, string> = new Map(), cupEntrants: string[] = []): Index {
+export function marketIndex(key: string, clubId: string, ctx: RosterContext, league: LeagueState, club: ClubState, humans: ReadonlyMap<string, string> = new Map(), cupEntrants: string[] = [], world?: ReturnType<typeof worldCatalog>): Index {
 	const hit = cache.get(key);
 	if (hit) {
 		cache.delete(key);
@@ -48,14 +48,21 @@ export function marketIndex(key: string, clubId: string, ctx: RosterContext, lea
 	const cupClubs = new Set(cupEntrants.filter((id) => Boolean(getClub(id))));
 	const competitions = [...new Set<MarketCompetition>(divisions.values())];
 	if (cupClubs.size) competitions.push('copa-do-brasil');
-	const clubs = [...new Set([...divisions.keys(), ...cupClubs])].map((id) => ({
+	const clubs = [...new Set([...divisions.keys(), ...cupClubs, ...(league.selection ? league.pool ?? [] : [])])].map((id) => ({
 		id, division: divisions.get(id) ?? null, name: getClub(id)?.name ?? id
 	})).sort((a, b) => collator.compare(a.name, b.name));
 	const reports = new Map(club.reports.map((entry) => [entry.playerId, entry]));
 	const observed = new Set(ctx.market.shortlist);
 	const listed = new Set(ctx.market.listed);
-	const entries: Entry[] = [];
-	function append(roster: RosterPlayer[], team?: MarketResults['clubs'][number]) {
+	const clubsById = new Map([...clubs, ...(world?.clubs ?? [])].map((team) => [team.id, team]));
+	const cacheByClub = new Map<string, Entry[]>();
+	function entriesFor(id: string) {
+		const cached = cacheByClub.get(id);
+		if (cached) return cached;
+		const team = clubsById.get(id);
+		if (id && !team) return [];
+		const roster = team ? rosterOf(ctx, id) : freeAgents(ctx);
+		const entries: Entry[] = [];
 		const counts = new Map<Position, number>();
 		for (const p of roster) counts.set(p.position, 1 + (counts.get(p.position) ?? 0));
 		for (const athlete of roster) {
@@ -80,11 +87,11 @@ export function marketIndex(key: string, clubId: string, ctx: RosterContext, lea
 				search: normalizeSearch(`${name} ${athlete.shortName} ${row.clubName} ${nationality ?? ''} ${position} ${secondary.join(' ')}`)
 			});
 		}
+		cacheByClub.set(id, entries);
+		if (cacheByClub.size > clubs.length + 80) cacheByClub.delete(cacheByClub.keys().next().value!);
+		return entries;
 	}
-	for (const team of clubs) append(rosterOf(ctx, team.id), team);
-	append(freeAgents(ctx));
-	const index = { ctx, clubId, humans, clubs, cupClubs, competitions, entries, byId: new Map(entries.map((entry) => [entry.row.id, entry])),
-		nationalities: [...new Set(entries.flatMap(({ row }) => row.nationality ? [row.nationality] : []))].sort(collator.compare) };
+	const index = { ctx, clubId, humans, clubs, world, cupClubs, competitions, entriesFor };
 	cache.set(key, index);
 	if (cache.size > 8) cache.delete(cache.keys().next().value!);
 	return index;
@@ -107,6 +114,7 @@ export function readMarketFilters(params: URLSearchParams): MarketFilters {
 	};
 	const match = <T extends string>(key: string, values: readonly T[]) => values.find((item) => item === str(key));
 	return {
+		world: params.get('world') === 'true',
 		q: str('q'), position: match('position', POSITIONS), secondary: match('secondary', POSITIONS),
 		club: str('club'), division: str('division') as MarketCompetition | undefined, nationality: str('nationality'),
 		status: match('status', Object.keys(MARKET_STATUS) as Array<keyof typeof MARKET_STATUS>),
@@ -122,7 +130,14 @@ export function readMarketFilters(params: URLSearchParams): MarketFilters {
 
 export function queryMarket(index: Index, f: MarketFilters): MarketResults {
 	const words = normalizeSearch(f.q ?? '').split(' ').filter(Boolean);
-	const matches = index.entries.filter((entry) => {
+	const world = f.world ? index.world : undefined;
+	const allClubs = f.world ? world?.clubs ?? [] : index.clubs;
+	const matchClubs = world && !f.club ? world.clubsMatching(words) : null;
+	const teams = f.status === 'livre' ? [] : allClubs.filter((team) => (!matchClubs || matchClubs.has(team.id)) && (!f.club || team.id === f.club)
+		&& (!f.division || (f.division === 'copa-do-brasil' ? index.cupClubs.has(team.id) : team.division === f.division)));
+	const entries = teams.flatMap((team) => index.entriesFor(team.id));
+	if (!f.world && !f.club && !f.division && (!f.status || f.status === 'livre')) entries.push(...index.entriesFor(''));
+	const matches = entries.filter((entry) => {
 		const p = entry.row;
 		return (!f.position || p.position === f.position)
 			&& (!f.secondary || p.secondary.includes(f.secondary))
@@ -152,11 +167,13 @@ export function queryMarket(index: Index, f: MarketFilters): MarketResults {
 	const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 	const page = Math.max(1, Math.min(pages, Math.floor(f.page ?? 1)));
 	return { rows: matches.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((entry) => entry.row),
-		total, pages, page, clubs: index.clubs, competitions: index.competitions, nationalities: index.nationalities };
+		total, pages, page, clubs: allClubs, competitions: f.world ? [] : index.competitions, worldAvailable: Boolean(index.world),
+		nationalities: [...new Set(entries.flatMap(({ row }) => row.nationality ? [row.nationality] : []))].sort(collator.compare) };
 }
 
 export function marketProfile(index: Index, id: string): MarketProfile | null {
-	const entry = index.byId.get(id);
+	const team = currentClubOf(index.ctx, id);
+	const entry = index.entriesFor(team ?? '').find(({ row }) => row.id === id);
 	if (!entry) return null;
 	const { row, athlete } = entry;
 	const override = index.ctx.market.players[id];

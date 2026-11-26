@@ -5,7 +5,7 @@ import { initialClubTactic } from './club-selection.ts';
 import { computeOverall } from '#lib/engine/attributes.ts';
 import { Match, simulateMatch } from '#lib/engine/match.ts';
 import { buildTeamSetup } from '#lib/engine/teams.ts';
-import type { AppliedDecision, MatchResult as EngineResult, PlayerStats, Side, TeamSetup } from '#lib/engine/types.ts';
+import type { AppliedDecision, MatchEvent, MatchResult as EngineResult, PlayerStats, Side, TeamSetup } from '#lib/engine/types.ts';
 import { COACH_PROFILES } from '#lib/engine/ai-coach.ts';
 import type { TacticalInstructions } from '#lib/engine/instructions.ts';
 import type { RoleId } from '#lib/engine/roles.ts';
@@ -196,8 +196,26 @@ export function matchFromSetup(s: ReturnType<typeof fixtureSetup>, replay?: Appl
 	});
 }
 
-/** Cartão ou lesão de um jogo da IA (minuto aproximado pelo relógio do motor). */
-export interface OtherIncident { kind: 'yellow' | 'red' | 'injury'; side: Side; player: string; minute: number }
+/** Eventos que aparecem no placar simultâneo e na súmula dos jogos completos. */
+export const HIGHLIGHT_LABELS = {
+	goal: 'Gol', goal_disallowed: 'Gol anulado', yellow: 'Cartão amarelo', red: 'Cartão vermelho',
+	injury: 'Lesão', sub: 'Substituição', penalty: 'Pênalti', penalty_miss: 'Pênalti perdido'
+} as const;
+
+export type MatchHighlight = {
+	kind: keyof typeof HIGHLIGHT_LABELS;
+	tick: number;
+	side: Side;
+	player?: string;
+	other?: string;
+};
+
+export function matchHighlight(event: MatchEvent): MatchHighlight | null {
+	if (!event.side || !Object.hasOwn(HIGHLIGHT_LABELS, event.type)) return null;
+	return { kind: event.type as MatchHighlight['kind'], tick: event.tick, side: event.side, player: event.player, other: event.other };
+}
+
+const highlightsOf = (events: MatchEvent[]) => events.map(matchHighlight).filter((e) => e !== null);
 
 /** Partida montada para um ou dois treinadores humanos (0.13: confronto direto entre humanos). */
 export interface SharedSetup {
@@ -240,7 +258,7 @@ export function simulateOtherFixtures(
 	fixtures: Fixture[],
 	ctx: Pick<MatchdayContext, 'season' | 'firstSeason'>,
 	opts: { full?: (f: Fixture) => boolean; strengthOf?: (clubId: string) => number } = {}
-): Array<MatchResult & { competition: string; seed: number; quick?: boolean; goals?: Array<{ side: 'home' | 'away'; player: string; minute: number; assist?: string }>; incidents?: OtherIncident[] }> {
+): Array<MatchResult & { competition: string; seed: number; quick?: boolean; goals?: Array<{ side: 'home' | 'away'; player: string; minute: number; assist?: string }>; highlights?: MatchHighlight[] }> {
 	return fixtures.map((f) => {
 		const seed = matchSeed(career, ctx.season, f.round, f.home, f.competition);
 		const neutral = !!(f as Fixture & { neutral?: boolean }).neutral;
@@ -251,10 +269,7 @@ export function simulateOtherFixtures(
 		}
 		const r = simulateMatch({ home: aiTeam(career, f.home, ctx, f.round).setup, away: aiTeam(career, f.away, ctx, f.round).setup, seed, ...(neutral ? { rules: { homeAdvantage: false } } : {}) });
 		const goals = r.events.filter((e) => e.type === 'goal').map((e) => ({ side: e.side!, player: e.player!, minute: Math.floor(e.tick / 60), ...(e.other ? { assist: e.other } : {}) }));
-		// 0.13: cartões e lesões reais do motor, para a central de resultados simultâneos.
-		const incidents = r.events.filter((e) => e.type === 'yellow' || e.type === 'red' || e.type === 'injury')
-			.map((e) => ({ kind: e.type as OtherIncident['kind'], side: e.side!, player: e.player!, minute: Math.floor(e.tick / 60) }));
-		return { home: f.home, away: f.away, homeGoals: r.homeGoals, awayGoals: r.awayGoals, competition: f.competition, seed, goals, incidents };
+		return { home: f.home, away: f.away, homeGoals: r.homeGoals, awayGoals: r.awayGoals, competition: f.competition, seed, goals, highlights: highlightsOf(r.events) };
 	});
 }
 
@@ -269,6 +284,7 @@ export interface MatchSummary {
 	players: Record<string, PlayerStats>;
 	goals: Array<{ tick: number; side: Side; player: string; assist?: string; minute: string }>;
 	cards: Array<{ tick: number; side: Side; player: string; kind: 'yellow' | 'red'; minute: string; secondYellow?: boolean }>;
+	highlights?: MatchHighlight[];
 	me?: PlayerStats;
 	assessment?: PlayerAssessment;
 	playerEvents?: Array<{ minute: string; kind: 'entrou' | 'saiu' | 'lesao' }>;
@@ -295,6 +311,7 @@ export function summarize(match: Match, result: EngineResult, mySide: Side, extr
 		cards: result.events
 			.filter((e) => e.type === 'yellow' || e.type === 'red')
 			.map((e) => ({ tick: e.tick, side: e.side!, player: e.player!, kind: e.type as 'yellow' | 'red', minute: match.minuteLabel(e.tick), ...(e.data?.secondYellow ? { secondYellow: true } : {}) })),
+		highlights: highlightsOf(result.events),
 		...(result.players[CAREER_PLAYER_ID]?.minutes ? { me: result.players[CAREER_PLAYER_ID] } : {}),
 		starters: [...match.teams[mySide].setup.tactic.lineup],
 		mySide,

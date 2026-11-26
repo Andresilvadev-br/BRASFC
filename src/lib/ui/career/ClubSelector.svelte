@@ -37,7 +37,8 @@
 	let division = $state<DivisionId | null>(null);
 	let search = $state('');
 	let listOpen = $state(false);
-	const divisions = $derived(clubs.some((entry) => entry.division === LEAGUE.id) ? [LEAGUE.id] : BRASIL_DIVISIONS);
+	const divisions = $derived(clubs.some((entry) => entry.division === LEAGUE.id)
+		? [LEAGUE.id] : BRASIL_DIVISIONS.filter((div) => clubs.some((entry) => entry.division === div)));
 	const active = $derived(division && divisions.some((entry) => entry === division) ? division
 		: clubs.find((entry) => entry.id === clubId)?.division ?? divisions[0]);
 	const options = $derived(divisions.map((value) => ({ value, label: DIVISION_LABELS[value] })));
@@ -77,7 +78,7 @@
 
 <section class="selector" aria-label="Seleção de clube" style:--club-color={club?.colors.primary ?? 'var(--emerald)'}>
 	<header>
-		<div class="country"><span aria-hidden="true">🇧🇷</span><strong>Brasil</strong><small>{season}</small></div>
+		<div class="country">{#if active !== LEAGUE.id}<span aria-hidden="true">🇧🇷</span>{/if}<strong>{active === LEAGUE.id ? 'Universo fictício' : 'Brasil'}</strong><small>{season}</small></div>
 		{#if top}{@render top()}{/if}
 	</header>
 	<div class="content">

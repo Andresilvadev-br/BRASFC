@@ -174,9 +174,9 @@ const TIER_REP: Record<string, number> = { 'serie-a': 58, 'serie-b': 44, 'serie-
 export function initialUniverse(s: UniverseSetup): UniverseState {
 	const clubs: Record<string, ClubMind> = {};
 	const coaches: Record<string, AiCoach> = {};
-	let tierRank = 0;
+	const nationalTiers = ['serie-a', 'serie-b', 'serie-c', 'serie-d'];
 	for (const [division, ids] of Object.entries(s.divisions)) {
-		tierRank++;
+		const tierRank = Math.max(1, nationalTiers.indexOf(division) + 1);
 		for (const id of ids) {
 			const board = boardProfileOf(s.seed, id);
 			const philosophy = philosophyOf(s.seed, id, board);
@@ -421,6 +421,7 @@ export interface SeasonEndContext {
 	relegated: string[];
 	/** divisões da próxima temporada */
 	next: Record<string, string[]>;
+	activeOnly?: boolean;
 	cupChampion: string | null;
 	userClub: string | null;
 	/** 0.13: todos os clubes de treinadores humanos (inclui userClub) */
@@ -497,7 +498,16 @@ export function universeSeasonEnd(prev: UniverseState, ctx: SeasonEndContext): U
 			mind.coachId = null;
 		}
 	}
-	// Clubes que chegam dos estaduais (acesso à Série D) entram no universo com diretoria própria.
+	if (ctx.activeOnly) {
+		const nextClubs = new Set(Object.values(ctx.next).flat());
+		for (const [id, mind] of Object.entries(u.clubs)) {
+			if (nextClubs.has(id)) continue;
+			delete u.clubs[id];
+			if (mind.coachId) delete u.coaches[mind.coachId];
+			delete u.streaks[id];
+		}
+	}
+	// Clubes que chegam a uma divisão ativa entram no universo com diretoria própria.
 	for (const ids of Object.values(ctx.next)) {
 		for (const id of ids) {
 			if (u.clubs[id]) continue;

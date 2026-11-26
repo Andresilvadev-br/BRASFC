@@ -67,6 +67,12 @@ export interface CupState {
 	finalVenue: string;
 }
 
+export function cupMatchCount(cup: CupState): number {
+	const entrants = Object.values(cup.entrants).reduce((sum, clubs) => sum + clubs.length, 0);
+	const extraLegs = CUP_PHASES.filter((phase) => phase.legs === 2).reduce((sum, phase) => sum + 2 ** (CUP_PHASES.length - phase.phase), 0);
+	return Math.max(0, entrants - 1) + extraLegs;
+}
+
 /** Edição 2026: participantes reais (Wikipédia/CBF). */
 export function initialCup(season: number): CupState {
 	const by = (f: number) => COPA_2026.participantes.filter((p) => p.fase === f).map((p) => p.clube);

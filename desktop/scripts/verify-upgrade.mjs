@@ -84,13 +84,13 @@ async function attach(endpoints) {
 	await new Promise((resolve, reject) => { socket.once('open', resolve); socket.once('error', reject); });
 }
 let id = 0;
-function evaluate(expression) {
+function evaluate(expression, timeout = 15_000) {
 	if (inspector) expression = `process.mainModule.require('electron').BrowserWindow.getAllWindows()[0]?.webContents.executeJavaScript(${JSON.stringify(expression)}, true)`;
 	const connection = socket;
 	if (connection.readyState !== WebSocket.OPEN) return Promise.reject(Error('CDP desconectado'));
 	return new Promise((resolve, reject) => {
 		const messageId = ++id;
-		const timer = setTimeout(() => finish(Error('CDP sem resposta')), 15_000);
+		const timer = setTimeout(() => finish(Error('CDP sem resposta')), timeout);
 		const disconnect = () => finish(Error('CDP desconectado'));
 		function finish(error, value) {
 			clearTimeout(timer);
@@ -225,6 +225,57 @@ try {
 	assert(after.continued, 'A carreira precisa jogar a segunda rodada');
 	assert.equal(JSON.parse(readFileSync(preferences, 'utf8')).automatic, false);
 	result.tests.push('Reabertura na versão nova com conta, carreira avançada e preferência preservadas');
+	const newSaves = await evaluate(`(async () => {
+		const post = async (path, body) => {
+			const r = await fetch(path, {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+			if (!r.ok) throw Error(path + ': ' + r.status + ' ' + await r.text());
+			return r.json();
+		};
+		const saves = [];
+		for (const shared of [false, true]) {
+			const opened = await post('/api/careers', {personName:'Ana Técnica',clubId:'bahia',world:'brasil',
+				leagueSelection:{divisions:['serie-a'],cup:false},
+				...(shared ? {others:[{personName:'Bia Técnica',clubId:'palmeiras'}]} : {})});
+			const c = opened.career;
+			if (!(await fetch('/carreira/' + c.id + '/partida')).ok) throw Error('A tela da primeira partida falhou');
+			const root = '/api/careers/' + c.id;
+			const t = shared ? (await post(root + '/turno', {version:c.version,action:'pronto'})).career : c;
+			if (shared && !(await fetch(root + '/rodada')).ok) throw Error('A central da primeira rodada falhou');
+			await post(root + '/matches', {version:t.version,season:t.season,step:'league:1'});
+			const replay = await post(root + '/matches', {version:t.version,season:t.season,step:'league:1'});
+			if (!replay.replay) throw Error('A primeira rodada foi reenviada em vez de relida');
+			saves.push({id:c.id,shared});
+		}
+		return saves;
+	})()`, 60_000);
+	socket.close();
+	const pid = app.pid;
+	execFileSync('powershell.exe', ['-NoProfile', '-Command',
+		'(Get-Process -Id ' + pid + ').CloseMainWindow() | Out-Null; (Get-Process -Id ' + pid + ' -ErrorAction SilentlyContinue).WaitForExit(15000) | Out-Null']);
+	await launch();
+	await until(() => evaluate("location.origin.startsWith('http://127.0.0.1:47615') && !!window.brasfcDesktop"));
+	const reopened = await evaluate(`(async () => {
+		const results = [];
+		for (const save of ${JSON.stringify(newSaves)}) {
+			const root = '/api/careers/' + save.id;
+			let {career} = await fetch(root).then(r=>r.json());
+			const first = await fetch(root + '/matches').then(r=>r.json());
+			if (first.matches.length !== 1 || first.matches[0].round !== 1) throw Error('O save reaberto não contém exatamente uma primeira partida');
+			if (!(await fetch('/carreira/' + save.id + '/partida')).ok) throw Error('A tela de partida falhou após reabrir');
+			const post = (path, body) => fetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+			if (save.shared) {
+				const turn = await post(root + '/turno',{version:career.version,action:'pronto'});
+				if (!turn.ok) throw Error('O turno não avançou');
+				career = (await turn.json()).career;
+			}
+			const next = await post(root + '/matches',{version:career.version,season:career.season,step:'league:2'});
+			const second = await fetch(root + '/matches').then(r=>r.json());
+			results.push(next.ok && second.matches.length === 2 && second.matches[1].round === 2);
+		}
+		return results;
+	})()`, 60_000);
+	assert.deepEqual(reopened, [true, true]);
+	result.tests.push('Carreiras novas com um e dois treinadores: primeira rodada idempotente, reabertura e segunda rodada no executável');
 	assert(!result.relaunchMissing, 'A instalação atualizou, mas a abertura automática não foi observada');
 	if (rollbackDist) {
 		const candidate = metadataVersion(rollbackDist);

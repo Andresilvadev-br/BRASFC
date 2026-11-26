@@ -552,6 +552,10 @@ export function makeOffer(club: ClubState, market: MarketState, ctx: ActionConte
 	if (!st.wageBudget) st.wageBudget = initialWageBudget(wages, clubEconomy(ctx.clubId, ctx.tier).tvAnnual);
 	if (wages + myCost > st.wageBudget) throw new ManagementError(`A folha passaria do teto mensal da diretoria (${formatMoney(st.wageBudget)}).`);
 	const ledger: LedgerLine[] = [];
+	if (seller?.startsWith('world/') && !mk.extra[player.id]) {
+		const { club: _club, contract: _contract, loan: _loan, value: _value, ...data } = player;
+		mk.extra[player.id] = { player: data, season: ctx.season, origin: 'mundo', formedBy: seller };
+	}
 	if (offer.kind === 'emprestimo') {
 		setOverride(mk, player.id, ctx.clubId, player.contract, ctx.gameDate, { from: seller!, until: ctx.season, wageShare });
 	} else {
