@@ -1,9 +1,8 @@
 import { error } from '@sveltejs/kit';
 import { careerWorld } from '#lib/domain/career.ts';
 import { getClub } from '#lib/domain/clubs.ts';
-import { divisionOf } from '#lib/domain/league.ts';
+import { divisionOf, isActiveClub, sanitizeLeague } from '#lib/domain/league.ts';
 import { initialClubState } from '#lib/domain/management.ts';
-import { sanitizeLeague } from '#lib/domain/league.ts';
 import { ManagementError, sanitizeMarket } from '#lib/domain/management.ts';
 import { careerView } from '#lib/domain/view.ts';
 import { clubStateOf, rosterContext } from '#lib/domain/world.ts';
@@ -18,6 +17,7 @@ import { openDeal, TurnError } from '#lib/server/local-turns.ts';
 import { isOfferOpen } from '#lib/domain/employment.ts';
 import { initialDiscipline } from '#lib/domain/discipline.ts';
 import { boardObjectivesFor, clubPreview } from '#lib/server/coach-market.ts';
+import { withWorldRoster } from '#lib/server/world-catalog.ts';
 import { carryKnowledge } from '#lib/server/coach-knowledge.ts';
 import { getCareer, saveCareerProgress, VersionConflictError } from '#lib/server/repos/careers.ts';
 import { changeCareerClub, insertLedger, insertMessages, insertTransfers, listHistory, listLedger, listTransfers } from '#lib/server/repos/management.ts';
@@ -74,7 +74,8 @@ export const POST: RequestHandler = async (event) => {
 	if (club.board.dismissed) error(409, 'Você não comanda mais o clube.');
 	const view = careerView(career, await listResults(db, career.id, career.season));
 	if (view.seasonOver) error(409, 'Temporada encerrada: inicie a próxima para negociar.');
-	const ctx = actionContext(career, league, rosterContext(career, league), view.nextRound);
+	const roster = rosterContext(career, league);
+	const ctx = actionContext(career, league, typeof body.playerId === 'string' && body.playerId.startsWith('world/') ? withWorldRoster(career, roster) : roster, view.nextRound);
 	// Dev 0.5: gabinete (reuniões, coletivas, comissão, treinos delegados, plano da base).
 	if (OFFICE_ACTIONS.has(String(body.action))) {
 		try {
@@ -146,6 +147,7 @@ async function careerDecision(db: Awaited<ReturnType<typeof getDb>>, profileId: 
 		return save({ club: { ...club, jobOffers } }, `O ${clubName} aceitou esperar sua resposta até a rodada ${expiresRound}.`);
 	}
 	if (body.action !== 'emprego') error(400, 'Ação de proposta desconhecida.');
+	if (league.selection && !isActiveClub(league, offer.clubId)) error(422, 'O clube está fora das divisões ativas desta carreira.');
 	if (view.seasonOver) error(409, 'Temporada encerrada: inicie a próxima temporada antes de assinar.');
 	if (body.confirm !== true) error(422, 'Confirme a assinatura do contrato.');
 	const division = divisionOf(league, offer.clubId);

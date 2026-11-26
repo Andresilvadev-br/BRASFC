@@ -372,8 +372,8 @@ describe('Cenário 7 — suspensões', () => {
 		expect(mine.tactic.lineup.filter(Boolean)).toHaveLength(11);
 		const forged = [{ tick: 3000, side: setup.mySide, decision: { type: 'sub', outId: mine.tactic.lineup[5], inId: starter } }];
 		const res = await playRound(db, profile.id, career, { version: career.version, step: v.step!.key, decisions: forged as never });
-		expect(res.match!.summary.players[starter]?.minutes ?? 0).toBe(0);
-		expect(res.match!.summary.starters).not.toContain(starter);
+	expect(res.match!.summary!.players[starter]?.minutes ?? 0).toBe(0);
+	expect(res.match!.summary!.starters).not.toContain(starter);
 		expect(suspendedFor(sanitizeDiscipline(res.career.data.discipline, res.career.season), competition).has(starter)).toBe(false);
 	}, 120_000);
 });

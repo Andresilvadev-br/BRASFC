@@ -24,7 +24,7 @@ export const POST: RequestHandler = async (event) => {
 	if (body.others !== undefined) {
 		if (!Array.isArray(body.others) || body.others.length > MAX_LOCAL_COACHES - 1) error(400, `No máximo ${MAX_LOCAL_COACHES} treinadores por carreira.`);
 		for (const [i, raw] of body.others.entries()) {
-			const r = validateCreateCareer({ ...(raw as object), mode: 'coach', world: result.value.world });
+			const r = validateCreateCareer({ ...(raw as object), mode: 'coach', world: result.value.world, leagueSelection: result.value.leagueSelection, worldSelection: result.value.worldSelection });
 			if (!r.ok) return noStore({ message: `Revise os dados do treinador ${i + 2}.`, errors: r.errors }, { status: 400 });
 			others.push({ personName: r.value.personName, clubId: r.value.clubId, appearance: r.value.appearance });
 		}

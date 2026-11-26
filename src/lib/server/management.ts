@@ -3,7 +3,7 @@ import type { Career } from '#lib/domain/career.ts';
 import { clubEconomy, TICKET_REF, type Facility } from '#lib/domain/club.ts';
 import { getClub } from '#lib/domain/clubs.ts';
 import { CUP_FINAL_PRIZE, CUP_PHASES, phaseOfMatchday } from '#lib/domain/cup.ts';
-import { divisionOf, effectiveRule, type LeagueState } from '#lib/domain/league.ts';
+import { activeMembership, divisionOf, effectiveRule, type LeagueState } from '#lib/domain/league.ts';
 import {
 	answerIncoming,
 	assignScout,
@@ -107,7 +107,7 @@ export function weeklyManagement(o: {
 	const week = processWeek(club, { seed: career.seed, clubId: career.clubId, season: career.season, round: step.round, tier, division, roster, match, fullWeek: step.kind === 'league', firstSeasonOfCareer: career.season === (career.data.firstSeason ?? career.season), cupPrize });
 	club = week.state;
 	news.push(...week.news);
-	if (!wasDismissed && club.board.dismissed) club = { ...club, jobOffers: jobOffers(career.seed, career.season, step.round, club.coachReputation, career.clubId, league.divisions as Record<string, string[]>, true) };
+	if (!wasDismissed && club.board.dismissed) club = { ...club, jobOffers: jobOffers(career.seed, career.season, step.round, club.coachReputation, career.clubId, activeMembership(league), true) };
 	const ledger = [...week.ledger];
 
 	if (step.kind === 'league') {
@@ -128,7 +128,8 @@ export function weeklyManagement(o: {
 		if (window && o.aiMarket !== false) {
 			// Mercado da IA: necessidades reais de elenco e orçamento por nível.
 			const budgetOf = (id: string) => clubEconomy(id, tierOfDivision(divisionOf(league, id))).tvAnnual * 0.06;
-			const moves = aiTransfers({ ...o.roster, market }, allClubs, `${step.round}`, budgetOf, 3);
+			const aiClubs = league.selection ? Object.values(activeMembership(league)).flat() : allClubs;
+			const moves = aiTransfers({ ...o.roster, market }, aiClubs, `${step.round}`, budgetOf, 3);
 			if (moves.length) {
 				market = structuredClone(market);
 				for (const mv of moves) {
@@ -231,7 +232,7 @@ export function seasonEndManagement(o: {
 	let st = { ...out.state, balance: out.state.balance + extra };
 	// Treinador em destaque recebe sondagens de clubes maiores (decide na pré-temporada).
 	if (!st.board.dismissed && st.coachReputation >= 55) {
-		const offers = jobOffers(career.seed, career.season, 99, st.coachReputation, career.clubId, o.next.divisions as Record<string, string[]>, false).slice(0, 2).map((x) => ({ ...x, expiresSeason: career.season + 1 }));
+		const offers = jobOffers(career.seed, career.season, 99, st.coachReputation, career.clubId, activeMembership(o.next), false).slice(0, 2).map((x) => ({ ...x, expiresSeason: career.season + 1 }));
 		if (offers.length) {
 			st = { ...st, jobOffers: offers };
 			news.push({ sender: 'Empresário', subject: 'Sondagens de outros clubes', body: `${offers.map((x) => getClub(x.clubId)?.name ?? x.clubId).join(' e ')} querem conversar. Veja em Clube → Carreira.` });

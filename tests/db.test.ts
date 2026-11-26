@@ -137,7 +137,7 @@ describe('partidas da carreira (Dev 0.2/0.3)', () => {
 		expect(after.tactical.formations[tactic.formation]).toBeGreaterThan(view.tactical.formations[tactic.formation]);
 		expect(Object.keys(res.career.data.fitness ?? {}).length).toBeGreaterThan(15);
 		const [userMatch] = await listUserMatches(db, career.id);
-		expect(userMatch.summary.tactic?.formation).toBe(tactic.formation);
+		expect(userMatch.summary?.tactic?.formation).toBe(tactic.formation);
 	});
 
 	it('carreira Brasil: passos de liga e de Copa em ordem, sem duplicar, com Série D e Copa gravadas', async () => {

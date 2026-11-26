@@ -3,22 +3,29 @@
 	import { untrack } from 'svelte';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { formatShort } from '#lib/domain/dates.ts';
-	import { D_STAGE_NAMES, DIVISION_LABELS, dStageRounds, effectiveRule, groupStandings, phaseOneLength, phaseOneTables, resolveTie, type BrasilDivision, type DivisionId, type Tie } from '#lib/domain/league.ts';
+	import { activeDivisions, D_STAGE_NAMES, DIVISION_LABELS, dStageRounds, effectiveRule, groupStandings, phaseOneLength, phaseOneTables, resolveTie, type BrasilDivision, type DivisionId, type Tie } from '#lib/domain/league.ts';
 	import { computeStandings } from '#lib/domain/season.ts';
 	import { strengthMemo } from '#lib/domain/world.ts';
 	import { reveal } from '#lib/motion/actions.ts';
 	import Crest from '#lib/ui/Crest.svelte';
 	import Icon from '#lib/ui/Icon.svelte';
-	import Segmented from '#lib/ui/Segmented.svelte';
+	import { careerPort } from '#lib/career/port.ts';
+	import CompetitionNav from '#lib/ui/world/CompetitionNav.svelte';
+	import ParticipationBadge from '#lib/ui/world/ParticipationBadge.svelte';
+	import { nativeCompetitions } from '#lib/world/competitions.ts';
 
 	let { data }: { data: CareerScreenData } = $props();
+	const port = careerPort();
 	const c = $derived(data.career);
 	const v = $derived(data.view);
 	const st = $derived(strengthMemo(data.manage.ctx));
 
-	let div = $state<DivisionId>(untrack(() => data.view.division));
-	const divisions = $derived((Object.keys(v.league.divisions) as DivisionId[]).filter((d) => v.league.divisions[d]?.length));
+	let selected = $state<DivisionId>(untrack(() => data.view.division));
+	const divisions = $derived(activeDivisions(v.league));
+	const div = $derived(divisions.includes(selected) ? selected : divisions[0] ?? v.division);
 	const brasil = $derived(v.world === 'brasil' && div !== 'liga-brasfc');
+	const bPlayoffs = $derived(div === 'serie-b' && v.league.bPromotionPlayoff !== undefined);
+	const competitions = $derived(nativeCompetitions(v.league, !!v.cup));
 	const rule = $derived(brasil ? effectiveRule(v.league, div as BrasilDivision) : null);
 	const p1 = $derived(div === 'liga-brasfc' ? 38 : phaseOneLength(v.league, div));
 	const tables = $derived(phaseOneTables(v.league, div, v.results));
@@ -41,12 +48,13 @@
 			const down = rule.relegatedPerGroup ?? rule.relegated;
 			return pos > size - down ? 'down' : '';
 		}
+		if (bPlayoffs && pos <= 6) return pos <= 2 ? 'up' : 'qual';
 		if (pos <= rule.promoted) return 'up';
 		return pos > size - rule.relegated ? 'down' : '';
 	};
 	const fixtures = $derived(v.fixtures.filter((f) => f.competition === div));
 	const maxRound = $derived(Math.max(1, ...fixtures.map((f) => f.round)));
-	let round = $state(untrack(() => Math.max(1, Math.min(data.view.nextRound, 38))));
+	let round = $state(untrack(() => Math.max(1, data.view.nextRound)));
 	const shown = $derived(Math.min(Math.max(1, round), maxRound));
 	const games = $derived(fixtures.filter((f) => f.round === shown));
 	const resultOf = (home: string, rd: number) => divResults.find((r) => r.round === rd && r.home === home);
@@ -54,7 +62,8 @@
 	const dRounds = (k: number) => dStageRounds(v.league, k);
 	const tieOut = (t: Tie, rounds: number[], byCampaign = false) => resolveTie(t, v.results, 'serie-d', rounds, c.seed, st, { byCampaign });
 	const name = (id: string) => getClub(id)?.name ?? id;
-	const ruleText = $derived(!rule ? 'Liga fictícia: 20 clubes em turno e returno.' : `${rule.size} clubes · ${rule.status === 'oficial' ? 'regra oficial' : rule.status === 'anunciado' ? 'regra anunciada pela CBF' : 'regra projetada pelo BRASFC'}. ${rule.nota ?? ''}`);
+	const ruleText = $derived(bPlayoffs ? 'Dois clubes sobem direto. Do 3º ao 6º, os clubes disputam duas vagas nos playoffs. Quatro são rebaixados.'
+		: !rule ? 'Liga fictícia: 20 clubes em turno e returno.' : `${rule.size} clubes · ${rule.status === 'oficial' ? 'regra oficial' : rule.status === 'anunciado' ? 'regra anunciada pela CBF' : 'regra projetada pelo BRASFC'}. ${rule.nota ?? ''}`);
 </script>
 
 <svelte:head><title>Competições · {v.club.name} · BRASFC</title></svelte:head>
@@ -65,8 +74,14 @@
 		<h1 class="display">{DIVISION_LABELS[div]}</h1>
 		<p class="muted rule">{ruleText}</p>
 	</div>
-	{#if divisions.length > 1}<Segmented label="Divisão" bind:value={div} options={divisions.map((d) => ({ value: d, label: DIVISION_LABELS[d] }))} />{/if}
+	{#if competitions.length > 1}
+		<CompetitionNav {competitions} active={div} onselect={(id) => (selected = id as DivisionId)} href={(comp) => (comp.id === 'copa-do-brasil' ? port.href('copa') : null)} />
+	{/if}
 </div>
+
+{#each v.continentalParticipation as entry (entry.competition)}
+	<p class="muted" use:reveal>{entry.competition === 'continental/libertadores' ? 'Libertadores' : 'Sul-Americana'} <ParticipationBadge participation={entry} /> · Calendário pendente</p>
+{/each}
 
 {#if tables.length === 1}
 	{@const t = tables[0]}
@@ -89,6 +104,7 @@
 			</table>
 			<div class="legend">
 				{#if rule && rule.promoted && div !== 'serie-c'}<span><i data-z="up"></i>Acesso</span>{/if}
+				{#if bPlayoffs}<span><i data-z="qual"></i>Playoff de acesso</span>{/if}
 				{#if div === 'serie-c'}<span><i data-z="qual"></i>2ª fase (quadrangulares)</span>{/if}
 				{#if !rule}<span><i data-z="up"></i>Topo</span>{/if}
 				<span><i data-z="down"></i>Rebaixamento</span>

@@ -10,7 +10,7 @@ import { isAppearance, type Appearance } from './appearance.ts';
 import { CLUBES_2026, TEMPORADA_2026 } from '#lib/data/brasil.ts';
 import { CLUBS, getClub, LEAGUE, type Club } from './clubs.ts';
 import type { TrainingPlan } from './drills.ts';
-import { DIVISION_LABELS, divisionOf, firstRoundDate, initialLeague, seasonStartDate, type LeagueState, type SeasonSummary, type World } from './league.ts';
+import { BRASIL_DIVISIONS, DIVISION_LABELS, divisionOf, firstRoundDate, initialLeague, isActiveClub, seasonStartDate, validateLeagueSelection, type LeagueSelection, type LeagueState, type SeasonSummary, type World } from './league.ts';
 import type { TacticalState } from './tactical.ts';
 import { initialCup, type CupState } from './cup.ts';
 import type { ClubState } from './management.ts';
@@ -22,6 +22,8 @@ import { createRng, deriveSeed } from './rng.ts';
 import { FIRST_ROUND, SEASON_START } from './season.ts';
 import type { Tactic } from './tactics.ts';
 import type { PlayerFocus, TeamFocus } from './training.ts';
+import type { WorldSelection } from '#lib/world/contract.ts';
+import type { BrazilContinentalQualification } from './continental-qualification.ts';
 
 export const CAREER_MODES = ['coach', 'player'] as const;
 export type CareerMode = (typeof CAREER_MODES)[number];
@@ -46,6 +48,12 @@ export interface PlayerProfile {
 export interface CareerData {
 /** Edição imutável do elenco inicial. Ausente em saves legados. */
 rosterCatalog?: RosterCatalogId;
+/** Identificador imutável do catálogo mundial local usado pelo mercado. */
+worldCatalog?: string;
+/** Países selecionados no início da carreira, compartilhados pelos treinadores locais. */
+worldSelection?: WorldSelection;
+/** Vagas brasileiras apuradas ao encerrar a temporada correspondente. */
+brazilContinentalQualification?: BrazilContinentalQualification;
 appearance?: Appearance;
 position?: Position;
 player?: PlayerProfile;
@@ -126,6 +134,8 @@ nationality?: string;
 foot?: DominantFoot;
 /** 'brasil' = clubes reais (Séries A/B/C 2026); padrão: liga fictícia */
 world?: World;
+leagueSelection?: LeagueSelection;
+worldSelection?: WorldSelection;
 }
 
 export type ValidationResult<T> = { ok: true; value: T } | { ok: false; errors: Record<string, string> };
@@ -150,10 +160,24 @@ export function validateCreateCareer(input: unknown): ValidationResult<CreateCar
 	else if (personName.length > 40) errors.personName = 'Use no máximo 40 caracteres.';
 	else if (!NAME_PATTERN.test(personName)) errors.personName = 'Use apenas letras, espaços, apóstrofo, ponto ou hífen.';
 
-	const world: World = v.world === 'brasil' ? 'brasil' : 'brasfc';
+	const countrySelection = v.worldSelection !== undefined;
+	const world: World = v.world === 'brasil' || (countrySelection && v.world === undefined) ? 'brasil' : 'brasfc';
+	const countries = (v.worldSelection as Partial<WorldSelection> | null)?.countries;
+	const worldSelection: WorldSelection | undefined = world === 'brasil' && Array.isArray(countries) && countries.length === 1 && countries[0] === 'bra'
+		? { countries: ['bra'] }
+		: undefined;
+	const leagueSelection = worldSelection ? brazilCountrySelection() : validateLeagueSelection(world, v.leagueSelection);
+	if (countrySelection && !worldSelection) {
+		errors.worldSelection = 'Selecione os países disponíveis para iniciar a carreira.';
+	} else if (!countrySelection && v.leagueSelection !== undefined && (!leagueSelection || (v.world !== 'brasil' && v.world !== 'brasfc'))) {
+		errors.leagueSelection = 'Selecione ao menos uma divisão disponível na base escolhida.';
+	}
 	const clubId = typeof v.clubId === 'string' ? v.clubId : '';
 	const validClub = world === 'brasil' ? CLUBES_2026.some((c) => c.id === clubId && c.serie !== 'E') : CLUBS.some((c) => c.id === clubId);
 	if (!getClub(clubId) || !validClub) errors.clubId = 'Escolha um clube.';
+	else if (leagueSelection && !isActiveClub(initialLeague(world, careerStart(world).season, leagueSelection), clubId)) {
+		errors.clubId = 'Escolha um clube de uma divisão ativa.';
+	}
 
 	let appearance: Appearance | undefined;
 	if (v.appearance !== undefined) {
@@ -162,14 +186,29 @@ export function validateCreateCareer(input: unknown): ValidationResult<CreateCar
 	}
 
 	if (Object.keys(errors).length) return { ok: false, errors };
-	return { ok: true, value: { mode: 'coach', personName, clubId, appearance, world } };
+	return { ok: true, value: { mode: 'coach', personName, clubId, appearance, world, ...(worldSelection ? { worldSelection } : { leagueSelection }) } };
+}
+
+function brazilCountrySelection(): LeagueSelection {
+	return { divisions: [...BRASIL_DIVISIONS], cup: true };
 }
 
 /** Dados iniciais persistidos de uma carreira nova. */
 export function initialCareerData(input: CreateCareerInput, seed: number): CareerData {
-	const world = input.world ?? 'brasfc';
+	const world = input.world ?? (input.worldSelection ? 'brasil' : 'brasfc');
 	const start = careerStart(world);
-	const data: CareerData = { appearance: input.appearance, world, firstSeason: start.season, league: initialLeague(world, start.season), ...(world === 'brasil' ? { cup: initialCup(start.season), rosterCatalog: ROSTER_CATALOG } : {}) };
+	const selection = input.worldSelection ? brazilCountrySelection() : input.leagueSelection;
+	const league = initialLeague(world, start.season, selection);
+	if (input.worldSelection && world === 'brasil') league.bPromotionPlayoff = [];
+	const data: CareerData = {
+		appearance: input.appearance,
+		world,
+		firstSeason: start.season,
+		league,
+		...(input.worldSelection ? { worldSelection: input.worldSelection } : {}),
+		...(world === 'brasil' ? { rosterCatalog: ROSTER_CATALOG } : {}),
+		...(world === 'brasil' && (selection?.cup ?? true) ? { cup: initialCup(start.season) } : {})
+	};
 	if (input.mode === 'player' && input.position) {
 		const rng = createRng(deriveSeed(seed, 'player'));
 		const age = input.age ?? 18;
@@ -232,7 +271,7 @@ export interface NewMessage {
 /** Mensagens reais da caixa de entrada criadas junto com a carreira. */
 export function welcomeMessages(input: CreateCareerInput): NewMessage[] {
 	const club = getClub(input.clubId)!;
-	const world = input.world ?? 'brasfc';
+	const world = input.world ?? (input.worldSelection ? 'brasil' : 'brasfc');
 	const start = careerStart(world);
 	const date = start.date;
 	const league = initialLeague(world, start.season);

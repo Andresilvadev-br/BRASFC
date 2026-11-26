@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { isShared } from '#lib/domain/turns.ts';
 	import { careerPort } from '#lib/career/port.ts';
 	import type { CareerScreenData } from '#lib/career/screen-data.ts';
 	import { BOARD_PROFILES } from '#lib/domain/club.ts';
@@ -86,7 +87,7 @@
 	{/if}
 
 	{#if port.supports('job-market')}
-	<JobCenter careerId={c.id} version={c.version} season={c.season} round={marketRound} offers={club.jobOffers} {status} unemployed={club.board.dismissed}
+	<JobCenter careerId={c.id} version={c.version} season={c.season} round={marketRound} offers={club.jobOffers} {status} unemployed={club.board.dismissed} shared={isShared(c)}
 		alert={o.offerAlert ?? null} league={data.view.league} results={data.results} currentClub={c.clubId} contract={o.contract} seasonOver={data.view.seasonOver} />
 	{/if}
 

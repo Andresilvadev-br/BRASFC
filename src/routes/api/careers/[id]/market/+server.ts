@@ -1,4 +1,4 @@
-import { sharedClub } from '#lib/domain/turns.ts';
+import { liveCoaches, sharedClub } from '#lib/domain/turns.ts';
 import { error } from '@sveltejs/kit';
 import { careerWorld } from '#lib/domain/career.ts';
 import { sanitizeCup } from '#lib/domain/cup.ts';
@@ -12,6 +12,7 @@ import { marketIndex, marketProfile, queryMarket, readMarketFilters } from '#lib
 import { getCareerForMarket } from '#lib/server/repos/careers.ts';
 import { listTransfers } from '#lib/server/repos/management.ts';
 import { listStatMatches } from '#lib/server/repos/matches.ts';
+import { worldCatalog } from '#lib/server/world-catalog.ts';
 import type { RequestHandler } from './$types';
 
 const knownClubs = new Set(CLUBES_2026.map((club) => club.id));
@@ -23,9 +24,12 @@ export const GET: RequestHandler = async (event) => {
 	if (!career) error(404, 'Carreira não encontrada.');
 	if (career.mode !== 'coach') error(403, 'O mercado do clube é gerenciado pelo treinador.');
 	const league = sanitizeLeague(career.data.league, careerWorld(career), career.season);
-	const cup = league.world === 'brasil' ? sanitizeCup(career.data.cup, knownClubs) : null;
+	const cup = league.world === 'brasil' && (league.selection?.cup ?? true) ? sanitizeCup(career.data.cup, knownClubs) : null;
 	const entrants = cup?.season === career.season ? Object.values(cup.entrants).flat() : [];
-	const index = marketIndex(`career:${career.id}:${career.version}`, career.clubId, rosterContext(career, league), league, clubStateOf(career, league), undefined, entrants);
+	const humans = new Map(liveCoaches(career).filter((coach) => !coach.data.club?.board.dismissed).map((coach) => [coach.clubId, coach.personName]));
+	const roster = rosterContext(career, league);
+	const world = worldCatalog(career);
+	const index = marketIndex(`career:${career.id}:${career.version}`, career.clubId, { ...roster, externalRoster: world?.roster }, league, clubStateOf(career, league), humans, entrants, world);
 	const id = event.url.searchParams.get('player');
 	if (!id) return noStore(queryMarket(index, readMarketFilters(event.url.searchParams)));
 	const profile = marketProfile(index, id);

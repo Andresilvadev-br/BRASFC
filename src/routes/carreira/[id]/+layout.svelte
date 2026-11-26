@@ -45,7 +45,6 @@
 	});
 	const unread = $derived(data.career.unreadMessages ?? 0);
 	const coach = $derived(data.career.mode === 'coach');
-	const brasil = $derived(data.view.world === 'brasil');
 	const groups = $derived<CareerGroup[]>(coach && data.manage.club.board.dismissed
 		? [{ label: 'Carreira', items: [{ href: `${base}/gabinete`, label: 'Propostas de emprego', icon: 'briefcase' as IconName }] }]
 		: [
@@ -84,7 +83,7 @@
 			items: [
 				{ href: `${base}/mundo`, label: 'Notícias e mundo', icon: 'globe' },
 				{ href: `${base}/competicoes`, label: 'Competições', icon: 'trophy' },
-				...(brasil ? [{ href: `${base}/copa`, label: 'Copa do Brasil', icon: 'star' as IconName }] : []),
+				...(data.view.cup ? [{ href: `${base}/copa`, label: 'Copa do Brasil', icon: 'star' as IconName }] : []),
 				{ href: `${base}/calendario`, label: 'Calendário', icon: 'calendar' },
 				{ href: `${base}/estatisticas`, label: 'Estatísticas', icon: 'field' },
 				{ href: `${base}/historia`, label: 'História', icon: 'news' },

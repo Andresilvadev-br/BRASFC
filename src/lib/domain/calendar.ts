@@ -17,12 +17,11 @@ export function seasonSteps(league: LeagueState, cup: CupState | null): Step[] {
 	const n = totalRounds(league);
 	for (let r = 1; r <= n; r++) {
 		out.push({ kind: 'league', round: r, date: roundDate(league.season, r), key: `league:${r}` });
-		if (cup) {
-			const md = CUP_AFTER_ROUND.indexOf(r) + 1;
-			if (md > 0) out.push({ kind: 'cup', matchday: md, date: cupDate(league.season, md), key: `cup:${md}` });
-		}
 	}
-	return out;
+	if (cup) for (let md = 1; md <= CUP_AFTER_ROUND.length; md++) {
+		out.push({ kind: 'cup', matchday: md, date: cupDate(league.season, md), key: `cup:${md}` });
+	}
+	return out.sort((a, b) => a.date.localeCompare(b.date));
 }
 
 export function processedKeys(results: StoredRoundResult[]): Set<string> {

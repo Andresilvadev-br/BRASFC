@@ -189,6 +189,8 @@ export interface RosterContext {
 	userDevBoost?: number;
 	/** 0.13: todos os clubes de treinadores humanos → bônus do CT de cada um (substitui userClub/userDevBoost) */
 	humans?: Record<string, number>;
+	/** Base externa opcional, resolvida sob demanda pelo servidor local. */
+	externalRoster?: (clubId: string) => SquadPlayer[] | undefined;
 }
 
 /** Clube comandado por um treinador humano (não segue as regras automáticas da IA). */
@@ -280,6 +282,7 @@ export function findPlayer(ctx: RosterContext, playerId: string): SquadPlayer | 
 	const extra = ctx.market.extra[playerId];
 	if (extra) return evolve(extra.player, ctx.seed, extra.season, ctx.season, ctx.userDevBoost);
 	const origin = originClub(playerId);
+	if (origin.startsWith('world/')) return ctx.externalRoster?.(origin)?.find((p) => p.id === playerId) ?? null;
 	if (!getClub(origin)) return null;
 	const auto = !isHumanClub(ctx, origin);
 	const base = evolvedBase(ctx.seed, origin, ctx.firstSeason, ctx.season, auto, auto ? 1 : devBoostOf(ctx, origin), ctx.catalog);
@@ -290,7 +293,9 @@ export function findPlayer(ctx: RosterContext, playerId: string): SquadPlayer | 
 export function rosterOf(ctx: RosterContext, clubId: string): RosterPlayer[] {
 	const auto = !isHumanClub(ctx, clubId);
 	const tier = tierOfDivision(ctx.divisionOf(clubId));
-	const base = evolvedBase(ctx.seed, clubId, ctx.firstSeason, ctx.season, auto, auto ? 1 : devBoostOf(ctx, clubId), ctx.catalog);
+	const base = clubId.startsWith('world/')
+		? (ctx.externalRoster?.(clubId) ?? []).map((p) => evolve(p, ctx.seed, ctx.firstSeason, ctx.season)).filter((p) => !retires(p))
+		: evolvedBase(ctx.seed, clubId, ctx.firstSeason, ctx.season, auto, auto ? 1 : devBoostOf(ctx, clubId), ctx.catalog);
 	const strength = squadStrength(base);
 	const out: RosterPlayer[] = [];
 	for (const p of base) {

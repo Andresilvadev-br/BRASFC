@@ -2,6 +2,7 @@
 	import Walkout from '#lib/ui/v4/Walkout.svelte';
 	import { beforeNavigate, invalidate } from '$app/navigation';
 	import { ApiError, api, withCareerVersion } from '#lib/api.ts';
+	import { startNextSeason } from '#lib/career/season-transition.ts';
 	import type { Career } from '#lib/domain/career.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { formatLong } from '#lib/domain/dates.ts';
@@ -33,7 +34,7 @@
 	type RoundResponse = {
 		career: Career;
 		round: number;
-		match: { fixture: Fixture; homeGoals: number; awayGoals: number; summary: MatchSummary } | null;
+		match: { fixture: Fixture; homeGoals: number; awayGoals: number; summary: MatchSummary | null } | null;
 		results: Array<{ home: string; away: string; homeGoals: number; awayGoals: number; competition: string }>;
 		/** o passo já estava gravado (envio repetido): este é o resultado oficial guardado */
 		replay?: boolean;
@@ -78,7 +79,7 @@
 		try {
 			const decisions = local && setup ? local.decisions.filter((d) => d.side === setup!.control) : [];
 			const submit = (version: number, step = v.step?.key) =>
-				api<RoundResponse>(`/api/careers/${c.id}/matches`, { body: { version, step, decisions } });
+				api<RoundResponse>(`/api/careers/${c.id}/matches`, { body: { version, season: c.season, step, decisions } });
 			const res = await withCareerVersion(c.id, c.version, submit);
 			if (res.match && !playedFixture) {
 				playedFixture = res.match.fixture;
@@ -111,15 +112,16 @@
 	async function closeSeason() {
 		busy = true;
 		try {
-			const res = await withCareerVersion(c.id, c.version, (version) =>
-				api<{ summary: SeasonSummary; moves: Array<{ clubId: string; from: DivisionId; to: DivisionId; reason: string }> }>(`/api/careers/${c.id}/season`, { body: { version } })
-			);
-			seasonEnd = res;
-			notify({ icon: 'trophy', tone: 'gold', title: `Temporada ${res.summary.season} encerrada`, detail: `${res.summary.position}º lugar na ${DIVISION_LABELS[res.summary.division]}` });
+			const res = await startNextSeason<NonNullable<typeof seasonEnd>>(c.id, c.version);
+			if (res) {
+				seasonEnd = res;
+				notify({ icon: 'trophy', tone: 'gold', title: `Temporada ${res.summary.season} encerrada`, detail: `${res.summary.position}º lugar na ${DIVISION_LABELS[res.summary.division]}` });
+			}
 		} catch (e) {
 			notify({ icon: 'alert', tone: 'error', title: 'Não foi possível encerrar', detail: e instanceof ApiError ? e.message : 'Tente de novo.' });
+		} finally {
+			busy = false;
 		}
-		busy = false;
 	}
 
 	async function next() {
@@ -240,7 +242,7 @@
 					<strong>{saved.match.homeGoals} × {saved.match.awayGoals}</strong>
 					<Crest clubId={playedFixture.away} size={56} />
 				</div>
-				{#if saved.match.summary.goals.length}
+				{#if saved.match.summary?.goals.length}
 					<ul class="goals">
 						{#each saved.match.summary.goals as g (g.tick)}<li><span>{g.minute}</span> ⚽ {name(g.player)}{g.assist ? ` (assist. ${name(g.assist)})` : ''}</li>{/each}
 					</ul>

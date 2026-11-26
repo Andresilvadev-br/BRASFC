@@ -2,10 +2,11 @@
 	import { goto, invalidateAll } from '$app/navigation';
 	import { api, withCareerVersion } from '#lib/api.ts';
 	import { careerPort } from '#lib/career/port.ts';
+	import { startNextSeason } from '#lib/career/season-transition.ts';
 	import type { JobOfferDetail } from '#lib/domain/careerlife.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { isOfferOpen, OFFER_SOURCE_LABEL, type EmploymentStatus } from '#lib/domain/employment.ts';
-	import { divisionStandings, type DivisionId, type LeagueState, type StoredRoundResult } from '#lib/domain/league.ts';
+	import { divisionStandings, isActiveClub, type DivisionId, type LeagueState, type StoredRoundResult } from '#lib/domain/league.ts';
 	import { formatMoney } from '#lib/domain/market.ts';
 	import { divLabel } from '#lib/domain/universe.ts';
 	import { CUP_ID } from '#lib/domain/cup.ts';
@@ -19,13 +20,13 @@
 	import Segmented from '../Segmented.svelte';
 	import Sheet from '../v4/Sheet.svelte';
 
-	let { careerId, version, season, round, offers, status, unemployed, alert, league, results, currentClub, contract, seasonOver }: {
+	let { careerId, version, season, round, offers, status, unemployed, alert, league, results, currentClub, contract, seasonOver, shared }: {
 		careerId: string; version: number; season: number; round: number; offers: JobOfferDetail[]; status: EmploymentStatus; unemployed: boolean;
 		alert: { season: number; round: number; ids: string[] } | null; league: LeagueState; results: StoredRoundResult[]; currentClub: string;
-		contract: { until: number; wage: number }; seasonOver: boolean;
+		contract: { until: number; wage: number }; seasonOver: boolean; shared: boolean;
 	} = $props();
 
-	const open = $derived(offers.filter((o) => isOfferOpen(o, season, round)));
+	const open = $derived(offers.filter((o) => isOfferOpen(o, season, round) && (!league.selection || isActiveClub(league, o.clubId))));
 	const closed = $derived(offers.filter((o) => !isOfferOpen(o, season, round)).slice(-4).reverse());
 	const port = careerPort();
 	let busy = $state(false);
@@ -143,8 +144,14 @@
 	async function advance() {
 		advancing = true;
 		try {
+			if (shared) {
+				await goto(`/carreira/${careerId}/partida`);
+				return;
+			}
 			const next = await api<{ step: string | null; seasonOver: boolean; version: number }>(`/api/careers/${careerId}/proximo`);
-			if (next.seasonOver || !next.step) await withCareerVersion(careerId, next.version, (v) => api(`/api/careers/${careerId}/season`, { body: { version: v } }));
+			if (next.seasonOver || !next.step) {
+				if (await startNextSeason(careerId, next.version) === null) return;
+			}
 			else await withCareerVersion(careerId, next.version, (v) => api(`/api/careers/${careerId}/matches`, { body: { version: v, step: next.step } }));
 			await invalidateAll();
 			notify({ icon: 'calendar', tone: 'info', title: next.seasonOver ? 'Nova temporada' : 'Uma semana depois', detail: 'O mercado se movimentou. Veja se há novas propostas.' });

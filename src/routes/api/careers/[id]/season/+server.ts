@@ -1,8 +1,9 @@
 import { error } from '@sveltejs/kit';
+import { isShared } from '#lib/domain/turns.ts';
 import { getDb } from '#lib/server/db/index.ts';
 import { noStore, readJson, requireProfile } from '#lib/server/http.ts';
 import { getCareer, VersionConflictError } from '#lib/server/repos/careers.ts';
-import { finishSeason, RoundError } from '#lib/server/rounds.ts';
+import { finishSeason, RoundError, SeasonSelectionRequired } from '#lib/server/rounds.ts';
 import { prefetchRound } from '#lib/server/round-prefetch.ts';
 import type { RequestHandler } from './$types';
 
@@ -16,10 +17,11 @@ export const POST: RequestHandler = async (event) => {
 	const version = Number(body.version);
 	if (!Number.isInteger(version)) error(400, 'Versão da carreira ausente.');
 	try {
-		const out = await finishSeason(db, profile.id, career, version);
-		prefetchRound(db, profile.id, out.career.id);
+		const out = await finishSeason(db, profile.id, career, version, body.activateDivisions);
+		if (!isShared(out.career)) prefetchRound(db, profile.id, out.career.id);
 		return noStore(out);
 	} catch (e) {
+		if (e instanceof SeasonSelectionRequired) return noStore({ message: e.message, errors: { activateDivisions: e.divisions.join(',') } }, { status: e.status });
 		if (e instanceof RoundError) error(e.status, e.message);
 		if (e instanceof VersionConflictError) error(409, e.message);
 		throw e;

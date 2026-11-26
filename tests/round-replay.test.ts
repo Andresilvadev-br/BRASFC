@@ -1,11 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import '#lib/data/brasil.ts';
 import { createPgliteDb, type Db } from '#lib/server/db/index.ts';
 import { runMigrations } from '#lib/server/db/migrate.ts';
 import { createGuestProfile } from '#lib/server/repos/profiles.ts';
-import { createCareer } from '#lib/server/repos/careers.ts';
+import { createCareer, getCareer } from '#lib/server/repos/careers.ts';
 import { listResults } from '#lib/server/repos/matches.ts';
-import { playRound, RoundError } from '#lib/server/rounds.ts';
+import { matchdayContext, playRound, RoundError } from '#lib/server/rounds.ts';
 import { careerView } from '#lib/domain/view.ts';
 
 let db: Db;
@@ -35,5 +38,37 @@ describe('reenvio de um passo já gravado', () => {
 
 		// Um passo que ainda não chegou continua sendo recusado.
 		await expect(playRound(db, profile.id, first.career, { version: first.career.version, step: 'league:30' })).rejects.toBeInstanceOf(RoundError);
+	}, 120_000);
+
+	it('reabre save em disco com súmula incompleta, relê o placar e avança sem duplicar', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'brasfc-replay-'));
+		let disk = await createPgliteDb(dir);
+		try {
+			await runMigrations(disk);
+			const { profile } = await createGuestProfile(disk);
+			const c = await createCareer(disk, profile.id, {
+				mode: 'coach', personName: 'Ana Silva', clubId: 'flamengo', world: 'brasil',
+				leagueSelection: { divisions: ['serie-a'], cup: false }
+			}, 777);
+			const step = { version: c.version, season: c.season, step: 'league:1' };
+			const first = await playRound(disk, profile.id, c, step);
+			const official = await listResults(disk, c.id, c.season);
+			await disk.query('UPDATE career_matches SET summary = NULL WHERE career_id = $1 AND round = 1 AND is_user', [c.id]);
+			await disk.close();
+			disk = await createPgliteDb(dir);
+			await runMigrations(disk);
+			const opened = (await getCareer(disk, profile.id, c.id))!;
+			expect((await matchdayContext(disk, opened)).observed).toEqual([]);
+			const replay = await playRound(disk, profile.id, opened, step);
+			expect(replay).toMatchObject({ replay: true, match: { homeGoals: first.match?.homeGoals, awayGoals: first.match?.awayGoals, summary: null } });
+			expect(await listResults(disk, c.id, c.season)).toEqual(official);
+			await expect(playRound(disk, profile.id, opened, { ...step, step: 'league:2' })).rejects.toBeInstanceOf(RoundError);
+			const second = await playRound(disk, profile.id, opened, { ...step, version: opened.version, step: 'league:2' });
+			expect(second.round).toBe(2);
+			expect(await listResults(disk, c.id, c.season)).toHaveLength(20);
+		} finally {
+			await disk.close();
+			await rm(dir, { recursive: true, force: true });
+		}
 	}, 120_000);
 });

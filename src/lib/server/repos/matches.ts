@@ -12,7 +12,7 @@ export interface StoredResult extends MatchResult {
 }
 
 export interface UserMatch extends StoredResult {
-	summary: MatchSummary;
+	summary: MatchSummary | null;
 }
 
 type Row = {
@@ -54,13 +54,18 @@ export async function listResults(db: Db, careerId: string, season: number): Pro
 function ofClub(club: string | null | undefined) {
 	return (m: UserMatch): UserMatch => (club && m.summary && (m.home === club || m.away === club) ? { ...m, summary: { ...m.summary, mySide: m.home === club ? 'home' : 'away' } } : m);
 }
-const parseSummary = (r: Row) => (typeof r.summary === 'string' ? JSON.parse(r.summary) : r.summary) as MatchSummary;
+const parseSummary = (r: Row): MatchSummary | null => {
+	const summary = (typeof r.summary === 'string' ? JSON.parse(r.summary) : r.summary) as MatchSummary | null;
+	if (!summary?.stats?.home || !summary.stats.away || !Array.isArray(summary.goals)) return null;
+	return summary;
+};
 
 /** Partidas do usuário (com resumo), de todas as temporadas ou de uma. */
-export async function listUserMatches(db: Db, careerId: string, season?: number, club: string | null = null): Promise<UserMatch[]> {
+export async function listUserMatches(db: Db, careerId: string, season?: number, club: string | null = null, step?: { round: number; cup: boolean }): Promise<UserMatch[]> {
+	const filter = step ? ` AND round = $4 AND competition ${step.cup ? '=' : '<>'} 'copa-do-brasil'` : '';
 	const rows = await db.query<Row>(
-		`SELECT ${COLS}, summary FROM career_matches WHERE career_id = $1 AND is_user AND ($2::int IS NULL OR season = $2) AND ($3::text IS NULL OR home = $3 OR away = $3) ORDER BY season, played_at, round`,
-		[careerId, season ?? null, club]
+		`SELECT ${COLS}, summary FROM career_matches WHERE career_id = $1 AND is_user AND ($2::int IS NULL OR season = $2) AND ($3::text IS NULL OR home = $3 OR away = $3)${filter} ORDER BY season, played_at, round`,
+		[careerId, season ?? null, club, ...(step ? [step.round] : [])]
 	);
 	return rows.map((r) => ofClub(club)({ ...map(r), summary: parseSummary(r) }));
 }
@@ -84,12 +89,15 @@ export async function listStatMatches(db: Db, careerId: string, playerId?: strin
 }
 
 /** Últimas súmulas, em ordem cronológica, sem carregar a carreira inteira. */
-export async function recentUserMatches(db: Db, careerId: string, limit: number, club: string | null = null): Promise<UserMatch[]> {
+export async function recentUserMatches(db: Db, careerId: string, limit: number, club: string | null = null): Promise<Array<UserMatch & { summary: MatchSummary }>> {
 	const rows = await db.query<Row>(
 		`SELECT ${COLS}, summary FROM career_matches WHERE career_id = $1 AND is_user AND ($3::text IS NULL OR home = $3 OR away = $3) ORDER BY played_at DESC, season DESC, round DESC LIMIT $2`,
 		[careerId, limit, club]
 	);
-	return rows.reverse().map((r) => ofClub(club)({ ...map(r), summary: parseSummary(r) }));
+	return rows.reverse().flatMap((r) => {
+		const summary = parseSummary(r);
+		return summary ? [{ ...map(r), summary: club ? { ...summary, mySide: r.home === club ? 'home' as const : 'away' as const } : summary }] : [];
+	});
 }
 
 export interface RoundInsert {
@@ -128,13 +136,16 @@ export async function insertRound(tx: Db, careerId: string, rows: RoundInsert[],
 }
 
 /** Gols com autor de todas as partidas com súmula da temporada (usuário + motor completo). */
-export async function listSeasonGoals(db: Db, careerId: string, season: number): Promise<Array<{ competition: string; home: string; away: string; goals: Array<{ side: 'home' | 'away'; player: string }> }>> {
-	const rows = await db.query<{ competition: string; home: string; away: string; summary: { goals?: Array<{ side: 'home' | 'away'; player: string }> } | string | null }>(
-		`SELECT competition, home, away, summary FROM career_matches WHERE career_id = $1 AND season = $2 AND summary IS NOT NULL`,
-		[careerId, season]
+export async function listSeasonGoals(db: Db, careerId: string, season: number, competitions: string[]): Promise<Array<{ competition: string; home: string; away: string; goals: Array<{ side: 'home' | 'away'; player: string }> }>> {
+	if (!competitions.length) return [];
+	const rows = await db.query<{ competition: string; home: string; away: string; goals: Array<{ side: 'home' | 'away'; player: string }> | string }>(
+		`SELECT competition, home, away, summary->'goals' AS goals FROM career_matches
+		 WHERE career_id = $1 AND season = $2 AND summary->'goals' IS NOT NULL
+		 AND competition IN (${competitions.map((_, i) => '$' + (i + 3)).join(', ')})`,
+		[careerId, season, ...competitions]
 	);
 	return rows.map((r) => {
-		const s = typeof r.summary === 'string' ? JSON.parse(r.summary) : r.summary;
-		return { competition: r.competition, home: r.home, away: r.away, goals: (s?.goals ?? []).map((g: { side: 'home' | 'away'; player: string }) => ({ side: g.side, player: g.player })) };
+		const goals = typeof r.goals === 'string' ? JSON.parse(r.goals) : r.goals;
+		return { competition: r.competition, home: r.home, away: r.away, goals: goals ?? [] };
 	});
 }

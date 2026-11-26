@@ -9,6 +9,8 @@ import {
 } from '#lib/domain/career.ts';
 import type { Db } from '../db/index.ts';
 import { initialGroup, MAX_LOCAL_COACHES, type CoachDraft } from '#lib/domain/turns.ts';
+import { isActiveClub } from '#lib/domain/league.ts';
+import { newestWorldCatalog } from '../world-catalog.ts';
 
 /** Mensagem do treinador da vez (NULL = carreira de um treinador só). */
 const MINE = `(m.coach IS NULL OR m.coach = c.data->'local'->'coaches'->((c.data->'local'->>'active')::int)->>'id')`;
@@ -64,9 +66,16 @@ export class VersionConflictError extends Error {}
 export async function createCareer(db: Db, profileId: string, input: CreateCareerInput, seed = randomInt(1, 2 ** 31 - 1), others: CoachDraft[] = []): Promise<Career> {
 	const id = randomUUID();
 	const data = initialCareerData(input, seed);
+	if (data.world === 'brasil' && data.league?.selection) {
+		const catalog = newestWorldCatalog();
+		if (catalog) data.worldCatalog = catalog;
+	}
 	const drafts: CoachDraft[] = [{ personName: input.personName, clubId: input.clubId, appearance: input.appearance }, ...others];
 	if (drafts.length > MAX_LOCAL_COACHES) throw new CareerLimitError(`No máximo ${MAX_LOCAL_COACHES} treinadores por carreira.`);
 	if (new Set(drafts.map((d) => d.clubId)).size !== drafts.length) throw new CareerLimitError('Dois treinadores não podem comandar o mesmo clube.');
+	if (data.league?.selection && drafts.some((draft) => !isActiveClub(data.league!, draft.clubId))) {
+		throw new CareerLimitError('Todos os treinadores devem comandar clubes de divisões ativas.');
+	}
 	const coachIds = drafts.map(() => randomUUID());
 	if (drafts.length > 1) data.local = initialGroup(drafts, coachIds);
 	return db.transaction(async (tx) => {
@@ -81,7 +90,7 @@ export async function createCareer(db: Db, profileId: string, input: CreateCaree
 			`INSERT INTO careers (id, profile_id, mode, person_name, club_id, seed, season, game_date, data)
 			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8::date, $9::jsonb)
 			 RETURNING ${COLUMNS.replaceAll('c.', '')}`,
-			[id, profileId, input.mode, input.personName, input.clubId, seed, careerStart(input.world ?? 'brasfc').season, careerStart(input.world ?? 'brasfc').date, JSON.stringify(data)]
+			[id, profileId, input.mode, input.personName, input.clubId, seed, careerStart(data.world ?? 'brasfc').season, careerStart(data.world ?? 'brasfc').date, JSON.stringify(data)]
 		);
 		let seq = 0;
 		let firstCount = 0;
@@ -134,7 +143,8 @@ export async function getCareerForMarket(db: Db, profileId: string, id: string):
 	const columns = COLUMNS.replace('c.data,', `jsonb_build_object(
 		'world', c.data->'world', 'league', c.data->'league', 'cup', c.data->'cup',
 		'rosterCatalog', c.data->'rosterCatalog', 'firstSeason', c.data->'firstSeason',
-		'market', c.data->'market', 'club', c.data->'club') AS data,`);
+		'market', c.data->'market', 'club', c.data->'club', 'local', c.data->'local',
+		'worldCatalog', c.data->'worldCatalog') AS data,`);
 	const [row] = await db.query<CareerRow>(`SELECT ${columns} FROM careers c WHERE c.id=$1 AND c.profile_id=$2`, [id, profileId]);
 	return row ? mapCareer(row) : null;
 }

@@ -29,11 +29,13 @@ export const POST: RequestHandler = async (event) => {
 	if (!career) error(404, 'Carreira não encontrada.');
 	const body = await readJson(event.request, 262_144);
 	const version = Number(body.version);
+	const season = body.season === undefined ? undefined : Number(body.season);
+	if (season !== undefined && (!Number.isInteger(season) || season < 2026)) error(400, 'Temporada inválida.');
 	const round = body.round === undefined ? undefined : Number(body.round);
 	const step = typeof body.step === 'string' && /^(league|cup):\d{1,2}$/.test(body.step) ? body.step : undefined;
 	if (!Number.isInteger(version) || (step === undefined && !Number.isInteger(round))) error(400, 'Versão e passo do calendário são obrigatórios.');
 	try {
-		const out = await playRound(db, profile.id, career, { version, ...(step ? { step } : { round }), decisions: body.decisions as AppliedDecision[] | undefined, ...(body.matches && typeof body.matches === 'object' ? { matches: body.matches as Record<string, unknown> } : {}) });
+		const out = await playRound(db, profile.id, career, { version, season, ...(step ? { step } : { round }), decisions: body.decisions as AppliedDecision[] | undefined, ...(body.matches && typeof body.matches === 'object' ? { matches: body.matches as Record<string, unknown> } : {}) });
 		// Operação secundária: já simula em segundo plano os outros jogos do próximo passo.
 		if (!('replay' in out) && !('coaches' in out)) prefetchRound(db, profile.id, out.career.id);
 		// Resposta enxuta: a tela só precisa do resultado e da versão; a carreira é relida ao voltar à gestão.

@@ -84,13 +84,13 @@ async function attach(endpoints) {
 	await new Promise((resolve, reject) => { socket.once('open', resolve); socket.once('error', reject); });
 }
 let id = 0;
-function evaluate(expression) {
+function evaluate(expression, timeout = 15_000) {
 	if (inspector) expression = `process.mainModule.require('electron').BrowserWindow.getAllWindows()[0]?.webContents.executeJavaScript(${JSON.stringify(expression)}, true)`;
 	const connection = socket;
 	if (connection.readyState !== WebSocket.OPEN) return Promise.reject(Error('CDP desconectado'));
 	return new Promise((resolve, reject) => {
 		const messageId = ++id;
-		const timer = setTimeout(() => finish(Error('CDP sem resposta')), 15_000);
+		const timer = setTimeout(() => finish(Error('CDP sem resposta')), timeout);
 		const disconnect = () => finish(Error('CDP desconectado'));
 		function finish(error, value) {
 			clearTimeout(timer);
@@ -225,6 +225,91 @@ try {
 	assert(after.continued, 'A carreira precisa jogar a segunda rodada');
 	assert.equal(JSON.parse(readFileSync(preferences, 'utf8')).automatic, false);
 	result.tests.push('Reabertura na versão nova com conta, carreira avançada e preferência preservadas');
+	const newSaves = await evaluate(`(async () => {
+		const post = async (path, body) => {
+			const r = await fetch(path, {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+			if (!r.ok) throw Error(path + ': ' + r.status + ' ' + await r.text());
+			return r.json();
+		};
+		const saves = [];
+		for (const shared of [false, true]) {
+			const opened = await post('/api/careers', {personName:'Ana Técnica',clubId:'bahia',world:'brasil',
+				...(shared
+					? {worldSelection:{countries:['bra']},others:[{personName:'Bia Técnica',clubId:'manauara'}]}
+					: {leagueSelection:{divisions:['serie-a'],cup:false}})});
+			const c = opened.career;
+			if (shared && (c.data.league.selection.divisions.length !== 4 || !c.data.league.divisions['serie-d'].includes(c.data.local.coaches[1].clubId))) {
+				throw Error('A seleção por país não ativou as quatro séries para os dois treinadores.');
+			}
+			if (!(await fetch('/carreira/' + c.id + '/partida')).ok) throw Error('A tela da primeira partida falhou');
+			const root = '/api/careers/' + c.id;
+			const t = shared ? (await post(root + '/turno', {version:c.version,action:'pronto'})).career : c;
+			if (shared && !(await fetch(root + '/rodada')).ok) throw Error('A central da primeira rodada falhou');
+			await post(root + '/matches', {version:t.version,season:t.season,step:'league:1'});
+			const replay = await post(root + '/matches', {version:t.version,season:t.season,step:'league:1'});
+			if (!replay.replay) throw Error('A primeira rodada foi reenviada em vez de relida');
+			saves.push({id:c.id,shared});
+		}
+		return saves;
+	})()`, 60_000);
+	const cupSave = await evaluate(`(async () => {
+		const request = async (path, body) => {
+			const response = await fetch(path, body === undefined ? undefined : {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+			if (!response.ok) throw Error(path + ': ' + response.status + ' ' + await response.text());
+			return response.json();
+		};
+		let {career} = await request('/api/careers', {personName:'Ana Técnica',clubId:'sport',worldSelection:{countries:['bra']},previewSeed:777});
+		const root = '/api/careers/' + career.id;
+		for (let i = 0; i < 8; i++) {
+			const next = await request(root + '/proximo');
+			if (next.step === 'cup:2' && !next.plays) throw Error('A estreia do Sport apareceu como folga.');
+			const played = await request(root + '/matches', {version:career.version,season:career.season,step:next.step});
+			career = played.career;
+			if (next.step === 'cup:2') {
+				const fixture = played.match?.fixture;
+				if (fixture?.competition !== 'copa-do-brasil' || ![fixture.home, fixture.away].includes('sport')) throw Error('A Copa não registrou a partida do Sport.');
+				return { id:career.id, score:[played.match.homeGoals,played.match.awayGoals] };
+			}
+		}
+		throw Error('O calendário não alcançou a estreia do Sport.');
+	})()`, 150_000);
+	socket.close();
+	const pid = app.pid;
+	execFileSync('powershell.exe', ['-NoProfile', '-Command',
+		'(Get-Process -Id ' + pid + ').CloseMainWindow() | Out-Null; (Get-Process -Id ' + pid + ' -ErrorAction SilentlyContinue).WaitForExit(15000) | Out-Null']);
+	await launch();
+	await until(() => evaluate("location.origin.startsWith('http://127.0.0.1:47615') && !!window.brasfcDesktop"));
+	const reopened = await evaluate(`(async () => {
+		const results = [];
+		for (const save of ${JSON.stringify(newSaves)}) {
+			const root = '/api/careers/' + save.id;
+			let {career} = await fetch(root).then(r=>r.json());
+			const first = await fetch(root + '/matches').then(r=>r.json());
+			if (first.matches.length !== 1 || first.matches[0].round !== 1) throw Error('O save reaberto não contém exatamente uma primeira partida');
+			if (!(await fetch('/carreira/' + save.id + '/partida')).ok) throw Error('A tela de partida falhou após reabrir');
+			const post = (path, body) => fetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+			if (save.shared) {
+				const turn = await post(root + '/turno',{version:career.version,action:'pronto'});
+				if (!turn.ok) throw Error('O turno não avançou');
+				career = (await turn.json()).career;
+			}
+			const next = await post(root + '/matches',{version:career.version,season:career.season,step:'league:2'});
+			const second = await fetch(root + '/matches').then(r=>r.json());
+			results.push(next.ok && second.matches.length === 2 && second.matches[1].round === 2);
+		}
+		return results;
+	})()`, 60_000);
+	assert.deepEqual(reopened, [true, true]);
+	const reopenedCup = await evaluate(`(async () => {
+		const root = '/api/careers/${cupSave.id}';
+		const { career } = await fetch(root).then(r => r.json());
+		const { matches } = await fetch(root + '/matches').then(r => r.json());
+		const cup = matches.filter((m) => m.competition === 'copa-do-brasil' && m.round === 2 && [m.home,m.away].includes('sport'));
+		return { countries: career?.data.worldSelection?.countries, scores: cup.map((m) => [m.homeGoals,m.awayGoals]) };
+	})()`);
+	assert.deepEqual(reopenedCup, { countries: ['bra'], scores: [cupSave.score] });
+	result.tests.push('Carreiras novas com um e dois treinadores (incluindo Série D): primeira rodada idempotente, reabertura e segunda rodada no executável');
+	result.tests.push('Seleção por país e estreia do Sport na Copa do Brasil preservadas após reabrir o executável');
 	assert(!result.relaunchMissing, 'A instalação atualizou, mas a abertura automática não foi observada');
 	if (rollbackDist) {
 		const candidate = metadataVersion(rollbackDist);

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
 	import { api, ApiError } from '#lib/api.ts';
+	import { startNextSeason } from '#lib/career/season-transition.ts';
 	import type { Career } from '#lib/domain/career.ts';
 	import { DEFAULT_APPEARANCE } from '#lib/domain/appearance.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
@@ -22,6 +23,7 @@
 	let { career, seasonOver, stepLabel }: { career: Career; seasonOver: boolean; stepLabel: string } = $props();
 	const group = $derived(localGroup(career)!);
 	const coaches = $derived(liveCoaches(career));
+	const unemployed = $derived(!!career.data.club?.board.dismissed);
 	const others = $derived(group.coaches.filter((_, i) => i !== group.active));
 	const readyCount = $derived(group.coaches.filter((c) => group.ready.includes(c.id)).length);
 	const last = $derived(others.every((c) => group.ready.includes(c.id)));
@@ -51,7 +53,8 @@
 	}
 
 	async function closeSeason() {
-		const res = await api<{ summary: SeasonSummary; summaries?: SeasonSummary[] }>(`/api/careers/${career.id}/season`, { body: { version: career.version } });
+		const res = await startNextSeason<{ summary: SeasonSummary; summaries?: SeasonSummary[] }>(career.id, career.version);
+		if (!res) return;
 		seasonEnd = res;
 		stage = 'season';
 	}
@@ -83,7 +86,7 @@
 		</header>
 		<div class="control">
 			<Pixel appearance={career.data.appearance ?? DEFAULT_APPEARANCE} kit={coachKit(career.clubId)} size={64} />
-			<div><small>Treinador no controle</small><strong>{getClub(career.clubId)?.name}</strong><span>{career.personName} · Treinador {group.active + 1}</span></div>
+			<div><small>Treinador no controle</small><strong>{unemployed ? 'Sem clube' : getClub(career.clubId)?.name}</strong><span>{career.personName} · Treinador {group.active + 1}</span></div>
 			<b class="turn">Seu turno</b>
 		</div>
 		<ol class="list">
@@ -103,7 +106,7 @@
 			{:else}Ao finalizar, sua preparação é gravada e o próximo treinador assume. Nada é simulado antes do último confirmar.{/if}
 		</p>
 		<div class="actions">
-			<Button href="/carreira/{career.id}/taticas" icon="tactics">Revisar tática</Button>
+			{#if !unemployed}<Button href="/carreira/{career.id}/taticas" icon="tactics">Revisar tática</Button>{/if}
 			<Button variant="primary" size="lg" iconRight="arrowRight" loading={busy} onclick={finishPrep}>{last ? (seasonOver ? 'Finalizar e encerrar a temporada' : 'Finalizar e jogar a rodada') : 'Finalizar preparação'}</Button>
 		</div>
 	</section>
