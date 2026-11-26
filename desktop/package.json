@@ -1,7 +1,7 @@
 {
   "name": "brasfc-desktop",
   "productName": "BRASFC",
-  "version": "1.6.2",
+  "version": "1.6.3",
   "description": "BRASFC para Windows — jogo 100% offline, tela cheia e atualização automática.",
   "author": "BRASFC",
   "main": "main.js",
@@ -36,6 +36,7 @@
       "update-recovery.js",
       "update-recovery.ps1",
       "local-server.js",
+      "world-catalog-install.js",
       "pages/**",
       "assets/icon.png"
     ],

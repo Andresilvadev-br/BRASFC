@@ -22,6 +22,8 @@ fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });
 fs.cpSync(path.join(root, 'build'), path.join(out, 'build'), { recursive: true });
 fs.cpSync(path.join(root, 'server'), path.join(out, 'server'), { recursive: true });
+// World Database (CC BY-SA 4.0): catálogo compactado + manifesto + licença; o app instala no primeiro uso.
+fs.cpSync(path.join(desktop, 'assets', 'world'), path.join(out, 'world-catalogs'), { recursive: true });
 
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 const pglite = pkg.devDependencies?.['@electric-sql/pglite'] ?? pkg.dependencies?.['@electric-sql/pglite'];

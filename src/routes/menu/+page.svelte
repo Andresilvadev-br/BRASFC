@@ -18,6 +18,7 @@
 	import Logo from '#lib/ui/Logo.svelte';
 	import Pixel from '#lib/ui/Pixel.svelte';
 	import Stadium from '#lib/ui/Stadium.svelte';
+	import CrestOffer from '#lib/ui/settings/CrestOffer.svelte';
 	import { updates } from '#lib/stores/updates.svelte.ts';
 	import { desktop, quitApp } from '#lib/stores/desktop.svelte.ts';
 
@@ -204,6 +205,7 @@
 <svelte:head><title>Menu · BRASFC</title></svelte:head>
 <svelte:window onkeydown={onKey} />
 
+<CrestOffer />
 <div class="menu-screen">
 	<Stadium tint={latestClub?.colors.primary ?? '#10B981'} />
 

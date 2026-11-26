@@ -19,6 +19,22 @@ export interface Release {
 
 export const RELEASES: Release[] = [
 	{
+		version: '0.13.1', date: '2026-11-26', title: 'Mundo pronto para jogar', channel: 'estavel',
+		added: ['Escolha de países na nova carreira, com bandeiras, divisões, clubes e estimativa de processamento',
+			'Banco mundial instalado junto com a atualização: 1.236 clubes de 132 países e 34.889 jogadores do Brasfoot Next (CC BY-SA 4.0)',
+			'Botão “Baixar escudos”: baixa o banco oficial do Brasfoot Next e instala os escudos sozinho; depois o jogo segue 100% offline',
+			'Situação do clube nas copas: aguardando estreia, em disputa, classificado, eliminado e campeão'],
+		highlights: [
+			{ title: 'Escudos com um clique', text: 'O jogo oferece os escudos uma vez depois da atualização e também em Configurações › Escudos. Tudo é padronizado: mesmo tamanho, centralizado, sem distorcer.', icon: 'download' },
+			{ title: 'Mundo instalado sozinho', text: 'Clubes, ligas e jogadores do mundo chegam com a atualização, sem copiar arquivos. Saves antigos continuam com a base com que foram criados.', icon: 'globe' },
+			{ title: 'Escolha os países', text: 'A nova carreira começa pela escolha dos países, com o custo de cada um para o seu computador.', icon: 'trophy' }
+		],
+		improved: ['Importar pasta aceita a instalação do Brasfoot Next (pacotes .zip) e o Megapatch', 'Navegação de competições agrupada por país e continente'],
+		fixed: ['Copa do Brasil: clube que entra numa fase futura (como o Sport) aparecia como fora da edição'],
+		compat: { database: 'sem migração', saves: 'carreiras existentes preservadas; cada save mantém o catálogo mundial com que foi criado' },
+		next: []
+	},
+	{
 		version: '0.13.0', date: '2026-11-26', title: 'LOCAL LEGACY', channel: 'estavel',
 		added: ['Jogo 100% offline no Windows: o aplicativo abre o jogo embutido e nunca depende do site nem de internet para jogar',
 			'Carreira local com vários treinadores no mesmo computador, em turnos: “Ir para próxima partida” passa a vez e o último treinador libera a rodada',

@@ -2,7 +2,19 @@
 
 ## Instalação local
 
-Extraia o SQLite do pacote de dados em `%APPDATA%\BRASFC\saves\world-catalogs\`, mantendo o nome com 24 caracteres hexadecimais. No próximo save brasileiro criado pelo assistente de ligas, o jogo registra o identificador do catálogo local mais recente. Mantenha versões anteriores na mesma pasta para que os saves que usam essas versões continuem a consultá-las. As contratações já concluídas são gravadas no save.
+**A partir do Windows 1.6.3, a instalação é automática.** O catálogo vem dentro do instalador (`desktop/assets/world`). Na primeira abertura, o app o copia para `%APPDATA%\BRASFC\saves\world-catalogs\`, depois de conferir o SHA-256. Catálogos que já estão na pasta nunca são sobrescritos. Os escudos são instalados pelo botão **Baixar escudos** (Configurações › Escudos), que baixa os pacotes oficiais do Brasfoot Next. Eles não fazem parte do instalador.
+
+Para regenerar o catálogo embutido com os pacotes oficiais (`pack`) e as inscrições da engine:
+
+```sh
+python3 scripts/import-world-db.py <pacotes extraídos> --revision 13fc36281bef66c1b03f3497871ef2e0a953f935 \
+  --memberships src/lib/data/world/2026/memberships-2026-27.csv --output world.sqlite --report report.json
+gzip -9 -n -c world.sqlite > desktop/assets/world/<catalog_id>.sqlite.gz   # e atualize catalog.json (sha256 e contagens)
+```
+
+A geração é reproduzível: a mesma entrada produz o mesmo arquivo e o mesmo `catalog_id`.
+
+Instalação manual (versões anteriores): Extraia o SQLite do pacote de dados em `%APPDATA%\BRASFC\saves\world-catalogs\`, mantendo o nome com 24 caracteres hexadecimais. No próximo save brasileiro criado pelo assistente de ligas, o jogo registra o identificador do catálogo local mais recente. Mantenha versões anteriores na mesma pasta para que os saves que usam essas versões continuem a consultá-las. As contratações já concluídas são gravadas no save.
 
 Em **Mercado**, selecione **Banco mundial** e procure pelo nome de um atleta ou selecione um clube nos filtros. O arquivo é consultado por clube e pesquisa. A base brasileira nativa permanece como referência para as Séries A a D e para o mercado nacional. O executável usa o banco local da carreira e abre o catálogo mundial em modo de leitura.
 
