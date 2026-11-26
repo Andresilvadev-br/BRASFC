@@ -142,7 +142,10 @@ describe('partidas da carreira (Dev 0.2/0.3)', () => {
 		const res = await playRound(db, profile.id, reloaded, { version: reloaded.version, round: fixture.round, decisions: forged as never });
 		expect([res.match!.homeGoals, res.match!.awayGoals]).toEqual([played.homeGoals, played.awayGoals]);
 		await expect(playRound(db, profile.id, res.career, { version: res.career.version - 1, round: fixture.round + 1 })).rejects.toBeInstanceOf(RoundError);
-		await expect(playRound(db, profile.id, res.career, { version: res.career.version, round: fixture.round })).rejects.toBeInstanceOf(RoundError);
+		// Reenvio do passo já gravado: devolve o resultado oficial guardado (replay), sem gravar de novo.
+		const again = await playRound(db, profile.id, res.career, { version: res.career.version, round: fixture.round });
+		expect('replay' in again && again.replay).toBe(true);
+		expect([again.match!.homeGoals, again.match!.awayGoals]).toEqual([played.homeGoals, played.awayGoals]);
 
 		const results = await listResults(db, career.id, reloaded.season);
 		expect(results).toHaveLength(10);
@@ -178,8 +181,10 @@ describe('partidas da carreira (Dev 0.2/0.3)', () => {
 		expect(cupRows.filter((r) => r.round === 2)).toHaveLength(44);
 		expect(cupRows.some((r) => r.round === 2 && (r.home === 'fortaleza' || r.away === 'fortaleza'))).toBe(true);
 		expect(results.filter((r) => r.competition === 'serie-d' && r.round === 1)).toHaveLength(48);
-		// Passo repetido ou fora de ordem é recusado (nada é gravado duas vezes).
-		await expect(playRound(db, profile.id, career, { version: career.version, step: 'cup:2' })).rejects.toBeInstanceOf(RoundError);
+		// Passo repetido devolve o resultado guardado; fora de ordem é recusado (nada é gravado duas vezes).
+		const repeated = await playRound(db, profile.id, career, { version: career.version, step: 'cup:2' });
+		expect('replay' in repeated && repeated.replay).toBe(true);
+		expect(repeated.career.version).toBe(career.version);
 		await expect(playRound(db, profile.id, career, { version: career.version, step: 'league:8' })).rejects.toBeInstanceOf(RoundError);
 		expect((await listResults(db, career.id, career.season)).length).toBe(results.length);
 		const v = careerView(career, results);

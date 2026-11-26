@@ -46,6 +46,13 @@
 		void version;
 		return match.teams[side];
 	});
+	// O objeto do time é o mesmo durante a partida: o texto da tática é lido junto com `version`
+	// para atualizar quando o treinador muda formação, mentalidade ou estilo.
+	const tacticLine = $derived.by(() => {
+		void version;
+		const t = match.teams[side].tactic;
+		return `${t.formation} · ${MENTALITY_LABELS[t.mentality]} · ${STYLE_LABELS[t.style]}`;
+	});
 	const slots = $derived.by(() => {
 		void version;
 		const t = match.teams[side];
@@ -122,7 +129,7 @@
 <section class="board" class:compact style="--team:{color}" aria-label="Time {team.setup.name} em campo">
 	<header>
 		<strong>{team.setup.short}</strong>
-		<span>{team.tactic.formation} · {MENTALITY_LABELS[team.tactic.mentality]} · {STYLE_LABELS[team.tactic.style]}</span>
+		<span>{tacticLine}</span>
 		{#if sentOff}<span class="tenmen" role="status">{onPitchCount} jogadores em campo — {sentOff} {sentOff === 1 ? 'expulso' : 'expulsos'}</span>{/if}
 	</header>
 	{#if advice}
