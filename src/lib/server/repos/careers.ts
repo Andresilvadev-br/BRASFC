@@ -66,7 +66,7 @@ export class VersionConflictError extends Error {}
 export async function createCareer(db: Db, profileId: string, input: CreateCareerInput, seed = randomInt(1, 2 ** 31 - 1), others: CoachDraft[] = []): Promise<Career> {
 	const id = randomUUID();
 	const data = initialCareerData(input, seed);
-	if (input.world === 'brasil' && input.leagueSelection) {
+	if (data.world === 'brasil' && data.league?.selection) {
 		const catalog = newestWorldCatalog();
 		if (catalog) data.worldCatalog = catalog;
 	}
@@ -90,7 +90,7 @@ export async function createCareer(db: Db, profileId: string, input: CreateCaree
 			`INSERT INTO careers (id, profile_id, mode, person_name, club_id, seed, season, game_date, data)
 			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8::date, $9::jsonb)
 			 RETURNING ${COLUMNS.replaceAll('c.', '')}`,
-			[id, profileId, input.mode, input.personName, input.clubId, seed, careerStart(input.world ?? 'brasfc').season, careerStart(input.world ?? 'brasfc').date, JSON.stringify(data)]
+			[id, profileId, input.mode, input.personName, input.clubId, seed, careerStart(data.world ?? 'brasfc').season, careerStart(data.world ?? 'brasfc').date, JSON.stringify(data)]
 		);
 		let seq = 0;
 		let firstCount = 0;

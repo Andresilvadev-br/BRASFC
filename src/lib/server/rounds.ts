@@ -7,7 +7,8 @@ import type { Career, CareerData } from '#lib/domain/career.ts';
 import { addDays } from '#lib/domain/dates.ts';
 import { applyTrainingWeek, recoverFitness } from '#lib/domain/drills.ts';
 import { activeDivisions, closeSeason, divisionOf, prepareRound, seasonFixtures, seasonStartDate, type DivisionId, type SeasonSummary } from '#lib/domain/league.ts';
-import { CUP_ID, clubCupRun, cupFixtures, cupView, prepareCup, projectedCup } from '#lib/domain/cup.ts';
+import { CUP_ID, clubCupRun, cupFixtures, cupView, projectedCup, settleCupMatchday } from '#lib/domain/cup.ts';
+import { qualifyBrazil2027 } from '#lib/domain/continental-qualification.ts';
 import { initialClubState, payroll, sanitizeMarket } from '#lib/domain/management.ts';
 import { clubStateOf, rosterContext } from '#lib/domain/world.ts';
 import { seasonEndManagement, weeklyManagement, type WeeklyResult } from './management.ts';
@@ -298,7 +299,8 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 	}
 	const key = `${career.season}:${step.key}`;
 	mark('mundo');
-	const world: Partial<CareerData> = { league, universe, ...(cup ? { cup } : {}), market };
+	const settledCup = cup && step.kind === 'cup' ? settleCupMatchday(cup, step.matchday, allResults, career.seed, strengthOf) : cup;
+	const world: Partial<CareerData> = { league, universe, ...(settledCup ? { cup: settledCup } : {}), market };
 	const updated = await db.transaction(async (tx) => {
 		await insertRound(tx, career.id, rows, ENGINE_VERSION);
 		const saved = group
@@ -451,19 +453,21 @@ export function planRound(career: Career, results: StoredRoundResult[], view = c
 	const step = view.step!;
 	const strengthOf = strengthFor(career);
 	let league = view.league;
-	let cup = view.cup;
+	const cup = view.cup;
 	let fixtures: Fixture[];
 	if (step.kind === 'league') {
 		league = prepareRound(league, step.round, results, career.seed, strengthOf);
 		fixtures = (league === view.league ? view.fixtures : seasonFixtures(league, career.seed)).filter((f) => f.round === step.round);
 	} else {
-		cup = prepareCup(cup!, step.matchday, results, career.seed, strengthOf);
-		fixtures = cupFixtures(cup).filter((f) => f.round === step.matchday);
+		fixtures = cup ? cupFixtures(cup).filter((f) => f.round === step.matchday) : [];
+		if (!fixtures.length) throw new RoundError('A chave da Copa do Brasil não pôde ser recuperada para esta data.', 409);
 	}
-	// Seleção nova: todos os jogos gerados pertencem a competições ativas.
-	// Saves legados mantêm o motor completo nas divisões dos treinadores e o rápido nas demais.
+	// A seleção por país escala nas divisões sem treinador humano usando o modelo rápido.
+	// Partidas humanas sempre passam pelo motor completo em playRound.
 	const mine = new Set(divisions ?? [view.division]);
-	const full = league.selection || view.world === 'brasfc' ? () => true : (f: Fixture) => step.kind === 'league' && mine.has(f.competition);
+	const full = !career.data.worldSelection && (league.selection || view.world === 'brasfc')
+		? () => true
+		: (f: Fixture) => step.kind === 'league' && mine.has(f.competition);
 	return { step, strengthOf, league, cup, fixtures, full };
 }
 
@@ -600,6 +604,13 @@ export async function finishSeason(db: Db, profileId: string, career: Career, ve
 		});
 	}
 	const world: Partial<CareerData> = { league: next, ...(nextCup ? { cup: nextCup } : {}), market, universe };
+	if (career.season === 2026 && career.data.worldSelection?.countries.includes('bra') && cupNow?.champion && cupNow.runnerUp && outcome.tables['serie-a']?.length && next.divisions['serie-a']) {
+		world.brazilContinentalQualification = qualifyBrazil2027(
+			outcome.tables['serie-a'].map((row) => row.clubId),
+			next.divisions['serie-a'],
+			{ champion: cupNow.champion, runnerUp: cupNow.runnerUp }
+		);
+	}
 	const updated = await db.transaction(async (tx) => {
 		const saved = group
 			? await replaceCareerData(tx, profileId, career.id, { ...afterRound(career, outs.map((o) => o.data), world), gameDate: nextDate, season: next.season }, career.version)

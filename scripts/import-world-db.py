@@ -14,6 +14,7 @@ import sqlite3
 import tempfile
 import tomllib
 import unicodedata
+from urllib.parse import urlsplit
 
 COUNTRY = re.compile(r"^[a-z]{3}$")
 SLUG = re.compile(r"^[a-z0-9][a-z0-9-]*$")
@@ -182,6 +183,56 @@ CREATE INDEX club_by_country ON club(country, search_name);
 """
 
 
+def import_memberships(db: sqlite3.Connection, path: Path) -> dict:
+    clubs = {club: (country, state) for club, country, state in db.execute("SELECT id, country, state FROM club")}
+    competitions = {key: (kind, territory) for key, kind, territory in db.execute("SELECT id, kind, territory FROM competition")}
+    national = set()
+    state_leagues = set()
+    counts = Counter()
+    with path.open(encoding="utf-8-sig", newline="") as stream:
+        reader = csv.DictReader(stream)
+        fields = set(reader.fieldnames or ())
+        if not {"competition", "club"} <= fields or len(fields & {"edition", "source"}) == 1:
+            raise ValueError("A lista de inscritos exige competition,club e aceita edition,source em conjunto.")
+        has_provenance = "edition" in fields
+        if has_provenance:
+            db.execute("""CREATE TABLE membership_evidence (
+                competition TEXT NOT NULL, club TEXT NOT NULL, edition TEXT NOT NULL, source TEXT NOT NULL,
+                PRIMARY KEY(competition, club),
+                FOREIGN KEY(competition, club) REFERENCES membership(competition, club)
+            ) WITHOUT ROWID""")
+        editions = {}
+        for row in reader:
+            competition, club = row["competition"], row["club"]
+            location = f"{path}:{reader.line_num}"
+            if None in row or competition not in competitions or club not in clubs:
+                raise ValueError(f"{location}: competição ou clube desconhecido: {competition}, {club}")
+            kind, territory = competitions[competition]
+            country, state = clubs[club]
+            if kind == "leagues":
+                assigned = national
+                matches = country == territory
+                key = club
+            else:
+                assigned = state_leagues
+                matches = country == "bra" and (state or "").lower() == territory
+                key = (club, territory)
+            if not matches or key in assigned:
+                raise ValueError(f"{location}: território incompatível ou clube já inscrito em outra divisão: {competition}, {club}")
+            assigned.add(key)
+            db.execute("INSERT INTO membership VALUES (?,?)", (competition, club))
+            counts[competition] += 1
+            if has_provenance:
+                edition, source = row["edition"] or "", row["source"] or ""
+                url = urlsplit(source)
+                if not re.fullmatch(r"\d{4}(?:/\d{2})?", edition) or url.scheme != "https" or not url.hostname:
+                    raise ValueError(f"{location}: informe a edição (AAAA ou AAAA/AA) e uma fonte HTTPS.")
+                if editions.setdefault(competition, edition) != edition:
+                    raise ValueError(f"{location}: edições diferentes para a mesma divisão.")
+                db.execute("INSERT INTO membership_evidence VALUES (?,?,?,?)", (competition, club, edition, source))
+    return dict(counts)
+
+
 def convert(roots: list[Path], output: Path, memberships: Path | None = None, revision: str | None = None):
     warnings = Counter()
     files, sources = collect_layers(roots, warnings)
@@ -192,7 +243,7 @@ def convert(roots: list[Path], output: Path, memberships: Path | None = None, re
         if file.suffix in {".toml", ".csv"}:
             fingerprint.update(key.encode() + b"\0" + hashlib.sha256(file.read_bytes()).digest())
     if memberships:
-        fingerprint.update(hashlib.sha256(memberships.read_bytes()).digest())
+        fingerprint.update(b"membership-validation:1\n" + hashlib.sha256(memberships.read_bytes()).digest())
     catalog_id = fingerprint.hexdigest()[:24]
     output.parent.mkdir(parents=True, exist_ok=True)
     fd, temp = tempfile.mkstemp(prefix=".world-db-", dir=output.parent)
@@ -283,10 +334,7 @@ def convert(roots: list[Path], output: Path, memberships: Path | None = None, re
                     db.execute("INSERT INTO media_reference VALUES(?,?,?)", (key, kind, source))
                     media[kind] += 1
         db.executemany("INSERT INTO national_team VALUES(?)", [(id,) for id in sorted(national_teams)])
-        if memberships:
-            with memberships.open(encoding="utf-8-sig", newline="") as stream:
-                for row in csv.DictReader(stream):
-                    db.execute("INSERT INTO membership VALUES (?,?)", (row["competition"], row["club"]))
+        membership_counts = import_memberships(db, memberships) if memberships else {}
         stored = dict(db.execute("SELECT kind, COUNT(*) FROM competition GROUP BY kind"))
         counts = {table: db.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
                   for table in ("club", "player", "competition", "membership", "rivalry", "national_team")}
@@ -306,6 +354,8 @@ def convert(roots: list[Path], output: Path, memberships: Path | None = None, re
             "data_license": "CC-BY-SA-4.0 para a base Brasfoot Next; patches adicionais preservam seus próprios termos",
             "media_embedded": False,
         }
+        if membership_counts:
+            report["memberships_by_competition"] = membership_counts
         db.executemany("INSERT INTO metadata VALUES (?,?)", [("format", "1"), ("catalog_id", catalog_id), ("report", as_json(report))])
         db.commit()
         if db.execute("PRAGMA integrity_check").fetchone() != ("ok",) or db.execute("PRAGMA foreign_key_check").fetchone():

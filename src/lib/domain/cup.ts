@@ -3,6 +3,7 @@ import { addDays } from './dates.ts';
 import { resolveTie, roundDate, type LeagueState, type StoredRoundResult, type StrengthOf, type Tie, type TieOutcome } from './league.ts';
 import { createRng, deriveSeed } from './rng.ts';
 import type { Fixture } from './season.ts';
+import type { CompetitionParticipation } from '#lib/world/contract.ts';
 
 /**
  * Copa do Brasil (Dev 0.4) — 126 clubes, nove fases (regulamento 2026, ver docs/DADOS.md):
@@ -63,6 +64,8 @@ export interface CupState {
 	entrants: Record<'1' | '2' | '3' | '5', string[]>;
 	/** confrontos sorteados por fase (índice = fase − 1). Jogo único: [mandante, visitante]; ida e volta: [manda a ida, manda a volta] */
 	stages: Tie[][];
+	/** Placar dos pênaltis na ordem de mando do último jogo de cada confronto. */
+	shootouts?: Record<string, [number, number]>;
 	/** sede da final (texto) */
 	finalVenue: string;
 }
@@ -120,7 +123,28 @@ export function cupFixtures(cup: CupState): Fixture[] {
 
 export function tieOutcome(cup: CupState, phaseIndex: number, tie: Tie, results: StoredRoundResult[], seed: number, strengthOf: StrengthOf): TieOutcome | null {
 	const ph = CUP_PHASES[phaseIndex];
-	return resolveTie(tie, results, CUP_ID, ph.matchdays, deriveSeed(seed, 'copa', cup.season), strengthOf);
+	const saved = cup.shootouts?.[shootoutKey(ph, tie)];
+	if (!saved) return resolveTie(tie, results, CUP_ID, ph.matchdays, deriveSeed(seed, 'copa', cup.season), strengthOf);
+	const aggregate = resolveTie(tie, results, CUP_ID, ph.matchdays, 0, strengthOf, { byCampaign: true });
+	if (!aggregate || aggregate.decidedBy !== 'campanha') return aggregate;
+	const [home, away] = saved;
+	const [lastHome, lastAway] = ph.legs === 1 ? tie : [tie[1], tie[0]];
+	const [winner, loser] = home > away ? [lastHome, lastAway] : [lastAway, lastHome];
+	return { ...aggregate, winner, loser, penalties: { home, away }, decidedBy: 'penaltis' };
+}
+
+const shootoutKey = (phase: CupPhase, tie: Tie) => `${phase.phase}:${tie[0]}:${tie[1]}`;
+
+/** Grava os pênaltis no mesmo passo que os resultados. Mudanças nos elencos não mudam a classificação. */
+export function settleCupMatchday(cup: CupState, matchday: number, results: StoredRoundResult[], seed: number, strengthOf: StrengthOf): CupState {
+	const phase = phaseOfMatchday(matchday);
+	if (matchday !== phase.matchdays.at(-1)) return cup;
+	const shootouts = { ...cup.shootouts };
+	for (const tie of cup.stages[phase.phase - 1] ?? []) {
+		const outcome = tieOutcome(cup, phase.phase - 1, tie, results, seed, strengthOf);
+		if (outcome?.penalties) shootouts[shootoutKey(phase, tie)] = [outcome.penalties.home, outcome.penalties.away];
+	}
+	return Object.keys(shootouts).length ? { ...cup, shootouts } : cup;
 }
 
 /** Vencedores de uma fase (null se ainda há confrontos sem resultado). */
@@ -139,7 +163,7 @@ export function phaseWinners(cup: CupState, phaseIndex: number, results: StoredR
 /** Sorteia a próxima fase quando a data da Copa abre uma fase nova. */
 export function prepareCup(cup: CupState, matchday: number, results: StoredRoundResult[], seed: number, strengthOf: StrengthOf): CupState {
 	const ph = phaseOfMatchday(matchday);
-	if (ph.matchdays[0] !== matchday || cup.stages.length >= ph.phase) return cup;
+	if (ph.matchdays[0] !== matchday || cup.stages.length !== ph.phase - 1) return cup;
 	const i = ph.phase - 1;
 	const previous = i === 0 ? [] : phaseWinners(cup, i - 1, results, seed, strengthOf);
 	if (previous === null) return cup;
@@ -150,6 +174,55 @@ export function prepareCup(cup: CupState, matchday: number, results: StoredRound
 	const ties: Tie[] = [];
 	for (let k = 0; k + 1 < drawn.length; k += 2) ties.push([drawn[k], drawn[k + 1]]);
 	return { ...cup, stages: [...cup.stages, ties] };
+}
+
+/** Recupera chaves ausentes quando as súmulas confirmam todo o sorteio da fase. */
+export function restoreCupStages(cup: CupState, results: StoredRoundResult[], seed: number, strengthOf: StrengthOf): CupState {
+	for (let i = cup.stages.length; i < CUP_PHASES.length; i++) {
+		const phase = CUP_PHASES[i];
+		const firstLegs = results.filter((r) => r.competition === CUP_ID && r.round === phase.matchdays[0]);
+		if (!firstLegs.length) break;
+		const previous = i === 0 ? [] : phaseWinners(cup, i - 1, results, seed, strengthOf);
+		if (!previous) break;
+		const entering = cup.entrants[String(phase.phase) as keyof CupState['entrants']] ?? [];
+		const expected = new Set([...previous, ...entering]);
+		const selected = new Set(firstLegs.flatMap((r) => [r.home, r.away]));
+		if (selected.size !== firstLegs.length * 2 || selected.size !== expected.size || ![...selected].every((id) => expected.has(id))) break;
+		const ties: Tie[] = firstLegs.map(({ home, away }) => [home, away]);
+		if (phase.legs === 2) {
+			const secondLegs = results.filter((r) => r.competition === CUP_ID && r.round === phase.matchdays[1]);
+			if (secondLegs.some(({ home, away }) => !ties.some(([a, b]) => a === away && b === home))) break;
+		}
+		cup = { ...cup, stages: [...cup.stages, ties] };
+	}
+	return cup;
+}
+
+export function cupParticipation(cup: CupState, results: StoredRoundResult[], seed: number, strengthOf: StrengthOf, clubId: string): CompetitionParticipation {
+	const base = { competition: CUP_ID, club: clubId, stage: null, nextDate: null };
+	const entry = Object.entries(cup.entrants).find(([, ids]) => ids.includes(clubId));
+	if (!entry) return { ...base, status: 'nao-classificado' };
+	const entryIndex = Number(entry[0]) - 1;
+	const index = cup.stages.findLastIndex((ties) => ties.some((tie) => tie.includes(clubId)));
+	if (index < 0) {
+		const phase = CUP_PHASES[entryIndex];
+		return { ...base, status: 'aguardando-estreia', stage: phase.name, nextDate: cupDate(cup.season, phase.matchdays[0]) };
+	}
+	const phase = CUP_PHASES[index];
+	const tie = cup.stages[index].find((pair) => pair.includes(clubId))!;
+	const outcome = tieOutcome(cup, index, tie, results, seed, strengthOf);
+	if (outcome?.loser === clubId) {
+		return { ...base, status: 'eliminado', stage: phase.name, eliminatedStage: phase.name, eliminatedBy: outcome.winner };
+	}
+	if (outcome?.winner === clubId && index === CUP_PHASES.length - 1) return { ...base, status: 'campeao', stage: phase.name };
+	if (outcome?.winner === clubId) {
+		const next = CUP_PHASES[index + 1];
+		return { ...base, status: 'classificado', stage: next.name, nextDate: cupDate(cup.season, next.matchdays[0]) };
+	}
+	const completed = results.filter((r) => r.competition === CUP_ID && phase.matchdays.includes(r.round) && tie.includes(r.home) && tie.includes(r.away));
+	const nextDate = cupDate(cup.season, phase.matchdays[completed.length] ?? phase.matchdays[0]);
+	const status = completed.length ? 'em-disputa' : index === entryIndex ? 'aguardando-estreia' : 'classificado';
+	return { ...base, status, stage: phase.name, nextDate };
 }
 
 export interface CupView {
@@ -186,7 +259,7 @@ export function clubCupRun(view: CupView, clubId: string): { lastPhase: number; 
 		const t = p.ties.find((x) => x.tie.includes(clubId));
 		if (!t) continue;
 		last = p.phase.phase;
-		if (t.outcome && t.outcome.loser === clubId) eliminated = true;
+		eliminated = t.outcome?.loser === clubId;
 	}
 	if (!last) return null;
 	return { lastPhase: last, eliminated, champion: view.champion === clubId };
@@ -199,12 +272,21 @@ export function sanitizeCup(input: unknown, known: Set<string>): CupState | null
 	if (typeof raw.season !== 'number' || !raw.entrants || !Array.isArray(raw.stages)) return null;
 	const e = raw.entrants as Record<string, unknown>;
 	if (!['1', '2', '3', '5'].every((k) => okList(e[k]))) return null;
-	if (!raw.stages.every((s) => Array.isArray(s) && s.every((t) => okList(t) && t.length === 2))) return null;
+	if (raw.stages.length > CUP_PHASES.length || !raw.stages.every((s) => Array.isArray(s) && s.every((t) => okList(t) && t.length === 2))) return null;
+	const shootouts: NonNullable<CupState['shootouts']> = {};
+	for (const [i, stage] of raw.stages.entries()) for (const tie of stage) {
+		const key = shootoutKey(CUP_PHASES[i], tie);
+		const score = raw.shootouts?.[key];
+		if (Array.isArray(score) && score.length === 2 && score.every((n) => Number.isInteger(n) && n >= 0 && n <= 36) && score[0] !== score[1]) {
+			shootouts[key] = score;
+		}
+	}
 	return {
 		season: raw.season,
 		edition: raw.edition === 'projetada' ? 'projetada' : 'oficial',
 		entrants: { '1': [...(e['1'] as string[])], '2': [...(e['2'] as string[])], '3': [...(e['3'] as string[])], '5': [...(e['5'] as string[])] },
 		stages: raw.stages.map((s) => s.map((t) => [t[0], t[1]] as Tie)),
+		...(Object.keys(shootouts).length ? { shootouts } : {}),
 		finalVenue: typeof raw.finalVenue === 'string' ? raw.finalVenue.slice(0, 80) : 'Campo neutro'
 	};
 }

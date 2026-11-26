@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { seasonSteps } from '#lib/domain/calendar.ts';
 import { initialCareerData, validateCreateCareer, type CreateCareerInput } from '#lib/domain/career.ts';
-import { CUP_ID, initialCup } from '#lib/domain/cup.ts';
+import { CUP_ID, cupFixtures, initialCup, prepareCup } from '#lib/domain/cup.ts';
 import { closeSeason, divisionOf, initialLeague, prepareRound, sanitizeLeague, seasonFixtures, type LeagueSelection } from '#lib/domain/league.ts';
 import { projectCoach } from '#lib/domain/turns.ts';
 import { careerView } from '#lib/domain/view.ts';
@@ -66,6 +66,63 @@ describe('carreira offline com seleção persistida', () => {
 		await runMigrations(db);
 	});
 	afterAll(async () => db?.close());
+
+	it('ativa todas as divisões do país para todos os treinadores e oferece a estreia oficial do Sport', async () => {
+		const { profile } = await createGuestProfile(db);
+		const selection = { countries: ['bra'] };
+		const request = { mode: 'coach', personName: 'Ana Silva', clubId: 'sport', worldSelection: selection };
+		const valid = validateCreateCareer(request);
+		if (!valid.ok) throw new Error(JSON.stringify(valid.errors));
+		expect(validateCreateCareer({ ...request, worldSelection: { countries: ['bra', 'esp'] } }))
+			.toMatchObject({ ok: false, errors: { worldSelection: expect.any(String) } });
+		const career = await createCareer(db, profile.id, valid.value, 777);
+		const cup = career.data.cup!;
+		const r1 = prepareCup(cup, 1, [], career.seed, () => 70);
+		const prior = [
+			...seasonFixtures(career.data.league!, career.seed).filter((f) => f.round <= 5),
+			...cupFixtures(r1)
+		];
+		await insertRound(db, career.id, prior.map((f) => ({
+			...f, season: career.season, homeGoals: 1, awayGoals: 0, seed: career.seed, isUser: false
+		})), ENGINE_VERSION);
+		const restored = (await getCareer(db, profile.id, career.id))!;
+		expect(restored.data.worldSelection).toEqual(selection);
+		expect(restored.data.league!.selection!.divisions).toEqual(['serie-a', 'serie-b', 'serie-c', 'serie-d']);
+		const results = await listResults(db, career.id, 2026);
+		const view = careerView(restored, results);
+		expect(view.cup!.stages[0]).toHaveLength(14);
+		expect(view.step?.key).toBe('cup:2');
+		expect(view.cupParticipation).toMatchObject({ status: 'aguardando-estreia', stage: '2ª fase' });
+		expect(view.next?.competition).toBe(CUP_ID);
+		expect([view.next?.home, view.next?.away]).toContain('sport');
+		expect(planRound(restored, results).fixtures).toContainEqual(view.next);
+
+		const played = await playRound(db, profile.id, restored, { version: restored.version, season: 2026, step: 'cup:2' });
+		expect(played.match?.fixture).toEqual(view.next);
+		const saved = (await getCareer(db, profile.id, career.id))!;
+		const rows = await listResults(db, saved.id, 2026);
+		expect(rows.filter((r) => r.competition === CUP_ID && r.round === 2 && [r.home, r.away].includes('sport')))
+			.toEqual([expect.objectContaining({ isUser: true })]);
+		expect(saved.data.cup!.stages).toHaveLength(2);
+		expect(saved.data.worldSelection).toEqual(selection);
+		expect(careerView(saved, rows).cupParticipation?.status).toMatch(/^(classificado|eliminado)$/);
+		const replay = await playRound(db, profile.id, saved, { version: restored.version, season: 2026, step: 'cup:2' });
+		expect(replay).toMatchObject({ replay: true, match: { fixture: view.next } });
+	}, 20_000);
+
+	it('reabre a seleção por país com dois treinadores, inclusive um da Série D', async () => {
+		const { profile } = await createGuestProfile(db);
+		const clubD = initialLeague('brasil', 2026).divisions['serie-d']![0];
+		const worldSelection = { countries: ['bra'] };
+		const career = await createCareer(db, profile.id, { ...input, leagueSelection: undefined, worldSelection }, 777, [{ personName: 'Bia', clubId: clubD }]);
+		const turn = await passTurn(db, profile.id, career, career.version);
+		expect(turn.career.clubId).toBe(clubD);
+		const reopened = (await getCareer(db, profile.id, career.id))!;
+		for (const index of [0, 1]) expect(projectCoach(reopened, index).data.worldSelection).toEqual(worldSelection);
+		const plan = planRound(reopened, [], undefined, ['serie-a', 'serie-d']);
+		expect(new Set(plan.fixtures.map((f) => f.competition))).toEqual(new Set(['serie-a', 'serie-b', 'serie-c', 'serie-d']));
+		expect(plan.fixtures.filter(plan.full).every((f) => ['serie-a', 'serie-d'].includes(f.competition))).toBe(true);
+	});
 
 	it('filtra todos os treinadores, simula apenas as divisões escolhidas e negocia com o catálogo inativo', async () => {
 		const { profile } = await createGuestProfile(db);

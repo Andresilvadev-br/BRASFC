@@ -16,13 +16,15 @@ import {
 import { careerSquad, withFitness } from './matchday.ts';
 import { clubFixtures } from './season.ts';
 import { allFixtures, nextStep, processedKeys, seasonSteps, stepFixtures } from './calendar.ts';
-import { CUP_ID, sanitizeCup } from './cup.ts';
+import { CUP_ID, cupParticipation, initialCup, prepareCup, restoreCupStages, sanitizeCup } from './cup.ts';
 import { CLUBES_2026 } from '#lib/data/brasil.ts';
 import { squadStrength } from './squad.ts';
 import { resolveRoles, sanitizeTacticalState, syncSquad, teamMastery } from './tactical.ts';
 import { effectiveTactical, sanitizeCoachKnowledge } from './coach-knowledge.ts';
 import { initialClubTactic } from './club-selection.ts';
 import { recoverTactic, type Tactic } from './tactics.ts';
+import { strengthFor } from './strength.ts';
+import { continentalParticipation } from './continental-qualification.ts';
 
 /**
  * Visão derivada de uma carreira: tudo o que é determinístico a partir da semente e do
@@ -36,10 +38,19 @@ export function careerCalendar(career: Career, results: StoredRoundResult[], lea
 	const fixtures = seasonFixtures(league, career.seed);
 	const mine = clubFixtures(fixtures, career.clubId);
 	const cup = world === 'brasil' && (league.selection?.cup ?? true) ? sanitizeCup(career.data.cup, KNOWN) : null;
-	const activeCup = cup && cup.season === career.season ? cup : null;
+	let activeCup = cup?.season === career.season ? cup : null;
+	if (!activeCup && world === 'brasil' && career.season === 2026 && (league.selection?.cup || (!league.selection && results.some((r) => r.competition === CUP_ID)))) {
+		activeCup = initialCup(career.season);
+	}
 	const steps = seasonSteps(league, activeCup);
 	const done = processedKeys(results);
 	const step = nextStep(steps, done);
+	if (activeCup) {
+		const strengthOf = strengthFor(career);
+		activeCup = restoreCupStages(activeCup, results, career.seed, strengthOf);
+		// O cliente vê a mesma chave que o servidor grava junto do resultado.
+		if (step?.kind === 'cup') activeCup = prepareCup(activeCup, step.matchday, results, career.seed, strengthOf);
+	}
 	const rounds = totalRounds(league);
 	const seasonOver = step === null;
 	const everything = allFixtures(fixtures, activeCup);
@@ -83,6 +94,8 @@ export function careerView(career: Career, results: StoredRoundResult[] = []) {
 		/** só as partidas de liga do clube */
 		leagueFixtures: mine,
 		cup: activeCup,
+		cupParticipation: activeCup ? cupParticipation(activeCup, results, career.seed, strengthFor(career), career.clubId) : null,
+		continentalParticipation: continentalParticipation(career.data.brazilContinentalQualification, career.clubId, career.season),
 		steps,
 		/** próximo passo do calendário (domingo de liga ou quarta de Copa) */
 		step,
