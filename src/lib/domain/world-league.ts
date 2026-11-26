@@ -22,6 +22,16 @@ export const WORLD_CLUB = /^world\/[a-z]{3}\/[a-z0-9-]+$/;
 
 export type Tiebreak = 'confronto-direto' | 'saldo';
 
+/** Nomes oficiais das divisões do World Database (o catálogo traz "Espanhol · 1ª divisão"). */
+export const WORLD_DIVISION_NAMES: Record<string, string> = {
+	'league/esp/1': 'LaLiga', 'league/esp/2': 'LaLiga Hypermotion',
+	'league/ita/1': 'Serie A', 'league/ita/2': 'Serie B',
+	'league/eng/1': 'Premier League', 'league/eng/2': 'Championship', 'league/eng/3': 'League One', 'league/eng/4': 'League Two',
+	'league/ger/1': 'Bundesliga', 'league/ger/2': '2. Bundesliga', 'league/ger/3': '3. Liga',
+	'league/fra/1': 'Ligue 1', 'league/fra/2': 'Ligue 2',
+	'league/ned/1': 'Eredivisie'
+};
+
 export interface WorldDivisionRule {
 	name: string;
 	country: string;
@@ -70,6 +80,15 @@ export function catalogPlayer(seed: number, raw: { id: string; name: string; age
 }
 
 const rosterCache = new WeakMap<WorldSnapshot, Map<string, SquadPlayer[]>>();
+
+/**
+ * Registra os clubes gravados no save (mundo `mundo`) antes de qualquer tela pedir nome, cores ou estádio.
+ * Idempotente e barato: chamado no início da visão da carreira, no servidor e no navegador.
+ */
+export function ensureWorldClubs(data: { worldSnapshot?: unknown }): void {
+	const snapshot = sanitizeSnapshot(data.worldSnapshot);
+	if (snapshot) registerClubs(snapshot.clubs);
+}
 
 /** Registra os clubes do save (nome, cores, estádio) e devolve o elenco-base de um clube do catálogo. */
 export function snapshotRoster(snapshot: WorldSnapshot | undefined, seed: number): ((clubId: string) => SquadPlayer[] | undefined) | undefined {
@@ -210,5 +229,5 @@ export function projectedOrder(ids: string[], careerSeed: number, season: number
 }
 
 export function worldDivisionLabel(rule: WorldDivisionRule | undefined, div: string): string {
-	return rule?.name ?? div;
+	return rule?.name ?? WORLD_DIVISION_NAMES[div] ?? div;
 }

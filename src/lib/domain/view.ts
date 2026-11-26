@@ -26,6 +26,7 @@ import { initialClubTactic } from './club-selection.ts';
 import { recoverTactic, type Tactic } from './tactics.ts';
 import { strengthFor } from './strength.ts';
 import { continentalParticipation } from './continental-qualification.ts';
+import { ensureWorldClubs } from './world-league.ts';
 
 /**
  * Visão derivada de uma carreira: tudo o que é determinístico a partir da semente e do
@@ -35,6 +36,7 @@ import { continentalParticipation } from './continental-qualification.ts';
 const KNOWN = new Set(CLUBES_2026.map((c) => c.id));
 
 export function careerCalendar(career: Career, results: StoredRoundResult[], league = sanitizeLeague(career.data.league, careerWorld(career), career.season)) {
+	ensureWorldClubs(career.data);
 	const world = league.world;
 	const cup = world === 'brasil' && (league.selection?.cup ?? true) ? sanitizeCup(career.data.cup, KNOWN) : null;
 	let activeCup = cup?.season === career.season ? cup : null;
@@ -65,6 +67,7 @@ export function careerCalendar(career: Career, results: StoredRoundResult[], lea
 }
 
 export function careerView(career: Career, results: StoredRoundResult[] = []) {
+	ensureWorldClubs(career.data);
 	const club = requireClub(career.clubId);
 	const world = careerWorld(career);
 	const squad = withFitness(careerSquad(career), career.data.fitness);

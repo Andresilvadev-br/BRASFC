@@ -3,7 +3,7 @@
 	import { untrack } from 'svelte';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { formatShort } from '#lib/domain/dates.ts';
-	import { activeDivisions, D_STAGE_NAMES, DIVISION_LABELS, dStageRounds, effectiveRule, groupStandings, phaseOneLength, phaseOneTables, resolveTie, type BrasilDivision, type DivisionId, type Tie } from '#lib/domain/league.ts';
+	import { activeDivisions, D_STAGE_NAMES, DIVISION_LABELS, dStageRounds, effectiveRule, groupStandings, phaseOneLength, phaseOneTables, resolveTie, type BrasilDivision, type DivisionId, type Tie, divisionLabel } from '#lib/domain/league.ts';
 	import { computeStandings } from '#lib/domain/season.ts';
 	import { strengthMemo } from '#lib/domain/world.ts';
 	import { reveal } from '#lib/motion/actions.ts';
@@ -24,6 +24,7 @@
 	const divisions = $derived(activeDivisions(v.league));
 	const div = $derived(divisions.includes(selected) ? selected : divisions[0] ?? v.division);
 	const brasil = $derived(v.world === 'brasil' && div !== 'liga-brasfc');
+	const worldRule = $derived(v.world === 'mundo' ? v.league.rules?.[div] : undefined);
 	const bPlayoffs = $derived(div === 'serie-b' && v.league.bPromotionPlayoff !== undefined);
 	const competitions = $derived(nativeCompetitions(v.league, !!v.cup));
 	const rule = $derived(brasil ? effectiveRule(v.league, div as BrasilDivision) : null);
@@ -40,6 +41,8 @@
 		return map;
 	});
 	const zone = (pos: number, size: number): 'up' | 'qual' | 'down' | '' => {
+		// World Database: só a zona de rebaixamento do regulamento (vagas europeias chegam com as continentais).
+		if (worldRule) return pos > size - worldRule.relegated ? 'down' : '';
 		if (!rule) return pos <= 4 ? 'up' : pos > size - 4 ? 'down' : '';
 		if (div === 'serie-d') return pos <= 4 ? 'qual' : '';
 		if (div === 'serie-c') {
@@ -62,7 +65,7 @@
 	const dRounds = (k: number) => dStageRounds(v.league, k);
 	const tieOut = (t: Tie, rounds: number[], byCampaign = false) => resolveTie(t, v.results, 'serie-d', rounds, c.seed, st, { byCampaign });
 	const name = (id: string) => getClub(id)?.name ?? id;
-	const ruleText = $derived(bPlayoffs ? 'Dois clubes sobem direto. Do 3º ao 6º, os clubes disputam duas vagas nos playoffs. Quatro são rebaixados.'
+	const ruleText = $derived(worldRule ? `${v.league.divisions[div]?.length ?? 0} clubes em ${worldRule.legs === 2 ? 'turno e returno' : 'turno único'} · ${worldRule.relegated} rebaixados · desempate por ${worldRule.tiebreak === 'confronto-direto' ? 'confronto direto' : 'saldo de gols'}. Inscritos 2026/27 conferidos em fonte oficial.` : bPlayoffs ? 'Dois clubes sobem direto. Do 3º ao 6º, os clubes disputam duas vagas nos playoffs. Quatro são rebaixados.'
 		: !rule ? 'Liga fictícia: 20 clubes em turno e returno.' : `${rule.size} clubes · ${rule.status === 'oficial' ? 'regra oficial' : rule.status === 'anunciado' ? 'regra anunciada pela CBF' : 'regra projetada pelo BRASFC'}. ${rule.nota ?? ''}`);
 </script>
 
@@ -70,8 +73,8 @@
 
 <div class="head" use:reveal>
 	<div>
-		<span class="eyebrow">Temporada {c.season}{v.world === 'brasil' && c.season > 2026 ? ' · projeção do BRASFC a partir da base 2026' : ''}</span>
-		<h1 class="display">{DIVISION_LABELS[div]}</h1>
+		<span class="eyebrow">Temporada {v.world === 'mundo' ? `${c.season}/${String(c.season + 1).slice(2)}` : c.season}{v.world === 'brasil' && c.season > 2026 ? ' · projeção do BRASFC a partir da base 2026' : ''}</span>
+		<h1 class="display">{divisionLabel(v.league, div)}</h1>
 		<p class="muted rule">{ruleText}</p>
 	</div>
 	{#if competitions.length > 1}

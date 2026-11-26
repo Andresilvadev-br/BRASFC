@@ -80,6 +80,8 @@ jobs:
       - run: npm run build
       - name: Testar produção offline e biblioteca de carreiras
         run: |
+          # Catálogo mundial embutido, instalado como o app do Windows faz na primeira abertura.
+          node -e "require('./desktop/world-catalog-install.js').installBundledCatalog('desktop/assets/world', process.env.RUNNER_TEMP + '/world-catalogs')"
           BRASFC_OFFLINE=1 BRASFC_ALLOW_PGLITE=1 PGLITE_DIR="$RUNNER_TEMP/brasfc-offline" HOST=127.0.0.1 ORIGIN=http://127.0.0.1:3001 PORT=3001 node server/index.js > /tmp/brasfc-offline.log 2>&1 &
           trap 'cat /tmp/brasfc-offline.log' EXIT
           for i in $(seq 1 30); do

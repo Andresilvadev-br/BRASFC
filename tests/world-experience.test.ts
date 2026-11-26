@@ -36,7 +36,7 @@ describe('World Database · interface', () => {
 		expect(spain.divisions.map((d) => d.id)).toEqual(['league/esp/1', 'league/esp/2']);
 		expect(spain.playable).toBe(false);
 		expect(spain.clubCount).toBe(42);
-		expect(spain.load.matches).toBeGreaterThan(800);
+		expect(spain.load.matches).toBeGreaterThanOrEqual(380);
 	});
 });
 

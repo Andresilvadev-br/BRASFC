@@ -94,6 +94,12 @@ export interface LeagueState {
 	reserves?: Record<string, string[]>;
 }
 
+/** Nome de qualquer competição da carreira (Séries, liga fictícia, Copa do Brasil ou divisão do World Database). */
+export function competitionName(id: string): string {
+	if (id === 'copa-do-brasil') return 'Copa do Brasil';
+	return (DIVISION_LABELS as Record<string, string>)[id] ?? worldDivisionLabel(undefined, id);
+}
+
 /** Nome da divisão para a interface (Séries, liga fictícia ou divisão do catálogo). */
 export function divisionLabel(league: Pick<LeagueState, 'rules'>, div: string): string {
 	return (DIVISION_LABELS as Record<string, string>)[div] ?? worldDivisionLabel(league.rules?.[div], div);

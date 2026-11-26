@@ -1,4 +1,4 @@
-import { activeDivisions, DIVISION_LABELS, type LeagueState } from '#lib/domain/league.ts';
+import { activeDivisions, divisionLabel, type LeagueState } from '#lib/domain/league.ts';
 import type { CompetitionId, WorldCompetition } from './contract.ts';
 import { countryConfederation } from './countries.ts';
 
@@ -8,10 +8,12 @@ import { countryConfederation } from './countries.ts';
  * copas nacionais e continentais no mesmo formato (docs/WORLD-CONTRACT.md).
  */
 export function nativeCompetitions(league: LeagueState, hasCup: boolean): WorldCompetition[] {
-	const out: WorldCompetition[] = activeDivisions(league).map((id) => ({
-		id, kind: 'league', name: DIVISION_LABELS[id], short: DIVISION_LABELS[id].replace('Série ', 'S'), season: league.season,
-		country: league.world === 'brasil' ? 'bra' : null, confederation: league.world === 'brasil' ? countryConfederation('bra') : null, playable: true
-	}));
+	const out: WorldCompetition[] = activeDivisions(league).map((id) => {
+		// Divisões do World Database trazem o país no regulamento; o Brasil nativo é 'bra'.
+		const country = league.world === 'mundo' ? (league.rules?.[id]?.country ?? null) : league.world === 'brasil' ? 'bra' : null;
+		const name = divisionLabel(league, id);
+		return { id, kind: 'league' as const, name, short: name.replace('Série ', 'S'), season: league.season, country, confederation: country ? countryConfederation(country) : null, playable: true };
+	});
 	if (hasCup) out.push({ id: 'copa-do-brasil', kind: 'national-cup', name: 'Copa do Brasil', short: 'CdB', country: 'bra', confederation: 'CONMEBOL', season: league.season, playable: true });
 	return out;
 }

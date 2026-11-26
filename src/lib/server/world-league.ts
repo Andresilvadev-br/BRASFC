@@ -1,7 +1,7 @@
 import type { Club } from '#lib/domain/clubs.ts';
 import { careerStart } from '#lib/domain/career.ts';
 import type { DivisionId, LeagueState } from '#lib/domain/league.ts';
-import type { CompactPlayer, Tiebreak, WorldDivisionRule, WorldPlan } from '#lib/domain/world-league.ts';
+import { WORLD_DIVISION_NAMES, type CompactPlayer, type Tiebreak, type WorldDivisionRule, type WorldPlan } from '#lib/domain/world-league.ts';
 import type { AttributeKey } from '#lib/engine/attributes.ts';
 import { countryName } from '#lib/world/countries.ts';
 import { newestWorldCatalog, openWorldCatalog } from './world-catalog.ts';
@@ -17,15 +17,7 @@ import { newestWorldCatalog, openWorldCatalog } from './world-catalog.ts';
  */
 export const EDITION = '2026/27';
 
-/** Nomes oficiais (o catálogo traz "Espanhol · 1ª divisão"). */
-const OFFICIAL_NAMES: Record<string, string> = {
-	'league/esp/1': 'LaLiga', 'league/esp/2': 'LaLiga Hypermotion',
-	'league/ita/1': 'Serie A', 'league/ita/2': 'Serie B',
-	'league/eng/1': 'Premier League', 'league/eng/2': 'Championship', 'league/eng/3': 'League One', 'league/eng/4': 'League Two',
-	'league/ger/1': 'Bundesliga', 'league/ger/2': '2. Bundesliga', 'league/ger/3': '3. Liga',
-	'league/fra/1': 'Ligue 1', 'league/fra/2': 'Ligue 2',
-	'league/ned/1': 'Eredivisie'
-};
+const OFFICIAL_NAMES = WORLD_DIVISION_NAMES;
 
 /**
  * Critério após os pontos. Espanha (art. 201 do Reglamento General RFEF) e Itália (Lega Serie A, desde 2022/23):

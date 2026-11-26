@@ -82,7 +82,8 @@ export function worldCountries(catalogId: string | null = newestWorldCatalog() ?
 			const plan = planned.get(`league/${code}/${row.division}`);
 			list.push({ id: `league/${code}/${row.division}`, country: code, level: Number(row.division), name: plan?.name ?? String(row.name ?? `${row.division}ª divisão`), clubs: plan?.playable ? [...plan.verified] : verified.get(String(row.id)) ?? [], playable: !!plan?.playable });
 			byCountry.set(code, list);
-			matches.set(code, (matches.get(code) ?? 0) + rulesMatchCount(rules));
+			// Custo do que será simulado: só as divisões jogáveis (as demais não geram partidas).
+			if (plan?.playable) matches.set(code, (matches.get(code) ?? 0) + rulesMatchCount(rules));
 		}
 		for (const [code, divisions] of byCountry) {
 			out.push({

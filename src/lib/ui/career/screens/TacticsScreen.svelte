@@ -49,7 +49,7 @@
 	import Crest from '#lib/ui/Crest.svelte';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { formatLong } from '#lib/domain/dates.ts';
-	import { DIVISION_LABELS, type DivisionId } from '#lib/domain/league.ts';
+	import { DIVISION_LABELS, type DivisionId, competitionName } from '#lib/domain/league.ts';
 	import { SPONSOR_SLOTS, type SponsorSlot } from '#lib/domain/club.ts';
 	import { formatExactMoney } from '#lib/domain/market.ts';
 	import { INSTRUCTION_KEYS, INSTRUCTION_LABELS, optionIndex, paramsFromInstructions } from '#lib/engine/instructions.ts';
@@ -345,7 +345,7 @@
 	// ── Próxima partida (dados do calendário real da carreira)
 	const up = $derived(v.upcoming);
 	const oppId = $derived(up ? (up.home === data.career.clubId ? up.away : up.home) : null);
-	const compLabel = (c: string) => (c === 'copa-do-brasil' ? 'Copa do Brasil' : (DIVISION_LABELS[c as DivisionId] ?? c));
+	const compLabel = (c: string) => competitionName(c);
 	const daysTo = $derived(up ? Math.round((Date.parse(up.date) - Date.parse(data.career.gameDate)) / 86_400_000) : null);
 	const starters = $derived(tactic.lineup.map((id) => byId.get(id)).filter((p): p is SquadPlayer => !!p));
 	const avgCondition = $derived(starters.length ? Math.round(starters.reduce((s, p) => s + p.condition, 0) / starters.length) : 0);
