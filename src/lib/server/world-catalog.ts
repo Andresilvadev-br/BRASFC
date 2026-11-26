@@ -129,3 +129,8 @@ export function withWorldRoster(career: Pick<Career, 'data' | 'seed'>, ctx: Rost
 	const catalog = worldCatalog(career);
 	return catalog ? { ...ctx, externalRoster: catalog.roster } : ctx;
 }
+
+/** Abertura somente leitura do catálogo instalado (usada pela lista de países da interface). */
+export function openWorldCatalog(id: string): DatabaseSync | undefined {
+	return database(id);
+}
