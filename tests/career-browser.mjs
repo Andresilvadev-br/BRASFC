@@ -16,7 +16,6 @@ try {
 	page.on('pageerror', (error) => errors.push(error.message));
 	await page.goto('/continuar');
 	await page.getByRole('heading', { name: 'Nenhuma carreira salva' }).waitFor();
-	await page.getByText('As ligas ficam disponíveis no modo online.').waitFor();
 
 	const create = async (data) => {
 		const response = await page.request.post('/api/careers', { data, headers: { Origin: origin } });

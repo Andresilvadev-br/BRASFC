@@ -41,6 +41,13 @@ export function takePrefetched(career: Pick<Career, 'id' | 'version'>, step: str
 	return entry.fixtures === signature(others) ? entry.done : null;
 }
 
+/** Guarda um cálculo já feito (central da rodada) para a gravação reaproveitar na mesma versão. */
+export function rememberPrefetched(career: Pick<Career, 'id' | 'version'>, step: string, others: Fixture[], done: Sim[]): void {
+	const key = keyOf(career, step);
+	cache.set(key, { key, fixtures: signature(others), at: Date.now(), done, running: false });
+	prune();
+}
+
 const yieldToLoop = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 /**

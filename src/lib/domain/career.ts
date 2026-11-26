@@ -5,6 +5,7 @@ import type { OfficeState } from './office.ts';
 import type { CoachKnowledge } from './coach-knowledge.ts';
 import type { TacticPreset } from './tactic-presets.ts';
 import type { DisciplineState } from './discipline.ts';
+import type { LocalGroup } from './turns.ts';
 import { isAppearance, type Appearance } from './appearance.ts';
 import { CLUBES_2026, TEMPORADA_2026 } from '#lib/data/brasil.ts';
 import { CLUBS, getClub, LEAGUE, type Club } from './clubs.ts';
@@ -91,6 +92,8 @@ tacticPresets?: TacticPreset[];
 discipline?: DisciplineState;
 /** Dev 0.12: projeção de um treinador de carreira online (universo compartilhado da liga) */
 sharedWorld?: boolean;
+/** 0.13: carreira local com vários treinadores em turnos (ausente = um treinador só) */
+local?: LocalGroup;
 }
 
 export interface Career {

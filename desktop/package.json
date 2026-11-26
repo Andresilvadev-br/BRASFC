@@ -1,8 +1,8 @@
 {
   "name": "brasfc-desktop",
   "productName": "BRASFC",
-  "version": "1.5.0",
-  "description": "BRASFC para Windows — janela própria, tela cheia, modo offline e atualização automática.",
+  "version": "1.6.0",
+  "description": "BRASFC para Windows — jogo 100% offline, tela cheia e atualização automática.",
   "author": "BRASFC",
   "main": "main.js",
   "private": true,
@@ -18,7 +18,8 @@
   },
   "devDependencies": {
     "electron": "45.3.4",
-    "electron-builder": "26.18.0"
+    "electron-builder": "26.18.0",
+    "ws": "8.23.0"
   },
   "build": {
     "appId": "br.brasfc.desktop",

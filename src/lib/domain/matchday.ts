@@ -196,6 +196,41 @@ export function matchFromSetup(s: ReturnType<typeof fixtureSetup>, replay?: Appl
 	});
 }
 
+/** Cartão ou lesão de um jogo da IA (minuto aproximado pelo relógio do motor). */
+export interface OtherIncident { kind: 'yellow' | 'red' | 'injury'; side: Side; player: string; minute: number }
+
+/** Partida montada para um ou dois treinadores humanos (0.13: confronto direto entre humanos). */
+export interface SharedSetup {
+	home: TeamSetup;
+	away: TeamSetup;
+	seed: number;
+	neutral: boolean;
+	/** lados comandados por humanos */
+	humans: Side[];
+}
+
+/**
+ * Junta as montagens de cada treinador num único jogo: cada lado humano usa a tática do próprio
+ * treinador; o lado da IA, a montagem normal. Uma partida, um resultado — simulada uma só vez.
+ */
+export function sharedSetup(parts: Array<ReturnType<typeof fixtureSetup>>): SharedSetup {
+	const first = parts[0];
+	const home = parts.find((p) => p.mySide === 'home');
+	const away = parts.find((p) => p.mySide === 'away');
+	return { home: (home ?? first).home, away: (away ?? first).away, seed: first.seed, neutral: first.neutral, humans: parts.map((p) => p.mySide) };
+}
+
+export function matchFromShared(s: SharedSetup, replay?: AppliedDecision[]): Match {
+	return new Match({
+		home: s.home,
+		away: s.away,
+		seed: s.seed,
+		ai: { home: !s.humans.includes('home'), away: !s.humans.includes('away') },
+		...(s.neutral ? { rules: { homeAdvantage: false } } : {}),
+		...(replay ? { replay } : {})
+	});
+}
+
 /**
  * Demais jogos da rodada (IA × IA). `full` decide quais usam o motor completo (padrão: todos);
  * os outros usam o modelo rápido calibrado pelo motor (src/lib/domain/quick.ts).
@@ -205,7 +240,7 @@ export function simulateOtherFixtures(
 	fixtures: Fixture[],
 	ctx: Pick<MatchdayContext, 'season' | 'firstSeason'>,
 	opts: { full?: (f: Fixture) => boolean; strengthOf?: (clubId: string) => number } = {}
-): Array<MatchResult & { competition: string; seed: number; quick?: boolean; goals?: Array<{ side: 'home' | 'away'; player: string; minute: number }> }> {
+): Array<MatchResult & { competition: string; seed: number; quick?: boolean; goals?: Array<{ side: 'home' | 'away'; player: string; minute: number; assist?: string }>; incidents?: OtherIncident[] }> {
 	return fixtures.map((f) => {
 		const seed = matchSeed(career, ctx.season, f.round, f.home, f.competition);
 		const neutral = !!(f as Fixture & { neutral?: boolean }).neutral;
@@ -215,8 +250,11 @@ export function simulateOtherFixtures(
 			return { home: f.home, away: f.away, homeGoals: q.homeGoals, awayGoals: q.awayGoals, competition: f.competition, seed, quick: true };
 		}
 		const r = simulateMatch({ home: aiTeam(career, f.home, ctx, f.round).setup, away: aiTeam(career, f.away, ctx, f.round).setup, seed, ...(neutral ? { rules: { homeAdvantage: false } } : {}) });
-		const goals = r.events.filter((e) => e.type === 'goal').map((e) => ({ side: e.side!, player: e.player!, minute: Math.floor(e.tick / 60) }));
-		return { home: f.home, away: f.away, homeGoals: r.homeGoals, awayGoals: r.awayGoals, competition: f.competition, seed, goals };
+		const goals = r.events.filter((e) => e.type === 'goal').map((e) => ({ side: e.side!, player: e.player!, minute: Math.floor(e.tick / 60), ...(e.other ? { assist: e.other } : {}) }));
+		// 0.13: cartões e lesões reais do motor, para a central de resultados simultâneos.
+		const incidents = r.events.filter((e) => e.type === 'yellow' || e.type === 'red' || e.type === 'injury')
+			.map((e) => ({ kind: e.type as OtherIncident['kind'], side: e.side!, player: e.player!, minute: Math.floor(e.tick / 60) }));
+		return { home: f.home, away: f.away, homeGoals: r.homeGoals, awayGoals: r.awayGoals, competition: f.competition, seed, goals, incidents };
 	});
 }
 

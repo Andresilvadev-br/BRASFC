@@ -18,7 +18,6 @@ import {
 	touchCareer,
 	VersionConflictError
 } from '#lib/server/repos/careers.ts';
-import { createRoom, getRoomByCode, joinRoom, leaveRoom } from '#lib/server/repos/rooms.ts';
 import { latestValidSave, saveCompetition, saveIssue, saveTitle, sortSaves } from '#lib/domain/saves.ts';
 
 /** Central de carreiras (0.10): vários saves por perfil, isolamento, exclusão segura e compatibilidade. */
@@ -108,9 +107,8 @@ describe('biblioteca de carreiras', () => {
 		}
 	});
 
-	it('exclui só a carreira escolhida, com os dados dela, sem tocar em outras nem nas ligas', async () => {
+	it('exclui só a carreira escolhida, com os dados dela, sem tocar em outras', async () => {
 		const { profile, coach, player } = await twoCareers();
-		const room = await createRoom(db, profile.id, 'Liga dos Amigos');
 		expect((await listMessages(db, profile.id, coach.id)).length).toBeGreaterThan(0);
 
 		expect(await deleteCareer(db, profile.id, coach.id)).toBe(true);
@@ -120,7 +118,6 @@ describe('biblioteca de carreiras', () => {
 
 		expect((await getCareer(db, profile.id, player.id))?.personName).toBe('Léo Atacante');
 		expect((await listMessages(db, profile.id, player.id)).length).toBeGreaterThan(0);
-		expect(await getRoomByCode(db, room.code)).not.toBeNull();
 		// Repetir a exclusão não apaga mais nada.
 		expect(await deleteCareer(db, profile.id, coach.id)).toBe(false);
 	});
@@ -197,19 +194,3 @@ describe('biblioteca de carreiras', () => {
 	});
 });
 
-describe('carreiras compartilhadas', () => {
-	it('participante que sai da liga não apaga o universo', async () => {
-		const owner = (await createGuestProfile(db)).profile;
-		const guest = (await createGuestProfile(db)).profile;
-		const room = await createRoom(db, owner.id, 'Liga Compartilhada');
-		const own = await createCareer(db, guest.id, { mode: 'coach', personName: 'Convidado', clubId: 'aurora' });
-		await joinRoom(db, room.code, guest.id);
-		expect(await leaveRoom(db, room, guest.id)).toBe('left');
-		expect((await getRoomByCode(db, room.code))?.status).toBe('open');
-		// A carreira individual do participante também não é afetada.
-		expect(await getCareer(db, guest.id, own.id)).not.toBeNull();
-		// E excluir a carreira individual não mexe na liga.
-		expect(await deleteCareer(db, guest.id, own.id)).toBe(true);
-		expect((await getRoomByCode(db, room.code))?.status).toBe('open');
-	});
-});

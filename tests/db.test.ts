@@ -12,7 +12,6 @@ import {
 	patchCareerData,
 	VersionConflictError
 } from '#lib/server/repos/careers.ts';
-import { createRoom, getRoomByCode, joinRoom, leaveRoom, listMembers, RoomError } from '#lib/server/repos/rooms.ts';
 
 let db: Db;
 
@@ -83,24 +82,6 @@ describe('carreiras', () => {
 		expect(c.data.player?.age).toBe(18);
 		expect(c.data.position).toBe('ATA');
 		expect(c.data.appearance?.hairStyle).toBe('cacheado');
-	});
-});
-
-describe('salas', () => {
-	it('cria com código, aceita membros e encerra quando o dono sai', async () => {
-		const owner = (await createGuestProfile(db)).profile;
-		const guest = (await createGuestProfile(db)).profile;
-		const room = await createRoom(db, owner.id, 'Liga dos Amigos');
-		expect(room.code).toMatch(/^[A-Z2-9]{6}$/);
-		await joinRoom(db, room.code, guest.id);
-		await joinRoom(db, room.code, guest.id); // idempotente
-		expect((await listMembers(db, room.id)).map((m) => m.role)).toEqual(['owner', 'member']);
-
-		expect(await leaveRoom(db, room, guest.id)).toBe('left');
-		expect(await leaveRoom(db, room, owner.id)).toBe('closed');
-		expect((await getRoomByCode(db, room.code))?.status).toBe('closed');
-		await expect(joinRoom(db, room.code, guest.id)).rejects.toBeInstanceOf(RoomError);
-		await expect(joinRoom(db, 'ZZZZZZ', guest.id)).rejects.toMatchObject({ status: 404 });
 	});
 });
 

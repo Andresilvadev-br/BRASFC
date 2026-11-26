@@ -1,10 +1,8 @@
 <script lang="ts">
-	import { positionFit } from '#lib/domain/positions.ts';
 	import BroadcastMoments from './BroadcastMoments.svelte';
 	import { onDestroy, untrack } from 'svelte';
-	import { overridesOf, presetInstructions, type TacticalInstructions } from '#lib/engine/instructions.ts';
-	import InstructionsEditor from '../tactics/InstructionsEditor.svelte';
-	import { FORMATION_IDS, FORMATIONS, type FormationId, type Mentality, type PlayStyle } from '#lib/domain/tactics.ts';
+	import type { TacticPreset } from '#lib/domain/tactic-presets.ts';
+	import TacticCommand from '../local/TacticCommand.svelte';
 	import { Match } from '#lib/engine/match.ts';
 	import { narrate, type NarrationLine } from '#lib/engine/narration.ts';
 	import { possessionPct } from '#lib/engine/stats.ts';
@@ -12,10 +10,7 @@
 	import { rulesForVersion } from '#lib/engine/types.ts';
 	import Button from '../Button.svelte';
 	import Icon from '../Icon.svelte';
-	import MentalityScale from '../MentalityScale.svelte';
-	import Modal from '../Modal.svelte';
 	import Segmented from '../Segmented.svelte';
-	import StylePicker from '../StylePicker.svelte';
 	import FormationBoard from './FormationBoard.svelte';
 	import PitchCanvas from './PitchCanvas.svelte';
 
@@ -34,6 +29,8 @@
 		neutral = false,
 		autoplay = false,
 		official,
+		coach = 'Treinador',
+		presets = [],
 		onfinish
 	}: {
 		home: TeamSetup;
@@ -46,6 +43,9 @@
 		autoplay?: boolean;
 		official?: { version?: string; ai?: Partial<Record<Side, boolean>>; decisions?: import('#lib/engine/types.ts').AppliedDecision[] };
 		onfinish?: (result: MatchResult, match: Match) => void;
+		/** nome do treinador e biblioteca "Minhas Táticas" (janela de comando tático) */
+		coach?: string;
+		presets?: TacticPreset[];
 	} = $props();
 
 	// A partida é criada uma vez com as escalações recebidas.
@@ -76,8 +76,6 @@
 	let finished = $state(false);
 	let pitch: PitchCanvas | undefined = $state();
 	let tacticOpen = $state(false);
-	let intervalTab = $state<'elenco' | 'tatica'>('elenco');
-	let intervalSelected = $state<string | null>(null);
 	let intervalError = $state('');
 	const atInterval = $derived.by(() => {
 		void version;
@@ -229,118 +227,31 @@
 		return out.slice(0, 3);
 	});
 
-	// ── decisões do treinador
-	let mentality = $state<Mentality>('equilibrada');
-	let style = $state<PlayStyle>('posse');
-	let formation = $state<FormationId>('4-3-3');
-	let instructions = $state<TacticalInstructions>(presetInstructions('equilibrada', 'posse'));
-	let showAdvanced = $state(false);
-	let modalPreset = $state.raw(presetInstructions('equilibrada', 'posse'));
-	// Trocar mentalidade/estilo no modal troca o preset e preserva os ajustes avançados.
-	$effect(() => {
-		const next = presetInstructions(mentality, style);
-		const prev = untrack(() => modalPreset);
-		if (JSON.stringify(next) === JSON.stringify(prev)) return;
-		const custom = overridesOf(untrack(() => instructions), prev);
-		instructions = { ...next, ...custom };
-		modalPreset = next;
-	});
+	// ── decisões do treinador: a janela de comando tático (a mesma da carreira compartilhada)
 	function openTactic() {
-		intervalTab = 'elenco';
 		if (!control) return;
-		const t = match.teams[control].tactic;
-		mentality = t.mentality;
-		style = t.style;
-		formation = t.formation;
-		const rt = match.teams[control];
-		instructions = { ...rt.instructions };
-		modalPreset = presetInstructions(t.mentality, t.style);
 		paused = true;
 		tacticOpen = true;
 	}
 	function openInterval() {
-		intervalTab = 'elenco';
-		intervalSelected = null;
 		intervalError = '';
 		openTactic();
 	}
-	function togglePlayback() {
-		if (finished) return;
-		if (atInterval) tacticOpen = true;
-		else paused = !paused;
-	}
-	function applyTactic(resume = false) {
-		if (!control) return;
-		const t = match.teams[control].tactic;
-		const before = JSON.stringify(match.teams[control].instructions);
-		if (mentality !== t.mentality) match.submit(control, { type: 'mentality', value: mentality });
-		if (style !== t.style) match.submit(control, { type: 'style', value: style });
-		// Com 10 (ou 9) em campo a formação também muda: as vagas ficam nas posições menos críticas.
-		if (formation !== t.formation) {
-			match.submit(control, { type: 'formation', value: formation, lineup: reorderFor(formation) });
-		}
-		// Instruções finais (preset novo + ajustes): registradas como decisão reproduzível.
-		if (JSON.stringify(instructions) !== before || mentality !== t.mentality || style !== t.style) {
-			match.submit(control, { type: 'instructions', value: $state.snapshot(instructions) as TacticalInstructions });
-		}
+	/** Confirmou o comando: no intervalo, o segundo tempo começa (mesma regra de antes). */
+	function confirmCommand() {
 		tacticOpen = false;
 		version++;
-		if (resume) {
+		if (atInterval) {
 			acc = 0;
 			paused = false;
 			match.step();
 			version++;
 		}
 	}
-	/**
-	 * Encaixa os atletas em campo nos slots da nova formação (goleiro no slot 0). Com expulsões, as
-	 * posições são preenchidas da defesa para o ataque e as que sobram ficam vagas ('').
-	 */
-	function reorderFor(f: FormationId): string[] {
-		const side = control!;
-		const slots = FORMATIONS[f];
-		const gk = match.teams[side].gkId;
-		const rest = match.onPitch(side).filter((s) => s.id !== gk).map((s) => s.id);
-		const used = new Set<string>();
-		const lineup: string[] = new Array(slots.length).fill('');
-		lineup[0] = match.onPitch(side).some((s) => s.id === gk) ? gk : '';
-		const PRIORITY = ['ZAG', 'LD', 'LE', 'VOL', 'MC', 'MEI', 'PD', 'PE', 'ATA'];
-		const order = slots.map((_, i) => i).slice(1).sort((a, b) => PRIORITY.indexOf(slots[a].position) - PRIORITY.indexOf(slots[b].position));
-		for (const i of order) {
-			const want = slots[i].position;
-			const pick = rest.filter((id) => !used.has(id)).sort((a, b) => positionFit(match.player(b)!.position, want) - positionFit(match.player(a)!.position, want))[0];
-			if (!pick) break;
-			used.add(pick);
-			lineup[i] = pick;
-		}
-		return lineup;
-	}
-	/**
-	 * Troca de formação direto da aba Escalação (ex.: reorganizar o time depois de uma expulsão).
-	 * No intervalo vale na hora (prepareInterval); com a bola rolando entra na fila de decisões e o
-	 * relógio anda 1 segundo para aplicá-la, como no "Aplicar" — o servidor reproduz igual.
-	 */
-	const liveFormation = $derived.by(() => {
-		void version;
-		return control ? match.teams[control].tactic.formation : null;
-	});
-	const onPitch = $derived.by(() => {
-		void version;
-		return control ? match.onPitch(control).length : 11;
-	});
-	function changeFormation(f: FormationId) {
-		if (!control || finished || f === match.teams[control].tactic.formation) return;
-		const decision = { type: 'formation', value: f, lineup: reorderFor(f) } as const;
-		if (atInterval) intervalError = match.prepareInterval(control, decision) ?? '';
-		else {
-			match.submit(control, decision);
-			acc = 0;
-			match.step();
-			const last = match.applied.filter((d) => d.side === control && d.decision.type === 'formation').at(-1);
-			intervalError = last?.rejected ?? '';
-		}
-		formation = match.teams[control].tactic.formation;
-		version++;
+	function togglePlayback() {
+		if (finished) return;
+		if (atInterval) tacticOpen = true;
+		else paused = !paused;
 	}
 	function movePlayer(playerId: string, slot: number) {
 		if (!control || finished) return;
@@ -519,13 +430,14 @@
 						bind:value={view}
 					/>
 					{#if control && !finished}
-						<Button size="sm" icon="tactics" onclick={() => { if (atInterval) tacticOpen = true; else openTactic(); }}>Tática</Button>
+						<Button size="sm" icon="tactics" onclick={() => { if (atInterval) tacticOpen = true; else openTactic(); }}>Comando tático</Button>
 					{/if}
 				</div>
 			</div>
 
-			{#if control && !finished && (pending.length || rejected || tips.length)}
+			{#if control && !finished && (pending.length || rejected || tips.length || intervalError)}
 				<div class="coach">
+					{#if intervalError}<p class="rejected"><Icon name="alert" /> {intervalError}</p>{/if}
 					{#if pending.length}<p class="pending"><Icon name="whistle" /> Alteração aguardando a bola parar.</p>{/if}
 					{#if rejected}<p class="rejected"><Icon name="alert" /> {rejected}</p>{/if}
 					{#each tips.slice(0, 1) as t (t)}<p class="tip"><Icon name="info" /> {t}</p>{/each}
@@ -566,63 +478,9 @@
 	</div>
 </div>
 
-{#if control}
-	<Modal bind:open={tacticOpen} title={atInterval ? 'Intervalo · Escalação' : 'Ajuste tático'}
-		description={atInterval ? 'Revise a equipe e confirme quando estiver pronto para o segundo tempo.' : 'Mentalidade e estilo mudam na hora; a formação reorganiza os mesmos atletas.'} size="lg">
-		<Segmented label="Ajustes da equipe" bind:value={intervalTab} options={[{ value: 'elenco', label: 'Escalação' }, { value: 'tatica', label: 'Tática' }]} />
-		{#if intervalTab === 'elenco'}
-			<div class="frow" role="group" aria-label="Formação">
-				<span class="flbl">Formação{#if onPitch < 11} · <b>{onPitch} em campo</b>{/if}</span>
-				<div class="fchips mini">
-					{#each FORMATION_IDS as f (f)}
-						<button class="fchip" class:on={liveFormation === f} disabled={finished}
-							onclick={() => changeFormation(f)} aria-pressed={liveFormation === f}>
-							<svg viewBox="0 0 100 100" aria-hidden="true">
-								{#each FORMATIONS[f] as s, i (i)}<circle cx={s.x} cy={s.y} r="7" />{/each}
-							</svg>
-							<span>{f}</span>
-						</button>
-					{/each}
-				</div>
-				{#if onPitch < 11}<small class="fhint">Com um a menos, as vagas ficam nas posições menos críticas; troque atletas de posição no campo abaixo para ajustar.</small>{/if}
-			</div>
-			<FormationBoard compact {match} side={control} color={colors[control].primary} {version} players={result.players}
-				bind:selected={intervalSelected} canSub={match.subsLeft(control) > 0} pendingOut={pendingOut} onsub={doSub} onswap={!finished ? swapPlayers : undefined} onmove={!finished ? movePlayer : undefined} />
-			{#if intervalError}<p role="status">{intervalError}</p>{/if}
-		{:else}
-		<div class="tac">
-			<div>
-				<h4>Formação</h4>
-				<div class="fchips">
-					{#each FORMATION_IDS as f (f)}
-						<button class="fchip" class:on={formation === f} onclick={() => (formation = f)} aria-pressed={formation === f}>
-							<svg viewBox="0 0 100 100" aria-hidden="true">
-								{#each FORMATIONS[f] as s, i (i)}<circle cx={s.x} cy={s.y} r="7" />{/each}
-							</svg>
-							<span>{f}</span>
-						</button>
-					{/each}
-				</div>
-				<h4>Mentalidade</h4>
-				<MentalityScale bind:value={mentality} />
-			</div>
-			<div>
-				<h4>Estilo</h4>
-				<StylePicker bind:value={style} compact />
-				</div>
-				</div>
-				<button class="adv" onclick={() => (showAdvanced = !showAdvanced)} aria-expanded={showAdvanced}>
-					<Icon name={showAdvanced ? 'chevronDown' : 'chevronRight'} size={14} /> Instruções avançadas
-				</button>
-				{#if showAdvanced}
-					<InstructionsEditor bind:value={instructions} preset={modalPreset} />
-				{/if}
-		{/if}
-		{#snippet footer()}
-			<Button variant="ghost" onclick={() => (tacticOpen = false)}>{atInterval ? 'Voltar à transmissão' : 'Cancelar'}</Button>
-			<Button variant="primary" icon="check" onclick={() => applyTactic(atInterval)}>{atInterval ? 'Iniciar segundo tempo' : 'Aplicar'}</Button>
-		{/snippet}
-	</Modal>
+{#if control && tacticOpen}
+	<TacticCommand {match} side={control} {version} {coach} {presets} title={atInterval ? 'Intervalo · Comando tático' : 'Comando tático'}
+		onclose={() => (tacticOpen = false)} onconfirm={confirmCommand} />
 {/if}
 
 <style>
@@ -925,101 +783,6 @@
 		border-radius: 3px;
 		min-width: 2px;
 	}
-	.tac h4 {
-		margin: 0 0 6px;
-		font-size: var(--fs-sm);
-		color: var(--text-3);
-		text-transform: uppercase;
-		letter-spacing: 0.06em;
-	}
-	.tac {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 16px;
-	}
-	.fchips {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
-		margin-bottom: 14px;
-	}
-	.adv {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		margin: 12px 0 8px;
-		border: 0;
-		background: none;
-		color: var(--emerald-strong);
-		font: inherit;
-		font-weight: 600;
-		cursor: pointer;
-	}
-	.fchip {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 4px;
-		width: 74px;
-		padding: 6px;
-		border-radius: 8px;
-		border: 0;
-		background: var(--surface-2);
-		color: var(--text);
-		font: inherit;
-		font-weight: 600;
-		cursor: pointer;
-	}
-	.fchip svg {
-		width: 52px;
-		height: 52px;
-		background: #124432;
-		border-radius: 6px;
-	}
-	.fchip circle {
-		fill: var(--text);
-	}
-	.fchip.on {
-		box-shadow: inset 0 0 0 2px var(--emerald);
-	}
-	.fchip.on circle {
-		fill: var(--emerald-strong);
-	}
-	.frow {
-		display: grid;
-		gap: 6px;
-		margin-bottom: 10px;
-	}
-	.flbl {
-		font-size: var(--fs-xs);
-		font-weight: 700;
-		color: var(--text-3);
-		text-transform: uppercase;
-		letter-spacing: 0.06em;
-	}
-	.flbl b {
-		color: var(--danger);
-	}
-	.fhint {
-		font-size: var(--fs-xs);
-		color: var(--text-2);
-	}
-	.fchips.mini {
-		margin-bottom: 0;
-		flex-wrap: nowrap;
-		overflow-x: auto;
-		scrollbar-width: thin;
-	}
-	.fchips.mini .fchip {
-		flex: none;
-		width: 60px;
-		padding: 4px;
-		font-size: var(--fs-xs);
-	}
-	.fchips.mini .fchip svg {
-		width: 40px;
-		height: 40px;
-	}
 	@media (max-width: 1080px) {
 		.grid {
 			grid-template-columns: 1fr 1fr;
@@ -1031,7 +794,6 @@
 	}
 	@media (max-width: 640px) {
 		.grid,
-		.tac,
 		.stats {
 			grid-template-columns: 1fr;
 		}

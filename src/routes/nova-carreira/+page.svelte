@@ -34,6 +34,14 @@
 	const mode = 'coach' as const;
 
 	let step = $state<Step>('perfil');
+	// 0.13: carreira local com vários treinadores — cada um cria o seu e escolhe o clube, em sequência.
+	type Draft = { personName: string; appearance: Appearance; clubId: string };
+	let drafts = $state<Draft[]>([]);
+	let addAnother = $state(false);
+	const MAX_COACHES = 8;
+	const coachNumber = $derived(drafts.length + 1);
+	/** clubes já escolhidos por outro treinador desta carreira */
+	const blocked = $derived(Object.fromEntries(drafts.map((d) => [d.clubId, `Já escolhido por ${d.personName}. Cada treinador comanda um clube diferente.`])));
 	let personName = $state('');
 	let appearance = $state<Appearance>({ ...DEFAULT_APPEARANCE });
 	let clubId = $state<string | null>(null);
@@ -81,16 +89,38 @@
 
 	function back() {
 		if (step === 'clube') step = 'perfil';
-		else void goto('/menu');
+		else if (drafts.length) {
+			// Volta ao treinador anterior (desfaz a confirmação dele).
+			const last = drafts.at(-1)!;
+			drafts = drafts.slice(0, -1);
+			personName = last.personName;
+			appearance = { ...last.appearance };
+			clubId = last.clubId;
+			addAnother = true;
+			step = 'clube';
+		} else void goto('/menu');
 	}
 
 	async function create() {
-		if (!clubId || saving || created) return;
+		if (!clubId || saving || created || blocked[clubId]) return;
+		if (addAnother && coachNumber < MAX_COACHES) {
+			// Guarda este treinador e recomeça o fluxo para o próximo (mesmo mundo, outro clube).
+			drafts = [...drafts, { personName: personName.trim(), appearance: { ...appearance }, clubId }];
+			notify({ icon: 'check', tone: 'success', title: `Treinador ${drafts.length} confirmado`, detail: `${drafts.at(-1)!.personName} · ${getClub(clubId)?.name}` });
+			personName = '';
+			appearance = { ...DEFAULT_APPEARANCE };
+			clubId = null;
+			addAnother = false;
+			step = 'perfil';
+			return;
+		}
 		saving = true;
 		errors = {};
+		const all = [...drafts, { personName: personName.trim(), appearance, clubId }];
 		try {
+			const [first, ...others] = all;
 			const res = await api<{ career: Career }>('/api/careers', {
-				body: { mode, personName, clubId, appearance, world, previewSeed: data.previewSeed }
+				body: { mode, personName: first.personName, clubId: first.clubId, appearance: first.appearance, world, previewSeed: data.previewSeed, ...(others.length ? { others: others.map((o) => ({ personName: o.personName, clubId: o.clubId, appearance: o.appearance })) } : {}) }
 			});
 			created = res.career;
 		} catch (e) {
@@ -146,8 +176,15 @@
 		{#if step === 'perfil'}
 			<div class="split">
 				<div class="form" data-umx-enter>
-					<span class="eyebrow">Passo 1 de 2 · Carreira de treinador</span>
-					<h1>Quem é o novo treinador?</h1>
+					<span class="eyebrow">Passo 1 de 2 · {drafts.length ? `Treinador ${coachNumber}` : 'Carreira de treinador'}</span>
+					<h1>{drafts.length ? `Quem é o treinador ${coachNumber}?` : 'Quem é o novo treinador?'}</h1>
+					{#if drafts.length}
+						<ul class="roster" aria-label="Treinadores confirmados">
+							{#each drafts as d, i (d.clubId)}
+								<li><span class="n">{i + 1}</span><strong>{d.personName}</strong><small>{getClub(d.clubId)?.name}</small></li>
+							{/each}
+						</ul>
+					{/if}
 
 					<label class="field">
 						<span>Nome do treinador</span>
@@ -178,20 +215,30 @@
 			</div>
 		{:else}
 			<div class="intro" data-umx-enter>
-				<h1>Escolha seu clube</h1>
+				<h1>{drafts.length ? `Clube do treinador ${coachNumber} · ${personName.trim()}` : 'Escolha seu clube'}</h1>
 			</div>
 			{#key world}
-				<ClubSelector clubs={selectionClubs} bind:clubId {lineup} {coach}
+				<ClubSelector clubs={selectionClubs} bind:clubId {lineup} {coach} {blocked}
 					season={league.season} transferBudget={finances?.transferBudget} wageBudget={finances?.wageBudget} busy={saving || !!created}
 					prefetch={(ids) => ids.forEach((id) => previewClub(id, data.previewSeed, catalog))}>
 					{#snippet top()}
-						<Segmented label="Base de clubes" bind:value={world} onchange={() => (clubId = null)}
-							options={[{ value: 'brasil', label: 'Clubes nacionais' }, { value: 'brasfc', label: 'Liga fictícia' }]} />
+						{#if !drafts.length}
+							<Segmented label="Base de clubes" bind:value={world} onchange={() => (clubId = null)}
+								options={[{ value: 'brasil', label: 'Clubes nacionais' }, { value: 'brasfc', label: 'Liga fictícia' }]} />
+						{/if}
 					{/snippet}
 				</ClubSelector>
 			{/key}
 			<div class="actions finish">
-				<Button variant="primary" size="lg" icon="play" disabled={!clubId} loading={saving} onclick={create}>Iniciar carreira de treinador</Button>
+				{#if coachNumber < MAX_COACHES}
+					<label class="another">
+						<input type="checkbox" bind:checked={addAnother} disabled={saving} />
+						<span><strong>Adicionar outro treinador</strong><small>Carreira compartilhada no mesmo computador, em turnos</small></span>
+					</label>
+				{/if}
+				<Button variant="primary" size="lg" icon={addAnother ? 'plus' : 'play'} disabled={!clubId || !!(clubId && blocked[clubId])} loading={saving} onclick={create}>
+					{addAnother ? 'Confirmar e criar o próximo treinador' : drafts.length ? `Iniciar carreira com ${coachNumber} treinadores` : 'Iniciar carreira de treinador'}
+				</Button>
 			</div>
 		{/if}
 	</main>
@@ -202,14 +249,22 @@
 		clubId={created.clubId}
 		eyebrow="Novo treinador"
 		title={`Bem-vindo, ${created.personName}`}
-		subtitle={`${getClub(created.clubId)?.name} · Temporada ${created.season}`}
-		{appearance}
+		subtitle={`${getClub(created.clubId)?.name} · Temporada ${created.season}${drafts.length ? ` · ${drafts.length + 1} treinadores em turnos` : ''}`}
+		appearance={drafts[0]?.appearance ?? appearance}
 		kit={coachKit(created.clubId)}
 		ondone={afterPresentation}
 	/>
 {/if}
 
 <style>
+	.roster { list-style: none; margin: 0 0 var(--sp-4); padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+	.roster li { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; border-radius: var(--radius-pill); background: var(--surface-2); border: 1px solid var(--line); font-size: var(--fs-sm); }
+	.roster .n { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--emerald); color: #06140f; font-weight: 800; font-size: 12px; }
+	.roster small { color: var(--text-3); }
+	.another { display: inline-flex; align-items: center; gap: 10px; margin-right: auto; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--line-strong); background: var(--surface-2); cursor: pointer; }
+	.another input { width: 18px; height: 18px; accent-color: var(--emerald); }
+	.another span { display: grid; line-height: 1.2; }
+	.another small { color: var(--text-3); font-size: var(--fs-xs, 12px); }
 
 	.screen {
 		position: relative;

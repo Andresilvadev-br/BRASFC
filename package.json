@@ -1,8 +1,8 @@
 {
   "name": "brasfc",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "private": true,
-  "description": "BRASFC — simulador brasileiro de futebol com carreiras de treinador e jogador.",
+  "description": "BRASFC — simulador brasileiro de futebol para Windows: carreira de treinador individual ou com vários treinadores em turnos, 100% offline.",
   "type": "module",
   "engines": {
     "node": ">=22.12"
@@ -23,8 +23,7 @@
   },
   "dependencies": {
     "postgres": "3.4.9",
-    "ultra-motion-x": "https://codeload.github.com/Andresilvadev-br/ULTRA-MOTION-X/tar.gz/25344fb5d525613860402e2a13ee22f782333eaa",
-    "ws": "8.23.0"
+    "ultra-motion-x": "https://codeload.github.com/Andresilvadev-br/ULTRA-MOTION-X/tar.gz/25344fb5d525613860402e2a13ee22f782333eaa"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.16",
@@ -34,7 +33,6 @@
     "@sveltejs/kit": "3.2.1",
     "@sveltejs/vite-plugin-svelte": "7.3.1",
     "@types/node": "24.19.2",
-    "@types/ws": "8.18.2",
     "svelte": "5.57.3",
     "svelte-check": "4.7.8",
     "typescript": "6.0.3",

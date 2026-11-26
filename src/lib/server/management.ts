@@ -29,7 +29,7 @@ import {
 	type LedgerLine,
 	type SeasonEnd
 } from '#lib/domain/management.ts';
-import { aiTransfers, findPlayer, formatMoney, rosterOf, squadNeeds, tierOfDivision, transferWindow, type MarketState, type RosterContext } from '#lib/domain/market.ts';
+import { isHumanClub, aiTransfers, findPlayer, formatMoney, rosterOf, squadNeeds, tierOfDivision, transferWindow, type MarketState, type RosterContext } from '#lib/domain/market.ts';
 import { seasonObjectives } from '#lib/domain/club.ts';
 import { jobOffers } from '#lib/domain/careerlife.ts';
 import { squadStrength } from '#lib/domain/squad.ts';
@@ -71,6 +71,8 @@ export function weeklyManagement(o: {
 	roster: RosterContext;
 	userRow: RoundInsert | null;
 	strengthOf: (id: string) => number;
+	/** 0.13: com vários treinadores o mercado da IA roda uma vez por passo (no primeiro treinador) */
+	aiMarket?: boolean;
 }): WeeklyResult {
 	const { career, league, step } = o;
 	const division = divisionOf(league, career.clubId) ?? 'liga-brasfc';
@@ -123,7 +125,7 @@ export function weeklyManagement(o: {
 				}
 			}
 		}
-		if (window) {
+		if (window && o.aiMarket !== false) {
 			// Mercado da IA: necessidades reais de elenco e orçamento por nível.
 			const budgetOf = (id: string) => clubEconomy(id, tierOfDivision(divisionOf(league, id))).tvAnnual * 0.06;
 			const moves = aiTransfers({ ...o.roster, market }, allClubs, `${step.round}`, budgetOf, 3);
@@ -199,7 +201,7 @@ export function seasonEndManagement(o: {
 			transfers.push({ playerId: id, playerName: id, from: ov.club, to: career.clubId, kind: 'retorno', fee: 0, wage: ov.contract?.wage ?? 0 });
 		}
 		// Contratos de atletas negociados pela IA renovam (a IA evita perder o elenco).
-		if (ov.club && ov.club !== career.clubId && ov.contract && !ov.loan && ov.contract.until <= career.season) ov.contract = { ...ov.contract, until: career.season + 2 };
+		if (ov.club && ov.club !== career.clubId && !isHumanClub(o.roster, ov.club) && ov.contract && !ov.loan && ov.contract.until <= career.season) ov.contract = { ...ov.contract, until: career.season + 2 };
 	}
 	const nextIds = o.next.divisions[nextDivision as 'serie-a'] ?? [];
 	const rank = [...nextIds].sort((a, b) => o.strengthOf(b) - o.strengthOf(a)).indexOf(career.clubId) + 1;

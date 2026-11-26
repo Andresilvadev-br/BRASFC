@@ -19,6 +19,7 @@
 	import Pixel from '#lib/ui/Pixel.svelte';
 	import Stadium from '#lib/ui/Stadium.svelte';
 	import { updates } from '#lib/stores/updates.svelte.ts';
+	import { desktop, quitApp } from '#lib/stores/desktop.svelte.ts';
 
 	let { data } = $props();
 
@@ -52,7 +53,7 @@
 					eyebrow: MODE_LABELS[latest.mode],
 					headline: `De volta ao ${latestClub?.name ?? 'clube'}`,
 					text: `${latest.personName} · ${formatShort(latest.gameDate)} de ${latest.season} · ${latest.unreadMessages ? `${latest.unreadMessages} mensagem(ns) não lida(s)` : 'caixa de entrada em dia'}.`,
-					chips: [saveTitle(latest), 'Último save válido', 'Salvo no servidor'],
+					chips: [saveTitle(latest), 'Último save válido', 'Salvamento local'],
 					cta: 'Continuar carreira'
 				}
 			: {
@@ -73,27 +74,14 @@
 		{
 			id: 'nova',
 			label: 'Nova carreira',
-			hint: 'Escolha seu clube',
+			hint: 'Crie um ou mais treinadores',
 			icon: 'plus',
 			href: '/nova-carreira',
 			eyebrow: 'Carreira de treinador',
 			headline: 'Pronto para escrever sua história?',
-			text: 'Assuma qualquer clube das Séries A a D, monte o elenco, defina a tática e responda à diretoria rodada após rodada.',
-			chips: ['Clubes reais 2026', 'Mercado e base', 'Salvamento automático'],
+			text: 'Assuma qualquer clube das Séries A a D. Sozinho ou com amigos no mesmo computador: cada treinador cria o seu e todos jogam em turnos, no mesmo universo.',
+			chips: ['Clubes reais 2026', 'Vários treinadores em turnos', 'Salvamento local'],
 			cta: 'Criar carreira'
-		},
-		{
-			id: 'multiplayer',
-			label: 'Carreira online',
-			hint: 'Ligas com amigos',
-			icon: 'multiplayer',
-			href: '/multiplayer',
-			eyebrow: 'Com amigos',
-			headline: 'Monte sua liga entre amigos',
-			text: 'Crie uma liga, convide amigos ou compartilhe o código. Cada um treina o próprio clube no mesmo universo, sem turnos.',
-			chips: ['Ligas privadas', 'Todos jogam ao mesmo tempo', 'Mesmo jogo da carreira offline'],
-			cta: 'Abrir carreira online',
-			badge: 'Beta'
 		},
 		{
 			id: 'carregar',
@@ -103,7 +91,7 @@
 			href: '/continuar',
 			eyebrow: 'Biblioteca de saves',
 			headline: 'Todas as suas carreiras',
-			text: 'Escolha qual carreira abrir, veja detalhes, renomeie ou exclua saves. Cada carreira fica separada das outras no servidor.',
+			text: 'Escolha qual carreira abrir, veja detalhes, renomeie ou exclua saves. Tudo fica salvo neste computador.',
 			chips: [`${data.careers.length} de 12 carreiras`, 'Organizar por data, tipo ou clube', 'Exclusão com confirmação'],
 			cta: 'Abrir biblioteca'
 		},
@@ -123,12 +111,12 @@
 		{
 			id: 'config',
 			label: 'Configurações',
-			hint: 'Movimento, texto, perfil',
+			hint: 'Personalize sua experiência',
 			icon: 'settings',
 			href: '/configuracoes',
 			eyebrow: 'Do seu jeito',
 			headline: 'Ajuste a experiência',
-			text: 'Animações, tamanho do texto, abertura e nome do perfil. Tudo vale imediatamente.',
+			text: 'Animações, tamanho do texto, abertura e janela. Tudo vale imediatamente.',
 			chips: ['Movimento reduzido', 'Texto maior', 'Desempenho'],
 			cta: 'Abrir configurações'
 		},
@@ -144,7 +132,21 @@
 			chips: [`Versão ${data.build.version}`, `Commit ${data.build.commit}`],
 			cta: 'Abrir central',
 			...(updates.status === 'disponivel' ? { badge: 'Nova' } : {})
-		}
+		},
+		...(desktop.active
+			? [{
+					id: 'sair',
+					label: 'Sair',
+					hint: 'Fechar o BRASFC',
+					icon: 'exit' as IconName,
+					href: '#sair',
+					eyebrow: 'Até a próxima',
+					headline: 'Fechar o BRASFC',
+					text: 'A carreira já está salva neste computador. O jogo fecha o save com segurança antes de sair.',
+					chips: ['Salvamento local'],
+					cta: 'Sair do jogo'
+				}]
+			: [])
 	]);
 
 	let selected = $state(untrack(() => (latestValidSave(data.careers) ? 0 : 1)));
@@ -165,6 +167,7 @@
 
 	function activate(item: Item) {
 		if (item.disabled) return;
+		if (item.id === 'sair') { quitApp(); return; }
 		void goto(item.href);
 	}
 
@@ -207,12 +210,6 @@
 	<header class="top" data-umx-enter>
 		<Logo size={40} tagline />
 		<div class="who">
-			{#if data.profile}
-				<a class="profile" href="/configuracoes" data-umx-press>
-					<Icon name="user" size={18} />
-					<span>{data.profile.displayName}</span>
-				</a>
-			{/if}
 			<span class="env">{data.build.environment} · v{data.build.version}</span>
 		</div>
 	</header>
@@ -221,6 +218,7 @@
 		{#each items as item, i (item.id)}
 			<a
 				href={item.disabled ? undefined : item.href}
+				onclick={(e) => { if (item.id === 'sair') { e.preventDefault(); quitApp(); } }}
 				aria-disabled={item.disabled || undefined}
 				tabindex={item.disabled ? 0 : undefined}
 				class="item glass"
@@ -319,20 +317,6 @@
 		display: flex;
 		align-items: center;
 		gap: var(--sp-4);
-	}
-	.profile {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--sp-2);
-		padding: 8px 14px;
-		border-radius: var(--radius-pill);
-		background: rgb(16 20 24 / 0.65);
-		border: 1px solid var(--line-strong);
-		font-size: var(--fs-sm);
-		font-weight: 600;
-	}
-	.profile:hover {
-		border-color: var(--emerald-line);
 	}
 	.env {
 		font-size: var(--fs-xs);

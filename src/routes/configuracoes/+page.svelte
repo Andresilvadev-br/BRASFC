@@ -1,7 +1,4 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
-	import { invalidateAll } from '$app/navigation';
-	import { api } from '#lib/api.ts';
 	import { effectiveQuality, motion, type MotionPreference, type QualityPreference } from '#lib/motion/motion.svelte.ts';
 	import { notify, setIslandContext } from '#lib/stores/island.svelte.ts';
 	import { prefs, savePrefs, type IntroMode, type TextScale } from '#lib/stores/prefs.svelte.ts';
@@ -11,27 +8,8 @@
 	import Panel from '#lib/ui/Panel.svelte';
 	import ScreenHeader from '#lib/ui/ScreenHeader.svelte';
 	import DesktopDownload from '#lib/ui/desktop/DesktopDownload.svelte';
-	import { desktop, openSavesFolder, setDesktopMode, type DesktopMode } from '#lib/stores/desktop.svelte.ts';
+	import { desktop, openSavesFolder } from '#lib/stores/desktop.svelte.ts';
 
-	const MODES: Array<Opt<DesktopMode>> = [
-		{ value: 'online', label: 'Online', hint: 'Servidor oficial: carreiras na nuvem e multiplayer', icon: 'globe' },
-		{ value: 'offline', label: 'Offline', hint: 'Sem internet: o jogo roda e salva neste computador', icon: 'save' }
-	];
-	let switching = $state(false);
-	async function chooseMode(m: DesktopMode) {
-		if (m === desktop.mode || switching) return;
-		switching = true;
-		try {
-			if (!(await setDesktopMode(m))) notify({ icon: 'alert', tone: 'error', title: 'Não foi possível trocar o modo', detail: 'Tente de novo.' });
-		} finally {
-			switching = false;
-		}
-	}
-
-	let { data } = $props();
-	let name = $state(untrack(() => data.profile?.displayName ?? ''));
-	let savingName = $state(false);
-	let nameError = $state<string | null>(null);
 
 	$effect(() => setIslandContext('Configurações'));
 
@@ -62,21 +40,6 @@
 	const SIZES: TextScale[] = [100, 112, 125];
 
 
-	async function saveName(e: SubmitEvent) {
-		e.preventDefault();
-		nameError = null;
-		savingName = true;
-		try {
-			if (!data.profile) await api('/api/session', { method: 'POST' });
-			await api('/api/session', { method: 'PATCH', body: { displayName: name } });
-			await invalidateAll();
-			notify({ icon: 'user', tone: 'success', title: 'Nome do perfil salvo', detail: name });
-		} catch (err) {
-			nameError = err instanceof Error ? err.message : 'Falha ao salvar.';
-		} finally {
-			savingName = false;
-		}
-	}
 </script>
 
 <svelte:head><title>Configurações · BRASFC</title></svelte:head>
@@ -136,38 +99,16 @@
 		</Panel>
 
 		<Panel title="Janela e aplicativo" icon="windows" index={4} class="wide">
-			{#if desktop.active && (desktop.offlineAvailable || desktop.mode === 'offline')}
-				<div class="opts two" role="radiogroup" aria-label="Modo de jogo do aplicativo">
-					{#each MODES as o (o.value)}
-						<button type="button" role="radio" aria-checked={desktop.mode === o.value} class="opt" disabled={switching} onclick={() => chooseMode(o.value)}>
-							<span class="oi"><Icon name={o.icon} size={22} /></span>
-							<strong>{o.label}</strong>
-							<small>{o.hint}</small>
-						</button>
-					{/each}
-				</div>
+			{#if desktop.active}
 				<p class="muted small modehint">
-					As carreiras online e offline são separadas: cada modo mostra as suas. No offline o multiplayer não fica disponível.
-					{#if desktop.mode === 'offline'}<button type="button" class="link" onclick={openSavesFolder}>Abrir a pasta dos saves</button>{/if}
+					O BRASFC roda inteiro neste computador, sem internet. As carreiras ficam na pasta de saves do Windows e são preservadas nas atualizações.
+					<button type="button" class="link" onclick={openSavesFolder}>Abrir a pasta dos saves</button>
 				</p>
 			{/if}
 			<DesktopDownload />
 			<p class="muted small">No aplicativo do Windows: a janela abre sempre centralizada na tela; <kbd>F11</kbd> ou <kbd>Alt</kbd>+<kbd>Enter</kbd> alternam a tela cheia.</p>
 		</Panel>
 
-		<Panel title="Perfil" icon="user" index={5} class="wide">
-			<form onsubmit={saveName}>
-				<label>
-					<span>Nome exibido no multiplayer</span>
-					<input bind:value={name} maxlength="32" minlength="2" required />
-				</label>
-				<Button type="submit" variant="primary" icon="save" loading={savingName}>Salvar nome</Button>
-			</form>
-			{#if nameError}<small class="err" role="alert">{nameError}</small>{/if}
-			<p class="muted small">
-				Seu perfil de convidado fica neste navegador (cookie seguro). Contas com login e recuperação entre dispositivos chegam em uma próxima etapa.
-			</p>
-		</Panel>
 	</div>
 </div>
 
@@ -189,10 +130,6 @@
 	.opts {
 		display: grid;
 		gap: var(--sp-2);
-	}
-	.opts.two {
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		margin-bottom: var(--sp-3);
 	}
 	.modehint {
 		margin: 0 0 var(--sp-3);
@@ -281,37 +218,6 @@
 	}
 	.state {
 		margin-top: var(--sp-3);
-		font-size: var(--fs-sm);
-	}
-	form {
-		display: flex;
-		align-items: flex-end;
-		gap: var(--sp-3);
-		flex-wrap: wrap;
-	}
-	label {
-		display: flex;
-		flex-direction: column;
-		gap: var(--sp-2);
-		font-size: var(--fs-sm);
-		font-weight: 600;
-		flex: 1;
-		min-width: 240px;
-	}
-	input {
-		height: 44px;
-		padding: 0 var(--sp-4);
-		border-radius: var(--radius-m);
-		border: 1px solid var(--line-strong);
-		background: var(--surface-sunken);
-	}
-	input:focus {
-		outline: none;
-		border-color: var(--emerald);
-		box-shadow: 0 0 0 3px var(--emerald-soft);
-	}
-	.err {
-		color: var(--danger);
 		font-size: var(--fs-sm);
 	}
 	.small {

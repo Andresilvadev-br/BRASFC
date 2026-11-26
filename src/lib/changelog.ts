@@ -19,6 +19,28 @@ export interface Release {
 
 export const RELEASES: Release[] = [
 	{
+		version: '0.13.0', date: '2026-11-26', title: 'LOCAL LEGACY', channel: 'estavel',
+		added: ['Jogo 100% offline no Windows: o aplicativo abre o jogo embutido e nunca depende do site nem de internet para jogar',
+			'Carreira local com vários treinadores no mesmo computador, em turnos: “Ir para próxima partida” passa a vez e o último treinador libera a rodada',
+			'Negociações entre treinadores: o controle passa ao vendedor, que aceita, recusa ou faz contrapropostas com o valor que quiser',
+			'Central de resultados simultâneos com relógio único, estádio e público, gols, assistências, cartões e lesões, e velocidades 1×, 2×, 4× e 8×',
+			'Intervenções durante a partida: clicar no clube pausa tudo; expulsão, segundo amarelo e lesão abrem a janela do treinador na hora',
+			'Intervalo sequencial: cada treinador revisa o time na ordem e o segundo tempo só começa depois do último',
+			'Janela de comando tático em três áreas (elenco e banco, campo, estratégia), também na carreira individual',
+			'Novos rostos, penteados (black power, tranças, topete, franja, careca), cores de cabelo, peças e cores de roupa'],
+		highlights: [
+			{ title: 'Vários treinadores, um computador', text: 'Marque “Adicionar outro treinador” na escolha do clube e repita para cada amigo. Todos jogam no mesmo universo, em turnos, como nos clássicos.', icon: 'squad' },
+			{ title: 'Rodada simultânea', text: 'Todos os jogos numa lista compacta com um relógio só. As partidas dos treinadores rodam no motor completo; os lances dos demais aparecem no minuto real.', icon: 'play' },
+			{ title: 'Sem internet', text: 'Carreiras, turnos e negociações ficam no save deste computador. A internet serve só para baixar e atualizar o jogo.', icon: 'save' },
+			{ title: 'Comando tático completo', text: 'Substituições, posições, formação, mentalidade, estilo, pressão, instruções coletivas e individuais, capitães e táticas salvas na mesma janela.', icon: 'tactics' }
+		],
+		improved: ['Site do BRASFC só com apresentação e download da versão do Windows', 'Confronto entre dois treinadores simulado uma única vez, com as decisões dos dois lados',
+			'Mensagens, finanças e histórico separados por treinador', 'Elencos dos clubes humanos iguais para todos os treinadores, seja quem for o da vez'],
+		fixed: ['Barba e bigode com problemas visuais removidos (saves antigos abrem sem pelos no rosto)'],
+		compat: { database: 'migração aditiva 0013', saves: 'carreiras locais anteriores preservadas', notes: 'A carreira online, contas e salas foram removidas do jogo. Os dados do servidor antigo não foram apagados.' },
+		next: []
+	},
+	{
 		version: '0.12.0', date: '2026-11-24', title: 'Carreira única de treinador', channel: 'estavel',
 		added: ['Contratos de treinador, desemprego e mercado de treinadores com propostas de outros clubes',
 			'Minhas Táticas: biblioteca pessoal de táticas que acompanha o treinador em qualquer clube',

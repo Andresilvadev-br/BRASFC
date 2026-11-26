@@ -3,6 +3,7 @@ import { getDb } from '#lib/server/db/index.ts';
 import { currentMigration } from '#lib/server/db/migrate.ts';
 import { noStore } from '#lib/server/http.ts';
 import { BUILD } from '#lib/server/version.ts';
+import { gameEnabled } from '#lib/server/mode.ts';
 import type { RequestHandler } from './$types';
 
 /**
@@ -11,7 +12,7 @@ import type { RequestHandler } from './$types';
  */
 export const GET: RequestHandler = async () => {
 	let migration: string | null = null;
-	try {
+	if (gameEnabled(process.env, import.meta.env.DEV)) try {
 		migration = await currentMigration(await getDb());
 	} catch {
 		migration = null;

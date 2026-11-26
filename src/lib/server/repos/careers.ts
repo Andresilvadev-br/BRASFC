@@ -8,6 +8,10 @@ import {
 	type CreateCareerInput
 } from '#lib/domain/career.ts';
 import type { Db } from '../db/index.ts';
+import { initialGroup, MAX_LOCAL_COACHES, type CoachDraft } from '#lib/domain/turns.ts';
+
+/** Mensagem do treinador da vez (NULL = carreira de um treinador só). */
+const MINE = `(m.coach IS NULL OR m.coach = c.data->'local'->'coaches'->((c.data->'local'->>'active')::int)->>'id')`;
 
 type CareerRow = {
 	id: string;
@@ -53,9 +57,18 @@ export const MAX_CAREERS_PER_PROFILE = 12;
 export class CareerLimitError extends Error {}
 export class VersionConflictError extends Error {}
 
-export async function createCareer(db: Db, profileId: string, input: CreateCareerInput, seed = randomInt(1, 2 ** 31 - 1)): Promise<Career> {
+/**
+ * Cria a carreira. `others` são os demais treinadores locais (0.13), na ordem de criação: todos
+ * entram no mesmo universo, cada um com o próprio clube (nunca o mesmo clube para dois treinadores).
+ */
+export async function createCareer(db: Db, profileId: string, input: CreateCareerInput, seed = randomInt(1, 2 ** 31 - 1), others: CoachDraft[] = []): Promise<Career> {
 	const id = randomUUID();
 	const data = initialCareerData(input, seed);
+	const drafts: CoachDraft[] = [{ personName: input.personName, clubId: input.clubId, appearance: input.appearance }, ...others];
+	if (drafts.length > MAX_LOCAL_COACHES) throw new CareerLimitError(`No máximo ${MAX_LOCAL_COACHES} treinadores por carreira.`);
+	if (new Set(drafts.map((d) => d.clubId)).size !== drafts.length) throw new CareerLimitError('Dois treinadores não podem comandar o mesmo clube.');
+	const coachIds = drafts.map(() => randomUUID());
+	if (drafts.length > 1) data.local = initialGroup(drafts, coachIds);
 	return db.transaction(async (tx) => {
 		const [{ count }] = await tx.query<{ count: string | number }>(
 			'SELECT count(*)::int AS count FROM careers WHERE profile_id = $1',
@@ -70,15 +83,20 @@ export async function createCareer(db: Db, profileId: string, input: CreateCaree
 			 RETURNING ${COLUMNS.replaceAll('c.', '')}`,
 			[id, profileId, input.mode, input.personName, input.clubId, seed, careerStart(input.world ?? 'brasfc').season, careerStart(input.world ?? 'brasfc').date, JSON.stringify(data)]
 		);
-		const messages = welcomeMessages(input);
-		for (const [seq, m] of messages.entries()) {
-			await tx.query(
-				`INSERT INTO career_messages (id, career_id, kind, sender, subject, body, game_date, seq)
-				 VALUES ($1, $2, $3, $4, $5, $6, $7::date, $8)`,
-				[randomUUID(), id, m.kind, m.sender, m.subject, m.body, m.gameDate, seq]
-			);
+		let seq = 0;
+		let firstCount = 0;
+		for (const [k, d] of drafts.entries()) {
+			const messages = welcomeMessages({ ...input, personName: d.personName, clubId: d.clubId, appearance: d.appearance });
+			if (k === 0) firstCount = messages.length;
+			for (const m of messages) {
+				await tx.query(
+					`INSERT INTO career_messages (id, career_id, kind, sender, subject, body, game_date, seq, coach)
+					 VALUES ($1, $2, $3, $4, $5, $6, $7::date, $8, $9)`,
+					[randomUUID(), id, m.kind, m.sender, m.subject, m.body, m.gameDate, seq++, drafts.length > 1 ? coachIds[k] : null]
+				);
+			}
 		}
-		return { ...mapCareer(rows[0]), unreadMessages: messages.length };
+		return { ...mapCareer(rows[0]), unreadMessages: firstCount };
 	});
 }
 
@@ -93,7 +111,7 @@ export async function listCareers(db: Db, profileId: string, compact = false): P
 		: '';
 	const rows = await db.query<CareerRow>(
 		`SELECT ${columns}${division},
-			(SELECT count(*) FROM career_messages m WHERE m.career_id = c.id AND m.read_at IS NULL) AS unread
+			(SELECT count(*) FROM career_messages m WHERE m.career_id = c.id AND m.read_at IS NULL AND ${MINE}) AS unread
 		 FROM careers c WHERE c.profile_id = $1 ORDER BY c.updated_at DESC`,
 		[profileId]
 	);
@@ -104,7 +122,7 @@ export async function getCareer(db: Db, profileId: string, id: string): Promise<
 	if (!isUuid(id)) return null;
 	const rows = await db.query<CareerRow>(
 		`SELECT ${COLUMNS},
-			(SELECT count(*) FROM career_messages m WHERE m.career_id = c.id AND m.read_at IS NULL) AS unread
+			(SELECT count(*) FROM career_messages m WHERE m.career_id = c.id AND m.read_at IS NULL AND ${MINE}) AS unread
 		 FROM careers c WHERE c.id = $1 AND c.profile_id = $2`,
 		[id, profileId]
 	);
@@ -179,6 +197,21 @@ export async function advanceCareerDate(db: Db, profileId: string, id: string, g
 	return mapCareer(rows[0]);
 }
 
+/**
+ * 0.13: grava o save inteiro de uma vez (troca do treinador da vez, negociação entre humanos):
+ * clube, nome e dados completos, com controle otimista de versão.
+ */
+export async function replaceCareerData(db: Db, profileId: string, id: string, change: { personName: string; clubId: string; data: CareerData; gameDate?: string; season?: number }, expectedVersion: number): Promise<Career> {
+	const rows = await db.query<CareerRow>(
+		`UPDATE careers c SET person_name = $3, club_id = $4, data = $5::jsonb, game_date = COALESCE($7::date, c.game_date), season = COALESCE($8, c.season), version = c.version + 1, updated_at = now()
+		 WHERE c.id = $1 AND c.profile_id = $2 AND c.version = $6
+		 RETURNING ${COLUMNS}`,
+		[id, profileId, change.personName, change.clubId, JSON.stringify(change.data), expectedVersion, change.gameDate ?? null, change.season ?? null]
+	);
+	if (!rows[0]) throw new VersionConflictError('A carreira foi alterada em outra janela. Recarregue para continuar.');
+	return mapCareer(rows[0]);
+}
+
 export async function touchCareer(db: Db, profileId: string, id: string): Promise<boolean> {
 	const rows = await db.query('UPDATE careers SET updated_at = now() WHERE id = $1 AND profile_id = $2 RETURNING id', [id, profileId]);
 	return rows.length === 1;
@@ -236,7 +269,7 @@ export async function listMessages(db: Db, profileId: string, careerId: string, 
 	const rows = await db.query<MessageRow>(
 		`SELECT m.id, m.kind, m.sender, m.subject, m.body, m.game_date::text AS game_date, m.read_at
 		 FROM career_messages m JOIN careers c ON c.id = m.career_id
-		 WHERE m.career_id = $1 AND c.profile_id = $2
+		 WHERE m.career_id = $1 AND c.profile_id = $2 AND ${MINE}
 		 ORDER BY CASE WHEN $3::int IS NOT NULL THEN m.read_at IS NOT NULL ELSE false END, m.game_date DESC, m.seq ASC LIMIT $3`,
 		[careerId, profileId, limit]
 	);
@@ -257,7 +290,7 @@ export async function markMessagesRead(db: Db, profileId: string, careerId: stri
 	const rows = await db.query(
 		`UPDATE career_messages m SET read_at = now()
 		 FROM careers c
-		 WHERE c.id = m.career_id AND c.profile_id = $2 AND m.career_id = $1
+		 WHERE c.id = m.career_id AND c.profile_id = $2 AND m.career_id = $1 AND ${MINE}
 		   AND m.read_at IS NULL AND ($3::uuid IS NULL OR m.id = $3::uuid)
 		 RETURNING m.id`,
 		[careerId, profileId, messageId]

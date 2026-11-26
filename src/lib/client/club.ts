@@ -1,5 +1,5 @@
 import { api, withCareerVersion } from '#lib/api.ts';
-import { invalidate } from '$app/navigation';
+import { invalidate, invalidateAll } from '$app/navigation';
 import type { NegotiationLog } from '#lib/domain/management.ts';
 import type { Career } from '#lib/domain/career.ts';
 
@@ -12,7 +12,9 @@ export interface ClubActionResult {
 /** Envia uma ação de gestão ao servidor (validada lá) e recarrega a carreira. Erros viram mensagem. */
 export async function clubAction(careerId: string, version: number, body: Record<string, unknown>): Promise<ClubActionResult> {
 	const json = await withCareerVersion(careerId, version, (v) => api<ClubActionResult>(`/api/careers/${careerId}/club`, { body: { version: v, ...body } }));
-	await invalidate('app:career');
+	// Negociação com outro treinador humano (0.13): o controle passou ao vendedor — recarrega tudo.
+	if ((json as { handoff?: boolean }).handoff) await invalidateAll();
+	else await invalidate('app:career');
 	return json;
 }
 

@@ -2,6 +2,7 @@ import { invalidate } from '$app/navigation';
 import { api, connectionIssue, isVersionConflict, withCareerVersion } from '#lib/api.ts';
 import { clubAction } from '#lib/client/club.ts';
 import type { Career } from '#lib/domain/career.ts';
+import { activeCoachId } from '#lib/domain/turns.ts';
 import { tacticKey, type Tactic } from '#lib/domain/tactics.ts';
 import { notify } from '#lib/stores/island.svelte.ts';
 import { SyncChannel } from '#lib/stores/sync.svelte.ts';
@@ -21,6 +22,8 @@ export async function deliverLocal(careerId: string, op: PendingOp): Promise<Del
 	const path = `/api/careers/${careerId}`;
 	try {
 		const { career } = await api<{ career: Career }>(path);
+		// 0.13: com vários treinadores, uma alteração pendente só vale para quem estava no controle.
+		if (op.meta?.coach !== undefined && op.meta.coach !== activeCoachId(career)) return 'conflict';
 		if (op.kind === 'tactic') {
 			const sent = op.payload.tactic as Tactic;
 			const current = savedKey(career);
@@ -85,7 +88,7 @@ export function localCareerPort(current: () => Career, channel: () => SyncChanne
 	const queue = async (cause: unknown, kind: string, payload: Record<string, unknown>, dedupe?: string, meta?: Record<string, unknown>) => {
 		const sync = channel();
 		if (!sync || !connectionIssue(cause)) return false;
-		await sync.enqueue({ kind, payload, dedupe, meta });
+		await sync.enqueue({ kind, payload, dedupe, meta: { ...meta, coach: activeCoachId(current()) } });
 		return true;
 	};
 	return {
@@ -103,7 +106,7 @@ export function localCareerPort(current: () => Career, channel: () => SyncChanne
 			const baseKey = c.data.tactic ? tacticKey(base) : null;
 			// Já existe uma tática na fila: a nova substitui (o servidor ainda não viu a anterior).
 			const pendingTactic = channel()?.pending.find((op) => op.dedupe === 'tactic');
-			const meta = { baseKey: pendingTactic?.meta?.baseKey ?? baseKey, season: c.season, clubId: c.clubId };
+			const meta = { baseKey: pendingTactic?.meta?.baseKey ?? baseKey, season: c.season, clubId: c.clubId, coach: activeCoachId(c) };
 			if (pendingTactic) {
 				// mantém a ordem: a nova versão substitui a pendente e sai junto com a fila
 				await channel()!.enqueue({ kind: 'tactic', payload: { tactic }, dedupe: 'tactic', meta });
@@ -132,7 +135,7 @@ export function localCareerPort(current: () => Career, channel: () => SyncChanne
 		},
 		async saveTrainingPlan(plan) {
 			if (channel()?.pending.some((op) => op.dedupe === 'training')) {
-				await channel()!.enqueue({ kind: 'training', payload: { trainingPlan: plan }, dedupe: 'training' });
+				await channel()!.enqueue({ kind: 'training', payload: { trainingPlan: plan }, dedupe: 'training', meta: { coach: activeCoachId(current()) } });
 				return { ok: true, queued: true, message: QUEUED };
 			}
 			try {
