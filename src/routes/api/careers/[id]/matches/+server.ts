@@ -34,7 +34,7 @@ export const POST: RequestHandler = async (event) => {
 	try {
 		const out = await playRound(db, profile.id, career, { version, ...(step ? { step } : { round }), decisions: body.decisions as AppliedDecision[] | undefined });
 		// Operação secundária: já simula em segundo plano os outros jogos do próximo passo.
-		prefetchRound(db, profile.id, out.career.id);
+		if (!('replay' in out)) prefetchRound(db, profile.id, out.career.id);
 		// Resposta enxuta: a tela só precisa do resultado e da versão; a carreira é relida ao voltar à gestão.
 		const { career: saved, timings, ...rest } = out;
 		const res = noStore({ ...rest, career: { id: saved.id, version: saved.version, gameDate: saved.gameDate, season: saved.season } });

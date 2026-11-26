@@ -315,6 +315,33 @@
 		}
 		return lineup;
 	}
+	/**
+	 * Troca de formação direto da aba Escalação (ex.: reorganizar o time depois de uma expulsão).
+	 * No intervalo vale na hora (prepareInterval); com a bola rolando entra na fila de decisões e o
+	 * relógio anda 1 segundo para aplicá-la, como no "Aplicar" — o servidor reproduz igual.
+	 */
+	const liveFormation = $derived.by(() => {
+		void version;
+		return control ? match.teams[control].tactic.formation : null;
+	});
+	const onPitch = $derived.by(() => {
+		void version;
+		return control ? match.onPitch(control).length : 11;
+	});
+	function changeFormation(f: FormationId) {
+		if (!control || finished || f === match.teams[control].tactic.formation) return;
+		const decision = { type: 'formation', value: f, lineup: reorderFor(f) } as const;
+		if (atInterval) intervalError = match.prepareInterval(control, decision) ?? '';
+		else {
+			match.submit(control, decision);
+			acc = 0;
+			match.step();
+			const last = match.applied.filter((d) => d.side === control && d.decision.type === 'formation').at(-1);
+			intervalError = last?.rejected ?? '';
+		}
+		formation = match.teams[control].tactic.formation;
+		version++;
+	}
 	function movePlayer(playerId: string, slot: number) {
 		if (!control || finished) return;
 		const decision = { type: 'move', playerId, slot } as const;
@@ -544,6 +571,21 @@
 		description={atInterval ? 'Revise a equipe e confirme quando estiver pronto para o segundo tempo.' : 'Mentalidade e estilo mudam na hora; a formação reorganiza os mesmos atletas.'} size="lg">
 		<Segmented label="Ajustes da equipe" bind:value={intervalTab} options={[{ value: 'elenco', label: 'Escalação' }, { value: 'tatica', label: 'Tática' }]} />
 		{#if intervalTab === 'elenco'}
+			<div class="frow" role="group" aria-label="Formação">
+				<span class="flbl">Formação{#if onPitch < 11} · <b>{onPitch} em campo</b>{/if}</span>
+				<div class="fchips mini">
+					{#each FORMATION_IDS as f (f)}
+						<button class="fchip" class:on={liveFormation === f} disabled={finished}
+							onclick={() => changeFormation(f)} aria-pressed={liveFormation === f}>
+							<svg viewBox="0 0 100 100" aria-hidden="true">
+								{#each FORMATIONS[f] as s, i (i)}<circle cx={s.x} cy={s.y} r="7" />{/each}
+							</svg>
+							<span>{f}</span>
+						</button>
+					{/each}
+				</div>
+				{#if onPitch < 11}<small class="fhint">Com um a menos, as vagas ficam nas posições menos críticas; troque atletas de posição no campo abaixo para ajustar.</small>{/if}
+			</div>
 			<FormationBoard compact {match} side={control} color={colors[control].primary} {version} players={result.players}
 				bind:selected={intervalSelected} canSub={match.subsLeft(control) > 0} pendingOut={pendingOut} onsub={doSub} onswap={!finished ? swapPlayers : undefined} onmove={!finished ? movePlayer : undefined} />
 			{#if intervalError}<p role="status">{intervalError}</p>{/if}
@@ -942,6 +984,41 @@
 	}
 	.fchip.on circle {
 		fill: var(--emerald-strong);
+	}
+	.frow {
+		display: grid;
+		gap: 6px;
+		margin-bottom: 10px;
+	}
+	.flbl {
+		font-size: var(--fs-xs);
+		font-weight: 700;
+		color: var(--text-3);
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+	}
+	.flbl b {
+		color: var(--danger);
+	}
+	.fhint {
+		font-size: var(--fs-xs);
+		color: var(--text-2);
+	}
+	.fchips.mini {
+		margin-bottom: 0;
+		flex-wrap: nowrap;
+		overflow-x: auto;
+		scrollbar-width: thin;
+	}
+	.fchips.mini .fchip {
+		flex: none;
+		width: 60px;
+		padding: 4px;
+		font-size: var(--fs-xs);
+	}
+	.fchips.mini .fchip svg {
+		width: 40px;
+		height: 40px;
 	}
 	@media (max-width: 1080px) {
 		.grid {

@@ -31,6 +31,8 @@
 		round: number;
 		match: { fixture: Fixture; homeGoals: number; awayGoals: number; summary: MatchSummary } | null;
 		results: Array<{ home: string; away: string; homeGoals: number; awayGoals: number; competition: string }>;
+		/** o passo já estava gravado (envio repetido): este é o resultado oficial guardado */
+		replay?: boolean;
 	};
 	let stage = $state<Stage>('pre');
 	let errorMsg = $state('');
@@ -66,6 +68,8 @@
 	}
 
 	async function save() {
+		// Um único envio por vez: um segundo clique ou um fim de jogo repetido não reenviam a rodada.
+		if (stage === 'saving' || stage === 'saved') return;
 		stage = 'saving';
 		try {
 			const decisions = local && setup ? local.decisions.filter((d) => d.side === setup!.control) : [];
@@ -79,7 +83,9 @@
 			saved = res;
 			stage = 'saved';
 			markClean('partida');
-			if (local && res.match && (res.match.homeGoals !== local.homeGoals || res.match.awayGoals !== local.awayGoals)) {
+			if (res.replay) {
+				notify({ icon: 'check', tone: 'success', title: 'Rodada já estava registrada', detail: `O servidor já tinha gravado este jogo; este é o resultado oficial da rodada ${res.round}.` });
+			} else if (local && res.match && (res.match.homeGoals !== local.homeGoals || res.match.awayGoals !== local.awayGoals)) {
 				notify({ icon: 'alert', tone: 'warning', title: 'Resultado conferido pelo servidor', detail: 'O placar oficial difere do exibido; vale o do servidor.' });
 			} else notify({ icon: 'check', tone: 'success', title: 'Rodada registrada', detail: `Rodada ${res.round} salva na sua carreira.` });
 		} catch (e) {

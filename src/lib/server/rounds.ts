@@ -29,7 +29,7 @@ import type { Decision } from '#lib/engine/types.ts';
 import type { Db } from './db/index.ts';
 import { saveCareerProgress } from './repos/careers.ts';
 import { takePrefetched } from './round-prefetch.ts';
-import { insertRound, listResults, listSeasonGoals, recentUserMatches, type RoundInsert } from './repos/matches.ts';
+import { insertRound, listResults, listSeasonGoals, listUserMatches, recentUserMatches, type RoundInsert, type StoredResult } from './repos/matches.ts';
 
 export class RoundError extends Error {
 	constructor(
@@ -76,7 +76,13 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 	if (view.seasonOver || !view.step) throw new RoundError('A temporada terminou. Encerre-a para começar a próxima.', 409);
 	const step = view.step;
 	const asked = body.step ?? (typeof body.round === 'number' ? `league:${body.round}` : null);
-	if (asked !== step.key) throw new RoundError('Este passo do calendário já foi disputado ou ainda não chegou.', 409);
+	if (asked !== step.key) {
+		// Reenvio de um passo que JÁ foi gravado (resposta perdida, segundo envio, "Tentar de novo" depois de um
+		// envio que chegou ao servidor): devolve o resultado oficial guardado em vez de acusar erro.
+		const replay = asked ? await recordedStep(db, career, results, view, asked) : null;
+		if (replay) return replay;
+		throw new RoundError('Este passo do calendário já foi disputado ou ainda não chegou.', 409);
+	}
 	const roundPlan = planRound(career, results, view);
 	const { strengthOf, fixtures, full } = roundPlan;
 	const { league, cup } = roundPlan;
@@ -225,6 +231,33 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 		finance: career.mode === 'coach' && !unemployed ? { balance: clubOut.balance, ledger: wk.ledger } : null,
 		dismissed: career.mode === 'coach' && clubOut.board.dismissed && !(career.data.club?.board?.dismissed ?? false),
 		unemployed: career.mode === 'coach' && clubOut.board.dismissed,
+		results: rows.filter((r) => !r.isUser).map(({ home, away, homeGoals, awayGoals, competition }) => ({ home, away, homeGoals, awayGoals, competition }))
+	};
+}
+
+/**
+ * Resultado de um passo já disputado nesta temporada, no mesmo formato da resposta de playRound
+ * (com `replay: true`). Só leitura: nada é recalculado nem gravado de novo. Null quando o passo
+ * ainda não foi jogado (aí o erro original continua valendo).
+ */
+async function recordedStep(db: Db, career: Career, results: StoredResult[], view: ReturnType<typeof careerView>, asked: string) {
+	const [kind, n] = asked.split(':');
+	const number = Number(n);
+	const inStep = (r: { competition: string; round: number }) => r.round === number && (kind === 'cup' ? r.competition === CUP_ID : r.competition !== CUP_ID);
+	const rows = results.filter(inStep);
+	if (!rows.length) return null;
+	const mine = rows.find((r) => r.isUser) ? (await listUserMatches(db, career.id, career.season)).find(inStep) ?? null : null;
+	const fixture = mine ? (view.clubFixtures.find((f) => inStep(f) && f.home === mine.home && f.away === mine.away) ?? ({ round: number, competition: mine.competition, home: mine.home, away: mine.away } as Fixture)) : null;
+	return {
+		career,
+		timings: {} as Record<string, number>,
+		round: number,
+		step: asked,
+		replay: true as const,
+		match: mine && fixture ? { fixture, homeGoals: mine.homeGoals, awayGoals: mine.awayGoals, summary: mine.summary } : null,
+		finance: null,
+		dismissed: false,
+		unemployed: false,
 		results: rows.filter((r) => !r.isUser).map(({ home, away, homeGoals, awayGoals, competition }) => ({ home, away, homeGoals, awayGoals, competition }))
 	};
 }
