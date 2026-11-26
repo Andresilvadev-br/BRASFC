@@ -1,0 +1,1288 @@
+{
+  "schemaVersion": 1,
+  "asOf": "2026-11-23",
+  "status": "research-only",
+  "sources": {
+    "uefa-clubs": "https://www.uefa.com/uefachampionsleague/clubs/",
+    "uefa-md4": "https://www.uefa.com/uefachampionsleague/news/02ab-21f9907f0a27-6a6a67e9775d-1000--champions-league-starting-line-ups-matchday-4/",
+    "mls-rules": "https://www.mlssoccer.com/news/2026-mls-competition-guidelines",
+    "uefa-md4-arsenal-slavia": "https://www.uefa.com/newsfiles/ucl/2027/2049621_lu.pdf",
+    "mls-rosters": "https://www.mlssoccer.com/news/major-league-soccer-publicizes-club-roster-profiles-following-close-of-secondary-transfer-window"
+  },
+  "leagues": [
+    {
+      "id": "austrian-bundesliga",
+      "country": "AT",
+      "name": "Bundesliga Austríaca",
+      "season": "2026/27",
+      "coverage": "ucl-league-phase-only",
+      "clubIds": [
+        "at-lask"
+      ]
+    },
+    {
+      "id": "azerbaijan-premier-league",
+      "country": "AZ",
+      "name": "Premier League do Azerbaijão",
+      "season": "2026/27",
+      "coverage": "ucl-league-phase-only",
+      "clubIds": [
+        "az-sabah"
+      ]
+    },
+    {
+      "id": "belgian-pro-league",
+      "country": "BE",
+      "name": "Pro League",
+      "season": "2026/27",
+      "coverage": "ucl-league-phase-only",
+      "clubIds": [
+        "be-club-brugge"
+      ]
+    },
+    {
+      "id": "czech-first-league",
+      "country": "CZ",
+      "name": "Liga Tcheca",
+      "season": "2026/27",
+      "coverage": "ucl-league-phase-only",
+      "clubIds": [
+        "cz-slavia-praha"
+      ]
+    },
+    {
+      "id": "premier-league",
+      "country": "GB-ENG",
+      "name": "Premier League",
+      "season": "2026/27",
+      "coverage": "ucl-league-phase-only",
+      "clubIds": [
+        "gb-eng-arsenal",
+        "gb-eng-aston-villa",
+        "gb-eng-liverpool",
+        "gb-eng-manchester-city",
+        "gb-eng-manchester-united"
+      ]
+    },
+    {
+      "id": "ligue-1",
+      "country": "FR",
+      "name": "Ligue 1",
+      "season": "2026/27",
+      "coverage": "ucl-league-phase-only",
+      "clubIds": [
+        "fr-lens",
+        "fr-lille",
+        "fr-paris-saint-germain"
+      ]
+    },
+    {
+      "id": "bundesliga",
+      "country": "DE",
+      "name": "Bundesliga",
+      "season": "2026/27",
+      "coverage": "ucl-league-phase-only",
+      "clubIds": [
+        "de-bayern-munchen",
+        "de-borussia-dortmund",
+        "de-rb-leipzig",
+        "de-stuttgart"
+      ]
+    },
+    {
+      "id": "super-league-greece",
+      "country": "GR",
+      "name": "Super League Greece",
+      "season": "2026/27",
+      "coverage": "ucl-league-phase-only",
+      "clubIds": [
+        "gr-aek-athens"
+      ]
+    },
+    {
+      "id": "serie-a-italy",
+      "country": "IT",
+      "name": "Serie A Italiana",
+      "season": "2026/27",
+      "coverage": "ucl-league-phase-only",
+      "clubIds": [
+        "it-como",
+        "it-inter",
+        "it-napoli",
+        "it-roma"
+      ]
+    },
+    {
+      "id": "eredivisie",
+      "country": "NL",
+      "name": "Eredivisie",
+      "season": "2026/27",
+      "coverage": "ucl-league-phase-only",
+      "clubIds": [
+        "nl-feyenoord",
+        "nl-psv"
+      ]
+    },
+    {
+      "id": "eliteserien",
+      "country": "NO",
+      "name": "Eliteserien",
+      "season": "2026",
+      "coverage": "ucl-league-phase-only",
+      "clubIds": [
+        "no-bodo-glimt",
+        "no-viking"
+      ]
+    },
+    {
+      "id": "primeira-liga",
+      "country": "PT",
+      "name": "Primeira Liga",
+      "season": "2026/27",
+      "coverage": "ucl-league-phase-only",
+      "clubIds": [
+        "pt-porto",
+        "pt-sporting-cp"
+      ]
+    },
+    {
+      "id": "slovak-first-league",
+      "country": "SK",
+      "name": "Liga Eslovaca",
+      "season": "2026/27",
+      "coverage": "ucl-league-phase-only",
+      "clubIds": [
+        "sk-slovan-bratislava"
+      ]
+    },
+    {
+      "id": "la-liga",
+      "country": "ES",
+      "name": "La Liga",
+      "season": "2026/27",
+      "coverage": "ucl-league-phase-only",
+      "clubIds": [
+        "es-atletico-de-madrid",
+        "es-barcelona",
+        "es-real-betis",
+        "es-real-madrid",
+        "es-villarreal"
+      ]
+    },
+    {
+      "id": "super-lig",
+      "country": "TR",
+      "name": "Süper Lig",
+      "season": "2026/27",
+      "coverage": "ucl-league-phase-only",
+      "clubIds": [
+        "tr-fenerbahce",
+        "tr-galatasaray"
+      ]
+    },
+    {
+      "id": "ukrainian-premier-league",
+      "country": "UA",
+      "name": "Premier League Ucraniana",
+      "season": "2026/27",
+      "coverage": "ucl-league-phase-only",
+      "clubIds": [
+        "ua-shakhtar-donetsk"
+      ]
+    },
+    {
+      "id": "mls",
+      "country": "US/CA",
+      "name": "Major League Soccer",
+      "season": "2026",
+      "coverage": "full-membership",
+      "clubIds": [
+        "us-atlanta-united",
+        "us-charlotte-fc",
+        "us-chicago-fire-fc",
+        "us-fc-cincinnati",
+        "us-columbus-crew",
+        "us-d-c-united",
+        "us-inter-miami-cf",
+        "ca-cf-montreal",
+        "us-nashville-sc",
+        "us-new-england-revolution",
+        "us-new-york-city-fc",
+        "us-orlando-city-sc",
+        "us-philadelphia-union",
+        "us-red-bull-new-york",
+        "ca-toronto-fc",
+        "us-austin-fc",
+        "us-colorado-rapids",
+        "us-fc-dallas",
+        "us-houston-dynamo-fc",
+        "us-los-angeles-football-club",
+        "us-la-galaxy",
+        "us-minnesota-united-fc",
+        "us-portland-timbers",
+        "us-real-salt-lake",
+        "us-st-louis-city-sc",
+        "us-san-diego-fc",
+        "us-san-jose-earthquakes",
+        "us-seattle-sounders-fc",
+        "us-sporting-kansas-city",
+        "ca-vancouver-whitecaps-fc"
+      ]
+    }
+  ],
+  "competitions": [
+    {
+      "id": "ucl",
+      "season": "2026/27",
+      "stage": "league-phase",
+      "clubIds": [
+        "at-lask",
+        "az-sabah",
+        "be-club-brugge",
+        "cz-slavia-praha",
+        "gb-eng-arsenal",
+        "gb-eng-aston-villa",
+        "gb-eng-liverpool",
+        "gb-eng-manchester-city",
+        "gb-eng-manchester-united",
+        "fr-lens",
+        "fr-lille",
+        "fr-paris-saint-germain",
+        "de-bayern-munchen",
+        "de-borussia-dortmund",
+        "de-rb-leipzig",
+        "de-stuttgart",
+        "gr-aek-athens",
+        "it-como",
+        "it-inter",
+        "it-napoli",
+        "it-roma",
+        "nl-feyenoord",
+        "nl-psv",
+        "no-bodo-glimt",
+        "no-viking",
+        "pt-porto",
+        "pt-sporting-cp",
+        "sk-slovan-bratislava",
+        "es-atletico-de-madrid",
+        "es-barcelona",
+        "es-real-betis",
+        "es-real-madrid",
+        "es-villarreal",
+        "tr-fenerbahce",
+        "tr-galatasaray",
+        "ua-shakhtar-donetsk"
+      ],
+      "matchesPerClub": 8
+    },
+    {
+      "id": "mls",
+      "season": "2026",
+      "stage": "regular-season",
+      "clubIds": [
+        "us-atlanta-united",
+        "us-charlotte-fc",
+        "us-chicago-fire-fc",
+        "us-fc-cincinnati",
+        "us-columbus-crew",
+        "us-d-c-united",
+        "us-inter-miami-cf",
+        "ca-cf-montreal",
+        "us-nashville-sc",
+        "us-new-england-revolution",
+        "us-new-york-city-fc",
+        "us-orlando-city-sc",
+        "us-philadelphia-union",
+        "us-red-bull-new-york",
+        "ca-toronto-fc",
+        "us-austin-fc",
+        "us-colorado-rapids",
+        "us-fc-dallas",
+        "us-houston-dynamo-fc",
+        "us-los-angeles-football-club",
+        "us-la-galaxy",
+        "us-minnesota-united-fc",
+        "us-portland-timbers",
+        "us-real-salt-lake",
+        "us-st-louis-city-sc",
+        "us-san-diego-fc",
+        "us-san-jose-earthquakes",
+        "us-seattle-sounders-fc",
+        "us-sporting-kansas-city",
+        "ca-vancouver-whitecaps-fc"
+      ],
+      "matchesPerClub": 34,
+      "conferences": {
+        "east": [
+          "us-atlanta-united",
+          "us-charlotte-fc",
+          "us-chicago-fire-fc",
+          "us-fc-cincinnati",
+          "us-columbus-crew",
+          "us-d-c-united",
+          "us-inter-miami-cf",
+          "ca-cf-montreal",
+          "us-nashville-sc",
+          "us-new-england-revolution",
+          "us-new-york-city-fc",
+          "us-orlando-city-sc",
+          "us-philadelphia-union",
+          "us-red-bull-new-york",
+          "ca-toronto-fc"
+        ],
+        "west": [
+          "us-austin-fc",
+          "us-colorado-rapids",
+          "us-fc-dallas",
+          "us-houston-dynamo-fc",
+          "us-los-angeles-football-club",
+          "us-la-galaxy",
+          "us-minnesota-united-fc",
+          "us-portland-timbers",
+          "us-real-salt-lake",
+          "us-st-louis-city-sc",
+          "us-san-diego-fc",
+          "us-san-jose-earthquakes",
+          "us-seattle-sounders-fc",
+          "us-sporting-kansas-city",
+          "ca-vancouver-whitecaps-fc"
+        ]
+      }
+    }
+  ],
+  "clubs": [
+    {
+      "id": "at-lask",
+      "name": "LASK",
+      "country": "AT",
+      "leagueId": "austrian-bundesliga",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "3-5-2",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "az-sabah",
+      "name": "Sabah",
+      "country": "AZ",
+      "leagueId": "azerbaijan-premier-league",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-3-3",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "be-club-brugge",
+      "name": "Club Brugge",
+      "country": "BE",
+      "leagueId": "belgian-pro-league",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-1-4-1",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "cz-slavia-praha",
+      "name": "Slavia Praha",
+      "country": "CZ",
+      "leagueId": "czech-first-league",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-2-3-1",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "gb-eng-arsenal",
+      "name": "Arsenal",
+      "country": "GB-ENG",
+      "leagueId": "premier-league",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-2-3-1",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "gb-eng-aston-villa",
+      "name": "Aston Villa",
+      "country": "GB-ENG",
+      "leagueId": "premier-league",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-2-3-1",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "gb-eng-liverpool",
+      "name": "Liverpool",
+      "country": "GB-ENG",
+      "leagueId": "premier-league",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-2-3-1",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "gb-eng-manchester-city",
+      "name": "Manchester City",
+      "country": "GB-ENG",
+      "leagueId": "premier-league",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-2-3-1",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "gb-eng-manchester-united",
+      "name": "Manchester United",
+      "country": "GB-ENG",
+      "leagueId": "premier-league",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-2-3-1",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "fr-lens",
+      "name": "Lens",
+      "country": "FR",
+      "leagueId": "ligue-1",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "3-5-2",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "fr-lille",
+      "name": "Lille",
+      "country": "FR",
+      "leagueId": "ligue-1",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-2-3-1",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "fr-paris-saint-germain",
+      "name": "Paris Saint-Germain",
+      "country": "FR",
+      "leagueId": "ligue-1",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-3-3",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "de-bayern-munchen",
+      "name": "Bayern München",
+      "country": "DE",
+      "leagueId": "bundesliga",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-2-3-1",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "de-borussia-dortmund",
+      "name": "Borussia Dortmund",
+      "country": "DE",
+      "leagueId": "bundesliga",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "3-4-1-2",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "de-rb-leipzig",
+      "name": "RB Leipzig",
+      "country": "DE",
+      "leagueId": "bundesliga",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-3-3",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "de-stuttgart",
+      "name": "Stuttgart",
+      "country": "DE",
+      "leagueId": "bundesliga",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "3-4-2-1",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "gr-aek-athens",
+      "name": "AEK Athens",
+      "country": "GR",
+      "leagueId": "super-league-greece",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-4-2",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "it-como",
+      "name": "Como",
+      "country": "IT",
+      "leagueId": "serie-a-italy",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-2-3-1",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "it-inter",
+      "name": "Inter",
+      "country": "IT",
+      "leagueId": "serie-a-italy",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "3-5-2",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "it-napoli",
+      "name": "Napoli",
+      "country": "IT",
+      "leagueId": "serie-a-italy",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "3-5-1-1",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "it-roma",
+      "name": "Roma",
+      "country": "IT",
+      "leagueId": "serie-a-italy",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "3-4-3",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "nl-feyenoord",
+      "name": "Feyenoord",
+      "country": "NL",
+      "leagueId": "eredivisie",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-3-3",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "nl-psv",
+      "name": "PSV",
+      "country": "NL",
+      "leagueId": "eredivisie",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-3-3",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "no-bodo-glimt",
+      "name": "Bodø/Glimt",
+      "country": "NO",
+      "leagueId": "eliteserien",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-3-3",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "no-viking",
+      "name": "Viking",
+      "country": "NO",
+      "leagueId": "eliteserien",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-3-3",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "pt-porto",
+      "name": "Porto",
+      "country": "PT",
+      "leagueId": "primeira-liga",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-3-3",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "pt-sporting-cp",
+      "name": "Sporting CP",
+      "country": "PT",
+      "leagueId": "primeira-liga",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-3-3",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "sk-slovan-bratislava",
+      "name": "Slovan Bratislava",
+      "country": "SK",
+      "leagueId": "slovak-first-league",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-3-3",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "es-atletico-de-madrid",
+      "name": "Atlético de Madrid",
+      "country": "ES",
+      "leagueId": "la-liga",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-4-2",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "es-barcelona",
+      "name": "Barcelona",
+      "country": "ES",
+      "leagueId": "la-liga",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-2-3-1",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "es-real-betis",
+      "name": "Real Betis",
+      "country": "ES",
+      "leagueId": "la-liga",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-3-3",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "es-real-madrid",
+      "name": "Real Madrid",
+      "country": "ES",
+      "leagueId": "la-liga",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-3-3",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "es-villarreal",
+      "name": "Villarreal",
+      "country": "ES",
+      "leagueId": "la-liga",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-3-3",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "tr-fenerbahce",
+      "name": "Fenerbahçe",
+      "country": "TR",
+      "leagueId": "super-lig",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-3-3",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "tr-galatasaray",
+      "name": "Galatasaray",
+      "country": "TR",
+      "leagueId": "super-lig",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-3-3",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "ua-shakhtar-donetsk",
+      "name": "Shakhtar Donetsk",
+      "country": "UA",
+      "leagueId": "ukrainian-premier-league",
+      "source": "uefa-clubs",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "observed-shape-inferred",
+        "formation": "4-1-4-1",
+        "matchday": 4,
+        "source": "uefa-md4"
+      }
+    },
+    {
+      "id": "us-atlanta-united",
+      "name": "Atlanta United",
+      "conference": "east",
+      "country": "US",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "us-charlotte-fc",
+      "name": "Charlotte FC",
+      "conference": "east",
+      "country": "US",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "us-chicago-fire-fc",
+      "name": "Chicago Fire FC",
+      "conference": "east",
+      "country": "US",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "us-fc-cincinnati",
+      "name": "FC Cincinnati",
+      "conference": "east",
+      "country": "US",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "us-columbus-crew",
+      "name": "Columbus Crew",
+      "conference": "east",
+      "country": "US",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "us-d-c-united",
+      "name": "D.C. United",
+      "conference": "east",
+      "country": "US",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "us-inter-miami-cf",
+      "name": "Inter Miami CF",
+      "conference": "east",
+      "country": "US",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "ca-cf-montreal",
+      "name": "CF Montréal",
+      "conference": "east",
+      "country": "CA",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "us-nashville-sc",
+      "name": "Nashville SC",
+      "conference": "east",
+      "country": "US",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "us-new-england-revolution",
+      "name": "New England Revolution",
+      "conference": "east",
+      "country": "US",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "us-new-york-city-fc",
+      "name": "New York City FC",
+      "conference": "east",
+      "country": "US",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "us-orlando-city-sc",
+      "name": "Orlando City SC",
+      "conference": "east",
+      "country": "US",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "us-philadelphia-union",
+      "name": "Philadelphia Union",
+      "conference": "east",
+      "country": "US",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "us-red-bull-new-york",
+      "name": "Red Bull New York",
+      "conference": "east",
+      "country": "US",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "ca-toronto-fc",
+      "name": "Toronto FC",
+      "conference": "east",
+      "country": "CA",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "us-austin-fc",
+      "name": "Austin FC",
+      "conference": "west",
+      "country": "US",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "us-colorado-rapids",
+      "name": "Colorado Rapids",
+      "conference": "west",
+      "country": "US",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "us-fc-dallas",
+      "name": "FC Dallas",
+      "conference": "west",
+      "country": "US",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "us-houston-dynamo-fc",
+      "name": "Houston Dynamo FC",
+      "conference": "west",
+      "country": "US",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "us-los-angeles-football-club",
+      "name": "Los Angeles Football Club",
+      "conference": "west",
+      "country": "US",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "us-la-galaxy",
+      "name": "LA Galaxy",
+      "conference": "west",
+      "country": "US",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "us-minnesota-united-fc",
+      "name": "Minnesota United FC",
+      "conference": "west",
+      "country": "US",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "us-portland-timbers",
+      "name": "Portland Timbers",
+      "conference": "west",
+      "country": "US",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "us-real-salt-lake",
+      "name": "Real Salt Lake",
+      "conference": "west",
+      "country": "US",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "us-st-louis-city-sc",
+      "name": "St. Louis CITY SC",
+      "conference": "west",
+      "country": "US",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "us-san-diego-fc",
+      "name": "San Diego FC",
+      "conference": "west",
+      "country": "US",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "us-san-jose-earthquakes",
+      "name": "San Jose Earthquakes",
+      "conference": "west",
+      "country": "US",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "us-seattle-sounders-fc",
+      "name": "Seattle Sounders FC",
+      "conference": "west",
+      "country": "US",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "us-sporting-kansas-city",
+      "name": "Sporting Kansas City",
+      "conference": "west",
+      "country": "US",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "ca-vancouver-whitecaps-fc",
+      "name": "Vancouver Whitecaps FC",
+      "conference": "west",
+      "country": "CA",
+      "leagueId": "mls",
+      "source": "mls-rules",
+      "rosterStatus": "pending",
+      "tactics": {
+        "status": "pending"
+      }
+    }
+  ],
+  "matchSamples": [
+    {
+      "clubId": "gb-eng-arsenal",
+      "opponentId": "cz-slavia-praha",
+      "date": "2026-11-04",
+      "formation": "4-2-3-1",
+      "coach": "Mikel Arteta",
+      "source": "uefa-md4-arsenal-slavia",
+      "positionKind": "match-slot-not-natural-position",
+      "players": [
+        {
+          "number": 1,
+          "name": "David Raya",
+          "position": "GOL"
+        },
+        {
+          "number": 4,
+          "name": "Ben White",
+          "position": "LD"
+        },
+        {
+          "number": 15,
+          "name": "Ezri Konsa",
+          "position": "ZAG"
+        },
+        {
+          "number": 6,
+          "name": "Gabriel",
+          "position": "ZAG"
+        },
+        {
+          "number": 5,
+          "name": "Piero Hincapié",
+          "position": "LE"
+        },
+        {
+          "number": 41,
+          "name": "Declan Rice",
+          "position": "VOL"
+        },
+        {
+          "number": 36,
+          "name": "Martín Zubimendi",
+          "position": "VOL"
+        },
+        {
+          "number": 20,
+          "name": "Noni Madueke",
+          "position": "PD"
+        },
+        {
+          "number": 23,
+          "name": "Mikel Merino",
+          "position": "MEI"
+        },
+        {
+          "number": 10,
+          "name": "Eberechi Eze",
+          "position": "PE"
+        },
+        {
+          "number": 14,
+          "name": "Viktor Gyökeres",
+          "position": "ATA"
+        }
+      ],
+      "status": "match-only-not-full-roster"
+    }
+  ]
+}
