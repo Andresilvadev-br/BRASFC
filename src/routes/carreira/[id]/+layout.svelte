@@ -14,6 +14,10 @@
 	import CareerShell from '#lib/ui/career/CareerShell.svelte';
 	import type { CareerGroup } from '#lib/ui/career/navigation.ts';
 	import type { IconName } from '#lib/ui/icons.ts';
+	import { isShared } from '#lib/domain/turns.ts';
+	import TurnBadge from '#lib/ui/local/TurnBadge.svelte';
+	import Handoff from '#lib/ui/local/Handoff.svelte';
+	import DealDialog from '#lib/ui/local/DealDialog.svelte';
 
 	let { data, children } = $props();
 	// Dev 0.12: as telas da carreira falam com o armazenamento por esta porta (a online usa a da liga).
@@ -92,6 +96,8 @@
 	const current = $derived(items.find((i) => i.href === page.url.pathname + page.url.search)?.href ??
 		items.find((i) => i.href === page.url.pathname)?.href ?? (page.url.pathname.startsWith(`${base}/`) ? null : base));
 	const step = $derived(data.view.step);
+	const shared = $derived(isShared(data.career));
+	let covering = $state(true);
 	const stepLabel = $derived(!step ? 'Fim da temporada' : step.kind === 'cup' ? 'Copa do Brasil' : `Rodada ${step.round}`);
 
 	async function saveAppearance(appearance: Appearance) {
@@ -111,16 +117,21 @@
 	personName={data.career.personName} roleLabel="Treinador" {groups} {current}
 	date={data.career.gameDate} season={data.career.season} cup={step?.kind === 'cup'} {stepLabel}
 	balance={coach && !data.manage.club.board.dismissed ? data.manage.club.balance : undefined}
-	match={coach && data.manage.club.board.dismissed
+	match={shared ? { href: `${base}/partida`, label: 'Ir para próxima partida', hint: 'Grava a sua preparação e passa a vez ao próximo treinador.' } : coach && data.manage.club.board.dismissed
 		? { href: `${base}/gabinete`, label: 'Ver propostas de emprego' }
 		: { href: `${base}/partida`, label: data.view.next ? 'Ir para o jogo' : data.view.seasonOver ? 'Encerrar temporada' : 'Avançar' }}>
 	{#snippet status()}
+		{#if shared}<TurnBadge career={data.career} />{/if}
 		{#if sync}<SyncBadge channel={sync} />{/if}
 		<WardrobeDialog value={data.career.data.appearance} clubId={data.career.clubId} uniformOptions={!coach} onsave={saveAppearance}
 			kit={coach ? coachKit(data.career.clubId) : playerKit(data.career.clubId, data.career.data.position ?? 'ATA')} />
 	{/snippet}
 	{@render children()}
 </CareerShell>
+{#if shared}
+	<Handoff career={data.career} bind:covering />
+	{#if !covering}<DealDialog career={data.career} />{/if}
+{/if}
 
 <style>
 	.load-notice { margin: 0; padding: 8px var(--sp-4); background: var(--surface-2); color: var(--text-2); font-size: var(--fs-sm); }

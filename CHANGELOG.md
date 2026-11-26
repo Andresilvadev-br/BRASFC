@@ -1,5 +1,16 @@
 # Novidades
 
+## 0.13.0 — LOCAL LEGACY
+
+- Jogo 100% offline no Windows: o aplicativo sobe o jogo embutido (arquivos do instalador, save PGlite na pasta do usuário) e nunca abre o site. A internet fica só para distribuição e atualização.
+- Removidos carreira online, salas, convites, contas, chat, WebSocket e sincronização remota. O site público (VPS) virou apresentação e download; as rotas do jogo redirecionam para a página inicial e a API do jogo responde 410. O banco antigo do servidor não é tocado.
+- Carreira local com vários treinadores no mesmo save: “Adicionar outro treinador” na escolha do clube, turnos na ordem de criação, troca de controle com tela de passagem, mensagens/finanças/histórico por treinador. Uma carreira individual é o caso de um treinador só (mesma arquitetura).
+- Negociação entre treinadores humanos com contrapropostas livres, sobre o mercado existente (contratos, orçamento e resposta do atleta), sem transações duplicadas.
+- Central de resultados simultâneos (só com vários treinadores), intervenções por expulsão, segundo amarelo e lesão, clique no clube para pausar e intervalo sequencial. Clássico, Pixel e Narração seguem na carreira individual.
+- Janela de comando tático em três áreas (também na partida individual).
+- Aparência: sem barba/bigode; novos rostos, penteados, cores e roupas.
+- Migração aditiva 0013 (`coach` em mensagens e lançamentos). Instalador Windows 1.6.0.
+
 ## 0.12.0 — Carreira única de treinador
 
 - Carreira de Treinador 2.0: contratos, desemprego, mercado de treinadores, conhecimento tático, Minhas Táticas, negociação de verba com a diretoria, expulsões com time de 10, suspensões persistentes, melhor 11 e idades.

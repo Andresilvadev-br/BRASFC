@@ -115,7 +115,7 @@ describe('carreira local com vários treinadores', () => {
 			expect(career.personName).toBe('Ana');
 			if (fx && expected) {
 				h2h = true;
-				expect(step.round).toBe(round);
+				expect(step.kind === 'league' && step.round).toBe(round);
 				const rows = (await listResults(db, career.id, career.season - (career.season === 2026 ? 0 : 1))).filter((r) => r.home === fx.home && r.away === fx.away && r.competition === fx.competition);
 				expect(rows).toHaveLength(1);
 				expect(rows[0].isUser).toBe(true);
@@ -125,7 +125,7 @@ describe('carreira local com vários treinadores', () => {
 				expect(mineA.summary.mySide).toBe(fx.home === 'flamengo' ? 'home' : 'away');
 				const mineB = (await listUserMatches(db, career.id, undefined, rival)).find((m) => m.round === round && m.competition === 'serie-a')!;
 				expect(mineB.summary.mySide).toBe(fx.home === rival ? 'home' : 'away');
-				expect(out.coaches).toHaveLength(2);
+				expect('coaches' in out && out.coaches).toHaveLength(2);
 			}
 		}
 		expect(h2h).toBe(true);

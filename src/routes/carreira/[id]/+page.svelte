@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { isShared } from '#lib/domain/turns.ts';
 	import { universeCoach } from '#lib/domain/matchday.ts';
 	import { goto, invalidate } from '$app/navigation';
 	import { api, withCareerVersion } from '#lib/api.ts';
@@ -143,7 +144,7 @@
 			</div>
 			{#if !v.next}<p class="muted center">Próximo passo do calendário sem jogo do seu time: avance a semana.</p>{/if}
 			<div class="actions">
-				<Button variant="primary" size="lg" icon="whistle" href="{base}/partida">{!v.next ? 'Avançar a semana' : isCoach ? 'Comandar a partida' : 'Ir para o jogo'}</Button>
+				<Button variant="primary" size="lg" icon="whistle" href="{base}/partida">{isShared(c) ? 'Ir para próxima partida' : !v.next ? 'Avançar a semana' : isCoach ? 'Comandar a partida' : 'Ir para o jogo'}</Button>
 				{#if isCoach}<Button icon="tactics" href="{base}/taticas">Preparar a equipe</Button>{/if}
 			</div>
 		{:else}

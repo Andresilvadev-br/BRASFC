@@ -210,12 +210,6 @@
 	<header class="top" data-umx-enter>
 		<Logo size={40} tagline />
 		<div class="who">
-			{#if data.profile}
-				<a class="profile" href="/configuracoes" data-umx-press>
-					<Icon name="user" size={18} />
-					<span>{data.profile.displayName}</span>
-				</a>
-			{/if}
 			<span class="env">{data.build.environment} · v{data.build.version}</span>
 		</div>
 	</header>
@@ -323,20 +317,6 @@
 		display: flex;
 		align-items: center;
 		gap: var(--sp-4);
-	}
-	.profile {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--sp-2);
-		padding: 8px 14px;
-		border-radius: var(--radius-pill);
-		background: rgb(16 20 24 / 0.65);
-		border: 1px solid var(--line-strong);
-		font-size: var(--fs-sm);
-		font-weight: 600;
-	}
-	.profile:hover {
-		border-color: var(--emerald-line);
 	}
 	.env {
 		font-size: var(--fs-xs);

@@ -1,14 +1,14 @@
 export const WARDROBE = {
 	casual: {
-		label: 'Casual', tops: { camiseta: 'Camiseta', camisa: 'Camisa', polo: 'Polo', jaqueta: 'Jaqueta' },
+		label: 'Casual', tops: { camiseta: 'Camiseta', camisa: 'Camisa', polo: 'Polo', jaqueta: 'Jaqueta', moletom: 'Moletom' },
 		bottoms: { jeans: 'Jeans', sarja: 'Calça de sarja', bermuda: 'Bermuda' }, shoes: { tenis: 'Tênis', casual: 'Calçado casual' }
 	},
 	esportivo: {
-		label: 'Esportivo', tops: { treino: 'Camisa de treino', agasalho: 'Agasalho', uniforme: 'Uniforme' },
+		label: 'Esportivo', tops: { treino: 'Camisa de treino', agasalho: 'Agasalho', cortaVento: 'Corta-vento', uniforme: 'Uniforme' },
 		bottoms: { shorts: 'Shorts', moletom: 'Calça esportiva' }, shoes: { tenis: 'Tênis', chuteira: 'Chuteira' }
 	},
 	formal: {
-		label: 'Formal', tops: { social: 'Camisa social', blazer: 'Blazer', terno: 'Terno' },
+		label: 'Formal', tops: { social: 'Camisa social', colete: 'Colete', blazer: 'Blazer', terno: 'Terno' },
 		bottoms: { social: 'Calça social' }, shoes: { couro: 'Sapato social', mocassim: 'Mocassim' }
 	},
 	clube: {
@@ -17,7 +17,7 @@ export const WARDROBE = {
 	}
 } as const;
 
-export const CLOTHING_COLORS = ['#23282e', '#286151', '#354c72', '#9a3c3c', '#af8659', '#dde2e5'] as const;
+export const CLOTHING_COLORS = ['#23282e', '#286151', '#354c72', '#9a3c3c', '#af8659', '#dde2e5', '#5b3a6e', '#c9a227', '#1f6e8c', '#7a7f86'] as const;
 export type WardrobeCategory = keyof typeof WARDROBE;
 export type Outfit = { category: WardrobeCategory; top: string; bottom: string; shoes: string; color: number };
 

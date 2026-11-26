@@ -304,7 +304,6 @@
 	.more { display: flex; justify-content: center; margin-top: 16px; }
 
 	.small { font-size: var(--fs-sm); }
-	.state { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-radius: 12px; border: 1px dashed var(--line-strong); color: var(--text-2); font-size: var(--fs-sm); }
 
 	.target { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; padding: 10px 12px; border-radius: 12px; background: var(--surface-sunken); border: 1px solid var(--line); }
 	.target div { display: grid; min-width: 0; }

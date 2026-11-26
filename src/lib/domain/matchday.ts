@@ -196,6 +196,9 @@ export function matchFromSetup(s: ReturnType<typeof fixtureSetup>, replay?: Appl
 	});
 }
 
+/** Cartão ou lesão de um jogo da IA (minuto aproximado pelo relógio do motor). */
+export interface OtherIncident { kind: 'yellow' | 'red' | 'injury'; side: Side; player: string; minute: number }
+
 /** Partida montada para um ou dois treinadores humanos (0.13: confronto direto entre humanos). */
 export interface SharedSetup {
 	home: TeamSetup;
@@ -237,7 +240,7 @@ export function simulateOtherFixtures(
 	fixtures: Fixture[],
 	ctx: Pick<MatchdayContext, 'season' | 'firstSeason'>,
 	opts: { full?: (f: Fixture) => boolean; strengthOf?: (clubId: string) => number } = {}
-): Array<MatchResult & { competition: string; seed: number; quick?: boolean; goals?: Array<{ side: 'home' | 'away'; player: string; minute: number }> }> {
+): Array<MatchResult & { competition: string; seed: number; quick?: boolean; goals?: Array<{ side: 'home' | 'away'; player: string; minute: number; assist?: string }>; incidents?: OtherIncident[] }> {
 	return fixtures.map((f) => {
 		const seed = matchSeed(career, ctx.season, f.round, f.home, f.competition);
 		const neutral = !!(f as Fixture & { neutral?: boolean }).neutral;
@@ -247,8 +250,11 @@ export function simulateOtherFixtures(
 			return { home: f.home, away: f.away, homeGoals: q.homeGoals, awayGoals: q.awayGoals, competition: f.competition, seed, quick: true };
 		}
 		const r = simulateMatch({ home: aiTeam(career, f.home, ctx, f.round).setup, away: aiTeam(career, f.away, ctx, f.round).setup, seed, ...(neutral ? { rules: { homeAdvantage: false } } : {}) });
-		const goals = r.events.filter((e) => e.type === 'goal').map((e) => ({ side: e.side!, player: e.player!, minute: Math.floor(e.tick / 60) }));
-		return { home: f.home, away: f.away, homeGoals: r.homeGoals, awayGoals: r.awayGoals, competition: f.competition, seed, goals };
+		const goals = r.events.filter((e) => e.type === 'goal').map((e) => ({ side: e.side!, player: e.player!, minute: Math.floor(e.tick / 60), ...(e.other ? { assist: e.other } : {}) }));
+		// 0.13: cartões e lesões reais do motor, para a central de resultados simultâneos.
+		const incidents = r.events.filter((e) => e.type === 'yellow' || e.type === 'red' || e.type === 'injury')
+			.map((e) => ({ kind: e.type as OtherIncident['kind'], side: e.side!, player: e.player!, minute: Math.floor(e.tick / 60) }));
+		return { home: f.home, away: f.away, homeGoals: r.homeGoals, awayGoals: r.awayGoals, competition: f.competition, seed, goals, incidents };
 	});
 }
 

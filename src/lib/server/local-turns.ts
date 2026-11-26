@@ -115,7 +115,8 @@ export async function answerDeal(db: Db, profileId: string, career: Career, body
 	if (!deal || deal.status !== 'aberta' || deal.id !== body.dealId) throw new TurnError('Esta negociação já terminou.', 409);
 	if (deal.turn !== g.active) throw new TurnError('Não é a sua vez de responder esta negociação.', 409);
 	const other = g.active === deal.buyer ? deal.seller : deal.buyer;
-	const action = body.action;
+	// `choice` (rota de turnos) ou `action` (chamada direta)
+	const action = body.choice ?? body.action;
 	if (action === 'contraproposta') {
 		const fee = Math.round(num(body.fee));
 		if (deal.kind !== 'compra') throw new TurnError('Empréstimos não têm valor de transferência: aceite ou recuse.');

@@ -18,11 +18,15 @@
 	import Icon from '#lib/ui/Icon.svelte';
 	import MatchCenter from '#lib/ui/match/MatchCenter.svelte';
 	import Meter from '#lib/ui/Meter.svelte';
+	import LocalMatchday from '#lib/ui/local/LocalMatchday.svelte';
+	import { isShared } from '#lib/domain/turns.ts';
 
 	let { data } = $props();
 	const c = $derived(data.career);
 	const v = $derived(data.view);
 	const base = $derived(`/carreira/${c.id}`);
+	// 0.13: carreira com vários treinadores — turnos e central de resultados simultâneos.
+	const shared = $derived(isShared(c));
 	$effect(() => setIslandContext('Dia de jogo'));
 
 	type Stage = 'pre' | 'live' | 'saving' | 'saved' | 'error';
@@ -140,7 +144,9 @@
 	const otherCount = $derived(saved ? saved.results.length - myResults.length : 0);
 </script>
 
-{#if walkout && playedFixture && setup}
+{#if shared}
+	<LocalMatchday career={c} seasonOver={v.seasonOver} stepLabel={v.seasonOver ? `Fim da temporada ${c.season}` : v.step?.kind === 'cup' ? 'Copa do Brasil' : `Rodada ${v.nextRound}`} />
+{:else if walkout && playedFixture && setup}
 	{@const game = playedFixture}
 	<Walkout home={setup.home} away={setup.away} neutral={setup.neutral}
 		coaches={c.mode === 'coach' ? { [setup.mySide]: c.personName } : {}}
@@ -152,7 +158,9 @@
 
 <svelte:head><title>Dia de jogo · {v.club.name} · BRASFC</title></svelte:head>
 
-{#if seasonEnd}
+{#if shared}
+	<!-- turnos: LocalMatchday -->
+{:else if seasonEnd}
 	<section class="card post" data-umx-enter>
 		<Icon name="trophy" />
 		<h1>Temporada {seasonEnd.summary.season} encerrada</h1>
@@ -256,7 +264,7 @@
 		</section>
 	{/if}
 	{#if setup && stage !== 'pre'}
-		<MatchCenter home={setup.home} away={setup.away} seed={setup.seed} control={setup.control} neutral={setup.neutral} autoplay onfinish={finished} />
+		<MatchCenter coach={c.personName} presets={c.data.tacticPresets ?? []} home={setup.home} away={setup.away} seed={setup.seed} control={setup.control} neutral={setup.neutral} autoplay onfinish={finished} />
 	{/if}
 {/if}
 

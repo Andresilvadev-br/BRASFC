@@ -8,10 +8,13 @@ import { addDays } from '#lib/domain/dates.ts';
 import { applyTrainingWeek, recoverFitness } from '#lib/domain/drills.ts';
 import { closeSeason, divisionOf, prepareRound, seasonFixtures, seasonStartDate, type SeasonSummary } from '#lib/domain/league.ts';
 import { CUP_ID, clubCupRun, cupFixtures, cupView, prepareCup, projectedCup } from '#lib/domain/cup.ts';
-import { payroll, sanitizeMarket } from '#lib/domain/management.ts';
+import { initialClubState, payroll, sanitizeMarket } from '#lib/domain/management.ts';
 import { clubStateOf, rosterContext } from '#lib/domain/world.ts';
 import { seasonEndManagement, weeklyManagement, type WeeklyResult } from './management.ts';
-import { rosterOf } from '#lib/domain/market.ts';
+import { rosterOf, tierOfDivision } from '#lib/domain/market.ts';
+import { attendance, clubEconomy, isDerby, stadiumCapacity } from '#lib/domain/club.ts';
+import { getClub } from '#lib/domain/clubs.ts';
+import { realClub } from '#lib/data/brasil.ts';
 import { insertLedger, insertMessages, insertTransfers, upsertHistory, type TransferRow } from './repos/management.ts';
 import { strengthFor } from '#lib/domain/strength.ts';
 import type { Fixture } from '#lib/domain/season.ts';
@@ -30,7 +33,7 @@ import { isRoleId } from '#lib/engine/roles.ts';
 import type { Decision, Side } from '#lib/engine/types.ts';
 import type { Db } from './db/index.ts';
 import { replaceCareerData, saveCareerProgress } from './repos/careers.ts';
-import { takePrefetched } from './round-prefetch.ts';
+import { rememberPrefetched, takePrefetched } from './round-prefetch.ts';
 import { insertRound, listResults, listSeasonGoals, listUserMatches, recentUserMatches, type RoundInsert, type StoredResult } from './repos/matches.ts';
 
 export class RoundError extends Error {
@@ -194,10 +197,10 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 	// Os demais jogos não dependem das decisões dos treinadores: se já foram simulados em segundo plano
 	// (mesma versão do save e mesmo passo), o resultado é reaproveitado — idêntico, só que pronto.
 	const lead = runs.find((r) => r.career === career) ?? runs[0];
-	const prefetched = group ? null : takePrefetched(career, step.key, others);
+	const prefetched = takePrefetched(career, step.key, others);
 	timings.reaproveitado = prefetched ? 1 : 0;
 	for (const r of prefetched ?? simulateOtherFixtures(career, others, lead.ctx, { full, strengthOf })) {
-		rows.push({ season: career.season, round, competition: r.competition, home: r.home, away: r.away, homeGoals: r.homeGoals, awayGoals: r.awayGoals, seed: r.seed, isUser: false, ...(r.goals ? { summary: { goals: r.goals } as never } : {}) });
+		rows.push({ season: career.season, round, competition: r.competition, home: r.home, away: r.away, homeGoals: r.homeGoals, awayGoals: r.awayGoals, seed: r.seed, isUser: false, ...(r.goals ? { summary: { goals: r.goals.map(({ side, player, minute }) => ({ side, player, minute })) } as never } : {}) });
 	}
 	const allResults: StoredRoundResult[] = [...results, ...rows.map((r) => ({ round: r.round, competition: r.competition, home: r.home, away: r.away, homeGoals: r.homeGoals, awayGoals: r.awayGoals }))];
 	const nextDate = addDays(step.date, 1);
@@ -320,6 +323,67 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 	};
 }
 
+/**
+ * 0.13 · Central da rodada (carreira com vários treinadores): monta as partidas dos treinadores
+ * (com as táticas de cada um) e simula UMA vez os demais jogos — os mesmos que a gravação usará
+ * (o resultado fica guardado para a gravação da rodada, na mesma versão do save).
+ */
+export async function roundPreview(db: Db, career: Career) {
+	const group = localGroup(career);
+	const results = await listResults(db, career.id, career.season);
+	const view = careerView(career, results);
+	if (view.seasonOver || !view.step) return null;
+	const step = view.step;
+	const divisions = group ? Object.keys(humanClubs(career)).map((id) => divisionOf(view.league, id)).filter((d): d is NonNullable<typeof d> => !!d) : undefined;
+	const plan = planRound(career, results, view, divisions);
+	const runs = await coachRuns(db, career, results, view, plan.fixtures);
+	// Estádio e público (modelo de bilheteria do jogo: o dos clubes humanos é o mesmo que entra no caixa deles).
+	const humansNow = new Map(runs.filter((r) => !r.unemployed).map((r) => [r.career.clubId, r.career]));
+	const venue = (f: { home: string; away: string; competition: string }) => {
+		const division = divisionOf(plan.league, f.home);
+		const tier = tierOfDivision(division);
+		const owner = humansNow.get(f.home);
+		const st = owner ? clubStateOf(owner, plan.league) : initialClubState(career.seed, f.home, division, career.season);
+		const eco = clubEconomy(f.home, tier);
+		const neutral = !!(f as { neutral?: boolean }).neutral;
+		const crowd = attendance({ capacity: stadiumCapacity(eco.capacity, st.infra.estadio.level), fanMood: st.fanMood, price: st.ticketPrice, ticketRef: eco.ticketRef, opponentReputation: getClub(f.away)?.reputation ?? 2, derby: isDerby(f.home, f.away), competitionWeight: f.competition === CUP_ID ? 1.1 : 1 });
+		return { stadium: neutral ? 'Campo neutro' : (realClub(f.home)?.estadio ?? getClub(f.home)?.stadium ?? '—'), attendance: neutral ? null : crowd };
+	};
+	const humanFixtures = [...new Set(runs.flatMap((r) => (r.mine ? [r.mine] : [])))];
+	const matches = humanFixtures.map((f) => {
+		const sides = runs.filter((r) => r.mine === f);
+		const parts = sides.map((r) => fixtureSetup(r.career, f, r.view.tactic, r.ctx));
+		return {
+			key: fixtureKey(f), competition: f.competition, round: f.round, home: f.home, away: f.away, venue: venue(f),
+			coaches: sides.map((r, i) => ({ index: r.index, side: parts[i].mySide, name: r.career.personName })),
+			setup: sharedSetup(parts),
+			suspended: parts.flatMap((p) => p.suspended)
+		};
+	});
+	const others = plan.fixtures.filter((f) => !humanFixtures.includes(f));
+	const lead = runs.find((r) => r.career === career) ?? runs[0];
+	const sims = takePrefetched(career, step.key, others) ?? simulateOtherFixtures(career, others, lead.ctx, { full: plan.full, strengthOf: plan.strengthOf });
+	rememberPrefetched(career, step.key, others, sims);
+	const ctx = rosterContext(career, plan.league);
+	const names = new Map<string, string>();
+	const nameOf = (club: string, id: string) => {
+		if (!names.size || !names.has(`${club}:${id}`)) for (const p of rosterOf(ctx, club)) names.set(`${club}:${p.id}`, p.shortName ?? p.name);
+		return names.get(`${club}:${id}`) ?? '—';
+	};
+	return {
+		step: step.key,
+		kind: step.kind,
+		round: step.kind === 'league' ? step.round : step.matchday,
+		date: step.date,
+		matches,
+		others: sims.map((r) => ({
+			competition: r.competition, home: r.home, away: r.away, homeGoals: r.homeGoals, awayGoals: r.awayGoals, quick: !!r.quick, venue: venue(others.find((f) => f.home === r.home && f.away === r.away && f.competition === r.competition) ?? r),
+			goals: (r.goals ?? []).map((g) => ({ side: g.side, minute: g.minute, player: nameOf(g.side === 'home' ? r.home : r.away, g.player), ...(g.assist ? { assist: nameOf(g.side === 'home' ? r.home : r.away, g.assist) } : {}) })),
+			incidents: (r.incidents ?? []).map((x) => ({ kind: x.kind, side: x.side, minute: x.minute, player: nameOf(x.side === 'home' ? r.home : r.away, x.player) }))
+		}))
+	};
+}
+
 /** Todos os treinadores confirmaram a preparação do passo (o último confirma ao mandar jogar). */
 function allReady(g: LocalGroup): boolean {
 	return g.coaches.every((c, i) => i === g.active || g.ready.includes(c.id));
@@ -388,6 +452,7 @@ export async function finishSeason(db: Db, profileId: string, career: Career, ve
 	if (career.mode !== 'coach') throw new RoundError('A carreira de jogador foi descontinuada na versão 0.12. O save continua guardado como legado.', 410);
 	const group = localGroup(career);
 	if (group?.deal?.status === 'aberta') throw new RoundError('Há uma negociação entre treinadores aguardando resposta.', 409);
+	if (group && !allReady(group)) throw new RoundError('Ainda há treinadores fechando a temporada.', 409);
 	const results = await listResults(db, career.id, career.season);
 	const view = careerView(career, results);
 	if (!view.seasonOver) throw new RoundError('Ainda há jogos a disputar nesta temporada.', 409);

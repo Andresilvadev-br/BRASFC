@@ -113,6 +113,48 @@ const HAIR: Record<HairStyle, Record<number, string>> = {
 		4: '.OHSSSSSSSSSSSSHO.',
 		5: '.OHSSSSSSSSSSSSHO.'
 	},
+	'black-power': {
+		0: '..OOOOOOOOOOOOOO..',
+		1: '.OHHHhHHHHHhHHHHO.',
+		2: 'OHHhHHHHhHHHHhHHHO',
+		3: 'OHHHHHHHHHHHHHHHHO',
+		4: 'OHHHHHHHHHHHHHHHHO',
+		5: 'OHHHSSSSSSSSSSHHHO',
+		6: 'OHSEEESSSSSSEEESHO',
+		7: 'OHSSEESSSSSSEESSHO'
+	},
+	'trancas': {
+		0: '.....OOOOOOOO.....',
+		1: '...OOHHHHHHHHOO...',
+		2: '..OHhHhHhHhHhHHO..',
+		3: '.OHHhHhHhHhHhHHHO.',
+		4: '.OHHHHHHHHHHHHHHO.',
+		5: '.OHHSSSSSSSSSSHHO.',
+		6: '.OHEEESSSSSSEEEHO.',
+		7: 'OHHSEESSSSSSEESHHO',
+		8: 'OHhSEWSSSSSSEWShHO',
+		9: 'OHHccSSSsSSSSccHHO',
+		10: 'OhHSSSSSSSSSSSSHhO'
+	},
+	'topete': {
+		0: '......OOOOOO......',
+		1: '....OOHHHHhHOO....',
+		2: '...OHHHhHHHHHHO...',
+		3: '..OHHHHHHHHHHHHO..',
+		4: '.OHHHHHHHHHHHHHHO.',
+		5: '.OHSSSSSSSSSSSSHO.'
+	},
+	'franja': {
+		0: '.....OOOOOOOO.....',
+		1: '...OOHHHHHHHHOO...',
+		2: '..OHHHHHHHHHHHHO..',
+		3: '.OHHHHHHHHHHHHHHO.',
+		4: '.OHHhHHhHHhHHhHHO.',
+		5: '.OHHHHHHHHHHHHHHO.',
+		6: '.OHEEESSSSSSEEEHO.'
+	},
+	// careca: só o contorno da cabeça (sem linhas de cabelo)
+	careca: {},
 	longo: {
 		0: '.....OOOOOOOO.....',
 		1: '...OOHHHHHHHHOO...',
@@ -172,11 +214,14 @@ export const COACH_KIT: Kit = { shirt: '#262E35', trim: '#E7EDF0', shorts: '#1A2
 export function headGrid(style: HairStyle, details?: Appearance): string[] {
 	const rows = [...HEAD_BASE];
 	for (const [i, row] of Object.entries(HAIR[style])) rows[Number(i)] = row;
-	if (details?.face === 'barba') {
-		rows[12] = rows[12].replace(/S/g, 'H');
-		rows[13] = rows[13].replace(/S/g, 'h');
-	} else if (details?.face === 'bigode') {
-		rows[10] = rows[10].slice(0, 6) + 'HHHHHH' + rows[10].slice(12);
+	// Rostos (0.13: sem barba/bigode). Cada traço troca poucos pixels da mesma grade 18×15.
+	const put = (row: number, col: number, text: string) => { rows[row] = rows[row].slice(0, col) + text + rows[row].slice(col + text.length); };
+	switch (details?.face) {
+		case 'sorriso': put(10, 6, 'MSSSSM'); put(11, 7, 'MMMM'); break;
+		case 'serio': put(5, 3, 'EE'); put(5, 13, 'EE'); put(11, 7, 'MMMM'); break;
+		case 'determinado': put(6, 3, 'EEEE'); put(6, 11, 'EEEE'); put(8, 5, 'E'); put(8, 13, 'E'); break;
+		case 'sardas': put(9, 3, 'scs'); put(9, 12, 'scs'); put(10, 4, 's'); put(10, 13, 's'); break;
+		case 'cicatriz': put(5, 12, 's'); put(6, 11, 's'); put(9, 12, 'ss'); break;
 	}
 	if (details?.accessory === 'faixa') rows[5] = rows[5].replace(/[SHh]/g, 'K');
 	if (details?.accessory === 'oculos') {
@@ -217,8 +262,8 @@ export function bodyGrid(style: HairStyle, { ball = true, details, outfit }: { b
 
 function dressRow(row: string, i: number, outfit: Outfit) {
 	const { top, bottom, shoes } = outfit;
-	const isJacket = ['jaqueta', 'agasalho', 'blazer', 'terno', 'clubeJaqueta', 'casaco', 'clubeTerno'].includes(top);
-	const isFormal = ['social', 'blazer', 'terno', 'clubeTerno'].includes(top);
+	const isJacket = ['jaqueta', 'agasalho', 'blazer', 'terno', 'clubeJaqueta', 'casaco', 'clubeTerno', 'moletom', 'cortaVento'].includes(top);
+	const isFormal = ['social', 'blazer', 'terno', 'clubeTerno', 'colete'].includes(top);
 	const longSleeve = isJacket || top === 'social' || top === 'camisa';
 	if (longSleeve && i >= 3 && i <= 6) row = row.replace(/S/g, i === 6 ? 'K' : 'J');
 	if ((isJacket || isFormal || top === 'polo') && i >= 1 && i <= (isJacket ? 7 : 4)) {
@@ -227,6 +272,8 @@ function dressRow(row: string, i: number, outfit: Outfit) {
 		row = row.slice(0, front) + chest + row.slice(front + 1);
 	}
 	if (top === 'treino' && i === 2) row = row.replace(/JJJJ/, 'JKKJ');
+	if (top === 'moletom' && i === 5) row = row.replace(/JJJJJJ/, 'JjjjjJ');
+	if (top === 'cortaVento' && (i === 2 || i === 6)) row = row.replace(/JJJJJJ/, 'KKKKKK');
 	if (top === 'viagem' && i === 5) row = row.replace(/JJJJJJ/, 'JKKKKJ');
 	if (top === 'clubeJaqueta' && i === 6) row = row.replace(/JJJJ/, 'JKKJ');
 	if (top === 'casaco' && i === 8) row = row.replace(/P/g, 'j');

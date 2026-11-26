@@ -1,8 +1,10 @@
 # BRASFC
 
-Simulador brasileiro de futebol com **Carreira de Treinador** e **Carreira de Jogador**, multiplayer e identidade visual premium — a simplicidade do Brasfoot com a apresentação de um jogo moderno.
+Simulador brasileiro de futebol para **Windows**, 100% offline: carreira de treinador individual ou com **vários treinadores no mesmo computador, em turnos** — a simplicidade do Brasfoot, a profundidade do BRASFC e a fluidez do Ultra Motion X.
 
-> Consulte a versão do jogo em [package.json](package.json) e a versão Windows em [desktop/package.json](desktop/package.json). A atualização Master está em revisão. Veja a [auditoria](docs/AUDITORIA-MASTER.md) e os [contratos de integração](docs/INTEGRACAO-MASTER.md).
+> Versão do jogo em [package.json](package.json) e do aplicativo em [desktop/package.json](desktop/package.json).
+>
+> **0.13 LOCAL LEGACY:** o aplicativo (`desktop/`) roda o jogo embutido (servidor SvelteKit em `127.0.0.1` + save PGlite na pasta do usuário) e nunca abre o site. O site público (VPS) só apresenta e distribui o jogo: fora do app (`BRASFC_OFFLINE=1`), do `vite dev` ou de `BRASFC_GAME=1`, as rotas do jogo redirecionam para `/` e a API responde 410. A internet é usada só para baixar e atualizar o app.
 
 ## Rodar localmente (com HMR)
 
@@ -29,8 +31,10 @@ npm run verify
 Executa `svelte-check` (tipos), os testes (`vitest`) e o build de produção. Para testar o servidor de produção rodando:
 
 ```bash
-npm run build && BRASFC_ALLOW_PGLITE=1 ORIGIN=http://127.0.0.1:3000 npm start
+npm run build && BRASFC_OFFLINE=1 BRASFC_ALLOW_PGLITE=1 ORIGIN=http://127.0.0.1:3000 npm start
 ```
+
+(sem `BRASFC_OFFLINE=1` o mesmo build sobe como site público; o smoke test reconhece os dois modos)
 
 ```bash
 node scripts/smoke.mjs http://127.0.0.1:3000

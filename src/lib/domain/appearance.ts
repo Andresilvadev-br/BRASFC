@@ -2,7 +2,8 @@ import { isOutfit, type Outfit } from './wardrobe.ts';
 import type { Rng } from './rng.ts';
 
 export const APPEARANCE_OPTIONS = {
-	face: { neutro: 'Clássico', barba: 'Barba', bigode: 'Bigode' },
+	// 0.13: sem barba/bigode (tinham problemas visuais); saves antigos com eles continuam válidos e aparecem sem pelos.
+	face: { neutro: 'Clássico', sorriso: 'Sorridente', serio: 'Sério', determinado: 'Determinado', sardas: 'Sardas', cicatriz: 'Cicatriz' },
 	body: { atletico: 'Atlético', esguio: 'Esguio', forte: 'Forte' },
 	accessory: { nenhum: 'Nenhum', faixa: 'Faixa', munhequeira: 'Munhequeira', oculos: 'Óculos', brinco: 'Brinco' },
 	sleeves: { curta: 'Curta', longa: 'Longa' },
@@ -17,8 +18,8 @@ export const APPEARANCE_FIELDS: Record<keyof typeof APPEARANCE_OPTIONS, string> 
 export type AppearanceDetails = { [K in keyof typeof APPEARANCE_OPTIONS]?: keyof (typeof APPEARANCE_OPTIONS)[K] };
 
 export const SKIN_TONES = ['#F6D3B3', '#E8B48C', '#C98E62', '#A06A43', '#7A4B2C', '#553320'] as const;
-export const HAIR_COLORS = ['#1B1410', '#3B2417', '#6B3F1F', '#A0612B', '#D9A441', '#9AA0A6'] as const;
-export const HAIR_STYLES = ['curto', 'espetado', 'raspado', 'cacheado', 'moicano', 'longo', 'crespo', 'medio', 'liso-lateral', 'coque'] as const;
+export const HAIR_COLORS = ['#1B1410', '#3B2417', '#6B3F1F', '#A0612B', '#D9A441', '#9AA0A6', '#E8E2D6', '#8E2F25'] as const;
+export const HAIR_STYLES = ['curto', 'espetado', 'raspado', 'cacheado', 'moicano', 'longo', 'crespo', 'medio', 'liso-lateral', 'coque', 'black-power', 'trancas', 'topete', 'franja', 'careca'] as const;
 
 export type HairStyle = (typeof HAIR_STYLES)[number];
 
@@ -39,13 +40,21 @@ export const HAIR_STYLE_LABELS: Record<HairStyle, string> = {
 	crespo: 'Crespo',
 	medio: 'Médio',
 	'liso-lateral': 'Liso lateral',
-	coque: 'Coque'
+	coque: 'Coque',
+	'black-power': 'Black power',
+	trancas: 'Tranças',
+	topete: 'Topete',
+	franja: 'Franja',
+	careca: 'Careca'
 };
+
+/** Rostos de versões anteriores (sem desenho próprio desde a 0.13): continuam aceitos nos saves. */
+const LEGACY_FACES = new Set(['barba', 'bigode']);
 
 export function randomAppearance(rng: Rng): Appearance {
 	return {
 		skin: rng.int(0, SKIN_TONES.length - 1),
-		hairColor: rng.int(0, HAIR_COLORS.length - 2), // grisalho fica raro: só via escolha
+		hairColor: rng.int(0, 4), // grisalho, branco e ruivo ficam raros: só via escolha
 		hairStyle: rng.pick(HAIR_STYLES.slice(0, 6))
 	};
 }
@@ -64,7 +73,7 @@ export function isAppearance(value: unknown): value is Appearance {
 		(HAIR_STYLES as readonly string[]).includes(v.hairStyle) &&
 		(v.wardrobe === undefined || isOutfit(v.wardrobe)) &&
 		Object.entries(APPEARANCE_OPTIONS).every(([key, options]) =>
-			v[key] === undefined || (typeof v[key] === 'string' && Object.hasOwn(options, v[key]))
+			v[key] === undefined || (typeof v[key] === 'string' && (Object.hasOwn(options, v[key]) || (key === 'face' && LEGACY_FACES.has(v[key] as string))))
 		)
 	);
 }
