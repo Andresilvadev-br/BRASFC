@@ -147,7 +147,7 @@
 </script>
 
 {#if shared}
-	<LocalMatchday career={c} seasonOver={v.seasonOver} stepLabel={v.seasonOver ? `Fim da temporada ${c.season}` : v.step?.kind === 'cup' ? 'Copa do Brasil' : `Rodada ${v.nextRound}`} />
+	<LocalMatchday career={c} seasonOver={v.seasonOver} stepLabel={v.seasonOver ? `Fim da temporada ${c.season}` : v.step?.kind === 'cup' ? (v.step.name ?? 'Copa do Brasil') : `Rodada ${v.nextRound}`} />
 {:else if walkout && playedFixture && setup}
 	{@const game = playedFixture}
 	<Walkout home={setup.home} away={setup.away} neutral={setup.neutral}
@@ -187,7 +187,7 @@
 {:else if stage === 'pre' && !fixture}
 	<section class="card empty" data-umx-enter>
 		<Icon name="calendar" />
-		<h1>{v.step?.kind === 'cup' ? 'Quarta de Copa do Brasil' : `Rodada ${v.nextRound}`}: seu time não joga</h1>
+		<h1>{v.step?.kind === 'cup' ? (v.step.name ?? 'Copa do Brasil') : `Rodada ${v.nextRound}`}: seu time não joga</h1>
 		<p>
 			As outras partidas acontecem normalmente. Use a semana para treinar
 			{#if v.upcoming}— o próximo jogo é em {formatLong(v.upcoming.date).toLowerCase()}{v.upcoming.competition === 'copa-do-brasil' ? ' (Copa do Brasil)' : ''}{/if}.
@@ -199,7 +199,7 @@
 	</section>
 {:else if stage === 'pre' && fixture && preview}
 	<section class="card pre" data-umx-enter>
-		<span class="eyebrow">{fixture.competition === 'copa-do-brasil' ? `Copa do Brasil · ${fixture.phase ?? ''}` : `${competitionName(fixture.competition)} · Rodada ${fixture.round}`} · {formatLong(fixture.date)} · {fixture.time}</span>
+		<span class="eyebrow">{v.step?.kind === 'cup' ? `${competitionName(fixture.competition)} · ${fixture.phase ?? ''}` : `${competitionName(fixture.competition)} · Rodada ${fixture.round}`} · {formatLong(fixture.date)} · {fixture.time}</span>
 		<div class="vs">
 			<div class="side"><Crest clubId={fixture.home} size={88} /><strong>{getClub(fixture.home)?.name}</strong></div>
 			<span class="x">×</span>

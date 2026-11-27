@@ -267,7 +267,12 @@ export function officeSeasonEnd(o: { career: Career; office: OfficeState; club: 
 	if (o.next.selection && !club.board.dismissed && !divisionOf(o.next, o.career.clubId)) {
 		club.board.dismissed = true;
 		Object.assign(office, markUnemployed(office, o.career.season, 99, 'fim-contrato'));
-		news.push({ sender, subject: 'Clube retorna aos estaduais', body: 'O clube saiu das divisões nacionais. Sem calendário estadual no save, seu vínculo foi encerrado. Você pode assumir outro clube pela Central de Propostas.', important: true });
+		const world = o.next.world === 'mundo';
+		news.push({ sender, subject: world ? 'Clube rebaixado para divisão inativa' : 'Clube retorna aos estaduais',
+			body: world
+				? 'O clube desceu para uma divisão sem calendário neste save. Seu vínculo foi encerrado e a Central de Propostas está disponível.'
+				: 'O clube saiu das divisões nacionais. Sem calendário estadual no save, seu vínculo foi encerrado. Você pode assumir outro clube pela Central de Propostas.',
+			important: true });
 	}
 	if (club.board.dismissed) {
 		const source = office.unemployedSince?.reason === 'fim-contrato' && office.unemployedSince.season === o.career.season ? 'fim-contrato' as const : 'temporada' as const;

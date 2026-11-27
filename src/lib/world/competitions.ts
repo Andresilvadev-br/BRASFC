@@ -26,7 +26,7 @@ export interface CompetitionGroup {
 	items: WorldCompetition[];
 }
 
-const KIND_ORDER: Record<WorldCompetition['kind'], number> = { league: 0, 'national-cup': 1, state: 2, 'super-cup': 3, continental: 4 };
+const KIND_ORDER: Record<WorldCompetition['kind'], number> = { league: 0, 'national-cup': 1, 'regional-cup': 1, state: 2, 'super-cup': 3, continental: 4 };
 
 /** Agrupa por país (ligas, copas, estaduais) e põe as continentais num grupo por confederação, no fim. */
 export function groupCompetitions(list: WorldCompetition[], countryName: (code: string) => string): CompetitionGroup[] {
@@ -42,5 +42,5 @@ export function groupCompetitions(list: WorldCompetition[], countryName: (code: 
 }
 
 export function isCup(id: CompetitionId) {
-	return id === 'copa-do-brasil' || id.startsWith('cup/') || id.startsWith('continental/');
+	return id === 'copa-do-brasil' || id.startsWith('cup/') || id.startsWith('state/') || id.startsWith('continental/');
 }

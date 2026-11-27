@@ -18,6 +18,12 @@ import { ALL_ATTRIBUTES, computeOverall, generateAttributes, type AttributeKey }
  *    são regerados pela semente, igual no servidor e no navegador, com a mesma regra do catálogo.
  */
 export const WORLD_DIVISION = /^league\/[a-z]{3}\/\d{1,2}$/;
+export const SPAIN_FIRST = 'league/esp/1';
+export const SPAIN_SECOND = 'league/esp/2';
+export const SPAIN_RESERVES: ReadonlyMap<string, string> = new Map([
+	['world/esp/real-sociedad-b', 'world/esp/real-sociedad'],
+	['world/esp/celta-fortuna', 'world/esp/rc-celta']
+]);
 export const WORLD_CLUB = /^world\/[a-z]{3}\/[a-z0-9-]+$/;
 
 export type Tiebreak = 'confronto-direto' | 'saldo';
@@ -46,7 +52,7 @@ export interface WorldDivisionRule {
 }
 
 /** [id, nome, idade, país, posição, titular(0/1), overall estimado, potencial estimado, características] */
-export type CompactPlayer = [string, string, number, string, string, 0 | 1, number, number, AttributeKey[]];
+export type CompactPlayer = [string, string, number | null, string, string, 0 | 1, number, number, AttributeKey[], number?];
 
 export interface WorldSnapshot {
 	catalog: string;
@@ -64,7 +70,7 @@ export interface WorldPlan {
 // ─────────────────────────────────────────────────────────────── elencos
 
 /** Atleta do catálogo com atributos determinísticos (mesma regra de `world-catalog.ts`). */
-export function catalogPlayer(seed: number, raw: { id: string; name: string; age: number; country: string; position: string; overall: number; potential: number; traits: AttributeKey[] }, index: number): SquadPlayer | null {
+export function catalogPlayer(seed: number, raw: { id: string; name: string; age: number | null; country: string; position: string; overall: number; potential: number; traits: AttributeKey[]; number?: number }, index: number): SquadPlayer | null {
 	if (!isPosition(raw.position)) return null;
 	const position = raw.position as Position;
 	const id = 'world/' + raw.id.replace(/^world\//, '');
@@ -73,7 +79,7 @@ export function catalogPlayer(seed: number, raw: { id: string; name: string; age
 	for (const key of raw.traits) if (ALL_ATTRIBUTES.includes(key)) attributes[key] = Math.min(99, attributes[key] + 5);
 	const overall = computeOverall(attributes, position);
 	return {
-		id, name: raw.name, shortName: raw.name.split(' ').at(-1) ?? raw.name, number: index + 1, age: raw.age,
+		id, name: raw.name, shortName: raw.name.split(' ').at(-1) ?? raw.name, number: raw.number ?? index + 1, age: raw.age ?? 25, ...(raw.age === null ? { ageUnknown: true } : {}),
 		nationality: raw.country.toUpperCase(), position, overall, potential: Math.max(overall, raw.potential), condition: 100, morale: 'boa',
 		attributes, archetype, appearance: randomAppearance(rng)
 	};
@@ -101,8 +107,8 @@ export function snapshotRoster(snapshot: WorldSnapshot | undefined, seed: number
 		if (!rows) return undefined;
 		let squad = cache.get(clubId);
 		if (!squad) {
-			squad = rows.flatMap(([id, name, age, country, position, , overall, potential, traits], i) => {
-				const p = catalogPlayer(seed, { id, name, age, country, position, overall, potential, traits }, i);
+			squad = rows.flatMap(([id, name, age, country, position, , overall, potential, traits, number], i) => {
+				const p = catalogPlayer(seed, { id, name, age, country, position, overall, potential, traits, number }, i);
 				return p ? [p] : [];
 			});
 			cache.set(clubId, squad);

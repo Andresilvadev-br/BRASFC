@@ -9,7 +9,8 @@
 	import Crest from '#lib/ui/Crest.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
 	import MatchCard from '#lib/ui/cards/MatchCard.svelte';
-	import { CUP_ID } from '#lib/domain/cup.ts';
+	import { competitionName } from '#lib/domain/league.ts';
+	import { isCup } from '#lib/world/competitions.ts';
 	import { enter } from '#lib/motion/actions.ts';
 
 	let { data }: { data: CareerScreenData } = $props();
@@ -54,13 +55,13 @@
 		const gf = r.home === c.clubId ? r.homeGoals : r.awayGoals, ga = r.home === c.clubId ? r.awayGoals : r.homeGoals;
 		return { r, key: gf > ga ? 'v' : gf === ga ? 'e' : 'd', label: gf > ga ? 'Vitória' : gf === ga ? 'Empate' : 'Derrota' } as const;
 	};
-	const compOf = (f: Fx) => (f.competition === CUP_ID ? 'Copa do Brasil' : v.divisionLabel);
+	const compOf = (f: Fx) => (isCup(f.competition) ? competitionName(f.competition) : v.divisionLabel);
 	const nextFixture = $derived(v.clubFixtures.find((f) => !resultOf(f)));
 	const summary = $derived.by(() => {
 		const out = { games: monthFixtures.length, home: 0, cup: 0, v: 0, e: 0, d: 0 };
 		for (const f of monthFixtures) {
 			if (f.home === c.clubId) out.home++;
-			if (f.competition === CUP_ID) out.cup++;
+			if (isCup(f.competition)) out.cup++;
 			const o = outcomeOf(f);
 			if (o) out[o.key]++;
 		}
@@ -95,7 +96,7 @@
 					class:out={dt.getUTCMonth() !== month}
 					class:today={d === c.gameDate}
 					class:match={!!f}
-					class:cup={f?.competition === CUP_ID}
+					class:cup={!!f && isCup(f.competition)}
 					class:next={!!f && nextFixture === f}
 					data-outcome={f ? outcomeOf(f)?.key : undefined}
 					class:sel={(selFixture?.date ?? '') === d && !!f}
@@ -107,7 +108,7 @@
 					{#if f}
 						{@const opp = f.home === c.clubId ? f.away : f.home}
 						{@const o = outcomeOf(f)}
-						<span class="tag">{f.competition === CUP_ID ? 'Copa' : `R${f.round}`}</span>
+						<span class="tag">{isCup(f.competition) ? 'Copa' : `R${f.round}`}</span>
 						<span class="m">
 							<Crest clubId={opp} size={28} />
 							{#if o}<span class="score num">{o.r.homeGoals}–{o.r.awayGoals}</span>{:else}<span class="ha">{f.home === c.clubId ? 'Casa' : 'Fora'}</span>{/if}
@@ -128,7 +129,7 @@
 				{#key selFixture.date}
 					<div class="sel-card" use:enter={{ y: 6 }}>
 						<Crest clubId={opp} size={72} />
-						<span class="eyebrow">{compOf(selFixture)}{selFixture.competition === CUP_ID ? '' : ` · Rodada ${selFixture.round}`} · {selFixture.home === c.clubId ? 'em casa' : 'fora de casa'}</span>
+						<span class="eyebrow">{compOf(selFixture)}{isCup(selFixture.competition) ? '' : ` · Rodada ${selFixture.round}`} · {selFixture.home === c.clubId ? 'em casa' : 'fora de casa'}</span>
 						<strong>{getClub(opp)?.name}</strong>
 						{#if o}<span class="final" data-outcome={o.key}>{o.label} · {getClub(o.r.home)?.short} {o.r.homeGoals} × {o.r.awayGoals} {getClub(o.r.away)?.short}</span>{/if}
 						<span class="muted">{formatLong(selFixture.date)} · {selFixture.time}</span>
@@ -144,7 +145,7 @@
 			<Panel title="Suspensões" icon="alert" index={2}>
 				<ul class="susp-list">
 					{#each suspensionList as s (s.playerId + s.competition)}
-						<li><strong>{s.name}</strong> · {suspensionLabel(s)} <small>{s.competition === CUP_ID ? 'Copa do Brasil' : 'Campeonato'}{s.nextDate ? ` · fora em ${formatLong(s.nextDate).toLowerCase()}` : ''}</small></li>
+						<li><strong>{s.name}</strong> · {suspensionLabel(s)} <small>{isCup(s.competition) ? competitionName(s.competition) : 'Campeonato'}{s.nextDate ? ` · fora em ${formatLong(s.nextDate).toLowerCase()}` : ''}</small></li>
 					{/each}
 				</ul>
 			</Panel>
@@ -161,7 +162,7 @@
 					{@const o = outcomeOf(f)}
 					<button type="button" class="agenda-item" class:on={selFixture === f} onclick={() => (selected = f.date)} data-umx-press>
 						<MatchCard home={f.home} away={f.away} score={o ? { home: o.r.homeGoals, away: o.r.awayGoals } : null} time={f.time}
-							label={`${formatLong(f.date).split(',')[0]} · ${f.competition === CUP_ID ? 'Copa' : `R${f.round}`}`} status={o ? o.label : nextFixture === f ? 'Próximo' : undefined} highlight={nextFixture === f} />
+							label={`${formatLong(f.date).split(',')[0]} · ${isCup(f.competition) ? 'Copa' : `R${f.round}`}`} status={o ? o.label : nextFixture === f ? 'Próximo' : undefined} highlight={nextFixture === f} />
 					</button>
 				{:else}<p class="muted">Sem jogos neste mês.</p>{/each}
 			</div>

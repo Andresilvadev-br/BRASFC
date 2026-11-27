@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import { api } from '#lib/api.ts';
-	import { DIVISION_LABELS } from '#lib/domain/league.ts';
+	import { competitionName as leagueCompetitionName } from '#lib/domain/league.ts';
 	import { formatExactMoney } from '#lib/domain/market.ts';
 	import { MARKET_SORTS, MARKET_STATUS, ratingText, type MarketAthlete, type MarketCompetition, type MarketFilters, type MarketProfile, type MarketResults } from '#lib/domain/market-search.ts';
 	import { POSITIONS } from '#lib/domain/positions.ts';
@@ -54,7 +54,7 @@
 	type RangeKey = 'ageMin' | 'ageMax' | 'overallMin' | 'overallMax' | 'potentialMin' | 'potentialMax' | 'valueMin' | 'valueMax' | 'wageMin' | 'wageMax' | 'yearsMin' | 'yearsMax';
 	const chips = $derived(Object.entries(f).filter(([key, value]) => names[key as keyof MarketFilters] && value !== '' && value !== undefined && value !== false && value !== null) as [keyof MarketFilters, string | number | true][]);
 	const divisions = $derived(result?.competitions ?? []);
-	const competitionName = (id: MarketCompetition) => id === 'copa-do-brasil' ? 'Copa do Brasil' : DIVISION_LABELS[id];
+	const competitionName = (id: MarketCompetition) => leagueCompetitionName(id);
 	const filteredClubs = $derived(result?.clubs.filter((club) => !f.division || f.division === 'copa-do-brasil' || f.division === club.division) ?? []);
 	const canSuggest = $derived(inputFocus && Boolean(f.q?.trim()) && !loading && !failure);
 	const numericLabel = (value: string | number | true) => typeof value === 'number' ? value.toLocaleString('pt-BR') : value;

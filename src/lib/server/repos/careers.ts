@@ -147,7 +147,8 @@ export async function getCareerForMarket(db: Db, profileId: string, id: string):
 		'world', c.data->'world', 'league', c.data->'league', 'cup', c.data->'cup',
 		'rosterCatalog', c.data->'rosterCatalog', 'firstSeason', c.data->'firstSeason',
 		'market', c.data->'market', 'club', c.data->'club', 'local', c.data->'local',
-		'worldCatalog', c.data->'worldCatalog') AS data,`);
+		'worldCatalog', c.data->'worldCatalog',
+		'worldSnapshot', c.data->'worldSnapshot') AS data,`);
 	const [row] = await db.query<CareerRow>(`SELECT ${columns} FROM careers c WHERE c.id=$1 AND c.profile_id=$2`, [id, profileId]);
 	return row ? mapCareer(row) : null;
 }

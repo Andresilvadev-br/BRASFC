@@ -23,6 +23,8 @@ import { createRng, deriveSeed } from './rng.ts';
 import { FIRST_ROUND, SEASON_START } from './season.ts';
 import type { Tactic } from './tactics.ts';
 import type { PlayerFocus, TeamFocus } from './training.ts';
+import { initialBrazilTournaments } from '#lib/data/brasil/2026/tournaments.ts';
+import type { TournamentState } from './tournaments.ts';
 import type { WorldSelection } from '#lib/world/contract.ts';
 import type { BrazilContinentalQualification } from './continental-qualification.ts';
 
@@ -83,6 +85,8 @@ dismissedTips?: string[];
 // ── Dev 0.4
 /** Copa do Brasil da temporada em andamento (sorteios e entradas) */
 cup?: CupState;
+/** Competições adicionais ativadas explicitamente na edição deste save. */
+tournaments?: TournamentState[];
 /** gestão do clube: finanças, diretoria, patrocínios, estrutura, base e olheiros */
 club?: ClubState;
 /** mercado: transferências, contratos e atletas criados pela carreira */
@@ -223,7 +227,7 @@ export function initialCareerData(input: CreateCareerInput, seed: number, plan?:
 		world,
 		firstSeason: start.season,
 		league,
-		...(input.worldSelection ? { worldSelection: input.worldSelection } : {}),
+		...(input.worldSelection ? { worldSelection: input.worldSelection, tournaments: initialBrazilTournaments(start.season) } : {}),
 		...(world === 'brasil' ? { rosterCatalog: ROSTER_CATALOG } : {}),
 		...(world === 'brasil' && (selection?.cup ?? true) ? { cup: initialCup(start.season) } : {})
 	};

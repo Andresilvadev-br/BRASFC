@@ -1,7 +1,8 @@
+import supplements from '#lib/data/world/2026/added-clubs.json' with { type: 'json' };
 import type { Club } from '#lib/domain/clubs.ts';
 import { careerStart } from '#lib/domain/career.ts';
 import type { DivisionId, LeagueState } from '#lib/domain/league.ts';
-import { WORLD_DIVISION_NAMES, type CompactPlayer, type Tiebreak, type WorldDivisionRule, type WorldPlan } from '#lib/domain/world-league.ts';
+import { WORLD_DIVISION_NAMES, SPAIN_FIRST, SPAIN_SECOND, type CompactPlayer, type Tiebreak, type WorldDivisionRule, type WorldPlan } from '#lib/domain/world-league.ts';
 import type { AttributeKey } from '#lib/engine/attributes.ts';
 import { countryName } from '#lib/world/countries.ts';
 import { newestWorldCatalog, openWorldCatalog } from './world-catalog.ts';
@@ -16,6 +17,10 @@ import { newestWorldCatalog, openWorldCatalog } from './world-catalog.ts';
  *    oficial de cada liga.
  */
 export const EDITION = '2026/27';
+
+const additions = new Map(Object.entries(supplements));
+const spanishSecond = [...additions.keys()].map((id) => `world/${id}`);
+const spanishThird = ['cd-mirandes', 'cultural-leonesa', 'real-zaragoza', 'sd-huesca'].map((id) => `world/esp/${id}`);
 
 const OFFICIAL_NAMES = WORLD_DIVISION_NAMES;
 
@@ -57,7 +62,7 @@ function readDivisions(catalogId: string | null) {
 		const level = Number(row.division);
 		const id = `league/${country}/${level}`;
 		const teams = Number(rules.teams) || 0;
-		const clubs = verified.get(String(row.id)) ?? [];
+		const clubs = [...new Set([...(verified.get(String(row.id)) ?? []), ...(id === SPAIN_SECOND ? spanishSecond : [])])];
 		// Divisões com grupos ou mata-mata próprios ainda não têm formato no BRASFC: ficam fora até serem modeladas.
 		const simpleFormat = !(Number(rules.groups) > 1);
 		const playable = simpleFormat && teams >= 4 && teams % 2 === 0 && clubs.length === teams && new Set(clubs).size === teams;
@@ -65,7 +70,8 @@ function readDivisions(catalogId: string | null) {
 			id, country, level, name: OFFICIAL_NAMES[id] ?? `${countryName(country)} · ${level}ª divisão`, teams, verified: clubs, playable,
 			rule: {
 				name: OFFICIAL_NAMES[id] ?? `${countryName(country)} · ${level}ª divisão`, country, level, legs: rules.two_rounds === false ? 1 : 2,
-				relegated: Math.max(0, Number(rules.relegated_directly ?? rules.relegated) || 0), promoted: Math.max(0, Number(rules.promotion_places) || 0),
+				relegated: id === SPAIN_SECOND ? 4 : Math.max(0, Number(rules.relegated_directly ?? rules.relegated) || 0),
+				promoted: id === SPAIN_SECOND ? 2 : Math.max(0, Number(rules.promotion_places) || 0),
 				tiebreak: TIEBREAK[country] ?? 'saldo'
 			}
 		});
@@ -82,7 +88,12 @@ export function worldDivisions(catalogId: string | null = newestWorldCatalog() ?
 
 const VALID_COLOR = /^#[a-f\d]{6}$/i;
 
-function clubCard(row: Record<string, unknown>, id: string): Club {
+export function supplementalClub(id: string): Club | undefined {
+	const row = additions.get(id.replace(/^world\//, ''));
+	return row ? clubCard({ ...row, state: row.city }, id) : undefined;
+}
+
+export function clubCard(row: Record<string, unknown>, id: string): Club {
 	let colors: unknown[] = [];
 	try { colors = JSON.parse(String(row.colors)) as unknown[]; } catch { /* sem cores: neutras */ }
 	const color = (i: number, fallback: string) => (typeof colors[i] === 'string' && VALID_COLOR.test(colors[i] as string) ? colors[i] as string : fallback);
@@ -117,6 +128,7 @@ export function buildWorldPlan(countries: string[], catalogId: string | null = n
 			const below = all.find((x) => x.level === d.level + 1);
 			// O nível de baixo não jogável vira reserva de acesso com os clubes conhecidos (sem completar com fictícios).
 			if (below && !below.playable && below.verified.length) reserves[d.id] = below.verified.filter((id) => !playable.some((p) => p.verified.includes(id)));
+			if (d.id === SPAIN_SECOND) reserves[d.id] = spanishThird;
 		}
 	}
 	const ids = [...new Set([...Object.values(divisions).flat(), ...Object.values(reserves).flat()])] as string[];
@@ -126,17 +138,21 @@ export function buildWorldPlan(countries: string[], catalogId: string | null = n
 	const players: Record<string, CompactPlayer[]> = {};
 	for (const id of ids) {
 		const raw = id.replace(/^world\//, '');
-		const row = clubQuery.get(raw);
+		const additional = additions.get(raw);
+		const row = clubQuery.get(raw) ?? (additional ? { ...additional, state: additional.city } : undefined);
 		if (!row) return null; // inscrição aponta para clube ausente: catálogo inconsistente
 		clubs.push(clubCard(row, id));
-		players[id] = playerQuery.all(raw).map((p) => [
+		players[id] = additional ? additional.players.map(([number, name, position, country], i): CompactPlayer =>
+			[`${raw}-esp26${i + 1}`, String(name), null, String(country), String(position), 0, 63, 66, [], Number(number)]
+		) : playerQuery.all(raw).map((p) => [
 			String(p.id), String(p.name), Number(p.age), String(p.country), String(p.position), p.starter ? 1 : 0,
 			Number(p.overall_estimate), Number(p.potential_estimate), JSON.parse(String(p.traits)) as AttributeKey[]
 		]);
 	}
 	const league: LeagueState = {
 		world: 'mundo', season, scheduleVersion: 3, divisions,
-		selection: { divisions: Object.keys(divisions).sort() as DivisionId[], cup: false }, rules, reserves
+		selection: { divisions: Object.keys(divisions).sort() as DivisionId[], cup: false }, rules, reserves,
+		...(divisions[SPAIN_FIRST as DivisionId] && divisions[SPAIN_SECOND as DivisionId] ? { spanishPlayoff: [] } : {})
 	};
 	return { countries: [...countries].sort(), league, snapshot: { catalog: catalogId, clubs, players } };
 }
