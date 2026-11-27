@@ -176,6 +176,24 @@ try {
 		assert.equal(response.status(), 200, `Tela ${path || '/'} da carreira europeia`);
 		assert.equal(await page.getByText('Bola murcha').count(), 0, `Tela ${path || '/'} da carreira europeia falhou`);
 	}
+	// O passo de supercopa precisa atravessar a API de partidas e continuar recuperável no replay.
+	let cupCareer = await create({ mode: 'coach', personName: 'Lia Copa', clubId: 'flamengo', worldSelection: { countries: ['bra'] } });
+	const cupPath = `/api/careers/${cupCareer.id}`;
+	for (const expected of ['league:1', 'league:2', 'cup/bra/supercopa:1']) {
+		const next = await (await page.request.get(cupPath + '/proximo')).json();
+		assert.equal(next.step, expected);
+		const args = { data: { version: cupCareer.version, step: next.step }, headers: { Origin: origin } };
+		const played = await page.request.post(cupPath + '/matches', args);
+		assert.equal(played.status(), 200, await played.text());
+		const result = await played.json();
+		if (expected === 'cup/bra/supercopa:1') {
+			assert.equal(result.match.fixture.competition, 'cup/bra/supercopa');
+			const replay = await (await page.request.post(cupPath + '/matches', args)).json();
+			assert.equal(replay.replay, true);
+			assert.equal(replay.match.fixture.competition, 'cup/bra/supercopa');
+		}
+		cupCareer = result.career;
+	}
 	await page.goto(`/carreira/${spain.id}/competicoes`);
 	await page.getByRole('heading', { name: 'LaLiga' }).waitFor();
 	assert.deepEqual(errors, []);

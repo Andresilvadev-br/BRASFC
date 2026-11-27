@@ -92,6 +92,11 @@ export function worldDivisions(catalogId: string | null = newestWorldCatalog() ?
 
 const VALID_COLOR = /^#[a-f\d]{6}$/i;
 
+export function missingSupplementalClubs(db: NonNullable<ReturnType<typeof openWorldCatalog>>): string[] {
+	const exists = db.prepare('SELECT 1 FROM club WHERE id = ?');
+	return [...additions.keys()].filter((id) => !exists.get(id));
+}
+
 export function supplementalClub(id: string): Club | undefined {
 	const row = additions.get(id.replace(/^world\//, ''));
 	return row ? clubCard({ ...row, state: row.city }, id) : undefined;

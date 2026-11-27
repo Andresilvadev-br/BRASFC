@@ -14,6 +14,12 @@ export function stepKey(s: Pick<Step, 'kind'> & { round?: number; matchday?: num
 	return s.kind === 'league' ? `league:${s.round}` : `cup:${s.matchday}`;
 }
 
+const STEP_KEY = /^(?:league|cup|cup\/[a-z]{3}(?:\/[a-z0-9-]{1,40})?|state\/[a-z]{2}\/\d{1,2}|continental\/[a-z0-9-]{1,40}):[1-9]\d?$/;
+
+export function isCalendarStepKey(value: unknown): value is string {
+	return typeof value === 'string' && STEP_KEY.test(value);
+}
+
 export function fixtureStepKey(competition: string | undefined, round: number): string {
 	if (competition === CUP_ID) return `cup:${round}`;
 	return competition?.startsWith('cup/') || competition?.startsWith('state/') || competition?.startsWith('continental/')

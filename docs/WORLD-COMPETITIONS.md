@@ -21,6 +21,13 @@ As três copas regionais usam os grupos e as fases de 2026. O calendário preser
 
 Carreiras criadas antes desta mudança conservam o calendário salvo. As copas regionais de 2027 e seguintes dependem da classificação pelas federações estaduais. O desempate regional usa pontos, vitórias, saldo e gols, seguido de sorteio determinístico. O critério de cartões nas tabelas e a premiação específica ainda dependem da cobertura do modelo rápido. Os oito elencos acrescentados têm notas estimadas pelo jogo, idades sinalizadas como pendentes e posições conforme a função ampla informada pelas fontes.
 
+## Validação offline
+
+- Espanha 2026/27 e 2027/28 com 46 passos por temporada, 380 partidas na primeira divisão, 468 na segunda e três trocas entre as divisões. A carreira local com Tenerife e Real Madrid passou pela primeira rodada com os dois treinadores.
+- Itália 2026/27 e 2027/28 com 43 passos e 770 partidas por temporada no cenário simulado com playoff e play-out. O banco PGlite em disco foi fechado e reaberto nas duas viradas.
+- Brasil 2026 com 84 passos e 1.918 partidas, incluindo as 173 partidas regionais e da Supercopa. Em 2027 foram 54 passos e 1.834 partidas, com 157 partidas da Copa do Brasil. O mesmo save foi reaberto em disco após cada virada.
+- A estreia do Sport na Copa do Brasil e na Copa do Nordeste foi conferida. O teste da API também confere a Supercopa e o reenvio de uma rodada já gravada.
+
 ## Desempenho
 
 Amostra local em PGlite com um treinador no Real Madrid e cinco rodadas medidas em cada configuração, após uma rodada de aquecimento. A duração inclui a partida e a gravação da rodada.

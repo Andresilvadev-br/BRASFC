@@ -6,7 +6,7 @@ import { cupMatchCount } from '#lib/domain/cup.ts';
 import type { CountryCode, LoadEstimate, WorldCountry, WorldDivision } from '#lib/world/contract.ts';
 import { countryConfederation, countryFlag, countryName } from '#lib/world/countries.ts';
 import { newestWorldCatalog, openWorldCatalog } from './world-catalog.ts';
-import { clubCard, supplementalClub, worldDivisions } from './world-league.ts';
+import { clubCard, missingSupplementalClubs, supplementalClub, worldDivisions } from './world-league.ts';
 
 /**
  * PROVISÓRIO (branch de interface): a engine (`feature/world-database-engine`) substitui esta função
@@ -63,6 +63,10 @@ export function worldCountries(catalogId: string | null = newestWorldCatalog() ?
 	const db = catalogId ? openWorldCatalog(catalogId) : undefined;
 	if (db) {
 		const clubs = new Map(db.prepare('SELECT country, COUNT(*) AS n FROM club GROUP BY country').all().map((r) => [String(r.country), Number(r.n)]));
+		for (const id of missingSupplementalClubs(db)) {
+			const code = id.split('/')[0];
+			clubs.set(code, (clubs.get(code) ?? 0) + 1);
+		}
 		const byCountry = new Map<CountryCode, WorldDivision[]>();
 		const matches = new Map<CountryCode, number>();
 		const verified = new Map<string, string[]>();

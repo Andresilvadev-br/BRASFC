@@ -58,6 +58,8 @@ describe('World Database · divisões jogáveis', () => {
 		expect(divs.find((d) => d.id === 'league/esp/2')).toMatchObject({ playable: true, teams: 22 });
 		const spain = worldCountries(CATALOG).find((c) => c.code === 'esp')!;
 		expect(spain.playable).toBe(true);
+		expect(spain.clubCount).toBe(46);
+		expect(worldCountries(CATALOG).find((country) => country.code === 'ita')?.clubCount).toBe(44);
 		expect(spain.divisions.find((d) => d.id === 'league/esp/1')!.clubs).toHaveLength(20);
 	});
 
