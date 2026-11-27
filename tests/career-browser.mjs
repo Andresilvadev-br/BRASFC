@@ -93,6 +93,39 @@ try {
 		await ready.waitFor({ timeout: 2500 }).catch(() => {});
 		if (await ready.isVisible()) await ready.click();
 	};
+	const checkAfterFirstMatch = async (careerId) => {
+		const root = '/carreira/' + careerId;
+		const { matches } = await (await page.request.get('/api/careers/' + careerId + '/matches')).json();
+		assert.equal(matches.length, 1);
+		assert.equal(matches[0].round, 1);
+		await page.getByRole('heading', { name: 'Resultados recentes' }).waitFor();
+		await page.reload();
+		await page.getByRole('heading', { name: 'Resultados recentes' }).waitFor();
+		assert.equal(await page.getByText('Bola murcha').count(), 0);
+		await page.goto(root + '/partida');
+		const upcoming = await (await page.request.get('/api/careers/' + careerId + '/proximo')).json();
+		assert.equal(upcoming.step, 'league:2');
+		assert.equal(await page.getByText('Bola murcha').count(), 0);
+	};
+	await page.goto('/carreira/' + coach.id + '/partida');
+	await button('Entrar em campo').click();
+	const saved = page.getByRole('region', { name: 'Rodada registrada' });
+	for (let i = 0; i < 90 && !(await saved.isVisible()); i++) {
+		for (const label of ['Continuar sem alterações', 'Confirmar e continuar', 'Ir ao intervalo', 'Resultado']) {
+			const command = button(label);
+			if (await command.isVisible() && await command.isEnabled()) {
+				await command.click();
+				break;
+			}
+		}
+		await page.waitForTimeout(150);
+	}
+	await saved.waitFor({ timeout: 30_000 });
+	await saved.getByRole('button', { name: 'Continuar', exact: true }).click();
+	await button('Entrar em campo').waitFor();
+	await page.getByRole('link', { name: 'Painel', exact: true }).first().click();
+	await page.waitForURL('**/carreira/' + coach.id);
+	await checkAfterFirstMatch(coach.id);
 	await page.goto('/nova-carreira');
 	await page.getByRole('heading', { name: 'Escolha os países' }).waitFor();
 	// World Database: país ativo = todas as divisões; sem país jogável, não avança.
@@ -151,6 +184,8 @@ try {
 	assert(maxHistory > 1, 'A lista mostra só o último lance, e os detalhes preservam os anteriores');
 	await button('Voltar à carreira').click();
 	await page.waitForURL('**' + careerPage);
+	await assume();
+	await checkAfterFirstMatch(shared.id);
 	// World Database: carreira europeia (LaLiga) pelo assistente, com elenco real e tabela pelo critério oficial.
 	await page.goto('/nova-carreira');
 	await page.getByRole('heading', { name: 'Escolha os países' }).waitFor();

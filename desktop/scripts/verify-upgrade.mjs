@@ -248,6 +248,8 @@ try {
 			await post(root + '/matches', {version:t.version,season:t.season,step:'league:1'});
 			const replay = await post(root + '/matches', {version:t.version,season:t.season,step:'league:1'});
 			if (!replay.replay) throw Error('A primeira rodada foi reenviada em vez de relida');
+			const dashboard = await fetch('/carreira/' + c.id);
+			if (!dashboard.ok || !(await dashboard.text()).includes('Resultados recentes')) throw Error('O painel falhou após gravar a primeira partida: ' + dashboard.status);
 			saves.push({id:c.id,shared});
 		}
 		return saves;
@@ -286,6 +288,8 @@ try {
 			let {career} = await fetch(root).then(r=>r.json());
 			const first = await fetch(root + '/matches').then(r=>r.json());
 			if (first.matches.length !== 1 || first.matches[0].round !== 1) throw Error('O save reaberto não contém exatamente uma primeira partida');
+			const dashboard = await fetch('/carreira/' + save.id);
+			if (!dashboard.ok || !(await dashboard.text()).includes('Resultados recentes')) throw Error('O painel falhou ao reabrir a carreira após a primeira partida: ' + dashboard.status);
 			if (!(await fetch('/carreira/' + save.id + '/partida')).ok) throw Error('A tela de partida falhou após reabrir');
 			const post = (path, body) => fetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
 			if (save.shared) {

@@ -4,11 +4,12 @@ import { runMigrations } from '#lib/server/db/migrate.ts';
 import { createGuestProfile } from '#lib/server/repos/profiles.ts';
 import { CareerLimitError, createCareer, getCareer, listMessages } from '#lib/server/repos/careers.ts';
 import { listLedger } from '#lib/server/repos/management.ts';
-import { listResults, listUserMatches } from '#lib/server/repos/matches.ts';
+import { listResults, listUserMatches, recentUserMatches } from '#lib/server/repos/matches.ts';
 import { fixtureKey, playRound, RoundError } from '#lib/server/rounds.ts';
 import { answerDeal, passTurn, openDeal, TurnError } from '#lib/server/local-turns.ts';
-import { activeCoachIndex, humanClubs, localGroup, projectCoach } from '#lib/domain/turns.ts';
+import { activeCoachIndex, humanClubs, localGroup, projectCoach, sharedClub } from '#lib/domain/turns.ts';
 import { careerView } from '#lib/domain/view.ts';
+import { analyze } from '#lib/domain/assistant.ts';
 import { clubStateOf, rosterContext } from '#lib/domain/world.ts';
 import { fixtureSetup, matchFromShared, sharedSetup } from '#lib/domain/matchday.ts';
 import { matchdayContext } from '#lib/server/rounds.ts';
@@ -42,6 +43,37 @@ async function readyAll(profileId: string, career: Career): Promise<Career> {
 		if (out.play) return career;
 	}
 }
+
+it.each([1, 2])('reabre o save e avança a carreira com %i treinador(es) quando a primeira súmula tem metadados incompatíveis', async (count) => {
+	const { profile } = await createGuestProfile(db);
+	let career = await createCareer(db, profile.id, { mode: 'coach', personName: 'Ana Silva', clubId: 'sport', worldSelection: { countries: ['bra'] } }, 777,
+		count === 2 ? [{ personName: 'Bia Silva', clubId: 'bahia' }] : []);
+	if (count === 2) career = await readyAll(profile.id, career);
+	const first = await playRound(db, profile.id, career, { version: career.version, season: career.season, step: 'league:1' });
+	await db.query(`UPDATE career_matches SET summary = jsonb_set(
+		jsonb_set(summary #- '{tactic,instructions}', '{mySide}', '"mandante"'),
+		'{tactic,roles}', '"ala"') WHERE career_id = $1 AND round = 1 AND is_user`, [career.id]);
+	career = (await getCareer(db, profile.id, career.id))!;
+	const results = await listResults(db, career.id, career.season);
+	const view = careerView(career, results);
+	const recent = await recentUserMatches(db, career.id, 3, sharedClub(career));
+	expect(recent).toHaveLength(1);
+	expect(analyze({
+		squad: view.squad, tactic: view.tactic, tactical: view.effective, fitness: view.fitness,
+		recent, clubId: career.clubId, nextOpponent: null, careerSeed: career.seed, season: career.season, firstSeason: view.firstSeason
+	})).toBeInstanceOf(Array);
+	const context = await matchdayContext(db, career, view);
+	expect(context.observed[0]?.roles).toBeUndefined();
+	expect(view.next).not.toBeNull();
+	expect(() => fixtureSetup(career, view.next!, view.tactic, context)).not.toThrow();
+	if (count === 2) career = await readyAll(profile.id, career);
+	const second = await playRound(db, profile.id, career, { version: career.version, season: career.season, step: 'league:2' });
+	expect(second.career.version).toBeGreaterThan(first.career.version);
+	const saved = await listUserMatches(db, career.id, career.season, 'sport');
+	const firstScore = first.results.find((r) => r.home === 'sport' || r.away === 'sport');
+	expect(saved.map(({ round }) => round)).toEqual([1, 2]);
+	expect([saved[0].homeGoals, saved[0].awayGoals]).toEqual([firstScore?.homeGoals, firstScore?.awayGoals]);
+}, 60_000);
 
 describe('carreira local com vários treinadores', () => {
 	it('cria os treinadores na ordem, recusa clube repetido e separa mensagens por treinador', async () => {
