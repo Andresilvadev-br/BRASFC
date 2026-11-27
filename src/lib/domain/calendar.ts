@@ -1,5 +1,5 @@
 import { CUP_AFTER_ROUND, CUP_ID, cupDate, cupFixtures, type CupState } from './cup.ts';
-import { leagueRoundDate, totalRounds, type LeagueState, type StoredRoundResult } from './league.ts';
+import { isLeagueMatchdayScheduled, leagueRoundDate, totalRounds, type LeagueState, type StoredRoundResult } from './league.ts';
 import { addDays } from './dates.ts';
 import type { TournamentDefinition } from './tournaments.ts';
 import type { Fixture } from './season.ts';
@@ -21,10 +21,11 @@ export function fixtureStepKey(competition: string | undefined, round: number): 
 		: `league:${round}`;
 }
 
-export function seasonSteps(league: LeagueState, cup: CupState | null, tournaments: TournamentDefinition[] = []): Step[] {
+export function seasonSteps(league: LeagueState, cup: CupState | null, tournaments: TournamentDefinition[] = [], results: StoredRoundResult[] = []): Step[] {
 	const out: Step[] = [];
 	const n = totalRounds(league);
 	for (let r = 1; r <= n; r++) {
+		if (!isLeagueMatchdayScheduled(league, r, results)) continue;
 		out.push({ kind: 'league', round: r, date: leagueRoundDate(league, r), key: `league:${r}` });
 	}
 	if (cup) for (let md = 1; md <= CUP_AFTER_ROUND.length; md++) {

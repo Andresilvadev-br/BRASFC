@@ -47,7 +47,7 @@ export function careerCalendar(career: Career, results: StoredRoundResult[], lea
 	}
 	const states = career.data.tournaments ?? [];
 	const definitions = tournamentDefinitions(career.season, states);
-	const steps = seasonSteps(league, activeCup, definitions);
+	const steps = seasonSteps(league, activeCup, definitions, results);
 	const scheduled = new Map(steps.map((step) => [step.key, step.date]));
 	const done = processedKeys(results);
 	const step = nextStep(steps, done);
@@ -58,7 +58,7 @@ export function careerCalendar(career: Career, results: StoredRoundResult[], lea
 		// O cliente vê a mesma chave que o servidor grava junto do resultado.
 		if (step?.kind === 'cup' && !step.competition) activeCup = prepareCup(activeCup, step.matchday, results, career.seed, strengthOf);
 	}
-	const fixtures = seasonFixtures(league, career.seed);
+	const fixtures = seasonFixtures(league, career.seed, results);
 	const mine = clubFixtures(fixtures, career.clubId);
 	const rounds = totalRounds(league);
 	const seasonOver = step === null;

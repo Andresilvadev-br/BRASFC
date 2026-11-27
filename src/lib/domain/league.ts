@@ -1,3 +1,4 @@
+import { decideItalianMatchday, italianFixtures, italianPostseason, ITALIAN_SECOND, type ItalianPostseason } from './italian-postseason.ts';
 import { BRAZIL_TOURNAMENT_NAMES } from '#lib/data/brasil/2026/tournaments.ts';
 import { CLUBES_2026, SERIE_D_2026, TEMPORADA_2026 } from '#lib/data/brasil.ts';
 import { CLUBS, getClub, LEAGUE } from './clubs.ts';
@@ -25,6 +26,8 @@ export type WorldDivisionId = `league/${string}`;
 export type DivisionId = NationalDivision | typeof LEAGUE.id;
 const spanishFirstDivision = SPAIN_FIRST as DivisionId;
 const spanishSecondDivision = SPAIN_SECOND as DivisionId;
+const italianSecondDivision = ITALIAN_SECOND as DivisionId;
+const italianFirstDivision = 'league/ita/1' as DivisionId;
 export const BRASIL_DIVISIONS = ['serie-a', 'serie-b', 'serie-c', 'serie-d'] as const;
 export type BrasilDivision = (typeof BRASIL_DIVISIONS)[number];
 
@@ -97,6 +100,7 @@ export interface LeagueState {
 	reserves?: Record<string, string[]>;
 	spanishPlayoff?: Tie[][];
 	spanishExtraTime?: Record<string, [number, number]>;
+	italianPostseason?: ItalianPostseason;
 }
 
 /** Nome de qualquer competição da carreira (Séries, liga fictícia, Copa do Brasil ou divisão do World Database). */
@@ -248,14 +252,14 @@ export function leagueSeasonStart(league: Pick<LeagueState, 'world' | 'season'>)
 export function totalRounds(league: LeagueState): number {
 	if (!league.selection) return 38;
 	return Math.max(0, ...activeDivisions(league).map((div) => phaseOneLength(league, div) +
-		(div === spanishSecondDivision && league.spanishPlayoff ? 4 : div === 'serie-b' && league.bPromotionPlayoff ? 2 : div === 'serie-c' ? 8 : div === 'serie-d' ? 12 : 0)));
+		(div === spanishSecondDivision && league.spanishPlayoff ? 4 : div === italianSecondDivision && league.italianPostseason ? 5 : div === 'serie-b' && league.bPromotionPlayoff ? 2 : div === 'serie-c' ? 8 : div === 'serie-d' ? 12 : 0)));
 }
 
 /** Projeção de volume, independentemente do sorteio e sem construir elencos/calendário. */
 export function divisionMatchCount(league: LeagueState, div: DivisionId): number {
 	if (league.world === 'mundo') {
 		const n = league.divisions[div]?.length ?? 0;
-		return (n * (n - 1) / 2) * worldRule(league, div).legs + (div === spanishSecondDivision && league.spanishPlayoff ? 6 : 0);
+		return (n * (n - 1) / 2) * worldRule(league, div).legs + (div === spanishSecondDivision && league.spanishPlayoff ? 6 : div === italianSecondDivision && league.italianPostseason ? 10 : 0);
 	}
 	const legs = div === LEAGUE.id ? 2 : effectiveRule(league, div).phase1.legs;
 	const regular = phaseOneGroups(league, div).reduce((sum, ids) => sum + (ids.length * (ids.length - 1) / 2) * legs, 0);
@@ -286,7 +290,7 @@ function tieFixtures(season: number, comp: DivisionId, ties: Tie[], r1: number, 
 const D_STAGE_NAMES = ['2ª fase', '3ª fase', '4ª fase', 'Quartas de final', 'Semifinal', 'Final'];
 
 /** Calendário (domingos) de todas as divisões, até onde as fases já foram definidas. */
-export function seasonFixtures(league: LeagueState, careerSeed: number): Fixture[] {
+export function seasonFixtures(league: LeagueState, careerSeed: number, results: StoredRoundResult[] = []): Fixture[] {
 	const out: Fixture[] = [];
 	const version = league.scheduleVersion ?? 1;
 	if (league.world === 'mundo') {
@@ -305,6 +309,8 @@ export function seasonFixtures(league: LeagueState, careerSeed: number): Fixture
 				});
 			}
 		}
+		const italian = italianPlayoffs(league, results);
+		if (italian) out.push(...italianFixtures(italian, (round) => dates[round - 1]));
 		return out;
 	}
 	for (const div of activeDivisions(league)) {
@@ -413,6 +419,24 @@ function seededTies(ranked: string[]): Tie[] {
 	return out;
 }
 
+export function italianPlayoffs(league: LeagueState, results: StoredRoundResult[]) {
+	if (!league.italianPostseason || !league.divisions[italianSecondDivision]) return null;
+	const regular = phaseOneLength(league, italianSecondDivision);
+	return italianPostseason(divisionStandings(league, italianSecondDivision, results), regular, results, league.italianPostseason);
+}
+
+/** O play-out e o playoff italianos só ocupam datas quando a tabela exige disputa. */
+export function isLeagueMatchdayScheduled(league: LeagueState, round: number, results: StoredRoundResult[]) {
+	if (!league.italianPostseason) return true;
+	const distance = round - phaseOneLength(league, italianSecondDivision);
+	if (distance <= 0) return true;
+	const regularElsewhere = activeDivisions(league).some((div) => div !== italianSecondDivision
+		&& round <= phaseOneLength(league, div) + (div === spanishSecondDivision && league.spanishPlayoff ? 4 : 0));
+	if (regularElsewhere) return true;
+	const plan = italianPlayoffs(league, results);
+	return !plan?.complete || (plan.promotion && distance <= 5) || (plan.playout && distance <= 2);
+}
+
 const spanishExtraTimeKey = (tie: Tie, round: number) => `${round}:${tie[0]}:${tie[1]}`;
 
 export function spanishPlayoffOutcome(league: LeagueState, tie: Tie, round: number, results: StoredRoundResult[]): TieOutcome | null {
@@ -426,6 +450,10 @@ export function spanishPlayoffOutcome(league: LeagueState, tie: Tie, round: numb
 
 /** Simula os 30 minutos extras no modelo rápido quando a volta termina com o agregado empatado. */
 export function settleLeagueMatchday(league: LeagueState, round: number, results: StoredRoundResult[], seed: number, strength: StrengthOf): LeagueState {
+	if (league.italianPostseason && round > phaseOneLength(league, italianSecondDivision)) {
+		const plan = italianPlayoffs(league, results);
+		if (plan) league = { ...league, italianPostseason: decideItalianMatchday(plan, league.italianPostseason, round, deriveSeed(seed, league.season), strength) };
+	}
 	if (!league.spanishPlayoff) return league;
 	const afterRegular = round - phaseOneLength(league, spanishSecondDivision);
 	const stage = afterRegular === 2 ? league.spanishPlayoff[0] : afterRegular === 4 ? league.spanishPlayoff[1] : undefined;
@@ -747,6 +775,7 @@ function closeWorldSeason(league: LeagueState, results: StoredRoundResult[], car
 	const divisions: LeagueState['divisions'] = Object.fromEntries(Object.entries(league.divisions).map(([d, ids]) => [d, [...(ids ?? [])]]));
 	const reserves: Record<string, string[]> = Object.fromEntries(Object.entries(league.reserves ?? {}).map(([d, ids]) => [d, [...ids]]));
 	const active = activeDivisions(league);
+	const italy = italianPlayoffs(league, results);
 	for (const div of active) {
 		const t = divisionStandings(league, div, results);
 		tables[div] = t;
@@ -760,6 +789,8 @@ function closeWorldSeason(league: LeagueState, results: StoredRoundResult[], car
 		const reserve = reserves[div] ?? [];
 		const second = div === spanishSecondDivision;
 		const spanishFirst = div === spanishFirstDivision && lowerActive && !!league.spanishPlayoff;
+		const italianFirst = div === italianFirstDivision && lowerActive && !!italy;
+		const italianSecond = div === italianSecondDivision && !!italy;
 		const eligible = second ? reserve.filter((id) => {
 			const parent = SPAIN_RESERVES.get(id);
 			return !parent || divisions[spanishFirstDivision]?.includes(parent);
@@ -773,9 +804,16 @@ function closeWorldSeason(league: LeagueState, results: StoredRoundResult[], car
 			return !!parent && !divisions[spanishFirstDivision]?.includes(parent);
 		}).map(({ clubId }) => clubId) : [];
 		const remaining = table.filter(({ clubId }) => !forced.includes(clubId));
-		const down = [...forced, ...remaining.slice(remaining.length - Math.max(0, count - forced.length)).map((r) => r.clubId)];
+		let down = [...forced, ...remaining.slice(remaining.length - Math.max(0, count - forced.length)).map((r) => r.clubId)];
+		if (italianSecond) {
+			if (!italy.relegated) throw new Error('A disputa de permanência da Serie B está incompleta.');
+			down = [...table.slice(-3).map((row) => row.clubId), italy.relegated];
+		}
 		let up: string[];
-		if (spanishFirst) {
+		if (italianFirst) {
+			if (!italy.promoted) throw new Error('O acesso da Serie B está incompleto.');
+			up = [...(tables[below] ?? []).slice(0, 2).map((row) => row.clubId), italy.promoted];
+		} else if (spanishFirst) {
 			const regular = phaseOneLength(league, spanishSecondDivision);
 			const final = league.spanishPlayoff?.[1]?.[0];
 			const winner = final && spanishPlayoffOutcome(league, final, regular + 4, results)?.winner;
@@ -787,10 +825,10 @@ function closeWorldSeason(league: LeagueState, results: StoredRoundResult[], car
 		divisions[div] = (divisions[div] ?? []).filter((id) => !down.includes(id)).concat(up);
 		if (lowerActive) divisions[below] = (divisions[below] ?? []).filter((id) => !up.includes(id)).concat(down);
 		else reserves[div] = reserve.filter((id) => !up.includes(id)).concat(down);
-		for (const id of down) moves.push({ clubId: id, from: div, to: lowerActive || second ? below : 'estadual', reason: 'rebaixamento' });
-		for (const id of up) moves.push({ clubId: id, from: lowerActive || second ? below : 'estadual', to: div, reason: 'acesso' });
+		for (const id of down) moves.push({ clubId: id, from: div, to: lowerActive || second || italianSecond ? below : 'estadual', reason: 'rebaixamento' });
+		for (const id of up) moves.push({ clubId: id, from: lowerActive || second || italianSecond ? below : 'estadual', to: div, reason: 'acesso' });
 	}
-	return { next: { ...league, season: league.season + 1, scheduleVersion: 3, divisions, reserves, ...(league.spanishPlayoff ? { spanishPlayoff: [], spanishExtraTime: {} } : {}) }, moves, champions, tables, runnersUp };
+	return { next: { ...league, season: league.season + 1, scheduleVersion: 3, divisions, reserves, ...(league.spanishPlayoff ? { spanishPlayoff: [], spanishExtraTime: {} } : {}), ...(league.italianPostseason ? { italianPostseason: {} } : {}) }, moves, champions, tables, runnersUp };
 }
 
 // ─────────────────────────────────────────────────────────────── validação de saves
@@ -862,7 +900,20 @@ function sanitizeWorldLeague(input: unknown, base: LeagueState): LeagueState {
 			}
 		}
 	}
-	return { world: 'mundo', season: raw.season, scheduleVersion: 3, divisions, ...(selection ? { selection } : {}), rules, reserves, ...(Array.isArray(raw.spanishPlayoff) ? { spanishPlayoff, spanishExtraTime } : {}) };
+	const italian: ItalianPostseason = {};
+	const savedItalian = raw.italianPostseason;
+	if (savedItalian && typeof savedItalian === 'object' && !Array.isArray(savedItalian) && divisions[italianSecondDivision]?.length === 20) {
+		const score = (value: unknown): value is [number, number] => Array.isArray(value) && value.length === 2
+			&& value.every((goal) => Number.isInteger(goal) && goal >= 0 && goal < 35);
+		for (const [key, value] of Object.entries(savedItalian)) {
+			const [day, a, b] = key.split(':');
+			if (!['39', '40', '43'].includes(day) || !divisions[italianSecondDivision]?.includes(a) || !divisions[italianSecondDivision]?.includes(b) || a === b || !value || !score(value.extra)) continue;
+			italian[key] = { extra: value.extra, ...(score(value.penalties) && value.penalties[0] !== value.penalties[1] ? { penalties: value.penalties } : {}) };
+		}
+	}
+	return { world: 'mundo', season: raw.season, scheduleVersion: 3, divisions, ...(selection ? { selection } : {}), rules, reserves,
+		...(Array.isArray(raw.spanishPlayoff) ? { spanishPlayoff, spanishExtraTime } : {}),
+		...(savedItalian ? { italianPostseason: italian } : {}) };
 }
 
 /** Clube aleatório (determinístico) — usado em testes de temporadas completas. */

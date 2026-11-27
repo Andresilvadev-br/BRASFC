@@ -1,10 +1,11 @@
 <script lang="ts">
 	import type { CareerScreenData } from '#lib/career/screen-data.ts';
 	import { untrack } from 'svelte';
+	import { ITALIAN_SECOND, ITALIAN_STAGE_NAMES } from '#lib/domain/italian-postseason.ts';
 	import { SPAIN_RESERVES, SPAIN_SECOND } from '#lib/domain/world-league.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { formatShort } from '#lib/domain/dates.ts';
-	import { activeDivisions, D_STAGE_NAMES, DIVISION_LABELS, dStageRounds, effectiveRule, groupStandings, phaseOneLength, phaseOneTables, resolveTie, spanishPlayoffOutcome, type BrasilDivision, type DivisionId, type Tie, divisionLabel } from '#lib/domain/league.ts';
+	import { activeDivisions, D_STAGE_NAMES, DIVISION_LABELS, dStageRounds, effectiveRule, groupStandings, phaseOneLength, phaseOneTables, resolveTie, italianPlayoffs, spanishPlayoffOutcome, type BrasilDivision, type DivisionId, type Tie, divisionLabel } from '#lib/domain/league.ts';
 	import { computeStandings } from '#lib/domain/season.ts';
 	import { strengthMemo } from '#lib/domain/world.ts';
 	import { reveal } from '#lib/motion/actions.ts';
@@ -28,6 +29,7 @@
 	const tournament = $derived(v.tournaments.find((tournament) => tournament.competition.id === selected));
 	const brasil = $derived(v.world === 'brasil' && div !== 'liga-brasfc');
 	const worldRule = $derived(v.world === 'mundo' ? v.league.rules?.[div] : undefined);
+	const italian = $derived(String(div) === ITALIAN_SECOND ? italianPlayoffs(v.league, v.results) : null);
 	const spanish = $derived(String(div) === SPAIN_SECOND && !!v.league.spanishPlayoff);
 	const bPlayoffs = $derived(div === 'serie-b' && v.league.bPromotionPlayoff !== undefined);
 	const competitions = $derived([...nativeCompetitions(v.league, !!v.cup), ...v.tournaments.map(({ competition }) => competition)]);
@@ -47,6 +49,12 @@
 	const zone = (pos: number, size: number, club: string): 'up' | 'qual' | 'down' | '' => {
 		// World Database: só a zona de rebaixamento do regulamento (vagas europeias chegam com as continentais).
 		if (worldRule) {
+			if (italian) {
+				if (pos >= 18) return 'down';
+				if (pos >= 16) return italian.complete && !italian.playout ? (pos === 17 ? 'down' : '') : 'qual';
+				if (pos <= 2 || (pos === 3 && italian.complete && !italian.promotion)) return 'up';
+				return pos <= 8 && (!italian.complete || italian.promotion) ? 'qual' : '';
+			}
 			if (pos > size - worldRule.relegated) return 'down';
 			if (!spanish || SPAIN_RESERVES.has(club)) return '';
 			const place = tables[0]?.filter((row) => row.position <= pos && !SPAIN_RESERVES.has(row.clubId)).length ?? pos;
@@ -74,7 +82,8 @@
 	const dRounds = (k: number) => dStageRounds(v.league, k);
 	const tieOut = (t: Tie, rounds: number[], byCampaign = false) => resolveTie(t, v.results, 'serie-d', rounds, c.seed, st, { byCampaign });
 	const name = (id: string) => getClub(id)?.name ?? id;
-	const ruleText = $derived(spanish ? '22 clubes em 42 rodadas. Dois clubes sobem direto, quatro disputam o playoff de acesso e quatro descem. Filiais ficam fora da disputa pelo acesso.' : worldRule ? `${v.league.divisions[div]?.length ?? 0} clubes em ${worldRule.legs === 2 ? 'turno e returno' : 'turno único'} · ${worldRule.relegated} rebaixados · desempate por ${worldRule.tiebreak === 'confronto-direto' ? 'confronto direto' : 'saldo de gols'}. Inscritos 2026/27 conferidos em fonte oficial.` : bPlayoffs ? 'Dois clubes sobem direto. Do 3º ao 6º, os clubes disputam duas vagas nos playoffs. Quatro são rebaixados.'
+	const ruleText = $derived(spanish ? '22 clubes em 42 rodadas. Dois clubes sobem direto, quatro disputam o playoff de acesso e quatro descem. Filiais ficam fora da disputa pelo acesso.' : italian ?
+			'20 clubes em 38 rodadas. Dois acessos diretos e um pelo playoff se a diferença entre 3º e 4º for de até 14 pontos. A diferença entre 16º e 17º define o play-out.' : worldRule ? `${v.league.divisions[div]?.length ?? 0} clubes em ${worldRule.legs === 2 ? 'turno e returno' : 'turno único'} · ${worldRule.relegated} rebaixados · desempate por ${worldRule.tiebreak === 'confronto-direto' ? 'confronto direto' : 'saldo de gols'}. Inscritos 2026/27 conferidos em fonte oficial.` : bPlayoffs ? 'Dois clubes sobem direto. Do 3º ao 6º, os clubes disputam duas vagas nos playoffs. Quatro são rebaixados.'
 		: !rule ? 'Liga fictícia: 20 clubes em turno e returno.' : `${rule.size} clubes · ${rule.status === 'oficial' ? 'regra oficial' : rule.status === 'anunciado' ? 'regra anunciada pela CBF' : 'regra projetada pelo BRASFC'}. ${rule.nota ?? ''}`);
 </script>
 
@@ -119,7 +128,8 @@
 			</table>
 			<div class="legend">
 				{#if rule && rule.promoted && div !== 'serie-c'}<span><i data-z="up"></i>Acesso</span>{/if}
-				{#if spanish}<span><i data-z="up"></i>Acesso direto</span>{/if}
+				{#if spanish || italian}<span><i data-z="up"></i>Acesso direto</span>{/if}
+				{#if italian}<span><i data-z="qual"></i>Playoff e play-out</span>{/if}
 				{#if bPlayoffs || spanish}<span><i data-z="qual"></i>Playoff de acesso</span>{/if}
 				{#if div === 'serie-c'}<span><i data-z="qual"></i>2ª fase (quadrangulares)</span>{/if}
 				{#if !rule}<span><i data-z="up"></i>Topo</span>{/if}
@@ -157,6 +167,23 @@
 						<span class="num">{r.position}</span><Crest clubId={r.clubId} size={18} /><span class="nm">{name(r.clubId)}</span><b>{r.points}</b>
 					</div>
 				{/each}
+			</section>
+		{/each}
+	</div>
+{/if}
+
+{#if italian?.series.length}
+	<h2 class="display section">Playoff e play-out</h2>
+	<div class="quads">
+		{#each italian.series as series (series.days[0] + ':' + series.tie.join(':'))}
+			<section class="glass group">
+				<h3>{ITALIAN_STAGE_NAMES[series.stage]}</h3>
+				{#each series.tie as id, i (id)}
+					<div class="grow" class:win={series.outcome?.winner === id}><span></span><Crest clubId={id} size={18} /><span class="nm">{name(id)}</span><b>{series.outcome?.aggregate[i] ?? ''}</b></div>
+				{/each}
+				{#if series.outcome?.penalties}<small class="muted">Decisão nos pênaltis · {series.outcome.penalties.home}–{series.outcome.penalties.away}</small>{/if}
+				{#if series.outcome?.decidedBy === 'prorrogacao'}<small class="muted">Decisão na prorrogação</small>{/if}
+				{#if series.outcome?.decidedBy === 'campanha'}<small class="muted">Melhor campanha</small>{/if}
 			</section>
 		{/each}
 	</div>

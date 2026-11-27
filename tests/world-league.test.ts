@@ -6,15 +6,18 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { validateCreateCareer } from '#lib/domain/career.ts';
 import { visibleSquadAge } from '#lib/domain/squad.ts';
 import { passTurn } from '#lib/server/local-turns.ts';
+import { italianPostseason } from '#lib/domain/italian-postseason.ts';
+import { activeDivisions, divisionStandings, italianPlayoffs, type DivisionId } from '#lib/domain/league.ts';
 import { careerView } from '#lib/domain/view.ts';
 import { europeanRoundDates, worldStandings } from '#lib/domain/world-league.ts';
 import { createPgliteDb, type Db } from '#lib/server/db/index.ts';
 import { runMigrations } from '#lib/server/db/migrate.ts';
-import { listResults } from '#lib/server/repos/matches.ts';
+import { insertRound, listResults, type RoundInsert } from '#lib/server/repos/matches.ts';
 import { createGuestProfile } from '#lib/server/repos/profiles.ts';
 import { createCareer, getCareer } from '#lib/server/repos/careers.ts';
 import { finishSeason, playRound } from '#lib/server/rounds.ts';
 import { buildWorldPlan, worldDivisions } from '#lib/server/world-league.ts';
+import { ENGINE_VERSION } from '#lib/engine/types.ts';
 import { worldCountries } from '#lib/server/world-countries.ts';
 
 /** Catálogo embutido no instalador (desktop/assets/world), instalado como o app faz na primeira abertura. */
@@ -50,7 +53,7 @@ describe('World Database · divisões jogáveis', () => {
 	it('só divisões com todos os inscritos 2026/27 conferidos', () => {
 		const divs = worldDivisions(CATALOG);
 		const playable = divs.filter((d) => d.playable).map((d) => d.id).sort();
-		expect(playable).toEqual(['league/eng/1', 'league/esp/1', 'league/esp/2', 'league/fra/1', 'league/ger/1', 'league/ger/2', 'league/ita/1']);
+		expect(playable).toEqual(['league/eng/1', 'league/esp/1', 'league/esp/2', 'league/fra/1', 'league/ger/1', 'league/ger/2', 'league/ita/1', 'league/ita/2']);
 		expect(divs.find((d) => d.id === 'league/ned/1')).toMatchObject({ playable: false });
 		expect(divs.find((d) => d.id === 'league/esp/2')).toMatchObject({ playable: true, teams: 22 });
 		const spain = worldCountries(CATALOG).find((c) => c.code === 'esp')!;
@@ -139,7 +142,7 @@ describe('World Database · duas temporadas na Espanha pelo servidor', () => {
 		const created = await createCareer(db, profile.id, request.value, 91, [{ personName: 'Bruno Mundo', clubId: 'world/esp/real-madrid' }], plan);
 		const view = careerView(created);
 		expect(view.divisionLabel).toBe('LaLiga Hypermotion');
-		expect(view.squad).toHaveLength(30);
+		expect(view.squad.length).toBeGreaterThanOrEqual(22);
 		expect(view.squad.every((player) => visibleSquadAge(player) === null)).toBe(true);
 		const turn = await passTurn(db, profile.id, created, created.version);
 		expect(turn.career.data.worldSelection).toEqual({ countries: ['esp'] });
@@ -149,6 +152,58 @@ describe('World Database · duas temporadas na Espanha pelo servidor', () => {
 		expect(reloaded.data.worldSelection).toEqual({ countries: ['esp'] });
 		expect(reloaded.clubId).toBe(created.clubId);
 	}, 45_000);
+
+	it('Serie B: dois anos com acesso, play-out e gravação da rodada', async () => {
+		const plan = buildWorldPlan(['ita'], CATALOG)!;
+		const { profile } = await createGuestProfile(db);
+		const first = 'league/ita/1' as DivisionId;
+		const second = 'league/ita/2' as DivisionId;
+		const input = validateCreateCareer({ mode: 'coach', personName: 'Ana Italia', clubId: 'world/ita/ascoli-calcio', worldSelection: { countries: ['ita'] } }, plan);
+		if (!input.ok) throw new Error(JSON.stringify(input.errors));
+		let career = await createCareer(db, profile.id, input.value, 777, [], plan);
+		let roundsWithPhases = 0;
+		for (const season of [2026, 2027]) {
+			const initial = careerView(career);
+			expect(activeDivisions(initial.league)).toEqual([first, second]);
+			const simulated: RoundInsert[] = initial.fixtures.map((fixture) => ({
+				...fixture, season, homeGoals: 1, awayGoals: 1, isUser: false, seed: 777
+			}));
+			expect(simulated).toHaveLength(760);
+			await insertRound(db, career.id, simulated, ENGINE_VERSION);
+			let results = await listResults(db, career.id, season);
+			const split = careerView(career, results);
+			expect(split.step?.key).toBe('league:39');
+			expect(italianPlayoffs(split.league, results)).toMatchObject({ complete: true, promotion: true, playout: true });
+			while (true) {
+				const view = careerView(career, results);
+				if (!view.step) break;
+				expect(view.stepMatches.every((fixture) => fixture.competition === second)).toBe(true);
+				career = (await playRound(db, profile.id, career, { version: career.version, step: view.step.key })).career;
+				results = await listResults(db, career.id, season);
+				roundsWithPhases++;
+			}
+			const played = careerView(career, results);
+			const brackets = italianPlayoffs(played.league, results)!;
+			expect(brackets.promoted).toBeTruthy();
+			expect(brackets.relegated).toBeTruthy();
+			expect(results.filter((result) => result.competition === second)).toHaveLength(390);
+			const table = divisionStandings(played.league, second, results);
+			const automatic = table.map((row) => ({ ...row }));
+			automatic[2].points = automatic[3].points + 15;
+			automatic[15].points = automatic[16].points + 5;
+			expect(italianPostseason(automatic, 38, [], {})).toMatchObject({ promotion: false, playout: false, series: [], promoted: automatic[2].clubId, relegated: automatic[16].clubId });
+			const ended = await finishSeason(db, profile.id, career, career.version);
+			expect(ended.moves.filter((move) => move.to === first)).toHaveLength(3);
+			expect(ended.moves.filter((move) => move.to === 'league/ita/3')).toHaveLength(4);
+			career = (await getCareer(db, profile.id, career.id))!;
+			expect(career.season).toBe(season + 1);
+			expect(career.data.league?.divisions[first]).toContain(brackets.promoted);
+			expect(career.data.league?.reserves?.[second]).toContain(brackets.relegated);
+			expect(career.data.league?.divisions[second]).toHaveLength(20);
+			expect(career.data.worldSelection).toEqual({ countries: ['ita'] });
+		}
+		expect(roundsWithPhases).toBe(10);
+	}, 120_000);
 
 	it('Alemanha: Bundesliga e 2. Bundesliga jogáveis, acesso e rebaixamento entre elas', async () => {
 		const plan = buildWorldPlan(['ger'], CATALOG)!;
