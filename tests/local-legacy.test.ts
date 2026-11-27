@@ -50,6 +50,8 @@ it.each([1, 2])('reabre o save e avança a carreira com %i treinador(es) quando 
 		count === 2 ? [{ personName: 'Bia Silva', clubId: 'bahia' }] : []);
 	if (count === 2) career = await readyAll(profile.id, career);
 	const first = await playRound(db, profile.id, career, { version: career.version, season: career.season, step: 'league:1' });
+	const [firstScore] = await listUserMatches(db, career.id, career.season, 'sport');
+	expect(firstScore.round).toBe(1);
 	await db.query(`UPDATE career_matches SET summary = jsonb_set(
 		jsonb_set(summary #- '{tactic,instructions}', '{mySide}', '"mandante"'),
 		'{tactic,roles}', '"ala"') WHERE career_id = $1 AND round = 1 AND is_user`, [career.id]);
@@ -70,9 +72,8 @@ it.each([1, 2])('reabre o save e avança a carreira com %i treinador(es) quando 
 	const second = await playRound(db, profile.id, career, { version: career.version, season: career.season, step: 'league:2' });
 	expect(second.career.version).toBeGreaterThan(first.career.version);
 	const saved = await listUserMatches(db, career.id, career.season, 'sport');
-	const firstScore = first.results.find((r) => r.home === 'sport' || r.away === 'sport');
 	expect(saved.map(({ round }) => round)).toEqual([1, 2]);
-	expect([saved[0].homeGoals, saved[0].awayGoals]).toEqual([firstScore?.homeGoals, firstScore?.awayGoals]);
+	expect([saved[0].homeGoals, saved[0].awayGoals]).toEqual([firstScore.homeGoals, firstScore.awayGoals]);
 }, 60_000);
 
 describe('carreira local com vários treinadores', () => {
