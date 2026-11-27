@@ -182,13 +182,15 @@ try {
 	for (const expected of ['league:1', 'league:2', 'cup/bra/supercopa:1']) {
 		const next = await (await page.request.get(cupPath + '/proximo')).json();
 		assert.equal(next.step, expected);
-		const args = { data: { version: cupCareer.version, step: next.step }, headers: { Origin: origin } };
+		const args = { data: { version: cupCareer.version, season: cupCareer.season, step: next.step }, headers: { Origin: origin } };
 		const played = await page.request.post(cupPath + '/matches', args);
 		assert.equal(played.status(), 200, await played.text());
 		const result = await played.json();
 		if (expected === 'cup/bra/supercopa:1') {
 			assert.equal(result.match.fixture.competition, 'cup/bra/supercopa');
-			const replay = await (await page.request.post(cupPath + '/matches', args)).json();
+			const replayResponse = await page.request.post(cupPath + '/matches', args);
+			assert.equal(replayResponse.status(), 200, await replayResponse.text());
+			const replay = await replayResponse.json();
 			assert.equal(replay.replay, true);
 			assert.equal(replay.match.fixture.competition, 'cup/bra/supercopa');
 		}
