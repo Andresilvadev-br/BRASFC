@@ -10,5 +10,5 @@ export const load: PageServerLoad = async ({ parent, locals }) => {
 	// Enquanto o treinador se prepara e assiste à partida, os demais jogos da rodada já são simulados.
 	// (Na carreira com vários treinadores, a central da rodada calcula e guarda esses jogos.)
 	if (locals.profile && !isShared(career)) prefetchRound(await getDb(), locals.profile.id, career.id);
-	return { observed: recent.slice(-3).map((m) => observedFrom(m.summary)).filter((m) => m !== null) };
+	return { observed: recent.slice(-3).map((m) => observedFrom(m.summary, m.home === career.clubId ? 'home' : 'away')).filter((m) => m !== null) };
 };

@@ -148,7 +148,9 @@ export function analyze(input: AssistantInput): Tip[] {
 	// 5–7. Problemas observados nas últimas partidas.
 	const last = input.recent.slice(-3);
 	if (last.length) {
-		const sideOf = (m: (typeof last)[number]) => m.summary.mySide ?? (m.home === input.clubId ? 'home' : 'away');
+		const sideOf = (m: (typeof last)[number]) => m.summary.mySide === 'home' || m.summary.mySide === 'away'
+			? m.summary.mySide
+			: m.home === input.clubId ? 'home' : 'away';
 		const other = (s: 'home' | 'away') => (s === 'home' ? 'away' : 'home');
 		const avg = (f: (m: (typeof last)[number]) => number) => last.reduce((s, m) => s + f(m), 0) / last.length;
 		const shotsAgainst = avg((m) => m.summary.stats[other(sideOf(m))].shots);

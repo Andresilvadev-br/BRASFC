@@ -8,7 +8,7 @@ import { buildTeamSetup } from '#lib/engine/teams.ts';
 import type { AppliedDecision, MatchEvent, MatchResult as EngineResult, PlayerStats, Side, TeamSetup } from '#lib/engine/types.ts';
 import { COACH_PROFILES } from '#lib/engine/ai-coach.ts';
 import type { TacticalInstructions } from '#lib/engine/instructions.ts';
-import type { RoleId } from '#lib/engine/roles.ts';
+import { isRoleId, type RoleId } from '#lib/engine/roles.ts';
 import type { Career } from './career.ts';
 import { aiTeamPlan, clubCoach, coachFormation, scoutFrom, type CoachOverride, type ObservedMatch } from './coaches.ts';
 import { aiExecution, type UniverseState } from './universe.ts';
@@ -22,7 +22,7 @@ import { advancePlayerDays, playerAttributes, playerState, type PlayerAssessment
 import { rosterContext } from './world.ts';
 import { quickMatch } from './quick.ts';
 import { engineFamiliarity, resolveRoles, type TacticalState } from './tactical.ts';
-import type { FormationId, PlayStyle, Tactic } from './tactics.ts';
+import { FORMATIONS, type FormationId, type PlayStyle, type Tactic } from './tactics.ts';
 
 /**
  * Dia de jogo da carreira. Tudo aqui é determinístico e roda igual no navegador
@@ -320,11 +320,15 @@ export function summarize(match: Match, result: EngineResult, mySide: Side, extr
 }
 
 /** Observação do adversário a partir do resumo salvo de um jogo do usuário. */
-export function observedFrom(s: MatchSummary): ObservedMatch | null {
-	if (!s.tactic) return null;
-	const side = s.mySide ?? 'home';
-	const total = s.stats.home.possessionTicks + s.stats.away.possessionTicks || 1;
-	return { formation: s.tactic.formation, instructions: s.tactic.instructions, roles: s.tactic.roles, possession: (s.stats[side].possessionTicks / total) * 100 };
+export function observedFrom(s: MatchSummary, clubSide: Side = 'home'): ObservedMatch | null {
+	const tactic = s.tactic;
+	if (!tactic || !Object.hasOwn(FORMATIONS, tactic.formation)) return null;
+	const side = s.mySide === 'away' || s.mySide === 'home' ? s.mySide : clubSide;
+	const home = s.stats.home.possessionTicks;
+	const away = s.stats.away.possessionTicks;
+	if (!Number.isFinite(home) || !Number.isFinite(away)) return null;
+	const roles = Array.isArray(tactic.roles) ? tactic.roles.filter(isRoleId) : undefined;
+	return { formation: tactic.formation, instructions: tactic.instructions, roles, possession: ((side === 'home' ? home : away) / (home + away || 1)) * 100 };
 }
 
 /** Próxima partida ainda não disputada do clube. */

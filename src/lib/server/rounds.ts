@@ -57,7 +57,7 @@ export async function matchdayContext(db: Db, career: Career, view?: ReturnType<
 	view ??= careerView(career, await listResults(db, career.id, career.season));
 	const previous = await recentUserMatches(db, career.id, 3, sharedClub(career));
 	const observed = previous
-		.map((m) => observedFrom(m.summary))
+		.map((m) => observedFrom(m.summary, m.home === career.clubId ? 'home' : 'away'))
 		.filter((o) => o !== null);
 	return { season: career.season, firstSeason: view.firstSeason, tactical: view.effective, fitness: career.data.fitness, observed, playerCalendar: { division: view.division, gameDates: view.clubFixtures.map((f) => f.date) } };
 }
