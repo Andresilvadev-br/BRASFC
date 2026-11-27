@@ -1,8 +1,11 @@
 import { tournamentDefinitions, initialBrazilTournaments } from '#lib/data/brasil/2026/tournaments.ts';
+import { initialWorldSupercups, worldSupercupDefinitions } from '#lib/data/world/2026/supercups.ts';
+import { continentalSupercupClubs, continentalSupercupDefinitions, initialContinentalSupercups } from '#lib/data/world/2026/continental-supercups.ts';
 import { BRASIL_DIVISIONS, DIVISION_LABELS, divisionMatchCount } from '#lib/domain/league.ts';
 import { initialCareerData } from '#lib/domain/career.ts';
 import type { Club } from '#lib/domain/clubs.ts';
 import { cupMatchCount } from '#lib/domain/cup.ts';
+import { GERMAN_THIRD } from '#lib/domain/german-playoffs.ts';
 import type { CountryCode, LoadEstimate, WorldCountry, WorldDivision } from '#lib/world/contract.ts';
 import { countryConfederation, countryFlag, countryName } from '#lib/world/countries.ts';
 import { newestWorldCatalog, openWorldCatalog } from './world-catalog.ts';
@@ -38,13 +41,17 @@ export function rulesMatchCount(rules: CatalogRules): number {
 	return league + knockout;
 }
 
-function brazil(): WorldCountry {
+function brazil(catalogId: string | null): WorldCountry {
 	const { league, cup } = initialCareerData({ world: 'brasil', worldSelection: { countries: ['bra'] }, mode: 'coach', clubId: '', personName: '' }, 1);
 	if (!league || !cup) throw new Error('Seleção inicial do Brasil indisponível.');
 	const divisions: WorldDivision[] = BRASIL_DIVISIONS.map((id, i) => ({
 		id, country: 'bra', level: i + 1, name: DIVISION_LABELS[id], clubs: [...(league.divisions[id] ?? [])], playable: true
 	}));
 	const tournaments = tournamentDefinitions(league.season, initialBrazilTournaments(league.season));
+	const guests = continentalSupercupClubs(league.season, ['bra']);
+	const db = catalogId ? openWorldCatalog(catalogId) : undefined;
+	const verified = guests.filter((id) => Number(db?.prepare('SELECT count(*) AS n FROM player WHERE club = ?').get(id.replace(/^world\//, ''))?.n) >= 11);
+	tournaments.push(...continentalSupercupDefinitions(league.season, initialContinentalSupercups(league.season, ['bra'], ['flamengo', ...verified])));
 	const tournamentMatches = tournaments.reduce((sum, t) => sum + t.groupRounds.flat().length + t.phases.reduce((n, phase) => n + phase.legs * phase.seeds.length, 0), 0);
 	const matches = BRASIL_DIVISIONS.reduce((sum, id) => sum + divisionMatchCount(league, id), tournamentMatches) + cupMatchCount(cup);
 	return {
@@ -59,7 +66,7 @@ let cache: { key: string; value: WorldCountry[] } | undefined;
 export function worldCountries(catalogId: string | null = newestWorldCatalog() ?? null): WorldCountry[] {
 	const key = catalogId ?? '-';
 	if (cache?.key === key) return cache.value;
-	const out: WorldCountry[] = [brazil()];
+	const out: WorldCountry[] = [brazil(catalogId)];
 	const db = catalogId ? openWorldCatalog(catalogId) : undefined;
 	if (db) {
 		const clubs = new Map(db.prepare('SELECT country, COUNT(*) AS n FROM club GROUP BY country').all().map((r) => [String(r.country), Number(r.n)]));
@@ -90,13 +97,20 @@ export function worldCountries(catalogId: string | null = newestWorldCatalog() ?
 			list.push({ id: `league/${code}/${row.division}`, country: code, level: Number(row.division), name: plan?.name ?? String(row.name ?? `${row.division}ª divisão`), clubs: plan?.playable ? [...plan.verified] : verified.get(String(row.id)) ?? [], playable: !!plan?.playable });
 			byCountry.set(code, list);
 			// Custo do que será simulado: só as divisões jogáveis (as demais não geram partidas).
-			if (plan?.playable) matches.set(code, (matches.get(code) ?? 0) + rulesMatchCount(rules) + (plan.id === 'league/esp/2' ? 6 : plan.id === 'league/ita/2' ? 10 : 0));
+			if (plan?.playable) matches.set(code, (matches.get(code) ?? 0) + rulesMatchCount(rules) + (plan.id === 'league/esp/2' ? 6 : plan.id === 'league/ita/2' ? 10 : plan.id === GERMAN_THIRD ? 4 : 0));
 		}
 		for (const [code, divisions] of byCountry) {
+			const activeClubs = divisions.filter(({ playable }) => playable).flatMap(({ clubs }) => clubs);
+			const cups = worldSupercupDefinitions(2026, initialWorldSupercups(2026, [code], activeClubs));
+			if (activeClubs.length) {
+				const guests = continentalSupercupClubs(2026, [code])
+					.filter((id) => Number(db.prepare('SELECT count(*) AS n FROM player WHERE club = ?').get(id.replace(/^world\//, ''))?.n) >= 11);
+				cups.push(...continentalSupercupDefinitions(2026, initialContinentalSupercups(2026, [code], [...activeClubs, ...guests])));
+			}
 			out.push({
 				code, name: countryName(code), flag: countryFlag(code) ?? 'xx', confederation: countryConfederation(code),
-				divisions, cups: [], clubCount: clubs.get(code) ?? 0, playable: divisions.some((d) => d.playable),
-				load: estimateLoad(matches.get(code) ?? 0)
+				divisions, cups: cups.map(({ competition }) => competition.id), clubCount: clubs.get(code) ?? 0, playable: divisions.some((d) => d.playable),
+				load: estimateLoad((matches.get(code) ?? 0) + cups.reduce((n, cup) => n + cup.dates.length, 0))
 			});
 		}
 	}

@@ -2,10 +2,11 @@
 	import type { CareerScreenData } from '#lib/career/screen-data.ts';
 	import { untrack } from 'svelte';
 	import { ITALIAN_SECOND, ITALIAN_STAGE_NAMES } from '#lib/domain/italian-postseason.ts';
+	import { GERMAN_DIVISIONS, GERMAN_FIRST, GERMAN_SECOND, GERMAN_THIRD, GERMAN_PLAYOFF_LABEL, germanPromotionCandidates } from '#lib/domain/german-playoffs.ts';
 	import { SPAIN_RESERVES, SPAIN_SECOND } from '#lib/domain/world-league.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { formatShort } from '#lib/domain/dates.ts';
-	import { activeDivisions, D_STAGE_NAMES, DIVISION_LABELS, dStageRounds, effectiveRule, groupStandings, phaseOneLength, phaseOneTables, resolveTie, italianPlayoffs, spanishPlayoffOutcome, type BrasilDivision, type DivisionId, type Tie, divisionLabel } from '#lib/domain/league.ts';
+	import { activeDivisions, D_STAGE_NAMES, DIVISION_LABELS, dStageRounds, effectiveRule, germanPlayoffs, groupStandings, phaseOneLength, phaseOneTables, resolveTie, italianPlayoffs, spanishPlayoffOutcome, type BrasilDivision, type DivisionId, type Tie, divisionLabel } from '#lib/domain/league.ts';
 	import { computeStandings } from '#lib/domain/season.ts';
 	import { strengthMemo } from '#lib/domain/world.ts';
 	import { reveal } from '#lib/motion/actions.ts';
@@ -30,6 +31,8 @@
 	const brasil = $derived(v.world === 'brasil' && div !== 'liga-brasfc');
 	const worldRule = $derived(v.world === 'mundo' ? v.league.rules?.[div] : undefined);
 	const italian = $derived(String(div) === ITALIAN_SECOND ? italianPlayoffs(v.league, v.results) : null);
+	const german = $derived(!!v.league.germanPlayoffs && GERMAN_DIVISIONS.some((id) => id === String(div)));
+	const germanSeries = $derived(german ? germanPlayoffs(v.league, v.results).filter((series) => [series.higher, series.lower].includes(String(div) as typeof series.higher | typeof series.lower)) : []);
 	const spanish = $derived(String(div) === SPAIN_SECOND && !!v.league.spanishPlayoff);
 	const bPlayoffs = $derived(div === 'serie-b' && v.league.bPromotionPlayoff !== undefined);
 	const competitions = $derived([...nativeCompetitions(v.league, !!v.cup), ...v.tournaments.map(({ competition }) => competition)]);
@@ -56,6 +59,13 @@
 				return pos <= 8 && (!italian.complete || italian.promotion) ? 'qual' : '';
 			}
 			if (pos > size - worldRule.relegated) return 'down';
+			if (german) {
+				const division = String(div);
+				if (division !== GERMAN_THIRD && pos === size - 2) return 'qual';
+				if (division === GERMAN_FIRST) return '';
+				const place = germanPromotionCandidates(tables[0] ?? []).findIndex((row) => row.clubId === club) + 1;
+				return place === 3 ? 'qual' : place > 0 && place <= 2 ? 'up' : '';
+			}
 			if (!spanish || SPAIN_RESERVES.has(club)) return '';
 			const place = tables[0]?.filter((row) => row.position <= pos && !SPAIN_RESERVES.has(row.clubId)).length ?? pos;
 			return place <= 2 ? 'up' : place <= 6 ? 'qual' : '';
@@ -82,7 +92,10 @@
 	const dRounds = (k: number) => dStageRounds(v.league, k);
 	const tieOut = (t: Tie, rounds: number[], byCampaign = false) => resolveTie(t, v.results, 'serie-d', rounds, c.seed, st, { byCampaign });
 	const name = (id: string) => getClub(id)?.name ?? id;
-	const ruleText = $derived(spanish ? '22 clubes em 42 rodadas. Dois clubes sobem direto, quatro disputam o playoff de acesso e quatro descem. Filiais ficam fora da disputa pelo acesso.' : italian ?
+	const germanRule = $derived(String(div) === GERMAN_FIRST ? 'Dois clubes caem direto. O 16º disputa a permanência com o 3º da 2. Bundesliga.'
+		: String(div) === GERMAN_SECOND ? 'Dois clubes sobem e dois descem direto. O 3º disputa o acesso e o 16º disputa a permanência.'
+		: 'Dois clubes elegíveis sobem direto e o seguinte disputa o acesso. Filiais ficam fora do acesso. Quatro clubes caem.');
+	const ruleText = $derived(german ? germanRule : spanish ? '22 clubes em 42 rodadas. Dois clubes sobem direto, quatro disputam o playoff de acesso e quatro descem. Filiais ficam fora da disputa pelo acesso.' : italian ?
 			'20 clubes em 38 rodadas. Dois acessos diretos e um pelo playoff se a diferença entre 3º e 4º for de até 14 pontos. A diferença entre 16º e 17º define o play-out.' : worldRule ? `${v.league.divisions[div]?.length ?? 0} clubes em ${worldRule.legs === 2 ? 'turno e returno' : 'turno único'} · ${worldRule.relegated} rebaixados · desempate por ${worldRule.tiebreak === 'confronto-direto' ? 'confronto direto' : 'saldo de gols'}. Inscritos 2026/27 conferidos em fonte oficial.` : bPlayoffs ? 'Dois clubes sobem direto. Do 3º ao 6º, os clubes disputam duas vagas nos playoffs. Quatro são rebaixados.'
 		: !rule ? 'Liga fictícia: 20 clubes em turno e returno.' : `${rule.size} clubes · ${rule.status === 'oficial' ? 'regra oficial' : rule.status === 'anunciado' ? 'regra anunciada pela CBF' : 'regra projetada pelo BRASFC'}. ${rule.nota ?? ''}`);
 </script>
@@ -184,6 +197,22 @@
 				{#if series.outcome?.penalties}<small class="muted">Decisão nos pênaltis · {series.outcome.penalties.home}–{series.outcome.penalties.away}</small>{/if}
 				{#if series.outcome?.decidedBy === 'prorrogacao'}<small class="muted">Decisão na prorrogação</small>{/if}
 				{#if series.outcome?.decidedBy === 'campanha'}<small class="muted">Melhor campanha</small>{/if}
+			</section>
+		{/each}
+	</div>
+{/if}
+
+{#if germanSeries.length}
+	<h2 class="display section">{GERMAN_PLAYOFF_LABEL}</h2>
+	<div class="quads">
+		{#each germanSeries as series (series.higher)}
+			<section class="glass group">
+				<h3>Vaga na {divisionLabel(v.league, series.higher)}</h3>
+				{#each series.tie as id, i (id)}
+					<div class="grow" class:win={series.outcome?.winner === id}><span></span><Crest clubId={id} size={18} /><span class="nm">{name(id)}</span><b>{series.outcome?.aggregate[i] ?? ''}</b></div>
+				{/each}
+				{#if series.outcome?.penalties}<small class="muted">Decisão nos pênaltis · {series.outcome.penalties.home}–{series.outcome.penalties.away}</small>{/if}
+				{#if series.outcome?.decidedBy === 'prorrogacao'}<small class="muted">Decisão na prorrogação</small>{/if}
 			</section>
 		{/each}
 	</div>

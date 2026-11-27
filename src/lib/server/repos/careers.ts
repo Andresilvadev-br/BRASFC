@@ -13,6 +13,8 @@ import type { Db } from '../db/index.ts';
 import { initialGroup, MAX_LOCAL_COACHES, type CoachDraft } from '#lib/domain/turns.ts';
 import { isActiveClub } from '#lib/domain/league.ts';
 import { newestWorldCatalog } from '../world-catalog.ts';
+import { catalogSnapshot } from '../world-league.ts';
+import { continentalSupercupClubs, initialContinentalSupercups } from '#lib/data/world/2026/continental-supercups.ts';
 
 /** Mensagem do treinador da vez (NULL = carreira de um treinador só). */
 const MINE = `(m.coach IS NULL OR m.coach = c.data->'local'->'coaches'->((c.data->'local'->>'active')::int)->>'id')`;
@@ -71,7 +73,19 @@ export async function createCareer(db: Db, profileId: string, input: CreateCaree
 	const data = initialCareerData(input, seed, plan);
 	if (data.world === 'brasil' && data.league?.selection) {
 		const catalog = newestWorldCatalog();
-		if (catalog) data.worldCatalog = catalog;
+		if (catalog) {
+			data.worldCatalog = catalog;
+			if (data.tournaments) {
+				const season = data.league.season;
+				const countries = ['bra'];
+				const guestIds = continentalSupercupClubs(season, countries);
+				const snapshot = catalogSnapshot(catalog, guestIds, season);
+				if (snapshot?.clubs.length && guestIds.every((id) => snapshot.players[id]?.length >= 11)) {
+					data.worldSnapshot = snapshot;
+					data.tournaments.push(...initialContinentalSupercups(season, countries, ['flamengo', ...guestIds]));
+				}
+			}
+		}
 	}
 	const drafts: CoachDraft[] = [{ personName: input.personName, clubId: input.clubId, appearance: input.appearance }, ...others];
 	if (drafts.length > MAX_LOCAL_COACHES) throw new CareerLimitError(`No máximo ${MAX_LOCAL_COACHES} treinadores por carreira.`);

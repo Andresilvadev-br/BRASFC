@@ -9,7 +9,8 @@ import { applyTrainingWeek, recoverFitness } from '#lib/domain/drills.ts';
 import { activeDivisions, closeSeason, divisionOf, leagueSeasonStart, phaseOneLength, settleLeagueMatchday, type DivisionId, type SeasonSummary } from '#lib/domain/league.ts';
 import { fixtureStepKey } from '#lib/domain/calendar.ts';
 import { settleTournament, tournamentView } from '#lib/domain/tournaments.ts';
-import { nextBrazilTournaments, regionalCupRankings, tournamentDefinitions } from '#lib/data/brasil/2026/tournaments.ts';
+import { nextBrazilTournaments, regionalCupRankings } from '#lib/data/brasil/2026/tournaments.ts';
+import { tournamentDefinitions } from '#lib/data/tournaments.ts';
 import { CUP_ID, clubCupRun, cupView, projectedCup, settleCupMatchday } from '#lib/domain/cup.ts';
 import { qualifyBrazil2027 } from '#lib/domain/continental-qualification.ts';
 import { initialClubState, payroll, sanitizeMarket } from '#lib/domain/management.ts';
@@ -619,7 +620,8 @@ export async function finishSeason(db: Db, profileId: string, career: Career, ve
 			personal
 		});
 	}
-	const tournaments = career.data.tournaments ? nextBrazilTournaments(outcome.champions['serie-a'], outcome.runnersUp['serie-a'], cupNow?.champion ?? undefined) : undefined;
+	const tournaments = career.data.tournaments ? (next.world === 'brasil'
+		? nextBrazilTournaments(outcome.champions['serie-a'], outcome.runnersUp['serie-a'], cupNow?.champion ?? undefined) : []) : undefined;
 	const world: Partial<CareerData> = { league: next, ...(nextCup ? { cup: nextCup } : {}), ...(tournaments ? { tournaments } : {}), market, universe };
 	if (career.season === 2026 && career.data.worldSelection?.countries.includes('bra') && cupNow?.champion && cupNow.runnerUp && outcome.tables['serie-a']?.length && next.divisions['serie-a']) {
 		world.brazilContinentalQualification = qualifyBrazil2027(

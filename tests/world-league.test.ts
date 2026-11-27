@@ -7,7 +7,8 @@ import { validateCreateCareer } from '#lib/domain/career.ts';
 import { visibleSquadAge } from '#lib/domain/squad.ts';
 import { passTurn } from '#lib/server/local-turns.ts';
 import { italianPostseason } from '#lib/domain/italian-postseason.ts';
-import { activeDivisions, divisionStandings, italianPlayoffs, type DivisionId } from '#lib/domain/league.ts';
+import { activeDivisions, divisionStandings, germanPlayoffs, italianPlayoffs, type DivisionId } from '#lib/domain/league.ts';
+import { GERMAN_FIRST, GERMAN_SECOND, GERMAN_THIRD, germanPlayoffPlan, germanPromotionCandidates, sanitizeGermanPlayoffs, settleGermanPlayoffs } from '#lib/domain/german-playoffs.ts';
 import { careerView } from '#lib/domain/view.ts';
 import { europeanRoundDates, worldStandings } from '#lib/domain/world-league.ts';
 import { createPgliteDb, type Db } from '#lib/server/db/index.ts';
@@ -19,6 +20,8 @@ import { finishSeason, playRound } from '#lib/server/rounds.ts';
 import { buildWorldPlan, worldDivisions } from '#lib/server/world-league.ts';
 import { ENGINE_VERSION } from '#lib/engine/types.ts';
 import { worldCountries } from '#lib/server/world-countries.ts';
+import { initialWorldSupercups, worldSupercupDefinitions } from '#lib/data/world/2026/supercups.ts';
+import { settleTournament, tournamentView } from '#lib/domain/tournaments.ts';
 
 /** Catálogo embutido no instalador (desktop/assets/world), instalado como o app faz na primeira abertura. */
 const require = createRequire(import.meta.url);
@@ -53,7 +56,7 @@ describe('World Database · divisões jogáveis', () => {
 	it('só divisões com todos os inscritos 2026/27 conferidos', () => {
 		const divs = worldDivisions(CATALOG);
 		const playable = divs.filter((d) => d.playable).map((d) => d.id).sort();
-		expect(playable).toEqual(['league/eng/1', 'league/esp/1', 'league/esp/2', 'league/fra/1', 'league/ger/1', 'league/ger/2', 'league/ita/1', 'league/ita/2']);
+		expect(playable).toEqual(['league/eng/1', 'league/esp/1', 'league/esp/2', 'league/fra/1', 'league/ger/1', 'league/ger/2', 'league/ger/3', 'league/ita/1', 'league/ita/2']);
 		expect(divs.find((d) => d.id === 'league/ned/1')).toMatchObject({ playable: false });
 		expect(divs.find((d) => d.id === 'league/esp/2')).toMatchObject({ playable: true, teams: 22 });
 		const spain = worldCountries(CATALOG).find((c) => c.code === 'esp')!;
@@ -79,8 +82,64 @@ describe('World Database · divisões jogáveis', () => {
 		expect(eng.league.divisions['league/eng/1' as never]).toContain('world/eng/coventry-city');
 		expect(eng.league.reserves!['league/eng/1']).toContain('world/eng/west-ham-united');
 		const ger = buildWorldPlan(['ger'], CATALOG)!;
-		expect(Object.keys(ger.league.divisions).sort()).toEqual(['league/ger/1', 'league/ger/2']);
+		expect(Object.keys(ger.league.divisions).sort()).toEqual([GERMAN_FIRST, GERMAN_SECOND, GERMAN_THIRD]);
 		expect(ger.league.divisions['league/ger/2' as never]).toHaveLength(18);
+		expect(ger.league.divisions['league/ger/3' as never]).toHaveLength(20);
+		expect(ger.league.reserves![GERMAN_THIRD]).toHaveLength(4);
+		expect(ger.snapshot.players['world/ger/sv-meppen'].some((r) => r[1] === 'Noah Oberbeck' && r[2] === 23 && r[4] === 'GOL')).toBe(true);
+		expect(worldCountries(CATALOG).find(({ code }) => code === 'ger')?.load.matches).toBe(997);
+	});
+
+	it('pula filiais na 3. Liga e grava a decisão dos dois playoffs empatados', () => {
+		const plan = buildWorldPlan(['ger'], CATALOG)!;
+		const table = (division: string) => plan.league.divisions[division as DivisionId]!.map((clubId, i, clubs) => ({
+			clubId, position: i + 1, played: (clubs.length - 1) * 2, won: 0, drawn: 0, lost: 0, goalsFor: 0, goalsAgainst: 0, goalDiff: 0, points: 0
+		}));
+		const third = table(GERMAN_THIRD);
+		const reserves = third.filter((r) => ['world/ger/tsg-1899-hoffenheim-ii', 'world/ger/vfb-stuttgart-ii'].includes(r.clubId));
+		const thirdOrder = [...reserves, ...germanPromotionCandidates(third)];
+		const tables: Parameters<typeof germanPlayoffPlan>[1] = [table(GERMAN_FIRST), table(GERMAN_SECOND), thirdOrder];
+		const rounds: [number, number] = [39, 40];
+		const pairs = germanPlayoffPlan(rounds, tables, [], {});
+		expect(pairs).toHaveLength(2);
+		expect(pairs[1].challenger).toBe(germanPromotionCandidates(third)[2].clubId);
+		const tied = pairs.flatMap(({ higher, tie }) => rounds.map((round, index) => ({
+			competition: higher, round, home: tie[index], away: tie[1 - index], homeGoals: 0, awayGoals: 0
+		})));
+		expect(germanPlayoffPlan(rounds, tables, tied, {}).every((series) => series.outcome === null)).toBe(true);
+		const settled = settleGermanPlayoffs(pairs, {}, 40, tied, 42, () => 68);
+		expect(Object.keys(settled)).toHaveLength(2);
+		const reloaded = sanitizeGermanPlayoffs(JSON.parse(JSON.stringify(settled)));
+		const decided = germanPlayoffPlan(rounds, tables, tied, reloaded);
+		expect(reloaded).toEqual(settled);
+		expect(decided.every(({ outcome }) => outcome?.decidedBy === 'penaltis' || outcome?.decidedBy === 'prorrogacao')).toBe(true);
+	});
+
+	it('prepara as cinco supercopas oficiais, conserva os cruzamentos e reabre a prorrogação italiana', () => {
+		const plan = buildWorldPlan(['eng', 'esp', 'fra', 'ger', 'ita'], CATALOG)!;
+		const states = initialWorldSupercups(2026, plan.countries, plan.snapshot.clubs.map(({ id }) => id));
+		const cups = worldSupercupDefinitions(2026, states);
+		expect(cups).toHaveLength(5);
+		const spanish = cups.find(({ competition }) => competition.country === 'esp')!;
+		const spanishState = states.find(({ id }) => id === spanish.competition.id)!;
+		const semi = tournamentView(spanish, spanishState, [], 2, () => 70, 'world/esp/real-madrid');
+		expect(semi.participation).toMatchObject({ status: 'aguardando-estreia', nextDate: '2027-02-03' });
+		expect(semi.fixtures.map(({ home, away }) => [home, away])).toEqual([
+			['world/esp/fc-barcelona', 'world/esp/atletico-madrid'],
+			['world/esp/real-sociedad', 'world/esp/real-madrid']
+		]);
+		const semifinals = semi.fixtures.map((fixture) => ({ ...fixture, homeGoals: 1, awayGoals: 0 }));
+		const spanishFinal = tournamentView(spanish, spanishState, semifinals, 2, () => 70, 'world/esp/fc-barcelona');
+		expect(spanishFinal.fixtures[2]).toMatchObject({ home: 'world/esp/fc-barcelona', away: 'world/esp/real-sociedad', round: 3, neutral: true });
+		const italian = cups.find(({ competition }) => competition.country === 'ita')!;
+		const italianState = states.find(({ id }) => id === italian.competition.id)!;
+		const view = tournamentView(italian, italianState, [], 2, () => 70, 'world/ita/inter');
+		const result = { ...view.fixtures[0], homeGoals: 0, awayGoals: 0 };
+		const resolved = tournamentView(italian, italianState, [result], 2, () => 70, 'world/ita/inter');
+		const settled = settleTournament(italianState, resolved, 1);
+		expect(Object.values(settled.extraTime ?? {})).toHaveLength(1);
+		expect(tournamentView(italian, settled, [result], 2, () => 100, 'world/ita/inter').champion).toBe(resolved.champion);
+		expect(worldSupercupDefinitions(2027, states)).toEqual([]);
 	});
 });
 
@@ -114,7 +173,7 @@ describe('World Database · duas temporadas na Espanha pelo servidor', () => {
 				career = (await playRound(db, profile.id, career, { version: career.version, step: v.step.key })).career;
 				steps++;
 			}
-			expect(steps).toBe(46);
+			expect(steps).toBe(season === 2026 ? 49 : 46);
 			const results = await listResults(db, career.id, career.season);
 			expect(results.filter((r) => r.competition === 'league/esp/1')).toHaveLength(380);
 			expect(results.filter((r) => r.competition === 'league/esp/2')).toHaveLength(468);
@@ -155,6 +214,55 @@ describe('World Database · duas temporadas na Espanha pelo servidor', () => {
 		expect(reloaded.clubId).toBe(created.clubId);
 	}, 45_000);
 
+	it('carrega o adversário continental de um país inativo e grava a final da UEFA', async () => {
+		const plan = buildWorldPlan(['fra'], CATALOG)!;
+		const { profile } = await createGuestProfile(db);
+		const clubId = 'world/fra/psg';
+		const rival = 'world/eng/aston-villa';
+		const req = validateCreateCareer({ mode: 'coach', personName: 'Ana Europa', clubId, worldSelection: { countries: ['fra'] } }, plan);
+		if (!req.ok) throw new Error(JSON.stringify(req.errors));
+		const career = await createCareer(db, profile.id, req.value, 91, [], plan);
+		const v = careerView(career);
+		expect(v.step?.key).toBe('continental/uefa-super-cup:1');
+		expect(v.next).toMatchObject({ home: clubId, away: rival, date: '2026-08-12', neutral: true });
+		expect(career.data.worldSnapshot?.players[rival].length).toBeGreaterThanOrEqual(16);
+		const played = await playRound(db, profile.id, career, { version: career.version, season: 2026, step: v.step!.key });
+		expect(played.match?.fixture.competition).toBe('continental/uefa-super-cup');
+		const reopened = (await getCareer(db, profile.id, career.id))!;
+		const results = await listResults(db, career.id, 2026);
+		expect(reopened.data.worldSelection).toEqual({ countries: ['fra'] });
+		expect(reopened.data.league?.divisions).not.toHaveProperty('league/eng/1');
+		expect(careerView(reopened, results).tournaments.find(({ competition }) => competition.id === 'continental/uefa-super-cup')?.champion).toMatch(/^world\/(fra\/psg|eng\/aston-villa)$/);
+	}, 45_000);
+
+	it('a Recopa entra no save brasileiro com o Lanús e os mandos oficiais', async () => {
+		const { profile } = await createGuestProfile(db);
+		const req = validateCreateCareer({ mode: 'coach', personName: 'Ana Recopa', clubId: 'flamengo', worldSelection: { countries: ['bra'] } });
+		if (!req.ok) throw new Error(JSON.stringify(req.errors));
+		const career = await createCareer(db, profile.id, req.value, 91);
+		let v = careerView(career);
+		const id = 'continental/recopa';
+		const tournament = v.tournaments.find(({ competition }) => competition.id === id)!;
+		expect(tournament.fixtures.map(({ home, away, time }) => [home, away, time])).toEqual([
+			['world/arg/lanus', 'flamengo', '21:30'],
+			['flamengo', 'world/arg/lanus', '21:30']
+		]);
+		expect(career.data.worldSnapshot?.players['world/arg/lanus'].length).toBeGreaterThanOrEqual(16);
+		const before: RoundInsert[] = [];
+		for (const step of v.steps) {
+			if (step.key === id + ':1') break;
+			v = careerView(career, before);
+			expect(v.step?.key).toBe(step.key);
+			before.push(...v.stepMatches.map((match) => ({ ...match, homeGoals: 1, awayGoals: 0, season: 2026, isUser: false, seed: 91 })));
+		}
+		await insertRound(db, career.id, before, ENGINE_VERSION);
+		const played = await playRound(db, profile.id, career, { version: career.version, season: 2026, step: id + ':1' });
+		expect(played.match?.fixture).toMatchObject({ home: 'world/arg/lanus', away: 'flamengo', competition: id });
+		const reopened = (await getCareer(db, profile.id, career.id))!;
+		const results = await listResults(db, career.id, 2026);
+		expect(careerView(reopened, results).tournaments.find(({ competition }) => competition.id === id)?.participation.status).toBe('em-disputa');
+	}, 45_000);
+
 	it('Serie B: dois anos com acesso, play-out e gravação da rodada', async () => {
 		const plan = buildWorldPlan(['ita'], CATALOG)!;
 		const { profile } = await createGuestProfile(db);
@@ -173,6 +281,13 @@ describe('World Database · duas temporadas na Espanha pelo servidor', () => {
 			expect(simulated).toHaveLength(760);
 			await insertRound(db, career.id, simulated, ENGINE_VERSION);
 			let results = await listResults(db, career.id, season);
+			if (season === 2026) {
+				const cup = careerView(career, results);
+				expect(cup.step?.key).toBe('cup/ita/supercoppa:1');
+				career = (await playRound(db, profile.id, career, { version: career.version, step: cup.step!.key, season })).career;
+				results = await listResults(db, career.id, season);
+				expect(results.filter(({ competition }) => competition === 'cup/ita/supercoppa')).toHaveLength(1);
+			}
 			const split = careerView(career, results);
 			expect(split.step?.key).toBe('league:39');
 			expect(italianPlayoffs(split.league, results)).toMatchObject({ complete: true, promotion: true, playout: true });
@@ -207,29 +322,52 @@ describe('World Database · duas temporadas na Espanha pelo servidor', () => {
 		expect(roundsWithPhases).toBe(10);
 	}, 120_000);
 
-	it('Alemanha: Bundesliga e 2. Bundesliga jogáveis, acesso e rebaixamento entre elas', async () => {
+	it('Alemanha: carreira na 3. Liga, dois playoffs e movimento entre as três divisões', async () => {
 		const plan = buildWorldPlan(['ger'], CATALOG)!;
-		const clubId = 'world/ger/fc-schalke-04';
+		const clubId = 'world/ger/sv-meppen';
 		const { profile } = await createGuestProfile(db);
-		let career = await createCareer(db, profile.id, { mode: 'coach', personName: 'Ana Mundo', clubId, world: 'mundo', worldSelection: { countries: ['ger'] } }, 77, [], plan);
+		const request = validateCreateCareer({ mode: 'coach', personName: 'Ana Mundo', clubId, worldSelection: { countries: ['ger'] } }, plan);
+		if (!request.ok) throw new Error(JSON.stringify(request.errors));
+		let career = await createCareer(db, profile.id, request.value, 77, [], plan);
 		let steps = 0;
+		let leagueSteps = 0;
 		for (;;) {
 			const v = careerView(career, await listResults(db, career.id, career.season));
 			if (!v.step) break;
-			if (steps === 0) expect(v.divisionLabel).toBe('Bundesliga');
+			if (steps === 0) {
+				expect(v.divisionLabel).toBe('3. Liga');
+				expect(v.squad.some(({ name }) => name === 'Noah Oberbeck')).toBe(true);
+			}
+			if (v.step.kind === 'league' && ++leagueSteps > 38) expect(v.stepMatches).toHaveLength(2);
 			career = (await playRound(db, profile.id, career, { version: career.version, step: v.step.key })).career;
 			steps++;
 		}
-		expect(steps).toBe(34);
+		expect(steps).toBe(41);
 		const results = await listResults(db, career.id, career.season);
-		expect(results.filter((r) => r.competition === 'league/ger/1')).toHaveLength(306);
-		expect(results.filter((r) => r.competition === 'league/ger/2')).toHaveLength(306);
-		const elite = careerView(career, results).standings.map((r) => r.clubId);
-		const down = elite.slice(-2);
+		expect(results.filter((r) => r.competition === GERMAN_FIRST)).toHaveLength(308);
+		expect(results.filter((r) => r.competition === GERMAN_SECOND)).toHaveLength(308);
+		expect(results.filter((r) => r.competition === GERMAN_THIRD)).toHaveLength(380);
+		career = (await getCareer(db, profile.id, career.id))!;
+		const table = (division: string) => divisionStandings(career.data.league!, division as DivisionId, results);
+		const down = table(GERMAN_FIRST).slice(-2).map(({ clubId }) => clubId);
+		const lowerDown = table(GERMAN_SECOND).slice(-2).map(({ clubId }) => clubId);
+		const regionalDown = table(GERMAN_THIRD).slice(-4).map(({ clubId }) => clubId);
+		const playoffs = germanPlayoffs(career.data.league!, results);
+		expect(playoffs).toHaveLength(2);
+		expect(playoffs.every(({ outcome }) => !!outcome)).toBe(true);
 		career = (await finishSeason(db, profile.id, career, career.version)).career;
 		const next = career.data.league!.divisions;
-		expect(next['league/ger/1' as never]).toHaveLength(18);
-		expect(next['league/ger/2' as never]).toHaveLength(18);
-		for (const id of down) expect(next['league/ger/2' as never]).toContain(id);
+		expect(next[GERMAN_FIRST as DivisionId]).toHaveLength(18);
+		expect(next[GERMAN_SECOND as DivisionId]).toHaveLength(18);
+		expect(next[GERMAN_THIRD as DivisionId]).toHaveLength(20);
+		expect(next[GERMAN_SECOND as DivisionId]).toEqual(expect.arrayContaining(down));
+		expect(next[GERMAN_THIRD as DivisionId]).toEqual(expect.arrayContaining(lowerDown));
+		expect(career.data.league!.reserves![GERMAN_THIRD]).toEqual(expect.arrayContaining(regionalDown));
+		for (const { outcome, higher, lower } of playoffs) {
+			expect(next[higher as DivisionId]).toContain(outcome!.winner);
+			expect(next[lower as DivisionId]).toContain(outcome!.loser);
+		}
+		expect(career.data.league!.germanPlayoffs).toEqual({});
+		expect(career.season).toBe(2027);
 	}, 600_000);
 });

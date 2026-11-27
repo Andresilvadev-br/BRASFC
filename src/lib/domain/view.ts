@@ -1,4 +1,4 @@
-import { tournamentDefinitions } from '#lib/data/brasil/2026/tournaments.ts';
+import { tournamentDefinitions } from '#lib/data/tournaments.ts';
 import { tournamentView } from './tournaments.ts';
 import '#lib/data/brasil.ts'; // registra os clubes reais no registro de clubes
 import { careerWorld, type Career } from './career.ts';

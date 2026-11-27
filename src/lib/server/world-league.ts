@@ -1,9 +1,12 @@
 import { ITALIAN_SECOND } from '#lib/domain/italian-postseason.ts';
 import supplements from '#lib/data/world/2026/added-clubs.json' with { type: 'json' };
+import germanClubs from '#lib/data/world/2026/german-clubs.json' with { type: 'json' };
+import { continentalSupercupClubs } from '#lib/data/world/2026/continental-supercups.ts';
 import type { Club } from '#lib/domain/clubs.ts';
 import { careerStart } from '#lib/domain/career.ts';
 import type { DivisionId, LeagueState } from '#lib/domain/league.ts';
-import { WORLD_DIVISION_NAMES, SPAIN_FIRST, SPAIN_SECOND, type CompactPlayer, type Tiebreak, type WorldDivisionRule, type WorldPlan } from '#lib/domain/world-league.ts';
+import { GERMAN_FIRST, GERMAN_SECOND, GERMAN_THIRD } from '#lib/domain/german-playoffs.ts';
+import { WORLD_DIVISION_NAMES, SPAIN_FIRST, SPAIN_SECOND, type CompactPlayer, type Tiebreak, type WorldDivisionRule, type WorldPlan, type WorldSnapshot } from '#lib/domain/world-league.ts';
 import type { AttributeKey } from '#lib/engine/attributes.ts';
 import { countryName } from '#lib/world/countries.ts';
 import { newestWorldCatalog, openWorldCatalog } from './world-catalog.ts';
@@ -19,12 +22,24 @@ import { newestWorldCatalog, openWorldCatalog } from './world-catalog.ts';
  */
 export const EDITION = '2026/27';
 
-const additions = new Map(Object.entries(supplements));
-const extraMembers = (country: string) => [...additions.keys()].filter((id) => id.startsWith(country + '/')).map((id) => `world/${id}`);
-const spanishSecond = extraMembers('esp');
-const italianSecond = extraMembers('ita');
+interface SupplementalClub {
+	name: string;
+	city: string;
+	stadium: string;
+	reputation?: number;
+	colors?: string;
+	players: Array<Array<string | number | null>>;
+}
+
+const additions = new Map<string, SupplementalClub>(Object.entries({ ...supplements, ...germanClubs }));
+const extraMembers: Record<string, string[]> = {
+	[SPAIN_SECOND]: Object.keys(supplements).filter((id) => id.startsWith('esp/')),
+	[ITALIAN_SECOND]: Object.keys(supplements).filter((id) => id.startsWith('ita/')),
+	[GERMAN_THIRD]: Object.keys(germanClubs)
+};
 const italianThird = ['pescara', 'reggiana', 'spezia', 'ssc-bari'].map((id) => `world/ita/${id}`);
 const spanishThird = ['cd-mirandes', 'cultural-leonesa', 'real-zaragoza', 'sd-huesca'].map((id) => `world/esp/${id}`);
+const germanFourth = ['fc-erzgebirge-aue', 'ssv-ulm-1846', '1-fc-schweinfurt-05', 'tsv-1860-munchen'].map((id) => `world/ger/${id}`);
 
 const OFFICIAL_NAMES = WORLD_DIVISION_NAMES;
 
@@ -66,7 +81,7 @@ function readDivisions(catalogId: string | null) {
 		const level = Number(row.division);
 		const id = `league/${country}/${level}`;
 		const teams = Number(rules.teams) || 0;
-		const clubs = [...new Set([...(verified.get(String(row.id)) ?? []), ...(id === SPAIN_SECOND ? spanishSecond : id === ITALIAN_SECOND ? italianSecond : [])])];
+		const clubs = [...new Set([...(verified.get(String(row.id)) ?? []), ...(extraMembers[id] ?? []).map((club) => `world/${club}`)])];
 		// Divisões com grupos ou mata-mata próprios ainda não têm formato no BRASFC: ficam fora até serem modeladas.
 		const simpleFormat = !(Number(rules.groups) > 1);
 		const playable = simpleFormat && teams >= 4 && teams % 2 === 0 && clubs.length === teams && new Set(clubs).size === teams;
@@ -74,8 +89,8 @@ function readDivisions(catalogId: string | null) {
 			id, country, level, name: OFFICIAL_NAMES[id] ?? `${countryName(country)} · ${level}ª divisão`, teams, verified: clubs, playable,
 			rule: {
 				name: OFFICIAL_NAMES[id] ?? `${countryName(country)} · ${level}ª divisão`, country, level, legs: rules.two_rounds === false ? 1 : 2,
-				relegated: (id === SPAIN_SECOND || id === ITALIAN_SECOND) ? 4 : Math.max(0, Number(rules.relegated_directly ?? rules.relegated) || 0),
-				promoted: (id === SPAIN_SECOND || id === ITALIAN_SECOND) ? 2 : Math.max(0, Number(rules.promotion_places) || 0),
+				relegated: [SPAIN_SECOND, ITALIAN_SECOND, GERMAN_THIRD].includes(id) ? 4 : Math.max(0, Number(rules.relegated_directly ?? rules.relegated) || 0),
+				promoted: [SPAIN_SECOND, ITALIAN_SECOND, GERMAN_SECOND, GERMAN_THIRD].includes(id) ? 2 : Math.max(0, Number(rules.promotion_places) || 0),
 				tiebreak: TIEBREAK[country] ?? 'saldo'
 			}
 		});
@@ -139,31 +154,51 @@ export function buildWorldPlan(countries: string[], catalogId: string | null = n
 			if (below && !below.playable && below.verified.length) reserves[d.id] = below.verified.filter((id) => !playable.some((p) => p.verified.includes(id)));
 			if (d.id === SPAIN_SECOND) reserves[d.id] = spanishThird;
 			if (d.id === ITALIAN_SECOND) reserves[d.id] = italianThird;
+			if (d.id === GERMAN_THIRD) reserves[d.id] = germanFourth;
 		}
 	}
-	const ids = [...new Set([...Object.values(divisions).flat(), ...Object.values(reserves).flat()])] as string[];
-	const clubQuery = read.db.prepare('SELECT name, stadium, reputation, colors, state FROM club WHERE id = ?');
-	const playerQuery = read.db.prepare('SELECT id, name, age, country, position, starter, overall_estimate, potential_estimate, traits FROM player WHERE club = ? ORDER BY starter DESC, id');
-	const clubs: Club[] = [];
-	const players: Record<string, CompactPlayer[]> = {};
-	for (const id of ids) {
-		const raw = id.replace(/^world\//, '');
-		const additional = additions.get(raw);
-		const row = clubQuery.get(raw) ?? (additional ? { ...additional, state: additional.city } : undefined);
-		if (!row) return null; // inscrição aponta para clube ausente: catálogo inconsistente
-		clubs.push(clubCard(row, id));
-		players[id] = additional ? additional.players.map(([number, name, position, country], i): CompactPlayer =>
-			[`${raw}-${raw.split('/')[0]}26${i + 1}`, String(name), null, String(country), String(position), 0, 63, 66, [], Number(number)]
-		) : playerQuery.all(raw).map((p) => [
-			String(p.id), String(p.name), Number(p.age), String(p.country), String(p.position), p.starter ? 1 : 0,
-			Number(p.overall_estimate), Number(p.potential_estimate), JSON.parse(String(p.traits)) as AttributeKey[]
-		]);
+	const snapshot = catalogSnapshot(catalogId, [...Object.values(divisions).flat(), ...Object.values(reserves).flat()] as string[], season);
+	if (!snapshot) return null;
+	const active = new Set(snapshot.clubs.map(({ id }) => id));
+	const guests = continentalSupercupClubs(season, countries).filter((id) => !active.has(id));
+	const additional = guests.length ? catalogSnapshot(catalogId, guests, season) : null;
+	if (additional) {
+		snapshot.clubs.push(...additional.clubs);
+		Object.assign(snapshot.players, additional.players);
 	}
 	const league: LeagueState = {
 		world: 'mundo', season, scheduleVersion: 3, divisions,
 		selection: { divisions: Object.keys(divisions).sort() as DivisionId[], cup: false }, rules, reserves,
 		...(divisions[SPAIN_FIRST as DivisionId] && divisions[SPAIN_SECOND as DivisionId] ? { spanishPlayoff: [] } : {}),
-		...(divisions[ITALIAN_SECOND as DivisionId] ? { italianPostseason: {} } : {})
+		...(divisions[ITALIAN_SECOND as DivisionId] ? { italianPostseason: {} } : {}),
+		...(divisions[GERMAN_FIRST as DivisionId] && divisions[GERMAN_SECOND as DivisionId] && divisions[GERMAN_THIRD as DivisionId] ? { germanPlayoffs: {} } : {})
 	};
-	return { countries: [...countries].sort(), league, snapshot: { catalog: catalogId, clubs, players } };
+	return { countries: [...countries].sort(), league, snapshot };
+}
+
+/** Cópia compacta do catálogo para o save, inclusive para adversários de um país inativo. */
+export function catalogSnapshot(catalogId: string, clubsToLoad: string[], season: number): WorldSnapshot | null {
+	const db = openWorldCatalog(catalogId);
+	if (!db) return null;
+	const clubQuery = db.prepare('SELECT name, stadium, reputation, colors, state FROM club WHERE id = ?');
+	const playerQuery = db.prepare('SELECT id, name, age, country, position, starter, overall_estimate, potential_estimate, traits FROM player WHERE club = ? ORDER BY starter DESC, id');
+	const clubs: Club[] = [];
+	const players: Record<string, CompactPlayer[]> = {};
+	for (const id of new Set(clubsToLoad)) {
+		const raw = id.replace(/^world\//, '');
+		const additional = additions.get(raw);
+		const row = clubQuery.get(raw) ?? (additional ? { ...additional, state: additional.city } : undefined);
+		if (!row) return null; // inscrição aponta para clube ausente: catálogo inconsistente
+		clubs.push(clubCard(row, id));
+		players[id] = additional ? additional.players.map(([number, name, position, country, dateOfBirth], i): CompactPlayer => {
+			const birth = typeof dateOfBirth === 'string' ? dateOfBirth : null;
+			const age = birth ? season - Number(birth.slice(0, 4)) - Number(birth.slice(5) > '08-02') : null;
+			return [`${raw}-${raw.split('/')[0]}26${i + 1}`, String(name), age, String(country ?? ''), String(position), 0, 63, 66, [],
+				typeof number === 'number' ? number : undefined];
+		}) : playerQuery.all(raw).map((p) => [
+			String(p.id), String(p.name), Number(p.age), String(p.country), String(p.position), p.starter ? 1 : 0,
+			Number(p.overall_estimate), Number(p.potential_estimate), JSON.parse(String(p.traits)) as AttributeKey[]
+		]);
+	}
+	return { catalog: catalogId, clubs, players };
 }

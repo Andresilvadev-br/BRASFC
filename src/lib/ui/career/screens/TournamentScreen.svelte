@@ -38,6 +38,7 @@
 				</div>
 			{/each}
 			{#each tournament.phases.find((phase) => phase.rounds.at(-1) === round)?.outcomes ?? [] as outcome, i (i)}
+				{#if outcome?.extraTime}<p class="muted">Prorrogação · {outcome.extraTime[0]} × {outcome.extraTime[1]}</p>{/if}
 				{#if outcome?.penalties}<p class="muted">{name(outcome.winner)} venceu nos pênaltis por {Math.max(outcome.penalties.home, outcome.penalties.away)} a {Math.min(outcome.penalties.home, outcome.penalties.away)}.</p>{/if}
 			{/each}
 		</section>

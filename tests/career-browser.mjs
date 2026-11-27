@@ -176,6 +176,17 @@ try {
 		assert.equal(response.status(), 200, `Tela ${path || '/'} da carreira europeia`);
 		assert.equal(await page.getByText('Bola murcha').count(), 0, `Tela ${path || '/'} da carreira europeia falhou`);
 	}
+	const continental = await create({ mode: 'coach', personName: 'Lia Paris', clubId: 'world/fra/psg', worldSelection: { countries: ['fra'] } });
+	const continentalPath = `/api/careers/${continental.id}`;
+	const preview = await (await page.request.get(continentalPath + '/proximo')).json();
+	assert.equal(preview.step, 'continental/uefa-super-cup:1');
+	const continentalRound = await page.request.post(continentalPath + '/matches', {
+		data: { version: continental.version, season: continental.season, step: preview.step },
+		headers: { Origin: origin }
+	});
+	assert.equal(continentalRound.status(), 200, await continentalRound.text());
+	const continentalPlayed = await continentalRound.json();
+	assert.equal(continentalPlayed.match.fixture.away, 'world/eng/aston-villa');
 	// O passo de supercopa precisa atravessar a API de partidas e continuar recuperável no replay.
 	let cupCareer = await create({ mode: 'coach', personName: 'Lia Copa', clubId: 'flamengo', worldSelection: { countries: ['bra'] } });
 	const cupPath = `/api/careers/${cupCareer.id}`;

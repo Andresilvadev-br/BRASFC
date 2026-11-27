@@ -24,6 +24,8 @@ import { FIRST_ROUND, SEASON_START } from './season.ts';
 import type { Tactic } from './tactics.ts';
 import type { PlayerFocus, TeamFocus } from './training.ts';
 import { initialBrazilTournaments } from '#lib/data/brasil/2026/tournaments.ts';
+import { initialWorldSupercups } from '#lib/data/world/2026/supercups.ts';
+import { initialContinentalSupercups } from '#lib/data/world/2026/continental-supercups.ts';
 import type { TournamentState } from './tournaments.ts';
 import type { WorldSelection } from '#lib/world/contract.ts';
 import type { BrazilContinentalQualification } from './continental-qualification.ts';
@@ -213,9 +215,11 @@ export function initialCareerData(input: CreateCareerInput, seed: number, plan?:
 	const start = careerStart(world);
 	if (world === 'mundo') {
 		if (!plan) throw new Error('Carreira do World Database sem a liga montada pelo servidor.');
+		const clubs = plan.snapshot.clubs.map(({ id }) => id);
 		return {
 			appearance: input.appearance, world, firstSeason: start.season, league: structuredClone(plan.league),
 			worldSelection: { countries: [...plan.countries] }, worldSnapshot: plan.snapshot, worldCatalog: plan.snapshot.catalog,
+			tournaments: [...initialWorldSupercups(start.season, plan.countries, clubs), ...initialContinentalSupercups(start.season, plan.countries, clubs)],
 			trainingFocus: 'equilibrado'
 		};
 	}
