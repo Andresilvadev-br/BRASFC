@@ -53,6 +53,8 @@ export function eventLabel(type: string): string {
 /** Nome legível da competição a partir do id interno. */
 export function competitionLabel(id?: string): string {
 	if (id === 'copa-do-brasil') return 'Copa do Brasil';
+	if (id === 'continental/ucl') return 'Champions League';
+	if (id === 'continental/uel') return 'Europa League';
 	if (id?.startsWith('serie-')) return `Série ${id.at(-1)?.toUpperCase()}`;
 	return 'BRASFC';
 }

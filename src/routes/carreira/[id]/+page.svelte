@@ -6,6 +6,8 @@
 	import { analyze, type Tip } from '#lib/domain/assistant.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { CUP_ID } from '#lib/domain/cup.ts';
+	import { isCupCompetition } from '#lib/domain/calendar.ts';
+	import { competitionName } from '#lib/domain/league.ts';
 	import { formatDayMonth, formatLong, weekday, weekdayShort } from '#lib/domain/dates.ts';
 	import { formatMoney } from '#lib/domain/market.ts';
 	import { POSITION_INFO } from '#lib/domain/positions.ts';
@@ -29,13 +31,13 @@
 	const inbox = $derived([...data.messages].sort((a, b) => Number(a.read) - Number(b.read) || b.gameDate.localeCompare(a.gameDate)).slice(0, 4));
 	const next = $derived(v.upcoming);
 	const oppId = $derived(next ? (next.home === c.clubId ? next.away : next.home) : null);
-	const isCup = $derived(next?.competition === CUP_ID);
+	const isCup = $derived(isCupCompetition(next?.competition));
 	const myRow = $derived(v.standings.find((r) => r.clubId === c.clubId));
 
 	/** Forma (últimos 5 jogos de liga e Copa) a partir dos resultados gravados. */
 	function form(clubId: string) {
 		const games = v.results.filter((r) => r.home === clubId || r.away === clubId);
-		const dated = games.map((r) => ({ r, date: v.clubFixtures.find((f) => f.round === r.round && f.home === r.home && f.competition === (r.competition ?? 'liga-brasfc'))?.date ?? `${r.competition === CUP_ID ? 'z' : ''}${String(r.round).padStart(2, '0')}` }));
+		const dated = games.map((r) => ({ r, date: v.clubFixtures.find((f) => f.round === r.round && f.home === r.home && f.competition === (r.competition ?? 'liga-brasfc'))?.date ?? `${isCupCompetition(r.competition) ? 'z' : ''}${String(r.round).padStart(2, '0')}` }));
 		return dated
 			.sort((a, b) => a.date.localeCompare(b.date))
 			.slice(-5)
@@ -104,7 +106,7 @@
 		void goto(t.action?.type === 'training' ? `${base}/treinos` : `${base}/taticas`);
 	}
 	const appearance = $derived(c.data.appearance ?? { skin: 2, hairColor: 1, hairStyle: 'curto' as const });
-	const compLabel = (comp: string) => (comp === CUP_ID ? 'Copa do Brasil' : v.divisionLabel);
+	const compLabel = (comp: string) => (isCupCompetition(comp) ? competitionName(comp) : v.divisionLabel);
 </script>
 
 <svelte:head><title>Painel · {v.club.name} · BRASFC</title></svelte:head>
@@ -201,11 +203,11 @@
 		<div class="strip">
 			{#each upcoming as f (f.competition + f.round + f.home)}
 				{@const opp = f.home === c.clubId ? f.away : f.home}
-				<div class="day" class:cup={f.competition === CUP_ID}>
+				<div class="day" class:cup={isCupCompetition(f.competition)}>
 					<span class="wd">{weekdayShort(weekday(f.date))} {formatDayMonth(f.date)}</span>
 					<Crest clubId={opp} size={34} />
 					<strong>{getClub(opp)?.short}</strong>
-					<small>{f.home === c.clubId ? 'casa' : 'fora'} · {f.competition === CUP_ID ? 'Copa' : `R${f.round}`}</small>
+					<small>{f.home === c.clubId ? 'casa' : 'fora'} · {f.competition === CUP_ID ? 'Copa' : isCupCompetition(f.competition) ? (f.competition === 'continental/ucl' ? 'UCL' : 'UEL') : `R${f.round}`}</small>
 				</div>
 			{:else}
 				<p class="muted">Sem jogos marcados.</p>
@@ -223,7 +225,7 @@
 		<div class="results-row">
 			{#each recentResults as item (`${item.r.competition ?? 'liga'}-${item.r.round}-${item.r.home}`)}
 				<MatchCard home={item.r.home} away={item.r.away} score={{ home: item.r.homeGoals, away: item.r.awayGoals }}
-					label={`${compLabel(item.r.competition ?? '')}${item.r.competition === CUP_ID ? '' : ` · R${item.r.round}`}`} status={item.outcome} highlight={item.outcome === 'Vitória'} />
+					label={`${compLabel(item.r.competition ?? '')}${isCupCompetition(item.r.competition) ? '' : ` · R${item.r.round}`}`} status={item.outcome} highlight={item.outcome === 'Vitória'} />
 			{:else}
 				<p class="muted">Os resultados aparecem depois da primeira partida oficial.</p>
 			{/each}

@@ -12,6 +12,7 @@ import { CLUBS, getClub, LEAGUE, type Club } from './clubs.ts';
 import type { TrainingPlan } from './drills.ts';
 import { BRASIL_DIVISIONS, DIVISION_LABELS, divisionLabel, divisionOf, firstRoundDate, initialLeague, isActiveClub, leagueRoundDate, seasonStartDate, validateLeagueSelection, type LeagueSelection, type LeagueState, type SeasonSummary, type World } from './league.ts';
 import { europeanSeasonStart, type WorldPlan, type WorldSnapshot } from './world-league.ts';
+import { initialEurope } from './europe.ts';
 import type { TacticalState } from './tactical.ts';
 import { initialCup, type CupState } from './cup.ts';
 import type { ClubState } from './management.ts';
@@ -55,6 +56,8 @@ worldCatalog?: string;
 worldSelection?: WorldSelection;
 /** Mundo `mundo`: clubes e elencos da liga gravados no save (mesmo resultado no servidor e no navegador). */
 worldSnapshot?: WorldSnapshot;
+/** Champions League e Europa League da temporada (mundo europeu). */
+europe?: import('./europe.ts').EuropeState;
 /** Vagas brasileiras apuradas ao encerrar a temporada correspondente. */
 brazilContinentalQualification?: BrazilContinentalQualification;
 appearance?: Appearance;
@@ -212,6 +215,7 @@ export function initialCareerData(input: CreateCareerInput, seed: number, plan?:
 		return {
 			appearance: input.appearance, world, firstSeason: start.season, league: structuredClone(plan.league),
 			worldSelection: { countries: [...plan.countries] }, worldSnapshot: plan.snapshot, worldCatalog: plan.snapshot.catalog,
+			...(plan.europe ? { europe: initialEurope(start.season, seed) ?? undefined } : {}),
 			trainingFocus: 'equilibrado'
 		};
 	}

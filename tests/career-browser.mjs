@@ -168,9 +168,10 @@ try {
 	assert.equal(spain.data.world, 'mundo');
 	assert.equal(spain.gameDate, '2026-08-02');
 	assert.equal(spain.data.league.divisions['league/esp/1'].length, 20);
+	assert.deepEqual(spain.data.europe?.comps.map((c) => c.id), ['continental/ucl', 'continental/uel'], 'Champions League e Europa League na carreira europeia');
 	const round = await page.request.post(`/api/careers/${spain.id}/matches`, { data: { version: spain.version, step: 'league:1' }, headers: { Origin: origin } });
 	assert.equal(round.status(), 200, await round.text());
-	for (const path of ['', '/elenco', '/competicoes', '/financas', '/calendario']) {
+	for (const path of ['', '/elenco', '/competicoes', '/financas', '/calendario', '/europa']) {
 		const response = await page.goto(`/carreira/${spain.id}${path}`);
 		await page.waitForLoadState('networkidle');
 		assert.equal(response.status(), 200, `Tela ${path || '/'} da carreira europeia`);
@@ -178,6 +179,8 @@ try {
 	}
 	await page.goto(`/carreira/${spain.id}/competicoes`);
 	await page.getByRole('heading', { name: 'LaLiga' }).waitFor();
+	await page.goto(`/carreira/${spain.id}/europa`);
+	await page.getByRole('heading', { name: /Champions League|Europa League/ }).first().waitFor();
 	assert.deepEqual(errors, []);
 	console.log('Biblioteca de carreiras, ligas selecionáveis, placar simultâneo e carreira europeia aprovados no Chromium.');
 } finally {

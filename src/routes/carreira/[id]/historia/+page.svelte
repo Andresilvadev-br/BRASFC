@@ -18,7 +18,7 @@
 	onMount(() => {
 		clubHistory(c.id).then((h) => (hist = h)).catch(() => (failed = true));
 	});
-	const COMP: Record<string, string> = { ...DIVISION_LABELS, 'copa-do-brasil': 'Copa do Brasil' };
+	const COMP: Record<string, string> = { ...DIVISION_LABELS, 'copa-do-brasil': 'Copa do Brasil', 'continental/ucl': 'Champions League', 'continental/uel': 'Europa League' };
 	const seasons = $derived([...new Set((hist?.history ?? []).map((h) => h.season))].sort((a, b) => b - a));
 	const titles = $derived(v.seasons.filter((s) => s.outcome === 'campeao' || s.outcome === 'acesso'));
 	const cupTitles = $derived((hist?.history ?? []).filter((h) => h.kind === 'temporada-usuario' && h.data.cupChampion));

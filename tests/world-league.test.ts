@@ -61,7 +61,8 @@ describe('World Database · divisões jogáveis', () => {
 		expect(plan.league.divisions['league/esp/1' as never]).toHaveLength(20);
 		expect(plan.league.reserves!['league/esp/1']).toHaveLength(18);
 		expect(plan.league.rules!['league/esp/1']).toMatchObject({ name: 'LaLiga', legs: 2, relegated: 3, tiebreak: 'confronto-direto' });
-		expect(plan.snapshot.clubs).toHaveLength(38);
+		expect(plan.snapshot.clubs).toHaveLength(38 + 72 - 7);
+		expect(plan.europe).toBe(true);
 		expect(Object.values(plan.snapshot.players).every((p) => p.length >= 16)).toBe(true);
 		expect(buildWorldPlan(['bra'], CATALOG)).toBeNull();
 		expect(buildWorldPlan(['ned'], CATALOG)).toBeNull();
@@ -105,10 +106,15 @@ describe('World Database · duas temporadas na Espanha pelo servidor', () => {
 				career = (await playRound(db, profile.id, career, { version: career.version, step: v.step.key })).career;
 				steps++;
 			}
-			expect(steps).toBe(38);
+			expect(steps).toBe(38 + 34);
 			const results = await listResults(db, career.id, career.season);
 			expect(results.filter((r) => r.competition === 'league/esp/1')).toHaveLength(380);
+			for (const comp of ['continental/ucl', 'continental/uel']) expect(results.filter((r) => r.competition === comp)).toHaveLength(144 + 16 + 16 + 8 + 4 + 1);
+			const ucl = career.data.europe!.comps.find((c) => c.id === 'continental/ucl')!;
+			if (season === 2026) expect(ucl.pots.flat()).toContain(clubId);
+			const spainInUcl = ucl.pots.flat().filter((id) => id.startsWith('world/esp/')).length;
 			const before = careerView(career, results);
+			if (season === 2026) expect(before.europeParticipation.map((p) => p.competition)).toEqual(['continental/ucl']);
 			expect(before.standings.every((r) => r.played === 38)).toBe(true);
 			const last = [...before.standings].slice(-3).map((r) => r.clubId);
 			const res = await finishSeason(db, profile.id, career, career.version);
@@ -119,7 +125,13 @@ describe('World Database · duas temporadas na Espanha pelo servidor', () => {
 			expect(elite).toHaveLength(20);
 			for (const id of last) expect(elite).not.toContain(id);
 			expect(career.data.league!.reserves!['league/esp/1']).toEqual(expect.arrayContaining(last));
+			// Vagas espanholas da próxima Champions: os primeiros da tabela final, na mesma quantidade.
+			const nextUcl = career.data.europe!.comps.find((c) => c.id === 'continental/ucl')!.pots.flat().filter((id) => id.startsWith('world/esp/'));
+			expect(nextUcl.sort()).toEqual(before.standings.slice(0, spainInUcl).map((r) => r.clubId).sort());
 		}
+		// Champions League e Europa League: rodadas jogadas, campeões no histórico, nova edição pela tabela.
+		expect(career.data.europe?.season).toBe(2028);
+		expect(career.data.europe?.comps.map((c) => c.edition)).toEqual(['projetada', 'projetada']);
 		// Reaberto do banco: mesma liga, mesmo elenco.
 		const reloaded = (await getCareer(db, profile.id, career.id))!;
 		expect(careerView(reloaded).squad.map((p) => p.id)).toEqual(careerView(career).squad.map((p) => p.id));
@@ -138,7 +150,7 @@ describe('World Database · duas temporadas na Espanha pelo servidor', () => {
 			career = (await playRound(db, profile.id, career, { version: career.version, step: v.step.key })).career;
 			steps++;
 		}
-		expect(steps).toBe(34);
+		expect(steps).toBe(34 + 34);
 		const results = await listResults(db, career.id, career.season);
 		expect(results.filter((r) => r.competition === 'league/ger/1')).toHaveLength(306);
 		expect(results.filter((r) => r.competition === 'league/ger/2')).toHaveLength(306);

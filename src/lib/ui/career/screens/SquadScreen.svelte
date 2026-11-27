@@ -23,7 +23,7 @@
 	const c = $derived(data.career);
 	// Disciplina: suspensões pendentes por competição e amarelos acumulados (registro do servidor).
 	const discipline = $derived(sanitizeDiscipline(c.data.discipline, c.season));
-	const suspensions = $derived(new Map(discipline.suspensions.map((s) => [s.playerId, `${suspensionLabel(s)} (${s.competition === 'copa-do-brasil' ? 'Copa do Brasil' : 'campeonato'})`])));
+	const suspensions = $derived(new Map(discipline.suspensions.map((s) => [s.playerId, `${suspensionLabel(s)} (${s.competition === 'copa-do-brasil' ? 'Copa do Brasil' : s.competition === 'continental/ucl' ? 'Champions League' : s.competition === 'continental/uel' ? 'Europa League' : 'campeonato'})`])));
 	const v = $derived(data.view);
 	const m = $derived(data.manage);
 	const coach = $derived(c.mode === 'coach');

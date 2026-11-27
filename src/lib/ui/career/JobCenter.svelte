@@ -9,7 +9,7 @@
 	import { divisionStandings, isActiveClub, type DivisionId, type LeagueState, type StoredRoundResult } from '#lib/domain/league.ts';
 	import { formatMoney } from '#lib/domain/market.ts';
 	import { divLabel } from '#lib/domain/universe.ts';
-	import { CUP_ID } from '#lib/domain/cup.ts';
+	import { isCupCompetition } from '#lib/domain/calendar.ts';
 	import { enter, pop, reveal } from '#lib/motion/actions.ts';
 	import { notify } from '#lib/stores/island.svelte.ts';
 	import type { ClubPreview } from '#lib/server/coach-market.ts';
@@ -51,7 +51,7 @@
 
 	// Momento esportivo direto dos resultados já carregados (sem nova requisição).
 	function moment(clubId: string, division: string) {
-		const table = divisionStandings(league, division as DivisionId, results.filter((r) => r.competition !== CUP_ID));
+		const table = divisionStandings(league, division as DivisionId, results.filter((r) => !isCupCompetition(r.competition)));
 		const row = table.find((r) => r.clubId === clubId);
 		const form = results.filter((r) => r.home === clubId || r.away === clubId).slice(-5).map((r) => {
 			const home = r.home === clubId;

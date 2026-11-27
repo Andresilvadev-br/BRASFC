@@ -264,6 +264,8 @@ export interface WeekInput {
 	firstSeasonOfCareer: boolean;
 	/** prêmios da Copa conquistados neste passo */
 	cupPrize: number;
+	/** texto do lançamento do prêmio (padrão: Copa do Brasil) */
+	prizeLabel?: string;
 }
 
 export interface WeekOutcome {
@@ -319,7 +321,7 @@ export function processWeek(prev: ClubState, w: WeekInput): WeekOutcome {
 		// Base: uma semana de desenvolvimento
 		st.academy = st.academy.map((y) => developYouth(y, st.infra.ct.level, st.infra.base.level, staffEffects(st.staff).youthDevelopment * (st.board.notes.includes(`base-investida-${w.season}`) ? 1.15 : 1), w.seed, w.season, w.round));
 	}
-	if (w.cupPrize) add('premiacao', w.cupPrize, 'Premiação da Copa do Brasil');
+	if (w.cupPrize) add('premiacao', w.cupPrize, w.prizeLabel ?? 'Premiação da Copa do Brasil');
 
 	if (w.match) {
 		const m = w.match;
@@ -327,7 +329,7 @@ export function processWeek(prev: ClubState, w: WeekInput): WeekOutcome {
 		const derby = isDerby(w.clubId, m.opponent);
 		if (m.home) {
 			const capacity = stadiumCapacity(eco.capacity, st.infra.estadio.level);
-			att = attendance({ capacity, fanMood: st.fanMood, price: st.ticketPrice, ticketRef: eco.ticketRef, opponentReputation: getClub(m.opponent)?.reputation ?? 2, derby, competitionWeight: m.competition === 'copa-do-brasil' ? 1.1 : 1 });
+			att = attendance({ capacity, fanMood: st.fanMood, price: st.ticketPrice, ticketRef: eco.ticketRef, opponentReputation: getClub(m.opponent)?.reputation ?? 2, derby, competitionWeight: m.competition === 'copa-do-brasil' ? 1.1 : m.competition.startsWith('continental/') ? 1.3 : 1 });
 			add('bilheteria', att * st.ticketPrice, `Bilheteria: ${att.toLocaleString('pt-BR')} torcedores`);
 		}
 		st.fanMood = moodAfterMatch(st.fanMood, outcome, m.home, derby, st.ticketPrice, eco.ticketRef);

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { isCupCompetition, stepTitle } from '#lib/domain/calendar.ts';
 	import Walkout from '#lib/ui/v4/Walkout.svelte';
 	import { beforeNavigate, invalidate } from '$app/navigation';
 	import { ApiError, api, withCareerVersion } from '#lib/api.ts';
@@ -147,13 +148,13 @@
 </script>
 
 {#if shared}
-	<LocalMatchday career={c} seasonOver={v.seasonOver} stepLabel={v.seasonOver ? `Fim da temporada ${c.season}` : v.step?.kind === 'cup' ? 'Copa do Brasil' : `Rodada ${v.nextRound}`} />
+	<LocalMatchday career={c} seasonOver={v.seasonOver} stepLabel={v.seasonOver ? `Fim da temporada ${c.season}` : stepTitle(v.step, v.nextRound)} />
 {:else if walkout && playedFixture && setup}
 	{@const game = playedFixture}
 	<Walkout home={setup.home} away={setup.away} neutral={setup.neutral}
 		coaches={c.mode === 'coach' ? { [setup.mySide]: c.personName } : {}}
-		label={game.competition === 'copa-do-brasil'
-			? `Copa do Brasil · ${game.phase ?? ''}`
+		label={isCupCompetition(game.competition)
+			? `${competitionName(game.competition)} · ${game.phase ?? ''}`
 			: `${competitionName(game.competition)} · Rodada ${game.round}`}
 		ondone={startMatch} />
 {/if}
@@ -187,10 +188,10 @@
 {:else if stage === 'pre' && !fixture}
 	<section class="card empty" data-umx-enter>
 		<Icon name="calendar" />
-		<h1>{v.step?.kind === 'cup' ? 'Quarta de Copa do Brasil' : `Rodada ${v.nextRound}`}: seu time não joga</h1>
+		<h1>{v.step?.kind === 'cup' ? 'Quarta de Copa do Brasil' : stepTitle(v.step, v.nextRound)}: seu time não joga</h1>
 		<p>
 			As outras partidas acontecem normalmente. Use a semana para treinar
-			{#if v.upcoming}— o próximo jogo é em {formatLong(v.upcoming.date).toLowerCase()}{v.upcoming.competition === 'copa-do-brasil' ? ' (Copa do Brasil)' : ''}{/if}.
+			{#if v.upcoming}— o próximo jogo é em {formatLong(v.upcoming.date).toLowerCase()}{isCupCompetition(v.upcoming.competition) ? ` (${competitionName(v.upcoming.competition)})` : ''}{/if}.
 		</p>
 		<div class="actions">
 			<Button variant="primary" icon="arrowRight" loading={busy} onclick={skipWeek}>Avançar a semana</Button>
@@ -199,7 +200,7 @@
 	</section>
 {:else if stage === 'pre' && fixture && preview}
 	<section class="card pre" data-umx-enter>
-		<span class="eyebrow">{fixture.competition === 'copa-do-brasil' ? `Copa do Brasil · ${fixture.phase ?? ''}` : `${competitionName(fixture.competition)} · Rodada ${fixture.round}`} · {formatLong(fixture.date)} · {fixture.time}</span>
+		<span class="eyebrow">{isCupCompetition(fixture.competition) ? `${competitionName(fixture.competition)} · ${fixture.phase ?? ''}` : `${competitionName(fixture.competition)} · Rodada ${fixture.round}`} · {formatLong(fixture.date)} · {fixture.time}</span>
 		<div class="vs">
 			<div class="side"><Crest clubId={fixture.home} size={88} /><strong>{getClub(fixture.home)?.name}</strong></div>
 			<span class="x">×</span>

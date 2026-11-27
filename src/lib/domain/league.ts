@@ -97,6 +97,8 @@ export interface LeagueState {
 /** Nome de qualquer competição da carreira (Séries, liga fictícia, Copa do Brasil ou divisão do World Database). */
 export function competitionName(id: string): string {
 	if (id === 'copa-do-brasil') return 'Copa do Brasil';
+	if (id === 'continental/ucl') return 'Champions League';
+	if (id === 'continental/uel') return 'Europa League';
 	return (DIVISION_LABELS as Record<string, string>)[id] ?? worldDivisionLabel(undefined, id);
 }
 

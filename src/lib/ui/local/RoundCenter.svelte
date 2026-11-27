@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { stepTitle } from '#lib/domain/calendar.ts';
 	import { portal } from '#lib/motion/actions.ts';
 	import { onDestroy, onMount } from 'svelte';
 	import { api, ApiError } from '#lib/api.ts';
@@ -30,7 +31,7 @@
 	type Venue = { stadium: string; attendance: number | null };
 	type Other = { competition: string; home: string; away: string; homeGoals: number; awayGoals: number; quick: boolean; venue: Venue; highlights: MatchHighlight[] };
 	type Preview = {
-		version: number; step: string; kind: 'league' | 'cup'; round: number; date: string;
+		version: number; step: string; kind: 'league' | 'cup' | 'europe'; competition?: string; round: number; date: string;
 		matches: Array<{ key: string; competition: string; home: string; away: string; venue: Venue; coaches: Array<{ index: number; side: Side; name: string }>; setup: SharedSetup }>;
 		others: Other[];
 	};
@@ -353,7 +354,7 @@
 	<header>
 		<div>
 			<span class="eyebrow">BRASFC · Central da rodada</span>
-			<h1>{data ? (data.kind === 'cup' ? 'Copa do Brasil' : `Rodada ${data.round}`) : 'Montando a rodada…'}</h1>
+			<h1>{data ? stepTitle(data.kind === 'league' ? { kind: 'league', round: data.round } : { kind: data.kind, matchday: data.round, competition: data.competition }) : 'Montando a rodada…'}</h1>
 		</div>
 		<div class="ctrl">
 			<Button variant="primary" size="sm" icon={paused ? 'play' : 'pause'} disabled={!data || phase === 'interval' || phase === 'done' || phase === 'saving' || phase === 'saved'} onclick={togglePlay}>{paused ? (started ? 'Continuar' : 'Iniciar') : 'Pausar'}</Button>

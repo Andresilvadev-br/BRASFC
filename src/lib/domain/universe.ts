@@ -567,7 +567,7 @@ export function universeSeasonEnd(prev: UniverseState, ctx: SeasonEndContext): U
 }
 
 export function divLabel(div: string): string {
-	return div.startsWith('serie-') ? `Série ${div.slice(6).toUpperCase()}` : div === 'copa-do-brasil' ? 'Copa do Brasil' : div;
+	return div.startsWith('serie-') ? `Série ${div.slice(6).toUpperCase()}` : div === 'copa-do-brasil' ? 'Copa do Brasil' : div === 'continental/ucl' ? 'Champions League' : div === 'continental/uel' ? 'Europa League' : div;
 }
 
 /** Invariantes usados pelos testes de simulação prolongada. */

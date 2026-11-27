@@ -15,7 +15,7 @@ import { coachOf, PROJECT_INFO, type UniverseState } from '#lib/domain/universe.
 import { rosterContext } from '#lib/domain/world.ts';
 import { strengthFor } from '#lib/domain/strength.ts';
 import { pickBench } from '#lib/engine/teams.ts';
-import { CUP_ID } from '#lib/domain/cup.ts';
+import { isCupCompetition } from '#lib/domain/calendar.ts';
 
 /**
  * Mercado de treinadores (Carreira de Treinador 2.0): propostas persistidas e a prévia detalhada
@@ -203,7 +203,7 @@ export function clubPreview(career: Career, league: LeagueState, results: Stored
 		return { sector: s.label, level, detail };
 	});
 	// Classificação atual e últimos resultados (liga e Copa) a partir dos jogos salvos.
-	const table = division ? divisionStandings(league, division as DivisionId, results.filter((r) => r.competition !== CUP_ID)) : [];
+	const table = division ? divisionStandings(league, division as DivisionId, results.filter((r) => !isCupCompetition(r.competition))) : [];
 	const row = table.find((r) => r.clubId === clubId);
 	const recent = results
 		.filter((r) => r.home === clubId || r.away === clubId)
