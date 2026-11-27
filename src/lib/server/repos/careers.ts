@@ -1,3 +1,5 @@
+import { registerClubs } from '#lib/domain/clubs.ts';
+import type { WorldPlan } from '#lib/domain/world-league.ts';
 import { randomUUID, randomInt } from 'node:crypto';
 import {
 	careerStart,
@@ -63,9 +65,10 @@ export class VersionConflictError extends Error {}
  * Cria a carreira. `others` são os demais treinadores locais (0.13), na ordem de criação: todos
  * entram no mesmo universo, cada um com o próprio clube (nunca o mesmo clube para dois treinadores).
  */
-export async function createCareer(db: Db, profileId: string, input: CreateCareerInput, seed = randomInt(1, 2 ** 31 - 1), others: CoachDraft[] = []): Promise<Career> {
+export async function createCareer(db: Db, profileId: string, input: CreateCareerInput, seed = randomInt(1, 2 ** 31 - 1), others: CoachDraft[] = [], plan: WorldPlan | null = null): Promise<Career> {
 	const id = randomUUID();
-	const data = initialCareerData(input, seed);
+	if (plan) registerClubs(plan.snapshot.clubs);
+	const data = initialCareerData(input, seed, plan);
 	if (data.world === 'brasil' && data.league?.selection) {
 		const catalog = newestWorldCatalog();
 		if (catalog) data.worldCatalog = catalog;
@@ -95,7 +98,7 @@ export async function createCareer(db: Db, profileId: string, input: CreateCaree
 		let seq = 0;
 		let firstCount = 0;
 		for (const [k, d] of drafts.entries()) {
-			const messages = welcomeMessages({ ...input, personName: d.personName, clubId: d.clubId, appearance: d.appearance });
+			const messages = welcomeMessages({ ...input, personName: d.personName, clubId: d.clubId, appearance: d.appearance }, data.league);
 			if (k === 0) firstCount = messages.length;
 			for (const m of messages) {
 				await tx.query(

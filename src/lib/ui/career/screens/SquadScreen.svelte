@@ -100,7 +100,7 @@
 		<span class="eyebrow">{v.club.name}</span>
 		<h1 class="display">Elenco</h1>
 		<p class="split-count"><span class="sit st">{v.tactic.lineup.length} titulares</span><span class="sit bn">{bench.length} no banco</span><span class="sit out">{reserves.length} fora da relação</span></p>
-		<p class="muted">{players.length} atletas · idade média {avg('age')} · nível médio {avg('overall')}{coach ? ` · folha ${formatMoney(wages)}/mês` : ''} · nomes fictícios do universo BRASFC</p>
+		<p class="muted">{players.length} atletas · idade média {avg('age')} · nível médio {avg('overall')}{coach ? ` · folha ${formatMoney(wages)}/mês` : ''} · {data.view.world === 'mundo' ? 'elenco do Brasfoot Next (CC BY-SA 4.0)' : 'nomes fictícios do universo BRASFC'}</p>
 	</div>
 	<div class="tools">
 		<Segmented label="Visão" bind:value={view} options={[{ value: 'campo', label: 'Campo' }, { value: 'cartoes', label: 'Cartões' }, { value: 'lista', label: 'Lista' }]} />

@@ -103,6 +103,9 @@ export function tierOfDivision(div: string | null | undefined): Tier {
 	if (div === 'serie-c') return 'C';
 	if (div === 'serie-d') return 'D';
 	if (div === 'liga-brasfc') return 'B';
+	// World Database: o nível da divisão define a faixa (1ª → A … 4ª → D), na mesma escala do modelo.
+	const level = /^league\/[a-z]{3}\/(\d+)$/.exec(div ?? '')?.[1];
+	if (level) return (['A', 'B', 'C', 'D'] as const)[Math.min(3, Number(level) - 1)] ?? 'E';
 	return 'E';
 }
 

@@ -1,7 +1,7 @@
 import '#lib/data/brasil.ts';
 import { MODE_LABELS, type Career } from './career.ts';
 import { getClub } from './clubs.ts';
-import { DIVISION_LABELS, type DivisionId } from './league.ts';
+import { DIVISION_LABELS, type DivisionId, competitionName } from './league.ts';
 
 /** Biblioteca de saves: validação, nomes e ordenação das carreiras individuais. */
 export type SaveSort = 'recentes' | 'antigos' | 'tipo' | 'nome';
@@ -37,7 +37,7 @@ export function saveTitle(c: SaveLike): string {
 }
 
 export function saveCompetition(c: SaveLike): string | null {
-	return c.division ? DIVISION_LABELS[c.division as DivisionId] ?? null : null;
+	return c.division ? competitionName(c.division) : null;
 }
 
 export function sortSaves<T extends SaveLike>(careers: T[], sort: SaveSort): T[] {

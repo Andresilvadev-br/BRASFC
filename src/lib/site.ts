@@ -5,7 +5,7 @@
 export const REPOSITORY = 'https://github.com/Andresilvadev-br/BRASFC';
 
 export const DESKTOP_RELEASE = {
-	version: '1.6.3',
+	version: '1.7.0',
 	platform: 'Windows x64',
 	/** sempre o instalador da última versão publicada */
 	download: `${REPOSITORY}/releases/latest/download/BRASFC-Setup.exe`,

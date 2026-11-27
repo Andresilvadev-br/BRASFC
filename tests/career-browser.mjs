@@ -151,8 +151,35 @@ try {
 	assert(maxHistory > 1, 'A lista mostra só o último lance, e os detalhes preservam os anteriores');
 	await button('Voltar à carreira').click();
 	await page.waitForURL('**' + careerPage);
+	// World Database: carreira europeia (LaLiga) pelo assistente, com elenco real e tabela pelo critério oficial.
+	await page.goto('/nova-carreira');
+	await page.getByRole('heading', { name: 'Escolha os países' }).waitFor();
+	await page.getByRole('checkbox', { name: /Espanha/ }).click();
+	assert(await button('Criar treinador').isDisabled(), 'Brasil e Europa juntos ainda não são permitidos');
+	await page.getByRole('checkbox', { name: /Brasil/ }).click();
+	await button('Criar treinador').click();
+	await page.getByLabel('Nome do treinador').fill('Lia Mundo');
+	await button('Escolher clube').click();
+	const creatingWorld = page.waitForResponse((r) => r.url().endsWith('/api/careers') && r.request().method() === 'POST');
+	await page.getByRole('button', { name: /Iniciar carreira|Começar carreira|Criar carreira/ }).last().click();
+	const createdWorld = await creatingWorld;
+	assert.equal(createdWorld.status(), 201, await createdWorld.text());
+	const { career: spain } = await createdWorld.json();
+	assert.equal(spain.data.world, 'mundo');
+	assert.equal(spain.gameDate, '2026-08-02');
+	assert.equal(spain.data.league.divisions['league/esp/1'].length, 20);
+	const round = await page.request.post(`/api/careers/${spain.id}/matches`, { data: { version: spain.version, step: 'league:1' }, headers: { Origin: origin } });
+	assert.equal(round.status(), 200, await round.text());
+	for (const path of ['', '/elenco', '/competicoes', '/financas', '/calendario']) {
+		const response = await page.goto(`/carreira/${spain.id}${path}`);
+		await page.waitForLoadState('networkidle');
+		assert.equal(response.status(), 200, `Tela ${path || '/'} da carreira europeia`);
+		assert.equal(await page.getByText('Bola murcha').count(), 0, `Tela ${path || '/'} da carreira europeia falhou`);
+	}
+	await page.goto(`/carreira/${spain.id}/competicoes`);
+	await page.getByRole('heading', { name: 'LaLiga' }).waitFor();
 	assert.deepEqual(errors, []);
-	console.log('Biblioteca de carreiras, ligas selecionáveis e placar simultâneo aprovados no Chromium.');
+	console.log('Biblioteca de carreiras, ligas selecionáveis, placar simultâneo e carreira europeia aprovados no Chromium.');
 } finally {
 	await browser.close();
 }

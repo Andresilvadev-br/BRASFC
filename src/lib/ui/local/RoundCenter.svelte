@@ -4,7 +4,7 @@
 	import { api, ApiError } from '#lib/api.ts';
 	import type { Career } from '#lib/domain/career.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
-	import { DIVISION_LABELS, type DivisionId } from '#lib/domain/league.ts';
+	import { DIVISION_LABELS, type DivisionId, competitionName } from '#lib/domain/league.ts';
 	import { HIGHLIGHT_LABELS, matchFromShared, matchHighlight, type MatchHighlight, type SharedSetup } from '#lib/domain/matchday.ts';
 	import { liveCoaches } from '#lib/domain/turns.ts';
 	import type { Match } from '#lib/engine/match.ts';
@@ -341,7 +341,7 @@
 		// Competições com treinadores primeiro.
 		return [...map.entries()].sort(([, a], [, b]) => Number(b.some((r) => r.live)) - Number(a.some((r) => r.live)));
 	});
-	const label = (c: string) => (c === 'copa-do-brasil' ? 'Copa do Brasil' : (DIVISION_LABELS[c as DivisionId] ?? c));
+	const label = (c: string) => competitionName(c);
 	const current = $derived(queue[0] ?? null);
 	const presetsFor = (index: number) => coaches[index]?.data.tacticPresets ?? [];
 	const coachIndex = (l: Live, side: Side) => l.coaches.find((c) => c.side === side)?.index ?? 0;

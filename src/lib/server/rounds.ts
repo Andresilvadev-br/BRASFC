@@ -6,7 +6,7 @@ import { ensureUniverse, inboxWorthy, officeOf, officeSeasonEnd, officeStep, uni
 import type { Career, CareerData } from '#lib/domain/career.ts';
 import { addDays } from '#lib/domain/dates.ts';
 import { applyTrainingWeek, recoverFitness } from '#lib/domain/drills.ts';
-import { activeDivisions, closeSeason, divisionOf, phaseOneLength, seasonStartDate, type DivisionId, type SeasonSummary } from '#lib/domain/league.ts';
+import { activeDivisions, closeSeason, divisionOf, leagueSeasonStart, phaseOneLength, seasonStartDate, type DivisionId, type SeasonSummary } from '#lib/domain/league.ts';
 import { CUP_ID, clubCupRun, cupFixtures, cupView, projectedCup, settleCupMatchday } from '#lib/domain/cup.ts';
 import { qualifyBrazil2027 } from '#lib/domain/continental-qualification.ts';
 import { initialClubState, payroll, sanitizeMarket } from '#lib/domain/management.ts';
@@ -511,7 +511,7 @@ export async function finishSeason(db: Db, profileId: string, career: Career, ve
 		view.world === 'brasil' && (next.selection?.cup ?? true)
 			? projectedCup(next, { cChampion: outcome.champions['serie-c'], cRunnerUp: outcome.runnersUp['serie-c'], dChampion: outcome.champions['serie-d'], dRunnerUp: outcome.runnersUp['serie-d'], dRanking: outcome.tables['serie-d']?.map((r) => r.clubId) })
 			: undefined;
-	const nextDate = seasonStartDate(next.season);
+	const nextDate = leagueSeasonStart(next);
 	// Dev 0.5: universo (projetos, técnicos, recordes) — fecha uma vez para o mundo todo.
 	const points: Record<string, { points: number; games: number }> = {};
 	for (const rows of Object.values(outcome.tables)) for (const r of rows ?? []) points[r.clubId] = { points: r.points, games: r.played };
