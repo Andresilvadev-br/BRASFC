@@ -1,3 +1,4 @@
+import { isCalendarStepKey } from '#lib/domain/calendar.ts';
 import { sharedClub } from '#lib/domain/turns.ts';
 import { error } from '@sveltejs/kit';
 import { getDb } from '#lib/server/db/index.ts';
@@ -32,7 +33,7 @@ export const POST: RequestHandler = async (event) => {
 	const season = body.season === undefined ? undefined : Number(body.season);
 	if (season !== undefined && (!Number.isInteger(season) || season < 2026)) error(400, 'Temporada inválida.');
 	const round = body.round === undefined ? undefined : Number(body.round);
-	const step = typeof body.step === 'string' && /^(league|cup):\d{1,2}$/.test(body.step) ? body.step : undefined;
+	const step = isCalendarStepKey(body.step) ? body.step : undefined;
 	if (!Number.isInteger(version) || (step === undefined && !Number.isInteger(round))) error(400, 'Versão e passo do calendário são obrigatórios.');
 	try {
 		const out = await playRound(db, profile.id, career, { version, season, ...(step ? { step } : { round }), decisions: body.decisions as AppliedDecision[] | undefined, ...(body.matches && typeof body.matches === 'object' ? { matches: body.matches as Record<string, unknown> } : {}) });

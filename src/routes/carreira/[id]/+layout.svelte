@@ -97,7 +97,7 @@
 	const step = $derived(data.view.step);
 	const shared = $derived(isShared(data.career));
 	let covering = $state(true);
-	const stepLabel = $derived(!step ? 'Fim da temporada' : step.kind === 'cup' ? 'Copa do Brasil' : `Rodada ${step.round}`);
+	const stepLabel = $derived(!step ? 'Fim da temporada' : step.kind === 'cup' ? (step.name ?? 'Copa do Brasil') : `Rodada ${step.round}`);
 
 	async function saveAppearance(appearance: Appearance) {
 		await api(`/api/careers/${data.career.id}`, { method: 'PATCH', body: { version: data.career.version, appearance } });

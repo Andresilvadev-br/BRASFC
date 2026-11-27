@@ -57,6 +57,8 @@
 	const brazilActive = $derived(countries.includes('bra'));
 	const selected = $derived<readonly DivisionId[]>(world === 'brasil' ? (brazilActive ? BRASIL_DIVISIONS : []) : available);
 	const foreign = $derived(world === 'brasil' ? data.countries.filter((c) => c.code !== 'bra' && c.playable && countries.includes(c.code)) : []);
+	/** Brasil (jan–dez) e Europa (ago–mai) na mesma carreira chegam numa próxima etapa: calendários diferentes. */
+	const mixedCalendars = $derived(brazilActive && foreign.length > 0);
 	// Clubes estrangeiros de países ativos e jogáveis (World Database), registrados para escudo, nome e cores.
 	$effect.pre(() => registerClubs(data.foreignClubs));
 	const foreignClubs = $derived(data.foreignClubs.filter((c) => foreign.some((country) => c.division.startsWith(`league/${country.code}/`))).map((c) => ({ id: c.id, division: c.division })));
@@ -80,7 +82,7 @@
 	const isWorldClub = $derived(!!clubId?.startsWith('world/'));
 	const lineup = $derived(step === 'clube' && clubId && tools && !isWorldClub ? previewClub(clubId, data.previewSeed, catalog, tools) : undefined);
 	const coach = $derived(step === 'clube' && clubId ? tools?.catalogClub(catalog, clubId)?.coach : undefined);
-	const finances = $derived(clubId && step === 'clube' ? tools?.initialClubState(data.previewSeed, clubId, isWorldClub ? null : (clubDivision as DivisionId | undefined) ?? null, league.season) : undefined);
+	const finances = $derived(clubId && step === 'clube' ? tools?.initialClubState(data.previewSeed, clubId, (clubDivision as DivisionId | undefined) ?? null, league.season) : undefined);
 
 	async function clubTools() {
 		const [component, catalog, management, lineup, squad] = await Promise.all([
@@ -128,7 +130,7 @@
 	}
 
 	function next() {
-		if (step === 'ligas' && selectionClubs.length) step = 'perfil';
+		if (step === 'ligas' && selectionClubs.length && !mixedCalendars) step = 'perfil';
 		else if (step === 'perfil' && validateProfile()) {
 			step = 'clube';
 			void loadClubs();
@@ -258,13 +260,14 @@
 					{#if world === 'brasil' && (brazilActive || foreign.length)}
 						<ul class="chosen">
 							{#if brazilActive}<li><Flag flag="br" size={18} /> Brasil <small>{selected.length} div. + copa</small></li>{/if}
-							{#each foreign as c (c.code)}<li><Flag flag={c.flag} size={18} /> {c.name} <small>{c.divisions.length} div.</small></li>{/each}
+							{#each foreign as c (c.code)}<li><Flag flag={c.flag} size={18} /> {c.name} <small>{c.divisions.filter((d) => d.playable).map((d) => d.name).join(' · ')}</small></li>{/each}
 						</ul>
 					{/if}
 					<p class="muted small">Estimativa no computador de referência. Mais países ativos aumentam o tempo das rodadas e o tamanho do save.</p>
 					{#if !selectionClubs.length}<p class="err">Ative ao menos um país com divisão jogável para continuar.</p>{/if}
+					{#if mixedCalendars}<p class="err">Brasil (janeiro a dezembro) e ligas europeias (agosto a maio) na mesma carreira chegam numa próxima atualização. Escolha o Brasil ou os países europeus.</p>{/if}
 					<div class="actions">
-						<Button variant="primary" size="lg" iconRight="arrowRight" disabled={!selectionClubs.length} onclick={next}>Criar treinador</Button>
+						<Button variant="primary" size="lg" iconRight="arrowRight" disabled={!selectionClubs.length || mixedCalendars} onclick={next}>Criar treinador</Button>
 					</div>
 				</aside>
 			</div>

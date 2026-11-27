@@ -87,24 +87,36 @@ export function initialCup(season: number): CupState {
  * Série C e da Série D anterior na 3ª (no lugar de Copa Verde/Nordeste, não simuladas); Série B,
  * Série C e as melhores campanhas da Série D na 2ª; os demais da Série D na 1ª.
  */
-export function projectedCup(league: LeagueState, previous: { cChampion?: string; cRunnerUp?: string; dChampion?: string; dRunnerUp?: string; dRanking?: string[] }): CupState {
+export function projectedCup(league: LeagueState, previous: { cChampion?: string; cRunnerUp?: string; dChampion?: string; dRunnerUp?: string; dRanking?: string[]; cRanking?: string[]; regionalRankings?: string[][] }): CupState {
 	const A = league.divisions['serie-a'] ?? [];
 	const B = league.divisions['serie-b'] ?? [];
 	const C = league.divisions['serie-c'] ?? [];
 	const D = league.divisions['serie-d'] ?? [];
 	const used = new Set(A);
-	const third = [previous.cChampion, previous.dChampion, previous.cRunnerUp, previous.dRunnerUp].filter((id): id is string => !!id && !used.has(id)).slice(0, 4);
-	third.forEach((id) => used.add(id));
-	const fill = [...B, ...C, ...(previous.dRanking ?? []).filter((id) => D.includes(id)), ...D].filter((id) => !used.has(id));
-	while (third.length < 4 && fill.length) {
-		const id = fill.shift()!;
-		if (!used.has(id)) {
-			third.push(id);
-			used.add(id);
+	const third: string[] = [];
+	const choose = (ranking: Array<string | undefined>) => {
+		const club = ranking.find((id): id is string => !!id && !used.has(id));
+		if (club) {
+			third.push(club);
+			used.add(club);
 		}
+	};
+	const regional2027 = league.season === 2027 && previous.regionalRankings?.length === 4;
+	if (regional2027) {
+		previous.regionalRankings!.forEach(choose);
+		choose([previous.cChampion, previous.cRunnerUp, ...(previous.cRanking ?? [])]);
+		choose([previous.dChampion, previous.dRunnerUp, ...(previous.dRanking ?? [])]);
+	} else {
+		for (const id of [previous.cChampion, previous.dChampion, previous.cRunnerUp, previous.dRunnerUp]) choose([id]);
 	}
-	const rest = [...new Set(fill.filter((id) => !used.has(id)))];
-	return { season: league.season, edition: 'projetada', entrants: { '1': rest.slice(74, 102), '2': rest.slice(0, 74), '3': third, '5': [...A] }, stages: [], finalVenue: 'Campo neutro' };
+	const rankedD = (previous.dRanking ?? []).filter((id) => D.includes(id));
+	const fill = [...new Set([...B, ...C, ...rankedD, ...D])];
+	const count = regional2027 ? 6 : 4;
+	while (third.length < count && fill.some((id) => !used.has(id))) choose(fill);
+	const rest = fill.filter((id) => !used.has(id));
+	// Com seis entradas na 3ª fase, 36 + 66 mantém as 102 vagas iniciais e a chave de 32 na 5ª fase.
+	const roundTwo = regional2027 ? 66 : 74;
+	return { season: league.season, edition: 'projetada', entrants: { '1': rest.slice(roundTwo, 102), '2': rest.slice(0, roundTwo), '3': third, '5': [...A] }, stages: [], finalVenue: 'Campo neutro' };
 }
 
 /** Partidas da Copa já sorteadas. */

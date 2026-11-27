@@ -50,6 +50,7 @@ export interface SquadPlayer {
 	/** vaga genérica de elenco real ainda não importado (sem nome de pessoa) */
 	pending?: boolean;
 	cbfId?: string;
+	ageUnknown?: boolean;
 	birthDate?: string;
 	nationality?: string;
 	secondary?: Position[];
@@ -75,8 +76,8 @@ export function generateSquad(clubId: string, seed: number): SquadPlayer[] {
 	return generateSquadFor(requireClub(clubId), seed);
 }
 
-export function visibleSquadAge(player: Pick<SquadPlayer, 'age' | 'cbfId' | 'birthDate'>): number | null {
-	return player.cbfId && !player.birthDate ? null : player.age;
+export function visibleSquadAge(player: Pick<SquadPlayer, 'age' | 'ageUnknown' | 'cbfId' | 'birthDate'>): number | null {
+	return player.ageUnknown || (player.cbfId && !player.birthDate) ? null : player.age;
 }
 
 export function formatSquadAge(age: number | null): string {

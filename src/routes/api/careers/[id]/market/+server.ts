@@ -12,7 +12,7 @@ import { marketIndex, marketProfile, queryMarket, readMarketFilters } from '#lib
 import { getCareerForMarket } from '#lib/server/repos/careers.ts';
 import { listTransfers } from '#lib/server/repos/management.ts';
 import { listStatMatches } from '#lib/server/repos/matches.ts';
-import { worldCatalog } from '#lib/server/world-catalog.ts';
+import { withWorldRoster, worldCatalog } from '#lib/server/world-catalog.ts';
 import type { RequestHandler } from './$types';
 
 const knownClubs = new Set(CLUBES_2026.map((club) => club.id));
@@ -27,9 +27,9 @@ export const GET: RequestHandler = async (event) => {
 	const cup = league.world === 'brasil' && (league.selection?.cup ?? true) ? sanitizeCup(career.data.cup, knownClubs) : null;
 	const entrants = cup?.season === career.season ? Object.values(cup.entrants).flat() : [];
 	const humans = new Map(liveCoaches(career).filter((coach) => !coach.data.club?.board.dismissed).map((coach) => [coach.clubId, coach.personName]));
-	const roster = rosterContext(career, league);
+	const roster = withWorldRoster(career, rosterContext(career, league));
 	const world = worldCatalog(career);
-	const index = marketIndex(`career:${career.id}:${career.version}`, career.clubId, { ...roster, externalRoster: world?.roster }, league, clubStateOf(career, league), humans, entrants, world);
+	const index = marketIndex(`career:${career.id}:${career.version}`, career.clubId, roster, league, clubStateOf(career, league), humans, entrants, world);
 	const id = event.url.searchParams.get('player');
 	if (!id) return noStore(queryMarket(index, readMarketFilters(event.url.searchParams)));
 	const profile = marketProfile(index, id);

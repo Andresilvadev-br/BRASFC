@@ -80,7 +80,8 @@ describe('carreira offline com seleção persistida', () => {
 		const r1 = prepareCup(cup, 1, [], career.seed, () => 70);
 		const prior = [
 			...seasonFixtures(career.data.league!, career.seed).filter((f) => f.round <= 5),
-			...cupFixtures(r1)
+			...cupFixtures(r1),
+			...careerView(career).tournaments.flatMap((t) => t.fixtures.filter((f) => f.date <= cupFixtures(r1)[0].date))
 		];
 		await insertRound(db, career.id, prior.map((f) => ({
 			...f, season: career.season, homeGoals: 1, awayGoals: 0, seed: career.seed, isUser: false

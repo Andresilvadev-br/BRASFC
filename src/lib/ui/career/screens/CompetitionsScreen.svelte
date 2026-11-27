@@ -1,9 +1,12 @@
 <script lang="ts">
 	import type { CareerScreenData } from '#lib/career/screen-data.ts';
 	import { untrack } from 'svelte';
+	import { ITALIAN_SECOND, ITALIAN_STAGE_NAMES } from '#lib/domain/italian-postseason.ts';
+	import { GERMAN_DIVISIONS, GERMAN_FIRST, GERMAN_SECOND, GERMAN_THIRD, GERMAN_PLAYOFF_LABEL, germanPromotionCandidates } from '#lib/domain/german-playoffs.ts';
+	import { SPAIN_RESERVES, SPAIN_SECOND } from '#lib/domain/world-league.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { formatShort } from '#lib/domain/dates.ts';
-	import { activeDivisions, D_STAGE_NAMES, DIVISION_LABELS, dStageRounds, effectiveRule, groupStandings, phaseOneLength, phaseOneTables, resolveTie, type BrasilDivision, type DivisionId, type Tie } from '#lib/domain/league.ts';
+	import { activeDivisions, D_STAGE_NAMES, DIVISION_LABELS, dStageRounds, effectiveRule, germanPlayoffs, groupStandings, phaseOneLength, phaseOneTables, resolveTie, italianPlayoffs, spanishPlayoffOutcome, type BrasilDivision, type DivisionId, type Tie, divisionLabel } from '#lib/domain/league.ts';
 	import { computeStandings } from '#lib/domain/season.ts';
 	import { strengthMemo } from '#lib/domain/world.ts';
 	import { reveal } from '#lib/motion/actions.ts';
@@ -11,6 +14,7 @@
 	import Icon from '#lib/ui/Icon.svelte';
 	import { careerPort } from '#lib/career/port.ts';
 	import CompetitionNav from '#lib/ui/world/CompetitionNav.svelte';
+	import TournamentScreen from './TournamentScreen.svelte';
 	import ParticipationBadge from '#lib/ui/world/ParticipationBadge.svelte';
 	import { nativeCompetitions } from '#lib/world/competitions.ts';
 
@@ -20,12 +24,18 @@
 	const v = $derived(data.view);
 	const st = $derived(strengthMemo(data.manage.ctx));
 
-	let selected = $state<DivisionId>(untrack(() => data.view.division));
+	let selected = $state<string>(untrack(() => data.view.division));
 	const divisions = $derived(activeDivisions(v.league));
-	const div = $derived(divisions.includes(selected) ? selected : divisions[0] ?? v.division);
+	const div = $derived(divisions.find((id) => id === selected) ?? divisions[0] ?? v.division);
+	const tournament = $derived(v.tournaments.find((tournament) => tournament.competition.id === selected));
 	const brasil = $derived(v.world === 'brasil' && div !== 'liga-brasfc');
+	const worldRule = $derived(v.world === 'mundo' ? v.league.rules?.[div] : undefined);
+	const italian = $derived(String(div) === ITALIAN_SECOND ? italianPlayoffs(v.league, v.results) : null);
+	const german = $derived(!!v.league.germanPlayoffs && GERMAN_DIVISIONS.some((id) => id === String(div)));
+	const germanSeries = $derived(german ? germanPlayoffs(v.league, v.results).filter((series) => [series.higher, series.lower].includes(String(div) as typeof series.higher | typeof series.lower)) : []);
+	const spanish = $derived(String(div) === SPAIN_SECOND && !!v.league.spanishPlayoff);
 	const bPlayoffs = $derived(div === 'serie-b' && v.league.bPromotionPlayoff !== undefined);
-	const competitions = $derived(nativeCompetitions(v.league, !!v.cup));
+	const competitions = $derived([...nativeCompetitions(v.league, !!v.cup), ...v.tournaments.map(({ competition }) => competition)]);
 	const rule = $derived(brasil ? effectiveRule(v.league, div as BrasilDivision) : null);
 	const p1 = $derived(div === 'liga-brasfc' ? 38 : phaseOneLength(v.league, div));
 	const tables = $derived(phaseOneTables(v.league, div, v.results));
@@ -39,7 +49,27 @@
 		for (const g of tables) for (const r of computeStandings(g.map((x) => x.clubId), prev)) map.set(r.clubId, r.position);
 		return map;
 	});
-	const zone = (pos: number, size: number): 'up' | 'qual' | 'down' | '' => {
+	const zone = (pos: number, size: number, club: string): 'up' | 'qual' | 'down' | '' => {
+		// World Database: só a zona de rebaixamento do regulamento (vagas europeias chegam com as continentais).
+		if (worldRule) {
+			if (italian) {
+				if (pos >= 18) return 'down';
+				if (pos >= 16) return italian.complete && !italian.playout ? (pos === 17 ? 'down' : '') : 'qual';
+				if (pos <= 2 || (pos === 3 && italian.complete && !italian.promotion)) return 'up';
+				return pos <= 8 && (!italian.complete || italian.promotion) ? 'qual' : '';
+			}
+			if (pos > size - worldRule.relegated) return 'down';
+			if (german) {
+				const division = String(div);
+				if (division !== GERMAN_THIRD && pos === size - 2) return 'qual';
+				if (division === GERMAN_FIRST) return '';
+				const place = germanPromotionCandidates(tables[0] ?? []).findIndex((row) => row.clubId === club) + 1;
+				return place === 3 ? 'qual' : place > 0 && place <= 2 ? 'up' : '';
+			}
+			if (!spanish || SPAIN_RESERVES.has(club)) return '';
+			const place = tables[0]?.filter((row) => row.position <= pos && !SPAIN_RESERVES.has(row.clubId)).length ?? pos;
+			return place <= 2 ? 'up' : place <= 6 ? 'qual' : '';
+		}
 		if (!rule) return pos <= 4 ? 'up' : pos > size - 4 ? 'down' : '';
 		if (div === 'serie-d') return pos <= 4 ? 'qual' : '';
 		if (div === 'serie-c') {
@@ -62,7 +92,11 @@
 	const dRounds = (k: number) => dStageRounds(v.league, k);
 	const tieOut = (t: Tie, rounds: number[], byCampaign = false) => resolveTie(t, v.results, 'serie-d', rounds, c.seed, st, { byCampaign });
 	const name = (id: string) => getClub(id)?.name ?? id;
-	const ruleText = $derived(bPlayoffs ? 'Dois clubes sobem direto. Do 3º ao 6º, os clubes disputam duas vagas nos playoffs. Quatro são rebaixados.'
+	const germanRule = $derived(String(div) === GERMAN_FIRST ? 'Dois clubes caem direto. O 16º disputa a permanência com o 3º da 2. Bundesliga.'
+		: String(div) === GERMAN_SECOND ? 'Dois clubes sobem e dois descem direto. O 3º disputa o acesso e o 16º disputa a permanência.'
+		: 'Dois clubes elegíveis sobem direto e o seguinte disputa o acesso. Filiais ficam fora do acesso. Quatro clubes caem.');
+	const ruleText = $derived(german ? germanRule : spanish ? '22 clubes em 42 rodadas. Dois clubes sobem direto, quatro disputam o playoff de acesso e quatro descem. Filiais ficam fora da disputa pelo acesso.' : italian ?
+			'20 clubes em 38 rodadas. Dois acessos diretos e um pelo playoff se a diferença entre 3º e 4º for de até 14 pontos. A diferença entre 16º e 17º define o play-out.' : worldRule ? `${v.league.divisions[div]?.length ?? 0} clubes em ${worldRule.legs === 2 ? 'turno e returno' : 'turno único'} · ${worldRule.relegated} rebaixados · desempate por ${worldRule.tiebreak === 'confronto-direto' ? 'confronto direto' : 'saldo de gols'}. Inscritos 2026/27 conferidos em fonte oficial.` : bPlayoffs ? 'Dois clubes sobem direto. Do 3º ao 6º, os clubes disputam duas vagas nos playoffs. Quatro são rebaixados.'
 		: !rule ? 'Liga fictícia: 20 clubes em turno e returno.' : `${rule.size} clubes · ${rule.status === 'oficial' ? 'regra oficial' : rule.status === 'anunciado' ? 'regra anunciada pela CBF' : 'regra projetada pelo BRASFC'}. ${rule.nota ?? ''}`);
 </script>
 
@@ -70,15 +104,18 @@
 
 <div class="head" use:reveal>
 	<div>
-		<span class="eyebrow">Temporada {c.season}{v.world === 'brasil' && c.season > 2026 ? ' · projeção do BRASFC a partir da base 2026' : ''}</span>
-		<h1 class="display">{DIVISION_LABELS[div]}</h1>
-		<p class="muted rule">{ruleText}</p>
+		<span class="eyebrow">Temporada {v.world === 'mundo' ? `${c.season}/${String(c.season + 1).slice(2)}` : c.season}{v.world === 'brasil' && c.season > 2026 ? ' · projeção do BRASFC a partir da base 2026' : ''}</span>
+		<h1 class="display">{tournament?.competition.name ?? divisionLabel(v.league, div)}</h1>
+		{#if !tournament}<p class="muted rule">{ruleText}</p>{/if}
 	</div>
 	{#if competitions.length > 1}
-		<CompetitionNav {competitions} active={div} onselect={(id) => (selected = id as DivisionId)} href={(comp) => (comp.id === 'copa-do-brasil' ? port.href('copa') : null)} />
+		<CompetitionNav {competitions} active={tournament?.competition.id ?? div} onselect={(id) => (selected = id)} href={(comp) => (comp.id === 'copa-do-brasil' ? port.href('copa') : null)} />
 	{/if}
 </div>
 
+{#if tournament}
+	<TournamentScreen {tournament} results={v.results} clubId={c.clubId} />
+{:else}
 {#each v.continentalParticipation as entry (entry.competition)}
 	<p class="muted" use:reveal>{entry.competition === 'continental/libertadores' ? 'Libertadores' : 'Sul-Americana'} <ParticipationBadge participation={entry} /> · Calendário pendente</p>
 {/each}
@@ -91,7 +128,7 @@
 				<thead><tr><th></th><th>#</th><th>Clube</th><th>J</th><th>V</th><th>E</th><th>D</th><th>SG</th><th class="pts">Pts</th></tr></thead>
 				<tbody>
 					{#each t as r (r.clubId)}
-						{@const z = zone(r.position, t.length)}
+						{@const z = zone(r.position, t.length, r.clubId)}
 						{@const prev = prevPos.get(r.clubId)}
 						<tr class:me={r.clubId === c.clubId} data-z={z}>
 							<td class="mv">{#if prev && prev > r.position}<span class="upa">▲</span>{:else if prev && prev < r.position}<span class="dna">▼</span>{/if}</td>
@@ -104,7 +141,9 @@
 			</table>
 			<div class="legend">
 				{#if rule && rule.promoted && div !== 'serie-c'}<span><i data-z="up"></i>Acesso</span>{/if}
-				{#if bPlayoffs}<span><i data-z="qual"></i>Playoff de acesso</span>{/if}
+				{#if spanish || italian}<span><i data-z="up"></i>Acesso direto</span>{/if}
+				{#if italian}<span><i data-z="qual"></i>Playoff e play-out</span>{/if}
+				{#if bPlayoffs || spanish}<span><i data-z="qual"></i>Playoff de acesso</span>{/if}
 				{#if div === 'serie-c'}<span><i data-z="qual"></i>2ª fase (quadrangulares)</span>{/if}
 				{#if !rule}<span><i data-z="up"></i>Topo</span>{/if}
 				<span><i data-z="down"></i>Rebaixamento</span>
@@ -137,8 +176,60 @@
 			<section class="glass group" class:mine={t.some((r) => r.clubId === c.clubId)} use:reveal={{ index: gi % 8 }}>
 				<h3>Grupo {div === 'serie-d' ? `A${gi + 1}` : gi + 1}</h3>
 				{#each t as r (r.clubId)}
-					<div class="grow" data-z={zone(r.position, t.length)} class:me={r.clubId === c.clubId}>
+					<div class="grow" data-z={zone(r.position, t.length, r.clubId)} class:me={r.clubId === c.clubId}>
 						<span class="num">{r.position}</span><Crest clubId={r.clubId} size={18} /><span class="nm">{name(r.clubId)}</span><b>{r.points}</b>
+					</div>
+				{/each}
+			</section>
+		{/each}
+	</div>
+{/if}
+
+{#if italian?.series.length}
+	<h2 class="display section">Playoff e play-out</h2>
+	<div class="quads">
+		{#each italian.series as series (series.days[0] + ':' + series.tie.join(':'))}
+			<section class="glass group">
+				<h3>{ITALIAN_STAGE_NAMES[series.stage]}</h3>
+				{#each series.tie as id, i (id)}
+					<div class="grow" class:win={series.outcome?.winner === id}><span></span><Crest clubId={id} size={18} /><span class="nm">{name(id)}</span><b>{series.outcome?.aggregate[i] ?? ''}</b></div>
+				{/each}
+				{#if series.outcome?.penalties}<small class="muted">Decisão nos pênaltis · {series.outcome.penalties.home}–{series.outcome.penalties.away}</small>{/if}
+				{#if series.outcome?.decidedBy === 'prorrogacao'}<small class="muted">Decisão na prorrogação</small>{/if}
+				{#if series.outcome?.decidedBy === 'campanha'}<small class="muted">Melhor campanha</small>{/if}
+			</section>
+		{/each}
+	</div>
+{/if}
+
+{#if germanSeries.length}
+	<h2 class="display section">{GERMAN_PLAYOFF_LABEL}</h2>
+	<div class="quads">
+		{#each germanSeries as series (series.higher)}
+			<section class="glass group">
+				<h3>Vaga na {divisionLabel(v.league, series.higher)}</h3>
+				{#each series.tie as id, i (id)}
+					<div class="grow" class:win={series.outcome?.winner === id}><span></span><Crest clubId={id} size={18} /><span class="nm">{name(id)}</span><b>{series.outcome?.aggregate[i] ?? ''}</b></div>
+				{/each}
+				{#if series.outcome?.penalties}<small class="muted">Decisão nos pênaltis · {series.outcome.penalties.home}–{series.outcome.penalties.away}</small>{/if}
+				{#if series.outcome?.decidedBy === 'prorrogacao'}<small class="muted">Decisão na prorrogação</small>{/if}
+			</section>
+		{/each}
+	</div>
+{/if}
+
+{#if spanish && v.league.spanishPlayoff?.length}
+	<h2 class="display section">Playoff de acesso</h2>
+	<div class="quads">
+		{#each v.league.spanishPlayoff as ties, i (i)}
+			<section class="glass group">
+				<h3>{i === 0 ? 'Semifinal' : 'Final'}</h3>
+				{#each ties as tie (tie[0])}
+					{@const outcome = spanishPlayoffOutcome(v.league, tie, p1 + (i + 1) * 2, v.results)}
+					<div class="tie">
+						{#each tie as id, j (id)}<div class="tm" class:win={outcome?.winner === id}><Crest clubId={id} size={18} /><span>{name(id)}</span><b>{outcome?.aggregate[j] ?? ''}</b></div>{/each}
+						{#if outcome?.decidedBy === 'campanha'}<small class="muted">Melhor campanha após a prorrogação</small>{/if}
+						{#if outcome?.decidedBy === 'prorrogacao'}<small class="muted">Decisão na prorrogação</small>{/if}
 					</div>
 				{/each}
 			</section>
@@ -195,6 +286,8 @@
 			</section>
 		{/if}
 	</div>
+{/if}
+
 {/if}
 
 <style>

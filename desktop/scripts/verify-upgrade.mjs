@@ -260,7 +260,7 @@ try {
 		};
 		let {career} = await request('/api/careers', {personName:'Ana Técnica',clubId:'sport',worldSelection:{countries:['bra']},previewSeed:777});
 		const root = '/api/careers/' + career.id;
-		for (let i = 0; i < 8; i++) {
+		for (let i = 0; i < 16; i++) {
 			const next = await request(root + '/proximo');
 			if (next.step === 'cup:2' && !next.plays) throw Error('A estreia do Sport apareceu como folga.');
 			const played = await request(root + '/matches', {version:career.version,season:career.season,step:next.step});
@@ -273,6 +273,29 @@ try {
 		}
 		throw Error('O calendário não alcançou a estreia do Sport.');
 	})()`, 150_000);
+	const worldSaves = await evaluate(`(async () => {
+		const post = async (path, body) => {
+			const response = await fetch(path, {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+			if (!response.ok) throw Error(path + ': ' + response.status + ' ' + await response.text());
+			return response.json();
+		};
+		const saves = [];
+		for (const [country, clubId, step, competition] of [
+			['ger', 'world/ger/sv-meppen', 'league:1', 'league/ger/3'],
+			['fra', 'world/fra/psg', 'continental/uefa-super-cup:1', 'continental/uefa-super-cup']
+		]) {
+			const { career } = await post('/api/careers', {personName:'Lia Mundo',clubId,worldSelection:{countries:[country]}});
+			if (country === 'ger' && career.data.league.divisions['league/ger/3']?.length !== 20) throw Error('A Alemanha não ativou a 3. Liga.');
+			const root = '/api/careers/' + career.id;
+			const preview = await fetch(root + '/proximo').then(r => r.json());
+			if (preview.step !== step || !preview.plays) throw Error('Partida esperada no calendário: ' + step);
+			const { match } = await post(root + '/matches', {version:career.version,season:career.season,step});
+			if (match?.fixture.competition !== competition) throw Error('A primeira partida da carreira mundial não foi registrada.');
+			if (country === 'fra' && match.fixture.away !== 'world/eng/aston-villa') throw Error('A Supercopa não carregou o adversário do país inativo.');
+			saves.push({id:career.id,country,competition,score:[match.homeGoals,match.awayGoals]});
+		}
+		return saves;
+	})()`, 60_000);
 	socket.close();
 	const pid = app.pid;
 	execFileSync('powershell.exe', ['-NoProfile', '-Command',
@@ -308,8 +331,21 @@ try {
 		return { countries: career?.data.worldSelection?.countries, scores: cup.map((m) => [m.homeGoals,m.awayGoals]) };
 	})()`);
 	assert.deepEqual(reopenedCup, { countries: ['bra'], scores: [cupSave.score] });
+	const reopenedWorld = await evaluate(`(async () => {
+		const result = [];
+		for (const save of ${JSON.stringify(worldSaves)}) {
+			const root = '/api/careers/' + save.id;
+			const { career } = await fetch(root).then(r => r.json());
+			const { matches } = await fetch(root + '/matches').then(r => r.json());
+			const game = matches.find(m => m.competition === save.competition);
+			result.push({id:career.id,country:career.data.worldSelection.countries[0],competition:game?.competition,score:[game?.homeGoals,game?.awayGoals]});
+		}
+		return result;
+	})()`);
+	assert.deepEqual(reopenedWorld, worldSaves);
 	result.tests.push('Carreiras novas com um e dois treinadores (incluindo Série D): primeira rodada idempotente, reabertura e segunda rodada no executável');
 	result.tests.push('Seleção por país e estreia do Sport na Copa do Brasil preservadas após reabrir o executável');
+	result.tests.push('Carreiras com SV Meppen na 3. Liga e com PSG na Supercopa da UEFA: primeira partida e reabertura offline');
 	assert(!result.relaunchMissing, 'A instalação atualizou, mas a abertura automática não foi observada');
 	if (rollbackDist) {
 		const candidate = metadataVersion(rollbackDist);
@@ -334,9 +370,9 @@ try {
 		const outcome = () => JSON.parse(readFileSync(outcomeFile, 'utf8').replace(/^\uFEFF/, ''));
 		const waitOffline = () => until(() => evaluate("location.origin.startsWith('http://127.0.0.1:47615') && !!window.brasfcDesktop"));
 		const downloadCandidate = async () => {
-			await evaluate("window.brasfcDesktop.update('check', true)");
+			await evaluate("window.brasfcDesktop.update('check', true)", 45_000);
 			await until(async () => (await evaluate("window.brasfcDesktop.update('state')"))?.version === candidate);
-			await evaluate("window.brasfcDesktop.update('download')");
+			await evaluate("window.brasfcDesktop.update('download')", 120_000);
 			await until(async () => (await evaluate("window.brasfcDesktop.update('state')"))?.status === 'ready', 120_000);
 		};
 		const closeActive = () => execFileSync('powershell.exe', ['-NoProfile', '-Command', `

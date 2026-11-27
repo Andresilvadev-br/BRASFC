@@ -1,3 +1,4 @@
+import { sanitizeSnapshot, snapshotRoster } from './world-league.ts';
 import type { Career } from './career.ts';
 import { careerWorld } from './career.ts';
 import { ctDevelopment } from './club.ts';
@@ -21,6 +22,8 @@ export function rosterContext(career: Pick<Career, 'seed' | 'season' | 'clubId' 
 		season: career.season,
 		market: sanitizeMarket(career.data.market),
 		divisionOf: (id) => divisionOf(lg, id),
+		// World Database: clubes e elencos da liga gravados no save (o servidor completa com o catálogo).
+		...(career.data.worldSnapshot ? { externalRoster: snapshotRoster(sanitizeSnapshot(career.data.worldSnapshot), career.seed) } : {}),
 		// No modo jogador e no universo compartilhado (carreira online) todos os clubes seguem a mesma
 		// regra de evolução e renovação: o elenco que a tela mostra é o mesmo que o servidor da liga usa.
 		userClub: career.mode === 'player' || career.data.sharedWorld ? undefined : career.clubId,

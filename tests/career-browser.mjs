@@ -151,8 +151,66 @@ try {
 	assert(maxHistory > 1, 'A lista mostra só o último lance, e os detalhes preservam os anteriores');
 	await button('Voltar à carreira').click();
 	await page.waitForURL('**' + careerPage);
+	// World Database: carreira europeia (LaLiga) pelo assistente, com elenco real e tabela pelo critério oficial.
+	await page.goto('/nova-carreira');
+	await page.getByRole('heading', { name: 'Escolha os países' }).waitFor();
+	await page.getByRole('checkbox', { name: /Espanha/ }).click();
+	assert(await button('Criar treinador').isDisabled(), 'Brasil e Europa juntos ainda não são permitidos');
+	await page.getByRole('checkbox', { name: /Brasil/ }).click();
+	await button('Criar treinador').click();
+	await page.getByLabel('Nome do treinador').fill('Lia Mundo');
+	await button('Escolher clube').click();
+	const creatingWorld = page.waitForResponse((r) => r.url().endsWith('/api/careers') && r.request().method() === 'POST');
+	await page.getByRole('button', { name: /Iniciar carreira|Começar carreira|Criar carreira/ }).last().click();
+	const createdWorld = await creatingWorld;
+	assert.equal(createdWorld.status(), 201, await createdWorld.text());
+	const { career: spain } = await createdWorld.json();
+	assert.equal(spain.data.world, 'mundo');
+	assert.equal(spain.gameDate, '2026-08-02');
+	assert.equal(spain.data.league.divisions['league/esp/1'].length, 20);
+	const round = await page.request.post(`/api/careers/${spain.id}/matches`, { data: { version: spain.version, step: 'league:1' }, headers: { Origin: origin } });
+	assert.equal(round.status(), 200, await round.text());
+	for (const path of ['', '/elenco', '/competicoes', '/financas', '/calendario']) {
+		const response = await page.goto(`/carreira/${spain.id}${path}`);
+		await page.waitForLoadState('networkidle');
+		assert.equal(response.status(), 200, `Tela ${path || '/'} da carreira europeia`);
+		assert.equal(await page.getByText('Bola murcha').count(), 0, `Tela ${path || '/'} da carreira europeia falhou`);
+	}
+	const continental = await create({ mode: 'coach', personName: 'Lia Paris', clubId: 'world/fra/psg', worldSelection: { countries: ['fra'] } });
+	const continentalPath = `/api/careers/${continental.id}`;
+	const preview = await (await page.request.get(continentalPath + '/proximo')).json();
+	assert.equal(preview.step, 'continental/uefa-super-cup:1');
+	const continentalRound = await page.request.post(continentalPath + '/matches', {
+		data: { version: continental.version, season: continental.season, step: preview.step },
+		headers: { Origin: origin }
+	});
+	assert.equal(continentalRound.status(), 200, await continentalRound.text());
+	const continentalPlayed = await continentalRound.json();
+	assert.equal(continentalPlayed.match.fixture.away, 'world/eng/aston-villa');
+	// O passo de supercopa precisa atravessar a API de partidas e continuar recuperável no replay.
+	let cupCareer = await create({ mode: 'coach', personName: 'Lia Copa', clubId: 'flamengo', worldSelection: { countries: ['bra'] } });
+	const cupPath = `/api/careers/${cupCareer.id}`;
+	for (const expected of ['league:1', 'league:2', 'cup/bra/supercopa:1']) {
+		const next = await (await page.request.get(cupPath + '/proximo')).json();
+		assert.equal(next.step, expected);
+		const args = { data: { version: cupCareer.version, season: cupCareer.season, step: next.step }, headers: { Origin: origin } };
+		const played = await page.request.post(cupPath + '/matches', args);
+		assert.equal(played.status(), 200, await played.text());
+		const result = await played.json();
+		if (expected === 'cup/bra/supercopa:1') {
+			assert.equal(result.match.fixture.competition, 'cup/bra/supercopa');
+			const replayResponse = await page.request.post(cupPath + '/matches', args);
+			assert.equal(replayResponse.status(), 200, await replayResponse.text());
+			const replay = await replayResponse.json();
+			assert.equal(replay.replay, true);
+			assert.equal(replay.match.fixture.competition, 'cup/bra/supercopa');
+		}
+		cupCareer = result.career;
+	}
+	await page.goto(`/carreira/${spain.id}/competicoes`);
+	await page.getByRole('heading', { name: 'LaLiga' }).waitFor();
 	assert.deepEqual(errors, []);
-	console.log('Biblioteca de carreiras, ligas selecionáveis e placar simultâneo aprovados no Chromium.');
+	console.log('Biblioteca de carreiras, ligas selecionáveis, placar simultâneo e carreira europeia aprovados no Chromium.');
 } finally {
 	await browser.close();
 }

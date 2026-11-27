@@ -10,7 +10,8 @@ import { isAppearance, type Appearance } from './appearance.ts';
 import { CLUBES_2026, TEMPORADA_2026 } from '#lib/data/brasil.ts';
 import { CLUBS, getClub, LEAGUE, type Club } from './clubs.ts';
 import type { TrainingPlan } from './drills.ts';
-import { BRASIL_DIVISIONS, DIVISION_LABELS, divisionOf, firstRoundDate, initialLeague, isActiveClub, seasonStartDate, validateLeagueSelection, type LeagueSelection, type LeagueState, type SeasonSummary, type World } from './league.ts';
+import { BRASIL_DIVISIONS, DIVISION_LABELS, divisionLabel, divisionOf, firstRoundDate, initialLeague, isActiveClub, leagueRoundDate, seasonStartDate, validateLeagueSelection, type LeagueSelection, type LeagueState, type SeasonSummary, type World } from './league.ts';
+import { europeanSeasonStart, type WorldPlan, type WorldSnapshot } from './world-league.ts';
 import type { TacticalState } from './tactical.ts';
 import { initialCup, type CupState } from './cup.ts';
 import type { ClubState } from './management.ts';
@@ -22,6 +23,10 @@ import { createRng, deriveSeed } from './rng.ts';
 import { FIRST_ROUND, SEASON_START } from './season.ts';
 import type { Tactic } from './tactics.ts';
 import type { PlayerFocus, TeamFocus } from './training.ts';
+import { initialBrazilTournaments } from '#lib/data/brasil/2026/tournaments.ts';
+import { initialWorldSupercups } from '#lib/data/world/2026/supercups.ts';
+import { initialContinentalSupercups } from '#lib/data/world/2026/continental-supercups.ts';
+import type { TournamentState } from './tournaments.ts';
 import type { WorldSelection } from '#lib/world/contract.ts';
 import type { BrazilContinentalQualification } from './continental-qualification.ts';
 
@@ -52,6 +57,8 @@ rosterCatalog?: RosterCatalogId;
 worldCatalog?: string;
 /** Países selecionados no início da carreira, compartilhados pelos treinadores locais. */
 worldSelection?: WorldSelection;
+/** Mundo `mundo`: clubes e elencos da liga gravados no save (mesmo resultado no servidor e no navegador). */
+worldSnapshot?: WorldSnapshot;
 /** Vagas brasileiras apuradas ao encerrar a temporada correspondente. */
 brazilContinentalQualification?: BrazilContinentalQualification;
 appearance?: Appearance;
@@ -80,6 +87,8 @@ dismissedTips?: string[];
 // ── Dev 0.4
 /** Copa do Brasil da temporada em andamento (sorteios e entradas) */
 cup?: CupState;
+/** Competições adicionais ativadas explicitamente na edição deste save. */
+tournaments?: TournamentState[];
 /** gestão do clube: finanças, diretoria, patrocínios, estrutura, base e olheiros */
 club?: ClubState;
 /** mercado: transferências, contratos e atletas criados pela carreira */
@@ -146,7 +155,11 @@ export function normalizeName(value: string): string {
 	return value.normalize('NFC').replace(/\s+/g, ' ').trim();
 }
 
-export function validateCreateCareer(input: unknown): ValidationResult<CreateCareerInput> {
+/**
+ * `plan`: liga do World Database montada pelo servidor quando os países pedidos não são o Brasil
+ * (src/lib/server/world-league.ts). Sem plano, só o Brasil e a liga fictícia são aceitos.
+ */
+export function validateCreateCareer(input: unknown, plan?: WorldPlan | null): ValidationResult<CreateCareerInput> {
 	const errors: Record<string, string> = {};
 	const v = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
 
@@ -161,21 +174,24 @@ export function validateCreateCareer(input: unknown): ValidationResult<CreateCar
 	else if (!NAME_PATTERN.test(personName)) errors.personName = 'Use apenas letras, espaços, apóstrofo, ponto ou hífen.';
 
 	const countrySelection = v.worldSelection !== undefined;
-	const world: World = v.world === 'brasil' || (countrySelection && v.world === undefined) ? 'brasil' : 'brasfc';
 	const countries = (v.worldSelection as Partial<WorldSelection> | null)?.countries;
-	const worldSelection: WorldSelection | undefined = world === 'brasil' && Array.isArray(countries) && countries.length === 1 && countries[0] === 'bra'
-		? { countries: ['bra'] }
-		: undefined;
-	const leagueSelection = worldSelection ? brazilCountrySelection() : validateLeagueSelection(world, v.leagueSelection);
+	const sameCountries = (list: unknown, wanted: string[]) => Array.isArray(list) && list.length === wanted.length && [...list].sort().every((c, i) => c === wanted[i]);
+	const worldPlan = plan && countrySelection && sameCountries(countries, plan.countries) ? plan : null;
+	const world: World = worldPlan ? 'mundo' : v.world === 'brasil' || (countrySelection && v.world === undefined) ? 'brasil' : 'brasfc';
+	const worldSelection: WorldSelection | undefined = worldPlan
+		? { countries: [...worldPlan.countries] }
+		: world === 'brasil' && Array.isArray(countries) && countries.length === 1 && countries[0] === 'bra' ? { countries: ['bra'] } : undefined;
+	const leagueSelection = worldPlan ? worldPlan.league.selection : worldSelection ? brazilCountrySelection() : validateLeagueSelection(world, v.leagueSelection);
 	if (countrySelection && !worldSelection) {
 		errors.worldSelection = 'Selecione os países disponíveis para iniciar a carreira.';
 	} else if (!countrySelection && v.leagueSelection !== undefined && (!leagueSelection || (v.world !== 'brasil' && v.world !== 'brasfc'))) {
 		errors.leagueSelection = 'Selecione ao menos uma divisão disponível na base escolhida.';
 	}
 	const clubId = typeof v.clubId === 'string' ? v.clubId : '';
-	const validClub = world === 'brasil' ? CLUBES_2026.some((c) => c.id === clubId && c.serie !== 'E') : CLUBS.some((c) => c.id === clubId);
-	if (!getClub(clubId) || !validClub) errors.clubId = 'Escolha um clube.';
-	else if (leagueSelection && !isActiveClub(initialLeague(world, careerStart(world).season, leagueSelection), clubId)) {
+	const validClub = worldPlan ? isActiveClub(worldPlan.league, clubId)
+		: world === 'brasil' ? CLUBES_2026.some((c) => c.id === clubId && c.serie !== 'E') : CLUBS.some((c) => c.id === clubId);
+	if (!validClub || (!worldPlan && !getClub(clubId))) errors.clubId = 'Escolha um clube.';
+	else if (!worldPlan && leagueSelection && !isActiveClub(initialLeague(world, careerStart(world).season, leagueSelection), clubId)) {
 		errors.clubId = 'Escolha um clube de uma divisão ativa.';
 	}
 
@@ -194,9 +210,19 @@ function brazilCountrySelection(): LeagueSelection {
 }
 
 /** Dados iniciais persistidos de uma carreira nova. */
-export function initialCareerData(input: CreateCareerInput, seed: number): CareerData {
+export function initialCareerData(input: CreateCareerInput, seed: number, plan?: WorldPlan | null): CareerData {
 	const world = input.world ?? (input.worldSelection ? 'brasil' : 'brasfc');
 	const start = careerStart(world);
+	if (world === 'mundo') {
+		if (!plan) throw new Error('Carreira do World Database sem a liga montada pelo servidor.');
+		const clubs = plan.snapshot.clubs.map(({ id }) => id);
+		return {
+			appearance: input.appearance, world, firstSeason: start.season, league: structuredClone(plan.league),
+			worldSelection: { countries: [...plan.countries] }, worldSnapshot: plan.snapshot, worldCatalog: plan.snapshot.catalog,
+			tournaments: [...initialWorldSupercups(start.season, plan.countries, clubs), ...initialContinentalSupercups(start.season, plan.countries, clubs)],
+			trainingFocus: 'equilibrado'
+		};
+	}
 	const selection = input.worldSelection ? brazilCountrySelection() : input.leagueSelection;
 	const league = initialLeague(world, start.season, selection);
 	if (input.worldSelection && world === 'brasil') league.bPromotionPlayoff = [];
@@ -205,7 +231,7 @@ export function initialCareerData(input: CreateCareerInput, seed: number): Caree
 		world,
 		firstSeason: start.season,
 		league,
-		...(input.worldSelection ? { worldSelection: input.worldSelection } : {}),
+		...(input.worldSelection ? { worldSelection: input.worldSelection, tournaments: initialBrazilTournaments(start.season) } : {}),
 		...(world === 'brasil' ? { rosterCatalog: ROSTER_CATALOG } : {}),
 		...(world === 'brasil' && (selection?.cup ?? true) ? { cup: initialCup(start.season) } : {})
 	};
@@ -235,6 +261,8 @@ export const CAREER_START = { date: SEASON_START, season: LEAGUE.season } as con
 
 /** Início da carreira por mundo: a liga fictícia começa em 2027; a base real, em 2026. */
 export function careerStart(world: World): { date: string; season: number } {
+	// World Database: a edição 2026/27 começa na pré-temporada de agosto.
+	if (world === 'mundo') return { date: europeanSeasonStart(2026), season: 2026 };
 return world === 'brasil' ? { date: seasonStartDate(TEMPORADA_2026.temporada), season: TEMPORADA_2026.temporada } : { ...CAREER_START };
 }
 
@@ -245,7 +273,7 @@ return world === 'brasil' ? { date: seasonStartDate(TEMPORADA_2026.temporada), s
  */
 const FICTIONAL = new Set(CLUBS.map((c) => c.id));
 export function careerWorld(c: Pick<Career, 'data'> & Partial<Pick<Career, 'clubId'>>): World {
-	if (c.data.world === 'brasil') return 'brasil';
+	if (c.data.world === 'brasil' || c.data.world === 'mundo') return c.data.world;
 	return c.clubId && !FICTIONAL.has(c.clubId) && CLUBES_2026.some((r) => r.id === c.clubId) ? 'brasil' : 'brasfc';
 }
 
@@ -269,21 +297,23 @@ export interface NewMessage {
 }
 
 /** Mensagens reais da caixa de entrada criadas junto com a carreira. */
-export function welcomeMessages(input: CreateCareerInput): NewMessage[] {
+export function welcomeMessages(input: CreateCareerInput, worldLeague?: LeagueState): NewMessage[] {
 	const club = getClub(input.clubId)!;
 	const world = input.world ?? (input.worldSelection ? 'brasil' : 'brasfc');
 	const start = careerStart(world);
 	const date = start.date;
-	const league = initialLeague(world, start.season);
+	const league = world === 'mundo' && worldLeague ? worldLeague : initialLeague(world, start.season);
 	const div = (Object.entries(league.divisions).find(([, ids]) => ids?.includes(club.id))?.[0] ?? LEAGUE.id) as keyof typeof DIVISION_LABELS;
-	const comp = DIVISION_LABELS[div];
-	const firstRound = formatLong(world === 'brasil' ? firstRoundDate(start.season) : FIRST_ROUND);
+	const comp = divisionLabel(league, div);
+	const firstRound = formatLong(world === 'brasil' ? firstRoundDate(start.season) : world === 'mundo' ? leagueRoundDate(league, 1) : FIRST_ROUND);
 	const disclaimer: NewMessage = {
 		kind: 'normal',
 		sender: 'Equipe BRASFC',
 		subject: 'Sobre os dados deste universo',
 		body:
-			world === 'brasil'
+			world === 'mundo'
+				? 'Clubes, elencos e inscrições vêm do Brasfoot Next (CC BY-SA 4.0), com as divisões 2026/27 conferidas em fontes oficiais. Só entram divisões com todos os clubes confirmados. Notas, contratos e economia seguem o modelo do BRASFC; a temporada vai de agosto a maio.'
+				: world === 'brasil'
 				? 'Clubes e cidades das Séries A, B, C e D de 2026 e os participantes da Copa do Brasil 2026 foram conferidos em fontes públicas. A seleção identifica os elencos verificados e informa quando o clube usa vagas simuladas. As notas, os contratos de jogo e a economia seguem o modelo do BRASFC. Temporadas a partir de 2027 seguem as regras anunciadas pela CBF (Série C com 24 e 28 clubes) e projeções do BRASFC quando não há regulamento.'
 				: 'Os clubes e elencos desta liga são fictícios. Partidas, táticas, treinos e resultados são simulados pelo motor do BRASFC e ficam salvos na sua carreira.',
 		gameDate: date

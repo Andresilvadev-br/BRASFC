@@ -38,13 +38,13 @@ export interface QuickResult {
 }
 
 /** Placar rápido a partir da força dos dois elencos (média dos 11 melhores). */
-export function quickMatch(homeStrength: number, awayStrength: number, seed: number, neutral = false): QuickResult {
+export function quickMatch(homeStrength: number, awayStrength: number, seed: number, neutral = false, minutes = 90): QuickResult {
 	const rng = createRng(deriveSeed(seed, 'quick'));
 	const d = homeStrength - awayStrength;
 	const adv = neutral ? (QUICK_MODEL.home + QUICK_MODEL.away) / 2 : 0;
 	const lh = (neutral ? adv : QUICK_MODEL.home) * Math.exp(QUICK_MODEL.beta * d);
 	const la = (neutral ? adv : QUICK_MODEL.away) * Math.exp(-QUICK_MODEL.beta * d);
-	return { homeGoals: poisson(rng, lh), awayGoals: poisson(rng, la) };
+	return { homeGoals: poisson(rng, lh * minutes / 90), awayGoals: poisson(rng, la * minutes / 90) };
 }
 
 /**

@@ -13,6 +13,8 @@
 	import Segmented from '../Segmented.svelte';
 	import Stars from '../Stars.svelte';
 	import LineupPitch from '../tactics/LineupPitch.svelte';
+	import Flag from '../world/Flag.svelte';
+	import { countryFlag, countryName } from '#lib/world/countries.ts';
 
 	let { clubs, clubId = $bindable(null), blocked = {}, lineup, loading = false, error, retry, top, season,
 		transferBudget, wageBudget, coach, prefetch, busy = false, labels = {} }: {
@@ -47,6 +49,8 @@
 	const labelOf = (div: string) => labels[div] ?? DIVISION_LABELS[div as DivisionId] ?? div;
 	const active = $derived(division && divisions.some((entry) => entry === division) ? division
 		: clubs.find((entry) => entry.id === clubId)?.division ?? divisions[0]);
+	/** divisão do World Database ativa → país (bandeira e nome no cabeçalho) */
+	const worldCountry = $derived(/^league\/([a-z]{3})\//.exec(active ?? '')?.[1] ?? null);
 	const options = $derived(divisions.map((value) => ({ value, label: labelOf(value) })));
 	const teams = $derived(clubs.filter((entry) => entry.division === active)
 		.flatMap(({ id }) => { const club = getClub(id); return club ? [club] : []; })
@@ -84,7 +88,7 @@
 
 <section class="selector" aria-label="Seleção de clube" style:--club-color={club?.colors.primary ?? 'var(--emerald)'}>
 	<header>
-		<div class="country">{#if active !== LEAGUE.id}<span aria-hidden="true">🇧🇷</span>{/if}<strong>{active === LEAGUE.id ? 'Universo fictício' : 'Brasil'}</strong><small>{season}</small></div>
+		<div class="country">{#if worldCountry}<Flag flag={countryFlag(worldCountry) ?? 'xx'} size={20} /><strong>{countryName(worldCountry)}</strong><small>{season}/{String(season + 1).slice(2)}</small>{:else}{#if active !== LEAGUE.id}<span aria-hidden="true">🇧🇷</span>{/if}<strong>{active === LEAGUE.id ? 'Universo fictício' : 'Brasil'}</strong><small>{season}</small>{/if}</div>
 		{#if top}{@render top()}{/if}
 	</header>
 	<div class="content">

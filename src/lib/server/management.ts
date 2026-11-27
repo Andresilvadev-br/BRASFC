@@ -2,7 +2,7 @@ import { CLUBES_2026 } from '#lib/data/brasil.ts';
 import type { Career } from '#lib/domain/career.ts';
 import { clubEconomy, TICKET_REF, type Facility } from '#lib/domain/club.ts';
 import { getClub } from '#lib/domain/clubs.ts';
-import { CUP_FINAL_PRIZE, CUP_PHASES, phaseOfMatchday } from '#lib/domain/cup.ts';
+import { CUP_FINAL_PRIZE, CUP_ID, CUP_PHASES, phaseOfMatchday } from '#lib/domain/cup.ts';
 import { activeMembership, divisionOf, effectiveRule, type LeagueState } from '#lib/domain/league.ts';
 import {
 	answerIncoming,
@@ -98,7 +98,7 @@ export function weeklyManagement(o: {
 		const opp = home ? r.away : r.home;
 		const youthMinutes = Object.entries(r.summary?.players ?? {}).reduce((s, [id, st]) => s + (id.startsWith('base-') ? st.minutes : 0), 0);
 		match = { home, opponent: opp, goalsFor: home ? r.homeGoals : r.awayGoals, goalsAgainst: home ? r.awayGoals : r.homeGoals, competition: r.competition, opponentStrength: o.strengthOf(opp), myStrength, youthMinutes };
-		if (step.kind === 'cup' && step.matchday) {
+		if (r.competition === CUP_ID && step.kind === 'cup' && step.matchday) {
 			const ph = phaseOfMatchday(step.matchday);
 			if (ph.matchdays[0] === step.matchday && ph.prize) cupPrize = ph.prize;
 		}

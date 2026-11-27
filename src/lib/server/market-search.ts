@@ -54,7 +54,7 @@ export function marketIndex(key: string, clubId: string, ctx: RosterContext, lea
 	const reports = new Map(club.reports.map((entry) => [entry.playerId, entry]));
 	const observed = new Set(ctx.market.shortlist);
 	const listed = new Set(ctx.market.listed);
-	const clubsById = new Map([...clubs, ...(world?.clubs ?? [])].map((team) => [team.id, team]));
+	const clubsById = new Map([...(world?.clubs ?? []), ...clubs].map((team) => [team.id, team]));
 	const cacheByClub = new Map<string, Entry[]>();
 	function entriesFor(id: string) {
 		const cached = cacheByClub.get(id);

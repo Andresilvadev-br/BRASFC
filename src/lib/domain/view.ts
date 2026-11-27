@@ -1,9 +1,11 @@
+import { tournamentDefinitions } from '#lib/data/tournaments.ts';
+import { tournamentView } from './tournaments.ts';
 import '#lib/data/brasil.ts'; // registra os clubes reais no registro de clubes
 import { careerWorld, type Career } from './career.ts';
 import { requireClub } from './clubs.ts';
 import { DEFAULT_PLAN, sanitizePlan } from './drills.ts';
 import {
-	DIVISION_LABELS,
+	divisionLabel,
 	divisionOf,
 	divisionStandings,
 	groupStandings,
@@ -16,7 +18,7 @@ import {
 } from './league.ts';
 import { careerSquad, withFitness } from './matchday.ts';
 import { clubFixtures } from './season.ts';
-import { allFixtures, nextStep, processedKeys, seasonSteps, stepFixtures } from './calendar.ts';
+import { allFixtures, fixtureStepKey, nextStep, processedKeys, seasonSteps, stepFixtures } from './calendar.ts';
 import { CUP_ID, cupParticipation, initialCup, prepareCup, restoreCupStages, sanitizeCup } from './cup.ts';
 import { CLUBES_2026 } from '#lib/data/brasil.ts';
 import { squadStrength } from './squad.ts';
@@ -26,6 +28,7 @@ import { initialClubTactic } from './club-selection.ts';
 import { recoverTactic, type Tactic } from './tactics.ts';
 import { strengthFor } from './strength.ts';
 import { continentalParticipation } from './continental-qualification.ts';
+import { ensureWorldClubs } from './world-league.ts';
 
 /**
  * Visão derivada de uma carreira: tudo o que é determinístico a partir da semente e do
@@ -35,13 +38,17 @@ import { continentalParticipation } from './continental-qualification.ts';
 const KNOWN = new Set(CLUBES_2026.map((c) => c.id));
 
 export function careerCalendar(career: Career, results: StoredRoundResult[], league = sanitizeLeague(career.data.league, careerWorld(career), career.season)) {
+	ensureWorldClubs(career.data);
 	const world = league.world;
 	const cup = world === 'brasil' && (league.selection?.cup ?? true) ? sanitizeCup(career.data.cup, KNOWN) : null;
 	let activeCup = cup?.season === career.season ? cup : null;
 	if (!activeCup && world === 'brasil' && career.season === 2026 && (league.selection?.cup || (!league.selection && results.some((r) => r.competition === CUP_ID)))) {
 		activeCup = initialCup(career.season);
 	}
-	const steps = seasonSteps(league, activeCup);
+	const states = career.data.tournaments ?? [];
+	const definitions = tournamentDefinitions(career.season, states);
+	const steps = seasonSteps(league, activeCup, definitions, results);
+	const scheduled = new Map(steps.map((step) => [step.key, step.date]));
 	const done = processedKeys(results);
 	const step = nextStep(steps, done);
 	const strengthOf = strengthFor(career);
@@ -49,26 +56,32 @@ export function careerCalendar(career: Career, results: StoredRoundResult[], lea
 	if (activeCup) {
 		activeCup = restoreCupStages(activeCup, results, career.seed, strengthOf);
 		// O cliente vê a mesma chave que o servidor grava junto do resultado.
-		if (step?.kind === 'cup') activeCup = prepareCup(activeCup, step.matchday, results, career.seed, strengthOf);
+		if (step?.kind === 'cup' && !step.competition) activeCup = prepareCup(activeCup, step.matchday, results, career.seed, strengthOf);
 	}
-	const fixtures = seasonFixtures(league, career.seed);
+	const fixtures = seasonFixtures(league, career.seed, results);
 	const mine = clubFixtures(fixtures, career.clubId);
 	const rounds = totalRounds(league);
 	const seasonOver = step === null;
-	const everything = allFixtures(fixtures, activeCup);
+	const tournaments = definitions.map((definition) => {
+		const id = definition.competition.id;
+		const dates = definition.dates.map((date, index) => scheduled.get(fixtureStepKey(id, index + 1)) ?? date);
+		return tournamentView({ ...definition, dates }, states.find((state) => state.id === id)!, results, career.seed, strengthOf, career.clubId);
+	});
+	const everything = allFixtures([...fixtures, ...tournaments.flatMap((tournament) => tournament.fixtures)], activeCup);
 	const mineAll = everything.filter((f) => f.home === career.clubId || f.away === career.clubId);
 	const played = new Set(results.map((r) => `${r.competition ?? 'liga-brasfc'}:${r.round}:${r.home}`));
 	// Próximo passo do CALENDÁRIO (todas as competições); o usuário pode não jogar nele.
 	const next = step ? (stepFixtures(step, everything).find((f) => f.home === career.clubId || f.away === career.clubId) ?? null) : null;
 	const upcoming = mineAll.find((f) => !played.has(`${f.competition}:${f.round}:${f.home}`)) ?? null;
-	return { league, fixtures, mine, activeCup, steps, step, rounds, seasonOver, mineAll, next, upcoming };
+	return { league, fixtures, mine, activeCup, tournaments, everything, steps, step, rounds, seasonOver, mineAll, next, upcoming };
 }
 
 export function careerView(career: Career, results: StoredRoundResult[] = []) {
+	ensureWorldClubs(career.data);
 	const club = requireClub(career.clubId);
 	const world = careerWorld(career);
 	const squad = withFitness(careerSquad(career), career.data.fitness);
-	const { league, fixtures, mine, activeCup, steps, step, rounds, seasonOver, mineAll, next, upcoming } = careerCalendar(career, results);
+	const { league, fixtures, mine, activeCup, tournaments, everything, steps, step, rounds, seasonOver, mineAll, next, upcoming } = careerCalendar(career, results);
 	const division = (divisionOf(league, career.clubId) ?? 'liga-brasfc') as DivisionId;
 	const persisted = recoverTactic(career.data.tactic, squad);
 	const tactic: Tactic = persisted ?? initialClubTactic(career.data.rosterCatalog, career.clubId, squad);
@@ -79,7 +92,7 @@ export function careerView(career: Career, results: StoredRoundResult[] = []) {
 	const effective = effectiveTactical(tactical, coach);
 	let nextRound = step?.kind === 'league' ? step.round : 1;
 	if (step?.kind === 'cup') {
-		const leagueDone = new Set(results.filter((r) => r.competition !== CUP_ID).map((r) => r.round));
+		const leagueDone = new Set(results.filter((r) => fixtureStepKey(r.competition, r.round).startsWith('league:')).map((r) => r.round));
 		while (leagueDone.has(nextRound) && nextRound <= rounds) nextRound++;
 	} else if (!step) nextRound = rounds + 1;
 	const standings = divisionStandings(league, division, results);
@@ -88,9 +101,11 @@ export function careerView(career: Career, results: StoredRoundResult[] = []) {
 		world,
 		league,
 		division,
-		divisionLabel: DIVISION_LABELS[division],
+		divisionLabel: divisionLabel(league, division),
 		squad,
 		fixtures,
+		stepMatches: step ? stepFixtures(step, everything) : [],
+		tournaments,
 		clubFixtures: mineAll,
 		/** só as partidas de liga do clube */
 		leagueFixtures: mine,

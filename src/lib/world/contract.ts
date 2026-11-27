@@ -30,7 +30,7 @@ export type CompetitionId = string;
 
 export type Confederation = 'CONMEBOL' | 'UEFA' | 'CONCACAF' | 'CAF' | 'AFC' | 'OFC';
 
-export type CompetitionKind = 'league' | 'state' | 'national-cup' | 'continental' | 'super-cup';
+export type CompetitionKind = 'league' | 'state' | 'national-cup' | 'regional-cup' | 'continental' | 'super-cup';
 
 /** Estimativa de custo da simulação de uma temporada, produzida pela engine. */
 export interface LoadEstimate {

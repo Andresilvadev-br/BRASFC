@@ -6,7 +6,7 @@
 	import type { Career } from '#lib/domain/career.ts';
 	import { getClub } from '#lib/domain/clubs.ts';
 	import { formatLong } from '#lib/domain/dates.ts';
-	import { DIVISION_LABELS, type DivisionId, type SeasonSummary } from '#lib/domain/league.ts';
+	import { DIVISION_LABELS, type DivisionId, type SeasonSummary, competitionName } from '#lib/domain/league.ts';
 	import { CAREER_PLAYER_ID, fixtureSetup, type MatchdayContext, type MatchSummary } from '#lib/domain/matchday.ts';
 	import type { Fixture } from '#lib/domain/season.ts';
 	import { MASTERY_LABEL } from '#lib/domain/tactical.ts';
@@ -115,7 +115,7 @@
 			const res = await startNextSeason<NonNullable<typeof seasonEnd>>(c.id, c.version);
 			if (res) {
 				seasonEnd = res;
-				notify({ icon: 'trophy', tone: 'gold', title: `Temporada ${res.summary.season} encerrada`, detail: `${res.summary.position}º lugar na ${DIVISION_LABELS[res.summary.division]}` });
+				notify({ icon: 'trophy', tone: 'gold', title: `Temporada ${res.summary.season} encerrada`, detail: `${res.summary.position}º lugar na ${competitionName(res.summary.division)}` });
 			}
 		} catch (e) {
 			notify({ icon: 'alert', tone: 'error', title: 'Não foi possível encerrar', detail: e instanceof ApiError ? e.message : 'Tente de novo.' });
@@ -147,14 +147,14 @@
 </script>
 
 {#if shared}
-	<LocalMatchday career={c} seasonOver={v.seasonOver} stepLabel={v.seasonOver ? `Fim da temporada ${c.season}` : v.step?.kind === 'cup' ? 'Copa do Brasil' : `Rodada ${v.nextRound}`} />
+	<LocalMatchday career={c} seasonOver={v.seasonOver} stepLabel={v.seasonOver ? `Fim da temporada ${c.season}` : v.step?.kind === 'cup' ? (v.step.name ?? 'Copa do Brasil') : `Rodada ${v.nextRound}`} />
 {:else if walkout && playedFixture && setup}
 	{@const game = playedFixture}
 	<Walkout home={setup.home} away={setup.away} neutral={setup.neutral}
 		coaches={c.mode === 'coach' ? { [setup.mySide]: c.personName } : {}}
 		label={game.competition === 'copa-do-brasil'
 			? `Copa do Brasil · ${game.phase ?? ''}`
-			: `${DIVISION_LABELS[game.competition as DivisionId] ?? 'BRASFC'} · Rodada ${game.round}`}
+			: `${competitionName(game.competition)} · Rodada ${game.round}`}
 		ondone={startMatch} />
 {/if}
 
@@ -166,12 +166,12 @@
 	<section class="card post" data-umx-enter>
 		<Icon name="trophy" />
 		<h1>Temporada {seasonEnd.summary.season} encerrada</h1>
-		<p class="big">{seasonEnd.summary.position}º lugar · {seasonEnd.summary.points} pontos · {DIVISION_LABELS[seasonEnd.summary.division]}</p>
+		<p class="big">{seasonEnd.summary.position}º lugar · {seasonEnd.summary.points} pontos · {competitionName(seasonEnd.summary.division)}</p>
 		<p class="outcome" data-o={seasonEnd.summary.outcome}>{OUTCOME[seasonEnd.summary.outcome]}</p>
 		{#if seasonEnd.moves.length}
 			<div class="moves">
 				{#each seasonEnd.moves as m (m.clubId)}
-					<span class:me={m.clubId === c.clubId} data-r={m.reason}><Crest clubId={m.clubId} size={22} /> {getClub(m.clubId)?.short} {m.reason === 'acesso' ? '↑' : '↓'} {DIVISION_LABELS[m.to]}</span>
+					<span class:me={m.clubId === c.clubId} data-r={m.reason}><Crest clubId={m.clubId} size={22} /> {getClub(m.clubId)?.short} {m.reason === 'acesso' ? '↑' : '↓'} {competitionName(m.to)}</span>
 				{/each}
 			</div>
 		{/if}
@@ -187,7 +187,7 @@
 {:else if stage === 'pre' && !fixture}
 	<section class="card empty" data-umx-enter>
 		<Icon name="calendar" />
-		<h1>{v.step?.kind === 'cup' ? 'Quarta de Copa do Brasil' : `Rodada ${v.nextRound}`}: seu time não joga</h1>
+		<h1>{v.step?.kind === 'cup' ? (v.step.name ?? 'Copa do Brasil') : `Rodada ${v.nextRound}`}: seu time não joga</h1>
 		<p>
 			As outras partidas acontecem normalmente. Use a semana para treinar
 			{#if v.upcoming}— o próximo jogo é em {formatLong(v.upcoming.date).toLowerCase()}{v.upcoming.competition === 'copa-do-brasil' ? ' (Copa do Brasil)' : ''}{/if}.
@@ -199,7 +199,7 @@
 	</section>
 {:else if stage === 'pre' && fixture && preview}
 	<section class="card pre" data-umx-enter>
-		<span class="eyebrow">{fixture.competition === 'copa-do-brasil' ? `Copa do Brasil · ${fixture.phase ?? ''}` : `${DIVISION_LABELS[fixture.competition as DivisionId] ?? fixture.competition} · Rodada ${fixture.round}`} · {formatLong(fixture.date)} · {fixture.time}</span>
+		<span class="eyebrow">{v.step?.kind === 'cup' ? `${competitionName(fixture.competition)} · ${fixture.phase ?? ''}` : `${competitionName(fixture.competition)} · Rodada ${fixture.round}`} · {formatLong(fixture.date)} · {fixture.time}</span>
 		<div class="vs">
 			<div class="side"><Crest clubId={fixture.home} size={88} /><strong>{getClub(fixture.home)?.name}</strong></div>
 			<span class="x">×</span>

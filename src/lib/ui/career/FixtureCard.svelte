@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { getClub } from '#lib/domain/clubs.ts';
-	import { DIVISION_LABELS, type DivisionId } from '#lib/domain/league.ts';
+	import { DIVISION_LABELS, type DivisionId, competitionName } from '#lib/domain/league.ts';
 	import { formatLong, relativeDays } from '#lib/domain/dates.ts';
 	import type { Fixture } from '#lib/domain/season.ts';
 	import Crest from '../Crest.svelte';
@@ -16,7 +16,7 @@
 
 <div class="fixture">
 	<div class="meta">
-		<span class="comp">{DIVISION_LABELS[fixture.competition as DivisionId] ?? fixture.competition} · Rodada {fixture.round}</span>
+		<span class="comp">{competitionName(fixture.competition)} · Rodada {fixture.round}</span>
 		<span class="when"><strong>{cap(relativeDays(today, fixture.date))}</strong> · {formatLong(fixture.date)} · {fixture.time}</span>
 	</div>
 	<div class="versus">

@@ -1,7 +1,7 @@
 {
-  "catalog_id": "309e505fece793ce612bd89c",
-  "sqlite_sha256": "5e0a7ab58e078e7df818054af022b04834a49b04b3e302bd4aee119d627b4359",
-  "sqlite_bytes": 11227136,
+  "catalog_id": "83fb06ec91cd2ba265f1853f",
+  "sqlite_sha256": "1d747d6a734f1d3762df1f137ffc85d2ffbc1cd10c21a25b40db2e9b4c4a705f",
+  "sqlite_bytes": 11247616,
   "source": {
     "name": "Brasfoot Next",
     "repository": "https://github.com/Brasfoot-Next/database",
@@ -15,7 +15,7 @@
     "competition": 153,
     "estadios_informados": 1236,
     "jogadores_base": 698,
-    "membership": 74,
+    "membership": 174,
     "national_team": 224,
     "paises_com_clubes": 132,
     "player": 34889,

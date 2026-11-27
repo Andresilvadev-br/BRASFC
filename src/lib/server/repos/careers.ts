@@ -1,3 +1,5 @@
+import { registerClubs } from '#lib/domain/clubs.ts';
+import type { WorldPlan } from '#lib/domain/world-league.ts';
 import { randomUUID, randomInt } from 'node:crypto';
 import {
 	careerStart,
@@ -11,6 +13,8 @@ import type { Db } from '../db/index.ts';
 import { initialGroup, MAX_LOCAL_COACHES, type CoachDraft } from '#lib/domain/turns.ts';
 import { isActiveClub } from '#lib/domain/league.ts';
 import { newestWorldCatalog } from '../world-catalog.ts';
+import { catalogSnapshot } from '../world-league.ts';
+import { continentalSupercupClubs, initialContinentalSupercups } from '#lib/data/world/2026/continental-supercups.ts';
 
 /** Mensagem do treinador da vez (NULL = carreira de um treinador só). */
 const MINE = `(m.coach IS NULL OR m.coach = c.data->'local'->'coaches'->((c.data->'local'->>'active')::int)->>'id')`;
@@ -63,12 +67,25 @@ export class VersionConflictError extends Error {}
  * Cria a carreira. `others` são os demais treinadores locais (0.13), na ordem de criação: todos
  * entram no mesmo universo, cada um com o próprio clube (nunca o mesmo clube para dois treinadores).
  */
-export async function createCareer(db: Db, profileId: string, input: CreateCareerInput, seed = randomInt(1, 2 ** 31 - 1), others: CoachDraft[] = []): Promise<Career> {
+export async function createCareer(db: Db, profileId: string, input: CreateCareerInput, seed = randomInt(1, 2 ** 31 - 1), others: CoachDraft[] = [], plan: WorldPlan | null = null): Promise<Career> {
 	const id = randomUUID();
-	const data = initialCareerData(input, seed);
+	if (plan) registerClubs(plan.snapshot.clubs);
+	const data = initialCareerData(input, seed, plan);
 	if (data.world === 'brasil' && data.league?.selection) {
 		const catalog = newestWorldCatalog();
-		if (catalog) data.worldCatalog = catalog;
+		if (catalog) {
+			data.worldCatalog = catalog;
+			if (data.tournaments) {
+				const season = data.league.season;
+				const countries = ['bra'];
+				const guestIds = continentalSupercupClubs(season, countries);
+				const snapshot = catalogSnapshot(catalog, guestIds, season);
+				if (snapshot?.clubs.length && guestIds.every((id) => snapshot.players[id]?.length >= 11)) {
+					data.worldSnapshot = snapshot;
+					data.tournaments.push(...initialContinentalSupercups(season, countries, ['flamengo', ...guestIds]));
+				}
+			}
+		}
 	}
 	const drafts: CoachDraft[] = [{ personName: input.personName, clubId: input.clubId, appearance: input.appearance }, ...others];
 	if (drafts.length > MAX_LOCAL_COACHES) throw new CareerLimitError(`No máximo ${MAX_LOCAL_COACHES} treinadores por carreira.`);
@@ -95,7 +112,7 @@ export async function createCareer(db: Db, profileId: string, input: CreateCaree
 		let seq = 0;
 		let firstCount = 0;
 		for (const [k, d] of drafts.entries()) {
-			const messages = welcomeMessages({ ...input, personName: d.personName, clubId: d.clubId, appearance: d.appearance });
+			const messages = welcomeMessages({ ...input, personName: d.personName, clubId: d.clubId, appearance: d.appearance }, data.league);
 			if (k === 0) firstCount = messages.length;
 			for (const m of messages) {
 				await tx.query(
@@ -144,7 +161,8 @@ export async function getCareerForMarket(db: Db, profileId: string, id: string):
 		'world', c.data->'world', 'league', c.data->'league', 'cup', c.data->'cup',
 		'rosterCatalog', c.data->'rosterCatalog', 'firstSeason', c.data->'firstSeason',
 		'market', c.data->'market', 'club', c.data->'club', 'local', c.data->'local',
-		'worldCatalog', c.data->'worldCatalog') AS data,`);
+		'worldCatalog', c.data->'worldCatalog',
+		'worldSnapshot', c.data->'worldSnapshot') AS data,`);
 	const [row] = await db.query<CareerRow>(`SELECT ${columns} FROM careers c WHERE c.id=$1 AND c.profile_id=$2`, [id, profileId]);
 	return row ? mapCareer(row) : null;
 }

@@ -61,8 +61,8 @@ const parseSummary = (r: Row): MatchSummary | null => {
 };
 
 /** Partidas do usuário (com resumo), de todas as temporadas ou de uma. */
-export async function listUserMatches(db: Db, careerId: string, season?: number, club: string | null = null, step?: { round: number; cup: boolean }): Promise<UserMatch[]> {
-	const filter = step ? ` AND round = $4 AND competition ${step.cup ? '=' : '<>'} 'copa-do-brasil'` : '';
+export async function listUserMatches(db: Db, careerId: string, season?: number, club: string | null = null, step?: { round: number }): Promise<UserMatch[]> {
+	const filter = step ? ' AND round = $4' : '';
 	const rows = await db.query<Row>(
 		`SELECT ${COLS}, summary FROM career_matches WHERE career_id = $1 AND is_user AND ($2::int IS NULL OR season = $2) AND ($3::text IS NULL OR home = $3 OR away = $3)${filter} ORDER BY season, played_at, round`,
 		[careerId, season ?? null, club, ...(step ? [step.round] : [])]
