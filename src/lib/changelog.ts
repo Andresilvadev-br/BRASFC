@@ -19,6 +19,21 @@ export interface Release {
 
 export const RELEASES: Release[] = [
 	{
+		version: '0.15.0', date: '2026-11-27', title: 'Champions League e Europa League', channel: 'estavel',
+		added: ['Champions League e Europa League com os 36 participantes reais de 2026/27 e os potes do sorteio',
+			'Fase de liga com 8 adversários diferentes, playoff, oitavas, quartas, semifinal e final em campo neutro',
+			'Tela das copas europeias: tabela única de 36, rodadas, chave do mata-mata e final',
+			'Vagas europeias pela tabela final das ligas, com a zona de Champions e de Europa League na classificação'],
+		highlights: [
+			{ title: 'Noites de Champions', text: 'Terças de Champions League e quintas de Europa League entre as rodadas da liga, com premiação por fase.', icon: 'trophy' },
+			{ title: 'Fase de liga de verdade', text: 'Sorteio pelos potes reais: dois adversários de cada pote, 4 jogos em casa e 4 fora, sem rival do mesmo país.', icon: 'globe' }
+		],
+		improved: ['Calendário, painel e partida mostram a competição e a fase de cada jogo europeu', 'Suspensões contadas por competição também nas copas europeias'],
+		fixed: [],
+		compat: { database: 'sem migração', saves: 'carreiras europeias da 0.14 seguem só com a liga; carreiras novas têm as copas europeias' },
+		next: ['Brasil e Europa na mesma carreira', 'Copas nacionais europeias']
+	},
+	{
 		version: '0.14.0', date: '2026-11-27', title: 'Ligas europeias', channel: 'estavel',
 		added: ['Carreira nas ligas europeias: LaLiga, Serie A, Premier League, Bundesliga, 2. Bundesliga e Ligue 1',
 			'Calendário europeu real, de agosto a maio, com pausas das datas FIFA e de fim de ano',

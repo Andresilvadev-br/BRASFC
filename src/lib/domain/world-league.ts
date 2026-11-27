@@ -59,6 +59,8 @@ export interface WorldPlan {
 	countries: string[];
 	league: import('./league.ts').LeagueState;
 	snapshot: WorldSnapshot;
+	/** Champions League e Europa League 2026/27 disponíveis (todos os 72 clubes no catálogo) */
+	europe?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────── elencos

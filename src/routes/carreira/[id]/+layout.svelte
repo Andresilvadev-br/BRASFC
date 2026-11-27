@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { stepTitle } from '#lib/domain/calendar.ts';
 	import { provideCareerPort } from '#lib/career/port.ts';
 	import { localCareerPort, localSyncChannel } from '#lib/career/local-port.ts';
 	import type { SyncChannel } from '#lib/stores/sync.svelte.ts';
@@ -84,6 +85,7 @@
 				{ href: `${base}/mundo`, label: 'Notícias e mundo', icon: 'globe' },
 				{ href: `${base}/competicoes`, label: 'Competições', icon: 'trophy' },
 				...(data.view.cup ? [{ href: `${base}/copa`, label: 'Copa do Brasil', icon: 'star' as IconName }] : []),
+				...(data.view.europe ? [{ href: `${base}/europa`, label: 'Copas europeias', icon: 'star' as IconName }] : []),
 				{ href: `${base}/calendario`, label: 'Calendário', icon: 'calendar' },
 				{ href: `${base}/estatisticas`, label: 'Estatísticas', icon: 'field' },
 				{ href: `${base}/historia`, label: 'História', icon: 'news' },
@@ -97,7 +99,7 @@
 	const step = $derived(data.view.step);
 	const shared = $derived(isShared(data.career));
 	let covering = $state(true);
-	const stepLabel = $derived(!step ? 'Fim da temporada' : step.kind === 'cup' ? 'Copa do Brasil' : `Rodada ${step.round}`);
+	const stepLabel = $derived(stepTitle(step));
 
 	async function saveAppearance(appearance: Appearance) {
 		await api(`/api/careers/${data.career.id}`, { method: 'PATCH', body: { version: data.career.version, appearance } });
@@ -114,7 +116,7 @@
 {/if}
 <CareerShell {base} clubId={data.career.clubId} unemployed={coach && data.manage.club.board.dismissed} clubName={coach && data.manage.club.board.dismissed ? 'Sem clube' : data.view.club.name} color={coach && data.manage.club.board.dismissed ? '#374151' : data.view.club.colors.primary}
 	personName={data.career.personName} roleLabel="Treinador" {groups} {current}
-	date={data.career.gameDate} season={data.career.season} cup={step?.kind === 'cup'} {stepLabel}
+	date={data.career.gameDate} season={data.career.season} cup={step?.kind === 'cup' || step?.kind === 'europe'} {stepLabel}
 	balance={coach && !data.manage.club.board.dismissed ? data.manage.club.balance : undefined}
 	match={shared ? { href: `${base}/partida`, label: 'Ir para próxima partida', hint: 'Grava a sua preparação e passa a vez ao próximo treinador.' } : coach && data.manage.club.board.dismissed
 		? { href: `${base}/gabinete`, label: 'Ver propostas de emprego' }

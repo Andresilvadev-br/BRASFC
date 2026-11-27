@@ -4,6 +4,7 @@ import type { DivisionId, LeagueState } from '#lib/domain/league.ts';
 import { WORLD_DIVISION_NAMES, type CompactPlayer, type Tiebreak, type WorldDivisionRule, type WorldPlan } from '#lib/domain/world-league.ts';
 import type { AttributeKey } from '#lib/engine/attributes.ts';
 import { countryName } from '#lib/world/countries.ts';
+import { europeClubIds } from '#lib/domain/europe.ts';
 import { newestWorldCatalog, openWorldCatalog } from './world-catalog.ts';
 
 /**
@@ -119,7 +120,12 @@ export function buildWorldPlan(countries: string[], catalogId: string | null = n
 			if (below && !below.playable && below.verified.length) reserves[d.id] = below.verified.filter((id) => !playable.some((p) => p.verified.includes(id)));
 		}
 	}
-	const ids = [...new Set([...Object.values(divisions).flat(), ...Object.values(reserves).flat()])] as string[];
+	const leagueIds = [...new Set([...Object.values(divisions).flat(), ...Object.values(reserves).flat()])] as string[];
+	// Champions League e Europa League 2026/27: só entram se todos os clubes existem no catálogo.
+	const europeIds = europeClubIds();
+	const clubExists = read.db.prepare('SELECT 1 FROM club WHERE id = ?');
+	const europe = season === 2026 && europeIds.every((id) => clubExists.get(id.replace(/^world\//, '')));
+	const ids = [...new Set([...leagueIds, ...(europe ? europeIds : [])])];
 	const clubQuery = read.db.prepare('SELECT name, stadium, reputation, colors, state FROM club WHERE id = ?');
 	const playerQuery = read.db.prepare('SELECT id, name, age, country, position, starter, overall_estimate, potential_estimate, traits FROM player WHERE club = ? ORDER BY starter DESC, id');
 	const clubs: Club[] = [];
@@ -138,5 +144,5 @@ export function buildWorldPlan(countries: string[], catalogId: string | null = n
 		world: 'mundo', season, scheduleVersion: 3, divisions,
 		selection: { divisions: Object.keys(divisions).sort() as DivisionId[], cup: false }, rules, reserves
 	};
-	return { countries: [...countries].sort(), league, snapshot: { catalog: catalogId, clubs, players } };
+	return { countries: [...countries].sort(), league, snapshot: { catalog: catalogId, clubs, players }, ...(europe ? { europe: true } : {}) };
 }

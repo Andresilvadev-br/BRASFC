@@ -40,9 +40,15 @@
 		for (const g of tables) for (const r of computeStandings(g.map((x) => x.clubId), prev)) map.set(r.clubId, r.position);
 		return map;
 	});
+	/** Vagas do país nas copas europeias (só na elite de uma liga do mundo europeu). */
+	const europeSlots = $derived.by(() => {
+		if (!worldRule || worldRule.level !== 1 || !v.europe) return { ucl: 0, uel: 0 };
+		const count = (id: string) => v.europe!.comps.find((x) => x.id === id)?.pots.flat().filter((club) => club.split('/')[1] === worldRule.country).length ?? 0;
+		return { ucl: count('continental/ucl'), uel: count('continental/uel') };
+	});
 	const zone = (pos: number, size: number): 'up' | 'qual' | 'down' | '' => {
-		// World Database: só a zona de rebaixamento do regulamento (vagas europeias chegam com as continentais).
-		if (worldRule) return pos > size - worldRule.relegated ? 'down' : '';
+		// World Database: vagas europeias da próxima temporada (mesma quantidade da edição atual) e rebaixamento.
+		if (worldRule) return pos <= europeSlots.ucl ? 'up' : pos <= europeSlots.ucl + europeSlots.uel ? 'qual' : pos > size - worldRule.relegated ? 'down' : '';
 		if (!rule) return pos <= 4 ? 'up' : pos > size - 4 ? 'down' : '';
 		if (div === 'serie-d') return pos <= 4 ? 'qual' : '';
 		if (div === 'serie-c') {
@@ -82,6 +88,14 @@
 	{/if}
 </div>
 
+{#if v.europe}
+	<a class="europe glass" href={port.href('europa')} use:reveal>
+		<Icon name="star" size={16} /><strong>Champions League e Europa League</strong>
+		{#each v.europeParticipation as entry (entry.competition)}<ParticipationBadge participation={entry} />{:else}<span class="muted">Seu clube não disputa copa europeia nesta temporada</span>{/each}
+		<Icon name="chevronRight" size={16} />
+	</a>
+{/if}
+
 {#each v.continentalParticipation as entry (entry.competition)}
 	<p class="muted" use:reveal>{entry.competition === 'continental/libertadores' ? 'Libertadores' : 'Sul-Americana'} <ParticipationBadge participation={entry} /> · Calendário pendente</p>
 {/each}
@@ -109,7 +123,9 @@
 				{#if rule && rule.promoted && div !== 'serie-c'}<span><i data-z="up"></i>Acesso</span>{/if}
 				{#if bPlayoffs}<span><i data-z="qual"></i>Playoff de acesso</span>{/if}
 				{#if div === 'serie-c'}<span><i data-z="qual"></i>2ª fase (quadrangulares)</span>{/if}
-				{#if !rule}<span><i data-z="up"></i>Topo</span>{/if}
+				{#if worldRule && europeSlots.ucl}<span><i data-z="up"></i>Champions League</span>{/if}
+				{#if worldRule && europeSlots.uel}<span><i data-z="qual"></i>Europa League</span>{/if}
+				{#if !rule && !worldRule}<span><i data-z="up"></i>Topo</span>{/if}
 				<span><i data-z="down"></i>Rebaixamento</span>
 			</div>
 		</section>
@@ -201,6 +217,8 @@
 {/if}
 
 <style>
+	.europe { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 16px; margin-bottom: var(--sp-4); color: inherit; text-decoration: none; }
+	.europe:hover { border-color: var(--emerald-line); }
 	.head {
 		display: flex;
 		justify-content: space-between;

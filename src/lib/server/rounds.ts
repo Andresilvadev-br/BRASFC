@@ -8,6 +8,8 @@ import { addDays } from '#lib/domain/dates.ts';
 import { applyTrainingWeek, recoverFitness } from '#lib/domain/drills.ts';
 import { activeDivisions, closeSeason, divisionOf, leagueSeasonStart, phaseOneLength, seasonStartDate, type DivisionId, type SeasonSummary } from '#lib/domain/league.ts';
 import { CUP_ID, clubCupRun, cupFixtures, cupView, projectedCup, settleCupMatchday } from '#lib/domain/cup.ts';
+import { EUROPE_NAMES, europeFixtures, europeView, projectEurope, settleEuropeMatchday } from '#lib/domain/europe.ts';
+import { inStep, isCupCompetition, parseStepKey } from '#lib/domain/calendar.ts';
 import { qualifyBrazil2027 } from '#lib/domain/continental-qualification.ts';
 import { initialClubState, payroll, sanitizeMarket } from '#lib/domain/management.ts';
 import { clubStateOf, rosterContext } from '#lib/domain/world.ts';
@@ -268,7 +270,7 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 			league,
 			club: clubStateOf(c, league),
 			market,
-			step: { kind: step.kind, round: step.kind === 'league' ? step.round : r.view.nextRound, ...(step.kind === 'cup' ? { matchday: step.matchday } : {}) },
+			step: { kind: step.kind, round: step.kind === 'league' ? step.round : r.view.nextRound, ...(step.kind !== 'league' ? { matchday: step.matchday } : {}), ...(step.kind === 'europe' ? { competition: step.competition } : {}) },
 			roster: rosterContext(c, league),
 			userRow: r.row,
 			strengthOf,
@@ -285,7 +287,7 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 		let clubOut = r.unemployed ? clubStateOf(c, league) : wk.club;
 		if (r.unemployed) wk.news.splice(0, wk.news.length);
 		const big = wk.transfers.filter((t) => t.to === c.clubId && t.fee >= 1_000_000).sort((a, b) => b.fee - a.fee)[0];
-		const os = officeStep({ career: c, league, office, club: clubOut, universe, round, leagueRound: r.view.nextRound - 1, isLeague: step.kind === 'league', totalRounds: r.view.rounds, seasonResults: allResults, userMatch: r.mine && r.userMatch ? { home: r.mine.home, away: r.mine.away, homeGoals: r.userMatch.homeGoals, awayGoals: r.userMatch.awayGoals, competition: r.mine.competition } : null, nextOpponent, nextDecisive: !!nextFix && nextFix.competition === CUP_ID, signedBig: big?.playerName ?? null });
+		const os = officeStep({ career: c, league, office, club: clubOut, universe, round, leagueRound: r.view.nextRound - 1, isLeague: step.kind === 'league', totalRounds: r.view.rounds, seasonResults: allResults, userMatch: r.mine && r.userMatch ? { home: r.mine.home, away: r.mine.away, homeGoals: r.userMatch.homeGoals, awayGoals: r.userMatch.awayGoals, competition: r.mine.competition } : null, nextOpponent, nextDecisive: !!nextFix && isCupCompetition(nextFix.competition), signedBig: big?.playerName ?? null });
 		office = os.office;
 		clubOut = os.club;
 		universe = os.universe;
@@ -304,7 +306,8 @@ export async function playRound(db: Db, profileId: string, career: Career, body:
 	const key = `${career.season}:${step.key}`;
 	mark('mundo');
 	const settledCup = cup && step.kind === 'cup' ? settleCupMatchday(cup, step.matchday, allResults, career.seed, strengthOf) : cup;
-	const world: Partial<CareerData> = { league, universe, ...(settledCup ? { cup: settledCup } : {}), market };
+	const settledEurope = view.europe && step.kind === 'europe' ? settleEuropeMatchday(view.europe, step.competition, step.matchday, allResults, career.seed, strengthOf) : view.europe;
+	const world: Partial<CareerData> = { league, universe, ...(settledCup ? { cup: settledCup } : {}), ...(settledEurope ? { europe: settledEurope } : {}), market };
 	const updated = await db.transaction(async (tx) => {
 		await insertRound(tx, career.id, rows, ENGINE_VERSION);
 		const saved = group
@@ -364,7 +367,7 @@ export async function roundPreview(db: Db, career: Career) {
 		const st = owner ? clubStateOf(owner, plan.league) : initialClubState(career.seed, f.home, division, career.season);
 		const eco = clubEconomy(f.home, tier);
 		const neutral = !!(f as { neutral?: boolean }).neutral;
-		const crowd = attendance({ capacity: stadiumCapacity(eco.capacity, st.infra.estadio.level), fanMood: st.fanMood, price: st.ticketPrice, ticketRef: eco.ticketRef, opponentReputation: getClub(f.away)?.reputation ?? 2, derby: isDerby(f.home, f.away), competitionWeight: f.competition === CUP_ID ? 1.1 : 1 });
+		const crowd = attendance({ capacity: stadiumCapacity(eco.capacity, st.infra.estadio.level), fanMood: st.fanMood, price: st.ticketPrice, ticketRef: eco.ticketRef, opponentReputation: getClub(f.away)?.reputation ?? 2, derby: isDerby(f.home, f.away), competitionWeight: f.competition === CUP_ID ? 1.1 : f.competition.startsWith('continental/') ? 1.3 : 1 });
 		return { stadium: neutral ? 'Campo neutro' : (realClub(f.home)?.estadio ?? getClub(f.home)?.stadium ?? '—'), attendance: neutral ? null : crowd };
 	};
 	const humanFixtures = [...new Set(runs.flatMap((r) => (r.mine ? [r.mine] : [])))];
@@ -395,6 +398,7 @@ export async function roundPreview(db: Db, career: Career) {
 	return {
 		step: step.key,
 		kind: step.kind,
+		...(step.kind === 'europe' ? { competition: step.competition } : {}),
 		round: step.kind === 'league' ? step.round : step.matchday,
 		date: step.date,
 		matches,
@@ -424,16 +428,17 @@ function afterRound(career: Career, coachData: Array<Partial<CareerData>>, world
  * ainda não foi jogado (aí o erro original continua valendo).
  */
 async function recordedStep(db: Db, career: Career, results: StoredResult[], view: ReturnType<typeof careerView>, asked: string) {
-	const [kind, n] = asked.split(':');
-	const number = Number(n);
-	const inStep = (r: { competition: string; round: number }) => r.round === number && (kind === 'cup' ? r.competition === CUP_ID : r.competition !== CUP_ID);
-	const rows = results.filter(inStep);
+	const parsed = parseStepKey(asked);
+	if (!parsed) return null;
+	const { competition, number } = parsed;
+	const belongs = (r: { competition?: string; round: number }) => r.round === number && (competition ? r.competition === competition : !isCupCompetition(r.competition));
+	const rows = results.filter(belongs);
 	if (!rows.length) return null;
-	const recorded = rows.some((r) => r.isUser) ? await listUserMatches(db, career.id, career.season, null, { round: number, cup: kind === 'cup' }) : [];
+	const recorded = rows.some((r) => r.isUser) ? await listUserMatches(db, career.id, career.season, null, { round: number, competition }) : [];
 	const seen = (clubId: string) => {
 		const mine = recorded.find((r) => r.home === clubId || r.away === clubId);
 		if (!mine) return null;
-		const fixture = [...view.fixtures, ...view.clubFixtures].find((f) => inStep(f) && f.home === mine.home && f.away === mine.away)
+		const fixture = [...view.fixtures, ...view.clubFixtures].find((f) => belongs(f) && f.home === mine.home && f.away === mine.away)
 			?? ({ round: number, competition: mine.competition, home: mine.home, away: mine.away } as Fixture);
 		return { fixture, homeGoals: mine.homeGoals, awayGoals: mine.awayGoals, summary: mine.summary ? { ...mine.summary, mySide: mine.home === clubId ? 'home' as const : 'away' as const } : null };
 	};
@@ -462,6 +467,9 @@ export function planRound(career: Career, results: StoredRoundResult[], view = c
 	if (step.kind === 'league') {
 		fixtures = view.fixtures.filter((f) => f.round === step.round);
 		if (!fixtures.length) throw new RoundError('O calendário desta rodada não pôde ser montado com os resultados salvos.', 409);
+	} else if (step.kind === 'europe') {
+		fixtures = view.europe ? europeFixtures(view.europe).filter((f) => inStep(step, f)) : [];
+		if (!fixtures.length) throw new RoundError(`Os jogos da ${EUROPE_NAMES[step.competition]} não puderam ser montados para esta data.`, 409);
 	} else {
 		fixtures = cup ? cupFixtures(cup).filter((f) => f.round === step.matchday) : [];
 		if (!fixtures.length) throw new RoundError('A chave da Copa do Brasil não pôde ser recuperada para esta data.', 409);
@@ -490,7 +498,7 @@ export async function finishSeason(db: Db, profileId: string, career: Career, ve
 	const view = careerView(career, results);
 	if (!view.seasonOver) throw new RoundError('Ainda há jogos a disputar nesta temporada.', 409);
 	const strengthOf = strengthFor(career);
-	const leagueResults = results.filter((r) => r.competition !== CUP_ID);
+	const leagueResults = results.filter((r) => !isCupCompetition(r.competition));
 	const outcome = closeSeason(view.league, leagueResults, career.seed, strengthOf);
 	const next = outcome.next;
 	if (next.selection) {
@@ -528,6 +536,10 @@ export async function finishSeason(db: Db, profileId: string, career: Career, ve
 	const history: Array<[string, string, unknown]> = [];
 	for (const [comp, champ] of Object.entries(outcome.champions)) if (champ) history.push(['campeao', comp, { clubId: champ, runnerUp: outcome.runnersUp[comp as keyof typeof outcome.runnersUp] ?? null }]);
 	if (cupNow?.champion) history.push(['campeao', CUP_ID, { clubId: cupNow.champion, runnerUp: cupNow.runnerUp }]);
+	const europeNow = view.europe ? europeView(view.europe, results, career.seed, strengthOf) : [];
+	for (const e of europeNow) if (e.champion) history.push(['campeao', e.id, { clubId: e.champion, runnerUp: e.runnerUp }]);
+	// Copas europeias da próxima temporada: vagas dos países com liga jogável pela tabela final.
+	const nextEurope = view.europe ? projectEurope(view.europe, outcome.tables as Record<string, Array<{ clubId: string }>>, next.season, career.seed, strengthOf) : null;
 	const coachDivisions = [...new Set(liveCoaches(career).map(({ clubId }) => divisionOf(view.league, clubId) ?? view.division))];
 	const goals = await listSeasonGoals(db, career.id, career.season, coachDivisions.filter((div) => outcome.tables[div]?.length));
 	const tablesDone = new Set<string>();
@@ -607,7 +619,7 @@ export async function finishSeason(db: Db, profileId: string, career: Career, ve
 			personal
 		});
 	}
-	const world: Partial<CareerData> = { league: next, ...(nextCup ? { cup: nextCup } : {}), market, universe };
+	const world: Partial<CareerData> = { league: next, ...(nextCup ? { cup: nextCup } : {}), ...(nextEurope ? { europe: nextEurope } : {}), market, universe };
 	if (career.season === 2026 && career.data.worldSelection?.countries.includes('bra') && cupNow?.champion && cupNow.runnerUp && outcome.tables['serie-a']?.length && next.divisions['serie-a']) {
 		world.brazilContinentalQualification = qualifyBrazil2027(
 			outcome.tables['serie-a'].map((row) => row.clubId),

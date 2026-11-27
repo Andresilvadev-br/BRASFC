@@ -1,5 +1,14 @@
 # Novidades
 
+## 0.15.0 — Champions League e Europa League
+
+- Champions League e Europa League nas carreiras do mundo europeu, com os 36 participantes reais de cada uma em 2026/27 e os potes do sorteio (UEFA).
+- Fase de liga: 8 jogos contra 8 adversários diferentes (dois de cada pote, 4 em casa e 4 fora, sem rival do mesmo país), classificação única de 36; do 1º ao 8º às oitavas, do 9º ao 24º ao playoff. Mata-mata em ida e volta com pênaltis; final única em campo neutro.
+- Calendário UEFA: Champions às terças, Europa League às quintas, de setembro à final no fim de maio. Premiação por fase na escala de dinheiro do jogo, cartões e suspensões por competição.
+- Vagas da próxima temporada pela tabela final de cada liga jogável (mesma quantidade de clubes do país na edição atual). Tabelas das ligas mostram a zona de Champions e de Europa League.
+- Sabah, Torreense e Lillestrøm não existem no banco do Brasfoot Next: as vagas ficam com Qarabağ, SC Braga e Molde, marcados na tela como substitutos. Nenhum jogador inventado.
+- Carreiras europeias criadas na 0.14 seguem só com a liga. Sem migração de banco. Instalador Windows 1.8.0.
+
 ## 0.14.0 — Ligas europeias
 
 - Carreira em ligas europeias (World Database), com calendário real de agosto a maio e pausas das datas FIFA: LaLiga, Serie A, Premier League, Bundesliga, 2. Bundesliga e Ligue 1.

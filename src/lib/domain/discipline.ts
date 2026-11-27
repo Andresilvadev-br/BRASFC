@@ -22,6 +22,8 @@ export const DEFAULT_DISCIPLINE: DisciplineRules = { label: 'Regulamento padrão
 /** Regulamento de cada competição (o específico prevalece sobre o padrão). */
 export function disciplineRules(competition: string): DisciplineRules {
 	if (competition === CUP_ID) return { label: 'Copa do Brasil', yellowLimit: 3, redBan: 1, secondYellowBan: 1 };
+	if (competition === 'continental/ucl') return { label: 'Champions League', yellowLimit: 3, redBan: 1, secondYellowBan: 1 };
+	if (competition === 'continental/uel') return { label: 'Europa League', yellowLimit: 3, redBan: 1, secondYellowBan: 1 };
 	return { ...DEFAULT_DISCIPLINE, label: 'Campeonato' };
 }
 

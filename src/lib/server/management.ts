@@ -1,4 +1,5 @@
 import { CLUBES_2026 } from '#lib/data/brasil.ts';
+import { EUROPE_NAMES, europePrize, isEuropeComp } from '#lib/domain/europe.ts';
 import type { Career } from '#lib/domain/career.ts';
 import { clubEconomy, TICKET_REF, type Facility } from '#lib/domain/club.ts';
 import { getClub } from '#lib/domain/clubs.ts';
@@ -67,7 +68,7 @@ export function weeklyManagement(o: {
 	league: LeagueState;
 	club: ClubState;
 	market: MarketState;
-	step: { kind: 'league' | 'cup'; round: number; matchday?: number };
+	step: { kind: 'league' | 'cup' | 'europe'; round: number; matchday?: number; competition?: string };
 	roster: RosterContext;
 	userRow: RoundInsert | null;
 	strengthOf: (id: string) => number;
@@ -91,6 +92,7 @@ export function weeklyManagement(o: {
 		club = { ...club, board: { ...club.board, objectives: seasonObjectives({ division, rank, size: ids.length, profile: club.board.profile, inCup: !!career.data.cup?.entrants && Object.values(career.data.cup.entrants).some((l) => l.includes(career.clubId)), promotion: rule.promoted, relegation: rule.relegated }) } };
 	}
 	let cupPrize = 0;
+	let prizeLabel: string | undefined;
 	let match: Parameters<typeof processWeek>[1]['match'] = null;
 	if (o.userRow) {
 		const r = o.userRow;
@@ -102,9 +104,13 @@ export function weeklyManagement(o: {
 			const ph = phaseOfMatchday(step.matchday);
 			if (ph.matchdays[0] === step.matchday && ph.prize) cupPrize = ph.prize;
 		}
+		if (step.kind === 'europe' && step.matchday && isEuropeComp(step.competition)) {
+			cupPrize = europePrize(step.competition, step.matchday);
+			prizeLabel = `Premiação da ${EUROPE_NAMES[step.competition]}`;
+		}
 	}
 	const wasDismissed = club.board.dismissed;
-	const week = processWeek(club, { seed: career.seed, clubId: career.clubId, season: career.season, round: step.round, tier, division, roster, match, fullWeek: step.kind === 'league', firstSeasonOfCareer: career.season === (career.data.firstSeason ?? career.season), cupPrize });
+	const week = processWeek(club, { seed: career.seed, clubId: career.clubId, season: career.season, round: step.round, tier, division, roster, match, fullWeek: step.kind === 'league', firstSeasonOfCareer: career.season === (career.data.firstSeason ?? career.season), cupPrize, ...(prizeLabel ? { prizeLabel } : {}) });
 	club = week.state;
 	news.push(...week.news);
 	if (!wasDismissed && club.board.dismissed) club = { ...club, jobOffers: jobOffers(career.seed, career.season, step.round, club.coachReputation, career.clubId, activeMembership(league), true) };

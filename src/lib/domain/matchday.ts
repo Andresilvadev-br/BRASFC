@@ -33,6 +33,7 @@ export const CAREER_PLAYER_ID = 'eu';
 /** Semente de uma partida da carreira: carreira + temporada + rodada + mandante (+ Copa). */
 export function matchSeed(career: Pick<Career, 'seed'>, season: number, round: number, home: string, competition?: string): number {
 	if (competition === 'copa-do-brasil') return deriveSeed(career.seed, 'match', `${season}:copa:${round}:${home}`);
+	if (competition?.startsWith('continental/')) return deriveSeed(career.seed, 'match', `${season}:${competition}:${round}:${home}`);
 	return deriveSeed(career.seed, 'match', `${season}:${round}:${home}`);
 }
 

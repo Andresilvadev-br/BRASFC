@@ -16,7 +16,8 @@ import {
 } from './league.ts';
 import { careerSquad, withFitness } from './matchday.ts';
 import { clubFixtures } from './season.ts';
-import { allFixtures, nextStep, processedKeys, seasonSteps, stepFixtures } from './calendar.ts';
+import { allFixtures, isCupCompetition, nextStep, processedKeys, seasonSteps, stepFixtures } from './calendar.ts';
+import { europeParticipation, prepareEurope, sanitizeEurope } from './europe.ts';
 import { CUP_ID, cupParticipation, initialCup, prepareCup, restoreCupStages, sanitizeCup } from './cup.ts';
 import { CLUBES_2026 } from '#lib/data/brasil.ts';
 import { squadStrength } from './squad.ts';
@@ -43,10 +44,13 @@ export function careerCalendar(career: Career, results: StoredRoundResult[], lea
 	if (!activeCup && world === 'brasil' && career.season === 2026 && (league.selection?.cup || (!league.selection && results.some((r) => r.competition === CUP_ID)))) {
 		activeCup = initialCup(career.season);
 	}
-	const steps = seasonSteps(league, activeCup);
+	const europe = world === 'mundo' ? sanitizeEurope(career.data.europe) : null;
+	const strengthOf = strengthFor(career);
+	// Copas europeias: o mata-mata sai da tabela e dos resultados (igual no cliente e no servidor).
+	const activeEurope = europe?.season === career.season ? prepareEurope(europe, results, career.seed, strengthOf) : null;
+	const steps = seasonSteps(league, activeCup, activeEurope);
 	const done = processedKeys(results);
 	const step = nextStep(steps, done);
-	const strengthOf = strengthFor(career);
 	if (step?.kind === 'league') league = prepareRound(league, step.round, results, career.seed, strengthOf);
 	if (activeCup) {
 		activeCup = restoreCupStages(activeCup, results, career.seed, strengthOf);
@@ -57,13 +61,13 @@ export function careerCalendar(career: Career, results: StoredRoundResult[], lea
 	const mine = clubFixtures(fixtures, career.clubId);
 	const rounds = totalRounds(league);
 	const seasonOver = step === null;
-	const everything = allFixtures(fixtures, activeCup);
+	const everything = allFixtures(fixtures, activeCup, activeEurope);
 	const mineAll = everything.filter((f) => f.home === career.clubId || f.away === career.clubId);
 	const played = new Set(results.map((r) => `${r.competition ?? 'liga-brasfc'}:${r.round}:${r.home}`));
 	// Próximo passo do CALENDÁRIO (todas as competições); o usuário pode não jogar nele.
 	const next = step ? (stepFixtures(step, everything).find((f) => f.home === career.clubId || f.away === career.clubId) ?? null) : null;
 	const upcoming = mineAll.find((f) => !played.has(`${f.competition}:${f.round}:${f.home}`)) ?? null;
-	return { league, fixtures, mine, activeCup, steps, step, rounds, seasonOver, mineAll, next, upcoming };
+	return { league, fixtures, mine, activeCup, activeEurope, steps, step, rounds, seasonOver, mineAll, next, upcoming };
 }
 
 export function careerView(career: Career, results: StoredRoundResult[] = []) {
@@ -71,7 +75,7 @@ export function careerView(career: Career, results: StoredRoundResult[] = []) {
 	const club = requireClub(career.clubId);
 	const world = careerWorld(career);
 	const squad = withFitness(careerSquad(career), career.data.fitness);
-	const { league, fixtures, mine, activeCup, steps, step, rounds, seasonOver, mineAll, next, upcoming } = careerCalendar(career, results);
+	const { league, fixtures, mine, activeCup, activeEurope, steps, step, rounds, seasonOver, mineAll, next, upcoming } = careerCalendar(career, results);
 	const division = (divisionOf(league, career.clubId) ?? 'liga-brasfc') as DivisionId;
 	const persisted = recoverTactic(career.data.tactic, squad);
 	const tactic: Tactic = persisted ?? initialClubTactic(career.data.rosterCatalog, career.clubId, squad);
@@ -81,8 +85,8 @@ export function careerView(career: Career, results: StoredRoundResult[] = []) {
 	const coach = career.mode === 'coach' ? sanitizeCoachKnowledge(career.data.coachKnowledge, tactical) : null;
 	const effective = effectiveTactical(tactical, coach);
 	let nextRound = step?.kind === 'league' ? step.round : 1;
-	if (step?.kind === 'cup') {
-		const leagueDone = new Set(results.filter((r) => r.competition !== CUP_ID).map((r) => r.round));
+	if (step && step.kind !== 'league') {
+		const leagueDone = new Set(results.filter((r) => !isCupCompetition(r.competition)).map((r) => r.round));
 		while (leagueDone.has(nextRound) && nextRound <= rounds) nextRound++;
 	} else if (!step) nextRound = rounds + 1;
 	const standings = divisionStandings(league, division, results);
@@ -100,6 +104,9 @@ export function careerView(career: Career, results: StoredRoundResult[] = []) {
 		cup: activeCup,
 		cupParticipation: activeCup ? cupParticipation(activeCup, results, career.seed, strengthFor(career), career.clubId) : null,
 		continentalParticipation: continentalParticipation(career.data.brazilContinentalQualification, career.clubId, career.season),
+		/** Champions League e Europa League da temporada (mundo europeu) */
+		europe: activeEurope,
+		europeParticipation: activeEurope ? europeParticipation(activeEurope, results, career.seed, strengthFor(career), career.clubId) : [],
 		steps,
 		/** próximo passo do calendário (domingo de liga ou quarta de Copa) */
 		step,

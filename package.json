@@ -1,6 +1,6 @@
 {
   "name": "brasfc",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "private": true,
   "description": "BRASFC — simulador brasileiro de futebol para Windows: carreira de treinador individual ou com vários treinadores em turnos, 100% offline.",
   "type": "module",
