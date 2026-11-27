@@ -15,7 +15,7 @@ Os tipos estão em [`src/lib/world/contract.ts`](../src/lib/world/contract.ts). 
   - `serie-a` … `serie-d` e `copa-do-brasil` (inalterados);
   - `league/<país>/<nível>`;
   - `state/<uf>/<nível>`;
-  - `cup/<país>`;
+  - `cup/<país>` para copas nacionais e `cup/<país>/<nome>` para torneios regionais e supercopas;
   - `continental/<sigla>` (`ucl`, `uel`, `uecl`, `libertadores`, `sudamericana`).
 
 ## O que a engine fornece e a interface consome

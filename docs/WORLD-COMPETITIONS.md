@@ -21,6 +21,18 @@ As três copas regionais usam os grupos e as fases de 2026. O calendário preser
 
 Carreiras criadas antes desta mudança conservam o calendário salvo. As copas regionais de 2027 e seguintes dependem da classificação pelas federações estaduais. O desempate regional usa pontos, vitórias, saldo e gols, seguido de sorteio determinístico. O critério de cartões nas tabelas e a premiação específica ainda dependem da cobertura do modelo rápido. Os oito elencos acrescentados têm notas estimadas pelo jogo, idades sinalizadas como pendentes e posições conforme a função ampla informada pelas fontes.
 
+## Desempenho
+
+Amostra local em PGlite com um treinador no Real Madrid e cinco rodadas medidas em cada configuração, após uma rodada de aquecimento. A duração inclui a partida e a gravação da rodada.
+
+| Países ativos | Jogos por rodada | Mediana |
+| ---: | ---: | ---: |
+| 1 | 21 | 1,90 s |
+| 2 | 41 | 1,94 s |
+| 5 | 78 | 1,92 s |
+
+Os jogos fora da divisão do treinador usam a simulação rápida. As medições são desta máquina e variam com a divisão do treinador, os elencos e a quantidade de partidas que passam pelo motor completo.
+
 ## Fontes
 
 - [LaLiga Hypermotion 2026/27](https://www.laliga.com/es-GB/laliga-hypermotion/clasificacion), [RFEF, Circular 84](https://rfef.es/sites/default/files/pdf/circulares/1._Circular_84_-_CNL_Primera_y_Segunda_Division___Anexo.pdf) e [grupos da Primera Federación 2026/27](https://rfef.es/es/noticias/aprobados-los-grupos-de-primera-federacion-para-la-temporada-202627).
@@ -29,4 +41,4 @@ Carreiras criadas antes desta mudança conservam o calendário salvo. As copas r
 - [Regulamento da Copa do Nordeste](https://stcbfsiteprdimgbrs.blob.core.windows.net/img-site/cdn/REC_Copa_do_Nordeste_2026_25c8b8939c.pdf), [regulamento da Copa Verde](https://stcbfsiteprdimgbrs.blob.core.windows.net/img-site/cdn/REC_COPA_VERDE_2026_733ec5eed1.pdf) e [grupos da Copa Sul-Sudeste](https://www.cbf.com.br/futebol-brasileiro/noticias/selecao-masculina/cbf-participa-de-seminario-operacional-da-copa-do-mundo-fifa-qatar-202/cbf-divulga-tabela-detalhada-da-primeira-edicao-da-copa-sul-sudeste).
 - [Regulamento da Supercopa Rei](https://stcbfsiteprdimgbrs.blob.core.windows.net/img-site/cdn/REC_SUPERCOPA_DO_BRASIL_2026_8634b6b9ec.pdf), [regulamento da Copa do Brasil e classificação de 2027](https://stcbfsiteprdimgbrs.blob.core.windows.net/img-site/cdn/REC_Copa_do_Brasil_2026_66989a5426.pdf) e [calendário CBF de 2027](https://www.cbf.com.br/futebol-brasileiro/noticias/noticias/campeonato-brasileiro/a/cbf-oficializa-calendario-do-futebol-profissional-masculino-de-2027).
 
-Continuam pendentes a integração das demais divisões nacionais, as ligas estaduais, as copas nacionais estrangeiras, as partidas continentais e o calendário combinado de Brasil e Europa.
+Continuam pendentes a integração das demais divisões nacionais, as ligas estaduais, as copas nacionais estrangeiras, as partidas continentais e o calendário combinado de Brasil e Europa. Os links oficiais do Megapatch 3.0 e do pacote de 44 ligas devolveram HTTP 403 no download.

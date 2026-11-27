@@ -194,7 +194,7 @@ describe('World Database · duas temporadas na Espanha pelo servidor', () => {
 			expect(italianPostseason(automatic, 38, [], {})).toMatchObject({ promotion: false, playout: false, series: [], promoted: automatic[2].clubId, relegated: automatic[16].clubId });
 			const ended = await finishSeason(db, profile.id, career, career.version);
 			expect(ended.moves.filter((move) => move.to === first)).toHaveLength(3);
-			expect(ended.moves.filter((move) => move.to === 'league/ita/3')).toHaveLength(4);
+			expect(ended.moves.filter((move) => move.to === ('league/ita/3' as DivisionId))).toHaveLength(4);
 			career = (await getCareer(db, profile.id, career.id))!;
 			expect(career.season).toBe(season + 1);
 			expect(career.data.league?.divisions[first]).toContain(brackets.promoted);
