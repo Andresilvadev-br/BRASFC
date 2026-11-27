@@ -19,6 +19,20 @@ export interface Release {
 
 export const RELEASES: Release[] = [
 	{
+		version: '0.14.0', date: '2026-11-27', title: 'Ligas europeias', channel: 'estavel',
+		added: ['Carreira nas ligas europeias: LaLiga, Serie A, Premier League, Bundesliga, 2. Bundesliga e Ligue 1',
+			'Calendário europeu real, de agosto a maio, com pausas das datas FIFA e de fim de ano',
+			'Rebaixamento e acesso no fim da temporada, inclusive para a segunda divisão (Championship, LaLiga Hypermotion, Serie B e Ligue 2 como reserva de acesso)'],
+		highlights: [
+			{ title: 'Jogue na Europa', text: 'Escolha Espanha, Itália, Inglaterra, Alemanha ou França na nova carreira e assuma um clube da elite.', icon: 'globe' },
+			{ title: 'Regulamento de verdade', text: 'Confronto direto como desempate na Espanha e na Itália, saldo de gols nas demais; só entram clubes conferidos na edição 2026/27.', icon: 'trophy' }
+		],
+		improved: ['Nomes oficiais das ligas nas telas de competição, calendário e partida'],
+		fixed: [],
+		compat: { database: 'sem migração', saves: 'carreiras existentes preservadas; o catálogo anterior continua instalado para elas' },
+		next: ['Champions League e Europa League', 'Brasil e Europa na mesma carreira']
+	},
+	{
 		version: '0.13.1', date: '2026-11-26', title: 'Mundo pronto para jogar', channel: 'estavel',
 		added: ['Escolha de países na nova carreira, com bandeiras, divisões, clubes e estimativa de processamento',
 			'Banco mundial instalado junto com a atualização: 1.236 clubes de 132 países e 34.889 jogadores do Brasfoot Next (CC BY-SA 4.0)',

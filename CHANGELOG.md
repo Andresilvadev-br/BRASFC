@@ -1,5 +1,12 @@
 # Novidades
 
+## 0.14.0 — Ligas europeias
+
+- Carreira em ligas europeias (World Database), com calendário real de agosto a maio e pausas das datas FIFA: LaLiga, Serie A, Premier League, Bundesliga, 2. Bundesliga e Ligue 1.
+- Só entra uma divisão com todos os inscritos 2026/27 conferidos (edição e fonte por clube). LaLiga Hypermotion, Serie B, Championship e Ligue 2 servem de reserva de acesso com os clubes confirmados; Eredivisie fica fora até o catálogo ter os promovidos.
+- Desempate oficial: confronto direto na Espanha e na Itália, saldo de gols nas demais. Rebaixamento e acesso no fim da temporada; elencos guardados no save.
+- Catálogo mundial 41eee91ebb7602072acd64bb (158 inscrições). Sem migração de banco. Instalador Windows 1.7.0.
+
 ## 0.13.1 — Mundo pronto para jogar
 
 - Banco mundial (Brasfoot Next 2026.10, CC BY-SA 4.0, com as inscrições 2026/27 da engine) embutido no instalador e instalado sozinho em `<dados>/saves/world-catalogs` na primeira abertura: SHA-256 conferido, nunca sobrescreve um catálogo existente.
